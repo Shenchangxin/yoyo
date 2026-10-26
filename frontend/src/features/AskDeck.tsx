@@ -14,7 +14,7 @@ import {
 import { useCopy } from "../lib/i18n";
 import { cn } from "../lib/utils";
 
-// AskDeck 没有当前问题时不渲染。指针或键盘一碰上就停住倒计时。秒数至少显示 1。
+/** AskDeck 没有当前问题时不渲染。指针或键盘一碰上就停住倒计时。秒数至少显示 1。approval 读取 command、id。onResolve 被调用，并传入 approval.id、"once"。 */
 export function AskDeck({
   approval,
   onResolve,
@@ -38,7 +38,7 @@ export function AskDeck({
   const question = form.questions[page];
   const seconds = Math.max(1, Math.ceil(remain / 1000));
 
-  // 已经交过就不再交。决策固定为 once。
+  /** finish 已经交过就不再交。决策固定为 once。answer 传给 onResolve。 */
   function finish(answer: string) {
     if (done.current) return;
     done.current = true;

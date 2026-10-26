@@ -15,7 +15,7 @@ function readPref(): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** useConversationWidth 拖左右边改宽度，松手后记到本机。 */
+/** useConversationWidth 拖左右边改宽度，松手后记到本机。enabled 为假时走另一支。 */
 export function useConversationWidth(enabled: boolean): { width: number | null; bind: (side: "left" | "right") => object } {
   const [width, setWidth] = useState<number | null>(() => (enabled ? readPref() : null));
 
@@ -24,13 +24,13 @@ export function useConversationWidth(enabled: boolean): { width: number | null; 
     setWidth(readPref());
   }, [enabled]);
 
-  /** 从某一侧按下，跟着指针改宽度。 */
+  /** 从某一侧按下，跟着指针改宽度。side 与 right 比较是否相等。 */
   const drag = useCallback((side: "left" | "right") => (e: React.PointerEvent<HTMLDivElement>) => {
     if (!enabled) return;
     e.preventDefault();
     const startX = e.clientX;
     const start = width || Math.min(920, Math.max(MIN, window.innerWidth * 0.5));
-    /** 按拖动方向加减宽度。 */
+    /** 按拖动方向加减宽度。ev 读取 clientX。 */
     const move = (ev: PointerEvent) => {
       const dx = side === "right" ? ev.clientX - startX : startX - ev.clientX;
       const next = Math.max(MIN, Math.round(start + dx * 2));
@@ -51,7 +51,7 @@ export function useConversationWidth(enabled: boolean): { width: number | null; 
 
   return {
     width: enabled ? width : null,
-    /** bind 交回某一侧拖拽条的类名和按下处理。 */
+    /** bind 交回某一侧拖拽条的类名和按下处理。side 传给 drag，写入字段 "data-side"。 */
     bind: (side) => ({
       className: "sc-width",
       "data-side": side,

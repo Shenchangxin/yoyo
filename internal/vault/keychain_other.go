@@ -9,12 +9,16 @@ package vault
 func keychainAvailable() bool { return false }
 
 // keychainSet 不写入钥匙串，返回 errNoKeychain。
+// name 本函数不读取。
+// value 本函数不读取。
 func keychainSet(name, value string) error { return errNoKeychain }
 
 // keychainGet 不读取钥匙串，返回空串和 errNoKeychain。
+// name 本函数不读取。
 func keychainGet(name string) (string, error) { return "", errNoKeychain }
 
 // keychainDelete 没有钥匙串条目可删，返回 nil。
+// name 本函数不读取。
 func keychainDelete(name string) error { return nil }
 
 // keychainErr 是本文件使用的错误字符串。

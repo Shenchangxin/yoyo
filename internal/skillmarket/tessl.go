@@ -26,6 +26,8 @@ type tesslSkill struct {
 }
 
 // listTessl 按页收集，最多 40 页。无查询时浏览接口失败会返回 SearchOnly 和 Warning，而不是错误。前 8 条浏览结果标成 Featured。
+// query 先交给 catalogLimit，再去掉两端空白；空则走浏览，并把前 8 条标成 Featured。
+// limit 先交给 catalogLimit；收集条数达到它就停。
 func listTessl(query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	q := strings.TrimSpace(query)
@@ -71,6 +73,10 @@ func listTessl(query string, limit int) (Catalog, error) {
 }
 
 // fetchTesslPage 无查询的浏览走 /experimental/skills，失败再以 q=skill 打 /experimental/search。有查询时直接搜索。过滤 type 等于 skill。
+// query 非空时写入 q；browse 且 query 为空时先走 /experimental/skills。
+// page 写入 page[number]。
+// pageSize 写入 page[size]。
+// browse 为真且 query 为空时，技能接口失败再以 q 为 skill 打搜索。
 func fetchTesslPage(query string, page, pageSize int, browse bool) ([]tesslSkill, error) {
 	vals := url.Values{
 		"filter[type][eq]": {"skill"},
@@ -101,6 +107,7 @@ func fetchTesslPage(query string, page, pageSize int, browse bool) ([]tesslSkill
 }
 
 // itemFromTessl 用名字做 slug。能解析 sourceUrl 时，ID 带上仓库和目录。名字净化失败返回 false。
+// row 的 Name 交给 SanitizeSlug，空则返回 false；SourceURL 交给 parseGitHubURL。
 func itemFromTessl(row tesslSkill) (Item, bool) {
 	slug := SanitizeSlug(row.Attributes.Name)
 	if slug == "" {

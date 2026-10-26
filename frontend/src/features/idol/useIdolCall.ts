@@ -49,7 +49,7 @@ export function primeCallAudio() {
   void primed.resume();
 }
 
-/** useIdolCall 跑一通通话：听、送回合、播放，并在结束时写回服务端。 */
+/** useIdolCall 跑一通通话：听、送回合、播放，并在结束时写回服务端。opts 读取 active、textOnly、name、color、portrait、kind 等。 */
 export function useIdolCall(opts: Opts) {
   const copy = useCopy();
   const c = copy.idol;
@@ -149,7 +149,7 @@ export function useIdolCall(opts: Opts) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts.active, opts.idolId, opts.companion]);
 
-  /** 接通这一通：陪伴窗先取置顶偶像，再要麦克风，然后进入聆听。 */
+  /** 接通这一通：陪伴窗先取置顶偶像，再要麦克风，然后进入聆听。run 读取 stop、closed、companion、idolId、stream、connected，传给 loop。 */
   async function boot(run: Run) {
     if (run.stop || run.closed) return;
     tone(440, 180);
@@ -204,7 +204,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
-  /** 在停掉之前反复听或发送已键入的文字。 */
+  /** 在停掉之前反复听或发送已键入的文字。run 读取 stop、hold、typed、stream，传给 say。 */
   async function loop(run: Run) {
     while (!run.stop) {
       if (run.hold) {
@@ -230,7 +230,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
-  /** 把一句交给服务端回合，再按段播放；被打断就截断记录。 */
+  /** 把一句交给服务端回合，再按段播放；被打断就截断记录。run 读取 stop、idolId、hold、stream，传给 pollWork。text 传给 setCaption，写入字段 text。 */
   async function say(run: Run, text: string) {
     if (run.stop) return;
     setPhase("thinking");
@@ -281,7 +281,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
-  /** 等工作会话有话可说，再播一句旁白。 */
+  /** 等工作会话有话可说，再播一句旁白。run 读取 stop、idolId。session 写入字段 session。 */
   async function pollWork(run: Run, session: string) {
     for (let i = 0; i < 40 && !run.stop; i++) {
       await sleep(2000);
@@ -302,7 +302,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
-  /** 停掉麦克风和播放，并写下通话结束。 */
+  /** 停掉麦克风和播放，并写下通话结束。run 读取 closed、stop、stream、started、idolId、connected 等。notify 为真时才继续。 */
   async function stopRun(run: Run, notify: boolean) {
     if (run.closed) return;
     run.closed = true;
@@ -352,7 +352,7 @@ export function useIdolCall(opts: Opts) {
   };
 }
 
-/** 向服务端要这一句的音频再播放。 */
+/** 向服务端要这一句的音频再播放。idolId 写入字段 idol_id。text 去掉首尾空白，为假时走另一支，写入字段 text。phone 传给 play。 */
 async function speak(idolId: string, text: string, phone: boolean) {
   if (!text.trim()) return;
   const out = await api.idolCall("speak", { idol_id: idolId, text });
@@ -360,7 +360,7 @@ async function speak(idolId: string, text: string, phone: boolean) {
   await play(`data:${out.content_type || "audio/mpeg"};base64,${out.audio}`, phone);
 }
 
-/** 从麦克风录到一段有声音的话，再交给转写。 */
+/** 从麦克风录到一段有声音的话，再交给转写。stream 为假时走另一支，传给 ctx.createMediaStreamSource，传给 MediaRecorder。stop 被调用。 */
 async function listen(stream: MediaStream | null, stop?: () => boolean): Promise<string> {
   if (!stream) return "";
   const chunks: Blob[] = [];
@@ -370,6 +370,7 @@ async function listen(stream: MediaStream | null, stop?: () => boolean): Promise
   } catch {
     return "";
   }
+  /** ondataavailable 调用 push。e 读取 data。 */
   mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   const done = new Promise<void>((resolve) => { mr.onstop = () => resolve(); });
   const ctx = new AudioContext();
@@ -413,7 +414,7 @@ async function listen(stream: MediaStream | null, stop?: () => boolean): Promise
   }
 }
 
-/** 播放一段音频；电话音质时走低通。 */
+/** 播放一段音频；电话音质时走低通。url 传给 Audio。phone 为假时走另一支。 */
 function play(url: string, phone: boolean): Promise<void> {
   return new Promise((resolve) => {
     const el = new Audio(url);
@@ -439,7 +440,7 @@ function play(url: string, phone: boolean): Promise<void> {
   });
 }
 
-/** 用振荡器响一声提示音。 */
+/** 用振荡器响一声提示音。freq 赋给 o.frequency.value。ms 除以 1000。 */
 function tone(freq: number, ms: number) {
   const ctx = primed || new AudioContext();
   const o = ctx.createOscillator();
@@ -453,12 +454,12 @@ function tone(freq: number, ms: number) {
   o.onended = () => { if (ctx !== primed) void ctx.close(); };
 }
 
-/** 等待一段时间。 */
+/** 等待一段时间。ms 传给 setTimeout。 */
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** 把音频块读成去掉前缀的 base64。 */
+/** 把音频块读成去掉前缀的 base64。blob 传给 r.readAsDataURL。 */
 function blobToB64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -471,7 +472,7 @@ function blobToB64(blob: Blob): Promise<string> {
   });
 }
 
-/** phoneFrom 原样交回是否走电话音质。 */
+/** phoneFrom 原样交回是否走电话音质。flag 原样返回。 */
 export function phoneFrom(flag: boolean) {
   return flag;
 }

@@ -40,12 +40,14 @@ func main() {
 }
 
 // fatal 把错误写到标准错误并以状态 1 退出。
+// err 写到标准错误，然后以状态 1 退出。
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, err)
 	os.Exit(1)
 }
 
 // fourPart 把版本补到四段，不足的段填 0，多出的段丢掉。
+// v 按点切开。不足 4 段时补 0，多于 4 段时只留前 4 段。
 func fourPart(v string) string {
 	p := strings.Split(v, ".")
 	for len(p) < 4 {
@@ -55,6 +57,9 @@ func fourPart(v string) string {
 }
 
 // stampWindowsInfo 把文件版本写进 fixed 的 file_version，把产品版本写进 0000 的 ProductVersion。
+// path 先读再按 0o644 写回，末尾补一个换行。
+// product 写入 0000 块的 ProductVersion。
+// fileVer 写入 fixed 的 file_version。
 func stampWindowsInfo(path, product, fileVer string) error {
 	type infoJSON struct {
 		Fixed map[string]string            `json:"fixed"`
@@ -89,6 +94,8 @@ func stampWindowsInfo(path, product, fileVer string) error {
 }
 
 // stampManifest 替换 assemblyIdentity 的 version。找不到则返回错误。
+// path 先读。没替换到时写进错误，否则按 0o644 写回。
+// asm 写进 assemblyIdentity 的 version 引号之间。
 func stampManifest(path, asm string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -103,6 +110,8 @@ func stampManifest(path, asm string) error {
 }
 
 // stampPlist 替换 CFBundleShortVersionString 和 CFBundleVersion。任一键找不到则返回错误。
+// path 先读。任一键没替换到时写进错误，否则按 0o644 写回。
+// ver 写进这两个键的 string 值。
 func stampPlist(path, ver string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -122,6 +131,7 @@ func stampPlist(path, ver string) error {
 }
 
 // stampNFPM 替换 version 字段。文件不存在时返回 nil。找不到该字段则返回错误。
+// path 交给 os.ReadFile。不存在时返回 nil。没替换到时写进错误。父目录按 0o755 创建后再写回。
 func stampNFPM(path, ver string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -142,6 +152,8 @@ func stampNFPM(path, ver string) error {
 }
 
 // stampNSIS 替换 INFO_PRODUCTVERSION。文件不存在时返回 nil。找不到则返回错误。
+// path 交给 os.ReadFile。不存在时返回 nil。没替换到时写进错误，否则按 0o644 写回。
+// ver 写进 INFO_PRODUCTVERSION 的引号之间。
 func stampNSIS(path, ver string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {

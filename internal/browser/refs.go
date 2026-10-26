@@ -20,6 +20,7 @@ type refCache struct {
 }
 
 // store 换成这一批控件，并按 Ref 建索引。
+// acts 复制进 list。Ref 非空的条目以 Ref 为键写入 byRef。
 func (c *refCache) store(acts []Action) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -64,6 +65,7 @@ func (h *Host) invalidateRefs() {
 }
 
 // parseRef 从 ref=btn_0、ref:btn_0、[ref=btn_0] 或单独的 btn_0 里取出句柄。空字符串表示这是 CSS 选择器或 text= 句柄。
+// sel 去掉空白后为空则返回空字符串。成对的方括号去掉后，以 ref= 或 ref: 开头时返回第 4 个字符之后并再去掉空白。整段匹配 refName 时返回它，否则返回空字符串。
 func parseRef(sel string) string {
 	s := strings.TrimSpace(sel)
 	if s == "" {
@@ -83,6 +85,7 @@ func parseRef(sel string) string {
 }
 
 // rememberedTarget 把选择器对回缓存里的描述。ref 对上就返回那条；对不上也返回一个只带 Ref 和 Text 的 Action。text= 取出可见文字。CSS、#id 和 data-testid 再在全部缓存里找。
+// sel 传给 parseRef。得到的 ref 非空时用来 lookup，没有缓存则返回只带该 Ref 和 Text 的 Action。以 text= 开头时取第 5 个字符之后的文字。否则在缓存里按 Selector、# 加 ID，以及 data-testid 比较。
 func (h *Host) rememberedTarget(sel string) (Action, bool) {
 	if h == nil {
 		return Action{}, false
@@ -112,6 +115,7 @@ func (h *Host) rememberedTarget(sel string) (Action, bool) {
 }
 
 // matchFallback 用记住的描述对当前页面再匹配一次。分数低于 matchThreshold，或结果既没有 Ref 也没有 Selector 时返回空。
+// sel 传给 rememberedTarget。
 func (h *Host) matchFallback(sel string) (string, string) {
 	want, ok := h.rememberedTarget(sel)
 	if !ok {
@@ -135,6 +139,8 @@ func (h *Host) matchFallback(sel string) (string, string) {
 const matchThreshold = 45
 
 // matchTarget 给每个实况控件打分。选择器或 testid 重合加 80，id 加 70，name 属性加 60，无障碍名完全相同加 50、部分包含加 20，role 加 25。低于 45 时返回 not-found。
+// want 的 Selector、TestID、ID、NameAttr、Role、Name、Text、Placeholder 用来打分。
+// have 里每个控件与 want 比较，取得分最高且不低于 matchThreshold 的一个。
 func matchTarget(want Action, have []Action) (Action, string, int) {
 	wantSel := selectorSet(want)
 	wantName := normMatch(firstNonEmpty(want.Name, want.Text, want.Placeholder))
@@ -210,6 +216,7 @@ func selectorSet(a Action) map[string]struct{} {
 }
 
 // overlap 看两个集合有没有相同的键。
+// b 用来查找 a 里的键是否也存在。
 func overlap(a, b map[string]struct{}) bool {
 	for k := range a {
 		if _, ok := b[k]; ok {
@@ -220,11 +227,13 @@ func overlap(a, b map[string]struct{}) bool {
 }
 
 // normMatch 去掉空白并转成小写，供打分比较。
+// s 去掉空白后转成小写。
 func normMatch(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
 // firstNonEmpty 返回第一个非空白字符串。都空则返回空字符串。
+// ss 从前往后找，返回第一个去掉空白后非空的字符串。都没有时返回空字符串。
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {

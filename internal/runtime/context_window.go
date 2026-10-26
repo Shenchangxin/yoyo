@@ -20,12 +20,14 @@ const (
 
 // ModelContextWindow 返回聊天整形用的目录窗口。自定义或本地 id 仍按模型名匹配，例如带 deepseek 的名字得到 100 万。
 // 不填 ModelWindow 时，effectiveBudget 继续用 CompactionTokens。
+// model 传给 ModelContextWindowFor。
 func ModelContextWindow(model string) int {
 	return ModelContextWindowFor("", model)
 }
 
 // ModelContextWindowFor 从模型 id 推断窗口。第一个参数是接入点，不参与推断。
 // CatalogWindow 若返回大于 0 的值则优先，先查完整模型名，再查最后一段路径。都没有则走内置家族，仍没有则用 UnknownModelWindow。空模型名返回 0。
+// model 去掉空白并转小写，空则返回 0；非空时传给 CatalogWindow，并取其最后一段路径。
 func ModelContextWindowFor(_, model string) int {
 	m := strings.ToLower(strings.TrimSpace(model))
 	if m == "" {
@@ -50,6 +52,8 @@ func ModelContextWindowFor(_, model string) int {
 var CatalogWindow func(model string) int
 
 // EffectiveModelWindow 在目录窗口之上应用调用方的覆盖值。覆盖值大于 0 时直接用它，否则用 ModelContextWindow。两者都没有时，预算不按窗口扣减。
+// model 在 override 不大于 0 时传给 ModelContextWindow。
+// override 大于 0 时直接返回。
 func EffectiveModelWindow(model string, override int) int {
 	if override > 0 {
 		return override
@@ -66,6 +70,7 @@ func lastPathSegment(m string) string {
 }
 
 // catalogishWindow 按内置家族给窗口。更长的型号写在更短的前面，避免短名字先命中。对不上返回 0。
+// id 传给 nameHas 或 claudeMillion，对不上时返回 0。
 func catalogishWindow(id string) int {
 	switch {
 	case nameHas(id, "gpt-4.1"):
@@ -96,6 +101,7 @@ func catalogishWindow(id string) int {
 }
 
 // claudeMillion 在名字含 claude，并且含 4-6、4.6、sonnet-5、opus-5、opus-4-6、sonnet-4-6 或 1m 时返回真。
+// id 必须包含 claude，并且包含上述片段之一。
 func claudeMillion(id string) bool {
 	if !strings.Contains(id, "claude") {
 		return false
@@ -109,6 +115,7 @@ func claudeMillion(id string) bool {
 }
 
 // nameHas 判断 token 是否作为独立片段出现。点号算边界，所以短名字要靠 catalogishWindow 的顺序让路。
+// id 与 token 相等，或在其中按边界查找 token。
 func nameHas(id, token string) bool {
 	if id == token {
 		return true
@@ -127,6 +134,9 @@ func nameHas(id, token string) bool {
 }
 
 // tokenBounded 要求 token 两侧都不是字母或数字。
+// s 在 start 大于 0 时检查前一位，在 end 小于长度时检查 end 这一位。
+// start 大于 0 时才看前一位。
+// end 小于 s 的长度时才看该下标。
 func tokenBounded(s string, start, end int) bool {
 	if start > 0 && isModelIdent(s[start-1]) {
 		return false
@@ -138,12 +148,14 @@ func tokenBounded(s string, start, end int) bool {
 }
 
 // isModelIdent 只把小写字母和数字当成模型名的内部字符。
+// c 是小写字母或数字时返回 true。
 func isModelIdent(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
 }
 
 // effectiveBudget 在 ModelWindow 大于 0 时用窗口减去输出预留和 ContextBuffer 里较大的那个，并不得低于 minShapeBudget。
 // 预留缺省是窗口的十分之一，夹在 minOutputReserve 和 maxOutputReserve 之间。ModelWindow 为 0 时用 CompactionTokens，再没有则用 24000。
+// opts 读取 ModelWindow、OutputReserve，以及 Loop 的 OutputReserve、ContextBuffer 和 CompactionTokens。
 func effectiveBudget(opts ShapeOpts) int {
 	if opts.ModelWindow > 0 {
 		reserve := opts.OutputReserve
@@ -176,6 +188,7 @@ func effectiveBudget(opts ShapeOpts) int {
 }
 
 // IsContextOverflow 看错误文本里是否有上下文超长的短语。单独的 max_tokens 不算。
+// err 为 nil 时返回 false，否则在 Error 文本的小写形式里查找这些短语。
 func IsContextOverflow(err error) bool {
 	if err == nil {
 		return false

@@ -19,6 +19,7 @@ const (
 
 // slimLiveEvent 给实时总线复制一份变瘦的事件，不改调用方手里的 payload。heavyCallName 为真且参数非空时，把参数换成 compactCallArgs 的结果；压缩结果和原文一样、又不是合法 JSON 对象、但能抽出 path 时，参数改成只含 path 的对象。
 // 工具结果分别裁 content 和 patch。助手和推理先丢掉 stream。delta 为真时文本保持原样。已结算文本按 uiAssistantBytes 裁。用户文本按 uiUserBytes 裁。检查点事件若带 tail 就删掉 tail。
+// ev 的 Payload 为 nil 时原样返回，否则按 Type 处理工具调用、工具结果、助手、推理、用户和检查点。
 func slimLiveEvent(ev trace.Event) trace.Event {
 	if ev.Payload == nil {
 		return ev
@@ -75,6 +76,7 @@ func slimLiveEvent(ev trace.Event) trace.Event {
 }
 
 // dropStreamTape 从副本里删除 stream。没有 payload 或没有这个键时原样返回。
+// ev 的 Payload 为 nil 或没有 stream 时原样返回，否则从副本里删除 stream。
 func dropStreamTape(ev trace.Event) trace.Event {
 	if ev.Payload == nil {
 		return ev
@@ -89,6 +91,8 @@ func dropStreamTape(ev trace.Event) trace.Event {
 }
 
 // slimPayloadString 按字节裁切一个字符串字段。cap 小于等于 0 或长度不超过 cap 时原样返回。裁切后在末尾加上换行和省略号，并把 bytes 设成原长度。
+// ev 按 key 读取字符串，超长时改副本。
+// key 是被裁切的字段名。
 func slimPayloadString(ev trace.Event, key string, cap int) trace.Event {
 	s, _ := ev.Payload[key].(string)
 	if cap <= 0 || len(s) <= cap {
@@ -102,6 +106,7 @@ func slimPayloadString(ev trace.Event, key string, cap int) trace.Event {
 }
 
 // clonePayload 浅拷贝 payload，避免改到 JSONL 里的那一份。
+// in 的键值逐个抄进新映射。
 func clonePayload(in map[string]any) map[string]any {
 	p := make(map[string]any, len(in)+1)
 	for k, v := range in {
@@ -111,6 +116,7 @@ func clonePayload(in map[string]any) map[string]any {
 }
 
 // SlimTrajectory 是会话 JSONL 的界面投影。工具调用的完整正文仍留在原切片里，返回值里的重写入调用只剩路径和短桩。空切片原样返回。
+// evs 长度为 0 时原样返回，否则逐条交给 slimLiveEvent。
 func SlimTrajectory(evs []trace.Event) []trace.Event {
 	if len(evs) == 0 {
 		return evs
@@ -123,11 +129,13 @@ func SlimTrajectory(evs []trace.Event) []trace.Event {
 }
 
 // UITrajectory 是渲染器看到的轨迹：先瘦身写入和结果，再丢掉账本噪声，最后只留最后一条进展之后的最后一张错误卡片。事件条数和身份保留，进程轨仍能折叠中间的助手和工具；瘦的是 payload，用来限住 Wails 和 WebView 的内存。更早的用户回合仍由 ProjectPage 按字节开窗。
+// evs 传给 SlimTrajectory。
 func UITrajectory(evs []trace.Event) []trace.Event {
 	return dropSupersededErrors(dropUINoise(SlimTrajectory(evs)))
 }
 
 // dropUINoise 丢掉 file_change、turn_end、system、eval、evolve、usage。compact 只留 kind 为 checkpoint 的；payload 为 nil 的 compact 也丢掉。
+// evs 按 Type 过滤，compact 还要看 Payload 是否为 nil 以及 kind。
 func dropUINoise(evs []trace.Event) []trace.Event {
 	out := make([]trace.Event, 0, len(evs))
 	for _, ev := range evs {
@@ -149,6 +157,7 @@ func dropUINoise(evs []trace.Event) []trace.Event {
 }
 
 // dropSupersededErrors 最多留下最后一条进展之后的最后一张错误。进展包括用户、助手、推理、工具调用、工具结果、turn_start、step_start、step_end。没有错误时原样返回。进展出现在错误之后时，这些错误全部去掉，恢复和后一条用户消息不会把停止卡片留在界面上。
+// evs 没有错误时原样返回，否则只留最后一条进展之后的最后一张错误。
 func dropSupersededErrors(evs []trace.Event) []trace.Event {
 	lastProgress := -1
 	hasError := false

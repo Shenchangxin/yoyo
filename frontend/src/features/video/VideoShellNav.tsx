@@ -24,15 +24,15 @@ const LIBRARY: { id: Extract<VideoPane, "assets" | "skills" | "plugins" | "tasks
   { id: "tasks", icon: History },
 ];
 
-/** VideoShellNav 画出创作、短片、短剧、画布，以及素材、技能、插件、任务。 */
+/** VideoShellNav 画出创作、短片、短剧、画布，以及素材、技能、插件、任务。props 的 layout 为 bar 时画横条，否则画侧栏；onNavigate 在真正切栏时调用。 */
 export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () => void }) {
   const bar = props.layout === "bar";
   const copy = useCopy();
   const reduced = useMotionReduced();
   const rail = motionTransition(reduced, DURATION_SHELL);
-  const pane = useUI((s) => s.videoPane);
-  const videoBoard = useUI((s) => s.videoBoard);
-  const openVideoPane = useUI((s) => s.openVideoPane);
+  const pane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
+  const videoBoard = useUI(/** s 取出 videoBoard。 */ (s) => s.videoBoard);
+  const openVideoPane = useUI(/** s 取出 openVideoPane。 */ (s) => s.openVideoPane);
   const labels: Record<(typeof PRIMARY)[number]["id"] | (typeof LIBRARY)[number]["id"], string> = {
     create: copy.video.shellCreate,
     studio: copy.video.shellStudio,
@@ -44,14 +44,14 @@ export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () 
     tasks: copy.video.shellTasks,
   };
 
-  /** 短剧在看板打开时也算选中；其余栏只看当前栏。 */
+  /** 短剧在看板打开时也算选中；其余栏只看当前栏。id 是短剧时还看看板是否打开，是短片时只认 studio，其余和当前栏比较。 */
   function active(id: VideoPane) {
     if (id === "drama") return pane === "drama" || videoBoard;
     if (id === "studio") return pane === "studio";
     return pane === id;
   }
 
-  /** 画一行导航。已经停在这一栏就不再打开。 */
+  /** 画一行导航。已经停在这一栏就不再打开。item 用 id 判断选中和测试标记，用 icon 画图标。 */
   function row(item: { id: VideoPane; icon: typeof Clapperboard }) {
     const Icon = item.icon;
     const on = active(item.id);

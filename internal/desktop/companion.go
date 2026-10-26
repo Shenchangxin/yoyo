@@ -47,6 +47,8 @@ func companionWorkBoxes() []hitBox {
 }
 
 // clampCompanion 按当前形态取宽高：通话中用通话卡片，否则用宠物宽和字幕框高度。字幕打开时底边距用 companionBottomClearance，否则用 companionPad。然后夹进最近的工作区和虚拟屏幕。
+// x 传给 clampCompanionTo。
+// y 传给 clampCompanionTo。
 func clampCompanion(x, y int) (int, int) {
 	w, h := companionW, companionFrameH(companionCaptionOn.Load())
 	pad := companionPad
@@ -60,6 +62,7 @@ func clampCompanion(x, y int) (int, int) {
 }
 
 // companionCursorLocal 优先用系统原生坐标。原生取不到时，用 CSS 光标减去窗口位置。窗口为空或没有光标时返回假。
+// win 传给 companionCursorLocalNative。原生取不到且 win 非 nil 时，用它的 Position 和 Size 换算 CSS 光标。
 func companionCursorLocal(win application.Window) (lx, ly, ww, wh float64, ok bool) {
 	if lx, ly, ww, wh, ok = companionCursorLocalNative(win); ok {
 		return lx, ly, ww, wh, true
@@ -83,6 +86,8 @@ func (s *Service) SetCompanionCaption(on bool) {
 }
 
 // SetCompanionCaptionSize 更新字幕盒子。宽高都没变则返回。字幕正开着时再 syncCompanionFrame。
+// w 传给 setCompanionCaptionBox。
+// h 传给 setCompanionCaptionBox。
 func (s *Service) SetCompanionCaptionSize(w, h int) {
 	beforeW := companionCaptionW.Load()
 	beforeH := companionCaptionH.Load()
@@ -127,6 +132,8 @@ func (s *Service) syncCompanionFrame() {
 }
 
 // PlaceCompanion 把宠物窗口移到夹过的坐标。窗口为空、坐标是隐藏哨兵，或位置没变时返回。companionClamping 正在进行时也不再套一层。
+// x 先交给 winsize.HiddenSentinel，再传给 clampCompanion。
+// y 先交给 winsize.HiddenSentinel，再传给 clampCompanion。
 func (s *Service) PlaceCompanion(x, y int) {
 	win := s.companion
 	if win == nil {
@@ -148,6 +155,7 @@ func (s *Service) PlaceCompanion(x, y int) {
 }
 
 // pinCompanion 在窗口被拖动或系统改过位置后，把坐标夹回工作区。隐藏哨兵不改。
+// win 为 nil 时返回。否则读取 Position，夹过之后必要时 SetPosition。
 func (s *Service) pinCompanion(win application.Window) {
 	if win == nil || !s.companionClamping.CompareAndSwap(false, true) {
 		return
@@ -244,6 +252,10 @@ func (s *Service) endCompanionCall(resizeAndRefresh bool) {
 }
 
 // companionCallOrigin 保持空闲窗口的右下角不动，通话窗口向左上长大。宽或高小于 32 时按空闲尺寸算。
+// x 加上夹过的宽，再减去 companionCallW。
+// y 加上夹过的高，再减去 companionCallH。
+// w 小于 32 时改成 companionW。
+// h 小于 32 时改成 companionIdleH。
 func companionCallOrigin(x, y, w, h int) (int, int) {
 	if w < 32 {
 		w = companionW
@@ -255,6 +267,10 @@ func companionCallOrigin(x, y, w, h int) (int, int) {
 }
 
 // rememberCompanionHome 只记第一次，而且窗口还没大过宠物尺寸加 24 时才记。已经是通话尺寸时不覆盖回家坐标。
+// x 在尚未记下且宽高都没有超过宠物尺寸加 24 时写入 companionHomeX。
+// y 在同一条件下写入 companionHomeY。
+// w 大于 companionW 加 24 时直接返回。
+// h 大于 companionH 加 24 时直接返回。
 func (s *Service) rememberCompanionHome(x, y, w, h int) {
 	if s.companionHomeOK.Load() {
 		return
@@ -268,6 +284,7 @@ func (s *Service) rememberCompanionHome(x, y, w, h int) {
 }
 
 // restoreCompanionHome 把窗口缩回字幕框高度，放回记下的坐标，清掉标记，并按字幕状态贴区域。
+// win 为 nil 或还没记下回家坐标时返回。否则 SetSize、SetPosition，并传给 applyCompanionShape。
 func (s *Service) restoreCompanionHome(win application.Window) {
 	if win == nil || !s.companionHomeOK.Load() {
 		return
@@ -377,6 +394,7 @@ func (s *Service) ToggleCompanion() {
 }
 
 // syncCompanion 在配置关掉宠物时收起、关闭窗口，并发出 yoyo:companion 且值为 hidden。已经收起时只关闭并 refreshChrome。否则 OpenCompanion。
+// cfg 的 CompanionEnabled 为假时收起并关闭宠物。为真且尚未收起时调用 OpenCompanion。
 func (s *Service) syncCompanion(cfg app.Config) {
 	if !cfg.CompanionEnabled {
 		s.companionDismissed.Store(true)
@@ -648,6 +666,7 @@ func (s *Service) startCursorWatch() {
 }
 
 // absF 返回浮点数的绝对值。
+// v 小于 0 时返回相反数，否则原样返回。
 func absF(v float64) float64 {
 	if v < 0 {
 		return -v

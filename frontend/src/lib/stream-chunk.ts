@@ -41,7 +41,7 @@ export class BlockAssembler {
   private order: number[] = [];
   private finishKind = "stop";
 
-  /** push 按片段种类累积一块。已经收束的块不再接受增量。 */
+  /** push 按片段种类累积一块。已经收束的块不再接受增量。chunk 读取 type、index、blockType、text、id、name 等。 */
   push(chunk: StreamChunk): void {
     switch (chunk.type) {
       case "block-start":
@@ -79,7 +79,7 @@ export class BlockAssembler {
     }
   }
 
-  /** 取出或建出该序号的半成品块。 */
+  /** 取出或建出该序号的半成品块。index 传给 partials.get，交给 partials.set，放进 order。blockType 写入字段 blockType。 */
   private ensure(index: number, blockType: string): PartialBlock {
     let p = this.partials.get(index);
     if (!p) {
@@ -90,7 +90,7 @@ export class BlockAssembler {
     return p;
   }
 
-  /** 半成品收成内容块。工具调用缺少 id 时用序号占位。 */
+  /** 半成品收成内容块。工具调用缺少 id 时用序号占位。p 读取 block、blockType、text、toolCallId、toolCallName、toolCallArguments。index 拼进字符串。 */
   private assemble(p: PartialBlock, index: number): ContentBlock {
     if (p.block) return p.block;
     if (p.blockType === "reasoning") return { type: "reasoning", text: p.text };
@@ -105,7 +105,7 @@ export class BlockAssembler {
     return { type: "text", text: p.text };
   }
 
-  /** hydrateFromBlocks 用已经组装好的块恢复一次进行中的尝试。最后一块保持未收束，前面的块收束。 */
+  /** hydrateFromBlocks 用已经组装好的块恢复一次进行中的尝试。最后一块保持未收束，前面的块收束。blocks 为假时改用后备值，读取 length，逐项处理。 */
   hydrateFromBlocks(blocks: ContentBlock[]): void {
     this.partials.clear();
     this.order = [];
@@ -140,7 +140,7 @@ export class BlockAssembler {
   }
 }
 
-/** expandAssistantStream 把打包记录展开成带时间的流片段。dt 是后一块相对前一块的时间增量。 */
+/** expandAssistantStream 把打包记录展开成带时间的流片段。dt 是后一块相对前一块的时间增量。records 为假时改用后备值，用来遍历。 */
 export function expandAssistantStream(records: AssistantStreamRecord[]): { time: number; chunk: StreamChunk }[] {
   const out: { time: number; chunk: StreamChunk }[] = [];
   for (const rec of records || []) {
@@ -167,7 +167,7 @@ export function expandAssistantStream(records: AssistantStreamRecord[]): { time:
   return out;
 }
 
-/** textFromBlocks 把指定种类的块正文串起来。缺省串正文块。 */
+/** textFromBlocks 把指定种类的块正文串起来。缺省串正文块。blocks 读取 length，为空时不读，用来遍历。kind 与 b.type 比较是否相等。 */
 export function textFromBlocks(blocks: ContentBlock[] | undefined, kind: "text" | "reasoning" = "text"): string {
   if (!blocks?.length) return "";
   let s = "";
@@ -177,7 +177,7 @@ export function textFromBlocks(blocks: ContentBlock[] | undefined, kind: "text" 
   return s;
 }
 
-/** parseStreamChunk 从原始对象读出流片段。不认识的种类返回空。 */
+/** parseStreamChunk 从原始对象读出流片段。不认识的种类返回空。raw 读取 type、index、blockType、block_type、text、id 等，为假时走另一支，用 typeof 看类型。 */
 export function parseStreamChunk(raw: any): StreamChunk | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const type = String(raw.type || "");
@@ -207,7 +207,7 @@ export function parseStreamChunk(raw: any): StreamChunk | undefined {
   }
 }
 
-/** 把原始对象收成内容块。缺省当正文。 */
+/** 把原始对象收成内容块。缺省当正文。raw 读取 type、text、id、name、arguments，为空时不读。 */
 function parseContentBlock(raw: any): ContentBlock {
   const type = String(raw?.type || "text");
   if (type === "reasoning") return { type, text: String(raw?.text || "") };
@@ -217,7 +217,7 @@ function parseContentBlock(raw: any): ContentBlock {
   return { type: "text", text: String(raw?.text || "") };
 }
 
-/** parseContentBlocks 把数组收成内容块。不是数组则返回空。 */
+/** parseContentBlocks 把数组收成内容块。不是数组则返回空。raw 做映射，传给 Array.isArray。 */
 export function parseContentBlocks(raw: any): ContentBlock[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   return raw.map(parseContentBlock);

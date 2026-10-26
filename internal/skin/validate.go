@@ -29,6 +29,7 @@ var (
 )
 
 // ValidateName 要求名字匹配令牌形式，并且在 Specs 里。
+// name 交给 reTokenName 匹配，再交给 Lookup。
 func ValidateName(name string) error {
 	if !reTokenName.MatchString(name) {
 		return fmt.Errorf("unknown token %q", name)
@@ -40,6 +41,8 @@ func ValidateName(name string) error {
 }
 
 // ValidateValue 拒绝空值、超过 240 字节、非 ASCII，以及含 url(、expression、@import 或 javascript 的文本。数字种类直接拒绝覆盖。
+// kind 为 KindColor、KindDimension、KindShadow、KindNumber 时走对应检查，其他种类返回 unknown kind。
+// raw 去掉首尾空白。为空、长度大于 240、safeRunes 为假，或小写后含 url(、expression、@import、javascript 时返回错误。
 func ValidateValue(kind Kind, raw string) error {
 	v := strings.TrimSpace(raw)
 	if v == "" {
@@ -106,6 +109,7 @@ func validateColor(v string) error {
 }
 
 // nilIfSafeColorMix 在 color-mix 的内部出现分号、花括号或尖括号时返回错误。
+// inner 含有分号、花括号或尖括号时返回错误。
 func nilIfSafeColorMix(inner string) error {
 	// color-mix 的参数是颜色，后面可以跟百分比。
 	if strings.ContainsAny(inner, ";{}<>") {
@@ -142,6 +146,7 @@ func safeRunes(s string) bool {
 }
 
 // StripEvidence 返回去掉证据色键之后的副本。
+// m 逐项复制，IsEvidence 为真的键丢掉。
 func StripEvidence(m TokenMap) TokenMap {
 	out := make(TokenMap, len(m))
 	for k, v := range m {

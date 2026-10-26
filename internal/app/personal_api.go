@@ -18,6 +18,7 @@ import (
 )
 
 // InboxMarkRead 把一条收件箱标为已读。收件箱为空则返回。
+// id 在收件箱非空时传给 Inbox.MarkRead。
 func (a *App) InboxMarkRead(id string) {
 	if a.Inbox != nil {
 		a.Inbox.MarkRead(id)
@@ -25,6 +26,7 @@ func (a *App) InboxMarkRead(id string) {
 }
 
 // MemoryForget 忘掉一条记忆。记忆库为空返回 false。
+// id 传给 Memory.Forget。
 func (a *App) MemoryForget(id string) bool {
 	if a.Memory == nil {
 		return false
@@ -33,6 +35,9 @@ func (a *App) MemoryForget(id string) bool {
 }
 
 // MemoryWrite 按种类、文本和项目写入一条记忆。记忆库为空返回零值。
+// kind 转成 memory.Kind 后写入条目。
+// text 写入条目的 Text。
+// project 写入条目的 Project。
 func (a *App) MemoryWrite(kind, text, project string) memory.Item {
 	if a.Memory == nil {
 		return memory.Item{}
@@ -46,6 +51,9 @@ func (a *App) ConnectorCatalog() []connector.CatalogEntry {
 }
 
 // ConnectorAuthURL 返回授权链接和 state。连接器为空返回 no connectors。
+// provider 传给 Connectors.AuthURL。
+// clientID 传给 Connectors.AuthURL。
+// redirect 传给 Connectors.AuthURL。
 func (a *App) ConnectorAuthURL(provider, clientID, redirect string) (map[string]any, error) {
 	if a.Connectors == nil {
 		return nil, fmt.Errorf("no connectors")
@@ -67,6 +75,8 @@ func (a *App) ConnectorStoreToken(id, token string) error {
 }
 
 // ConnectorComplete 用授权码换令牌并 Connect 一个 KindMail 账号。client id 空则读 YOYO_<PROVIDER>_CLIENT_ID。secret 先读 vault 的 connector.<provider>.secret，再读 YOYO_<PROVIDER>_CLIENT_SECRET。redirect 空则用 http://127.0.0.1:3080/oauth。
+// code 传给 Connectors.Exchange。
+// clientID 为空时读 YOYO_<PROVIDER>_CLIENT_ID，再传给 Exchange。
 func (a *App) ConnectorComplete(provider, code, clientID, secret, redirect string) (connector.Account, error) {
 	var zero connector.Account
 	if a.Connectors == nil {
@@ -96,6 +106,8 @@ func (a *App) ConnectorComplete(provider, code, clientID, secret, redirect strin
 }
 
 // SetSessionConnectors 把账号名单写成该会话的连接器允许列表，并返回会话元数据。
+// id 传给 GetSession 和 SetConnectorAllow。
+// accounts 传给 SetConnectorAllow。
 func (a *App) SetSessionConnectors(id string, accounts []string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -108,6 +120,7 @@ func (a *App) SetSessionConnectors(id string, accounts []string) (SessionMeta, e
 }
 
 // TriggerWebhook 触发一条日程后在后台跑 runIsolatedJob。找不到任务返回 unknown webhook job。
+// id 传给 Schedule.Trigger。
 func (a *App) TriggerWebhook(id string) error {
 	if a.Schedule == nil {
 		return fmt.Errorf("no scheduler")
@@ -121,11 +134,15 @@ func (a *App) TriggerWebhook(id string) error {
 }
 
 // AdmitExpert 把目录交给 expert.Admit，公钥用 a.wasmPub。该公钥来自 Open 对 YOYO_WASM_PUBKEY 的解析，本函数不读环境变量。
+// dir 传给 expert.Admit。
 func (a *App) AdmitExpert(dir string) (expert.Pack, error) {
 	return expert.Admit(dir, a.Home.Skills(), a.wasmPub)
 }
 
 // DistillExpert 把蒸馏出的 Markdown 写到家目录技能夹下该名字的 SKILL.md，并返回路径。
+// name 传给 expert.Distill，并用作技能目录名。
+// description 传给 expert.Distill。
+// body 传给 expert.Distill。
 func (a *App) DistillExpert(name, description, body string) (string, error) {
 	md := expert.Distill(name, description, body)
 	dir := filepath.Join(a.Home.Skills(), name)
@@ -180,6 +197,7 @@ func (a *App) BrowserTakeover() error {
 }
 
 // BrowserTakeoverAt 能解析出文件时 StartTakeoverAt，否则 StartTakeover。浏览器为空返回 no isolated browser。
+// rel 传给 resolveTakeoverFile；得到的路径非空时传给 StartTakeoverAt。
 func (a *App) BrowserTakeoverAt(rel string) error {
 	if a == nil || a.Browser == nil {
 		return fmt.Errorf("no isolated browser")
@@ -191,6 +209,7 @@ func (a *App) BrowserTakeoverAt(rel string) error {
 }
 
 // resolveTakeoverFile 依次尝试绝对路径、接管根下的相对路径和预览文件。候选必须存在、不是目录，并通过 takeoverFileAllowed。相对路径是预览路径后缀时也采用预览文件。
+// rel 先 TrimSpace，非空时按绝对路径或接管根下的相对路径做候选，并可能作为预览路径的后缀。
 func (a *App) resolveTakeoverFile(rel string) string {
 	rel = strings.TrimSpace(rel)
 	preview := ""
@@ -265,6 +284,8 @@ func (a *App) takeoverRoots() []string {
 }
 
 // takeoverFileAllowed 在路径等于预览文件时放行。绝对路径直接放行。其余路径要落在某个接管根里，判断用 capability.WithinWorkspace。
+// abs 先 Clean，与预览文件相同或本身是绝对路径时放行，否则看是否落在某个接管根里。
+// preview 非空且 Clean 后与 abs 相同时放行。
 func (a *App) takeoverFileAllowed(abs, preview string) bool {
 	abs = filepath.Clean(abs)
 	if preview != "" && filepath.Clean(preview) == abs {
@@ -327,11 +348,15 @@ func (a *App) ReviewQueue() map[string]any {
 }
 
 // PhoneApprove 把决定交给 ResolveApproval。
+// id 传给 ResolveApproval。
+// decision 传给 ResolveApproval。
 func (a *App) PhoneApprove(id, decision string) error {
 	return a.ResolveApproval(id, decision)
 }
 
 // PhoneSteer 在文本非空时 Steer 该会话。空文本返回 empty steer。
+// sessionID 传给 Steer。
+// text 为空则返回错误，否则传给 Steer。
 func (a *App) PhoneSteer(sessionID, text string) error {
 	if text == "" {
 		return fmt.Errorf("empty steer")
@@ -341,11 +366,13 @@ func (a *App) PhoneSteer(sessionID, text string) error {
 }
 
 // PhoneSchedule 调用 ScheduleCreate。
+// j 传给 ScheduleCreate。
 func (a *App) PhoneSchedule(j schedule.Job) schedule.Job {
 	return a.ScheduleCreate(j)
 }
 
 // runIsolatedJob 在 Isolate 为真且工作区非空时用 runtime.IsolateWorkspace 换目录，再 NewSession 并 StartSendOpts。失败记到 Schedule.Record。
+// j 用来读 Workspace、Isolate、ID 和 Prompt；Workspace 为空时改用 App.Workspace。
 func (a *App) runIsolatedJob(j schedule.Job) {
 	ws := j.Workspace
 	if ws == "" {

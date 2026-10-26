@@ -67,6 +67,7 @@ func Open(dir string) (*Service, error) {
 }
 
 // Create 生成空着的 ID，并把 Enabled 设为真。Kind 为空时用 KindOnce。KindFollow 和短片任务 Isolate 为假，其他为真。follow 的间隔短于 1 分钟时改成 1m。
+// j 的 ID 为空时写成当前 UTC 的 job-20060102T150405.000000000。CreatedAt 为零时写成当前 UTC。Enabled 设为 true。Kind 为空时用 KindOnce。Kind 为 KindFollow 时 Isolate 为 false，Spec 能解析且时长短于 time.Minute 则改成 1m。否则 IsStudioJob 为真时 Isolate 为 false，其余为 true。
 func (s *Service) Create(j Job) Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -97,6 +98,7 @@ func (s *Service) Create(j Job) Job {
 }
 
 // Cancel 按 ID 从列表删除任务。找到则返回真。
+// id 与每条任务的 ID 比较，相等的从列表删掉。
 func (s *Service) Cancel(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,6 +145,7 @@ func (s *Service) Due(now time.Time) []Job {
 }
 
 // Trigger 按 ID 或 Spec 找到 webhook、once、heartbeat 或 follow。未启用或不属于这些种类则返回假。命中时更新 LastRun。
+// id 与任务的 ID 或 Spec 比较。
 func (s *Service) Trigger(id string) (Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -165,6 +168,8 @@ func (s *Service) Trigger(id string) (Job, bool) {
 }
 
 // Interrupt 把该任务的 Status 写成 interrupted，并记下原因和 LastRun。
+// id 与任务的 ID 比较，命中时 Status 写成 interrupted。
+// reason 写入命中任务的 LastErr。
 func (s *Service) Interrupt(id, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -180,6 +185,7 @@ func (s *Service) Interrupt(id, reason string) {
 }
 
 // Retry 清掉 Status 和 LastErr，重新启用，并把 LastRun 置零。找不到返回假。
+// id 与任务的 ID 比较，命中时清掉 Status 和 LastErr，Enabled 设为 true，LastRun 置零。
 func (s *Service) Retry(id string) (Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -199,6 +205,7 @@ func (s *Service) Retry(id string) (Job, bool) {
 }
 
 // Record 更新 LastRun。err 非 nil 时写下 LastErr，否则清空。once 和 follow 随后把 Enabled 设为假。
+// id 与任务的 ID 比较，命中时更新 LastRun，并按 err 写 LastErr。
 func (s *Service) Record(id string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -220,6 +227,7 @@ func (s *Service) Record(id string, err error) {
 }
 
 // due 判断一条任务在 now 是否到期。webhook 和未知种类返回假。follow 在 interrupted 时返回假，间隔短于 1 分钟时按 1 分钟。
+// j 的 Kind 决定分支。once 解析 Spec 的 RFC3339。heartbeat 解析 Spec 的时长，失败则用 30 分钟，并看 LastRun。follow 在 Status 为 interrupted 时返回 false，否则解析 Spec。cron 把 Spec 和 LastRun 传给 cronDue。webhook 与其他种类返回 false。
 func due(j Job, now time.Time) bool {
 	switch j.Kind {
 	case KindOnce:
@@ -275,6 +283,7 @@ func due(j Job, now time.Time) bool {
 }
 
 // IsStudioJob 在 Channel 为 video、带了 StudioID 或 TopicID，或提示词以「做成短片」开头时返回真。
+// j 的 Channel 去掉空白后不区分大小写等于 video 时返回 true。StudioID 或 TopicID 去掉空白后非空也返回 true。Prompt 去掉空白后以前缀「做成短片」开头也返回 true。
 func IsStudioJob(j Job) bool {
 	if strings.EqualFold(strings.TrimSpace(j.Channel), "video") {
 		return true
@@ -287,6 +296,9 @@ func IsStudioJob(j Job) bool {
 }
 
 // cronDue 把 hourly、daily、weekly、0 18 * * 5、weekday-1800 或一段时长换成是否到期。daily 还要求小时为 18。
+// spec 去掉空白并转成小写后与 hourly、daily、0 18 * * 5、weekday-1800、weekly 比较，否则按 time.ParseDuration 解析。
+// last 为零，或与 now 的间隔达到对应时长时，参与返回 true。
+// now 与 last 算间隔。daily、0 18 * * 5 和 weekday-1800 还要求 Hour 为 18；last 为零时还要求 Minute 小于 5。
 func cronDue(spec string, last, now time.Time) bool {
 	spec = strings.TrimSpace(strings.ToLower(spec))
 	if spec == "hourly" {

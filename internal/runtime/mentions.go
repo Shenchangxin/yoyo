@@ -38,6 +38,7 @@ var (
 )
 
 // ParseMentions 只解析带类型的 @file、@folder、@skill、@session 和 @harness。同类同引用只留一次。不解析裸 @路径。
+// text 交给各条 @ 正则；file、skill、session 最多 8 处，folder 最多 4 处。
 func ParseMentions(text string) []Mention {
 	var out []Mention
 	seen := map[string]bool{}
@@ -68,6 +69,7 @@ func ParseMentions(text string) []Mention {
 }
 
 // parseBareWorkspaceMentions 把还没被带类型语法占住的裸 @ 解析成工作区文件或目录。workspace 或 text 为空则返回 nil。跳过 harness 和 file、folder、skill、session 这四种已带冒号的前缀。
+// seen 里已有的 kind 加引用会跳过，新命中会写进去。
 func parseBareWorkspaceMentions(workspace, text string, seen map[string]bool) []Mention {
 	if workspace == "" || text == "" {
 		return nil
@@ -98,6 +100,7 @@ func parseBareWorkspaceMentions(workspace, text string, seen map[string]bool) []
 }
 
 // bareAtTokens 收集引号和裸 @ 标记，去掉首尾斜杠，并去重。每类正则最多取 8 处。
+// text 交给 reBareQuoted 和 reBareAt。
 func bareAtTokens(text string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -120,6 +123,8 @@ func bareAtTokens(text string) []string {
 }
 
 // resolveWorkspaceRef 把 @ 路径收成工作区相对路径。jailPath 之后 Stat 成功则按文件或目录返回。带斜杠但 Stat 失败则不再猜。没有斜杠的名字只有在忽略规则下的树里恰好一个同名文件或目录时才展开，两个匹配则失败。
+// root 传给 jailPath 和 uniqueBaseHit。
+// raw 去掉空白和末尾斜杠，空则返回 false，否则先按 jailPath 查找。
 func resolveWorkspaceRef(root, raw string) (rel, kind string, ok bool) {
 	raw = strings.TrimSpace(filepath.ToSlash(raw))
 	raw = strings.TrimSuffix(raw, "/")
@@ -146,6 +151,8 @@ func resolveWorkspaceRef(root, raw string) (rel, kind string, ok bool) {
 }
 
 // uniqueBaseHit 在忽略规则下的树里按基名找唯一命中。目录命中的 Kind 收成 folder。零个或多于一个都返回假。
+// root 清理后作为 Walk 的根，并传给 loadIgnore。
+// base 转小写后与每个条目的名字比较。
 func uniqueBaseHit(root, base string) (FileHit, bool) {
 	want := strings.ToLower(base)
 	root = filepath.Clean(root)
@@ -195,11 +202,20 @@ func uniqueBaseHit(root, base string) (FileHit, bool) {
 }
 
 // ExpandMentions 把 ExpandMentionsPacks 的技能表和技能目录都传成 nil。
+// workspace 传给 ExpandMentionsSkills。
+// text 传给 ExpandMentionsSkills。
+// harnessNote 传给 ExpandMentionsSkills。
+// budget 传给 ExpandMentionsSkills。
 func ExpandMentions(workspace, text, harnessNote string, budget int) (inject string, refs []Mention) {
 	return ExpandMentionsSkills(workspace, text, harnessNote, nil, budget)
 }
 
 // ExpandMentionsSkills 把技能目录传成 nil，其余交给 ExpandMentionsPacks。
+// workspace 传给 ExpandMentionsPacks。
+// text 传给 ExpandMentionsPacks。
+// harnessNote 传给 ExpandMentionsPacks。
+// skills 传给 ExpandMentionsPacks。
+// budget 传给 ExpandMentionsPacks。
 func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string]string, budget int) (inject string, refs []Mention) {
 	return ExpandMentionsPacks(workspace, text, harnessNote, skills, nil, budget)
 }
@@ -215,6 +231,11 @@ const (
 )
 
 // ExpandMentionsPacks 先解析带类型提及，再补裸 @路径。budget 小于等于 0 时用 2400，按字节累计 chunk 的长度。主文件（fileLooksPrimary 为真）不计入这份预算。其余片段在已写入内容后再超出预算时写下 mentions truncated 并停止。remain 小于 32 的片段被 mentionChunk 丢掉。
+// workspace 传给 parseBareWorkspaceMentions、fileLooksPrimary、mentionPrimaryFile 和 mentionChunk。
+// text 传给 ParseMentions 和 parseBareWorkspaceMentions。
+// harnessNote 传给 mentionChunk。
+// skills 传给 mentionChunk。
+// skillDirs 传给 mentionChunk。
 func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]string, skillDirs map[string]string, budget int) (inject string, refs []Mention) {
 	refs = ParseMentions(text)
 	seen := map[string]bool{}
@@ -251,6 +272,9 @@ func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]
 }
 
 // ExpandNamedSkills 按名字注入技能正文。budget 小于等于 0 时用 2400 字节。已写入后再超出则写下 mentions truncated 并停止。
+// skills 传给 mentionChunk。
+// skillDirs 传给 mentionChunk。
+// names 去掉空白后为空或已见过则跳过，否则作为 skill 引用。
 func ExpandNamedSkills(skills, skillDirs map[string]string, names []string, budget int) string {
 	if budget <= 0 {
 		budget = 2400
@@ -280,6 +304,7 @@ func ExpandNamedSkills(skills, skillDirs map[string]string, names []string, budg
 }
 
 // MentionSkillNames 按出现顺序返回去重后的 skill 引用。
+// refs 里 Kind 为 skill 且 Ref 非空的，按出现顺序去重返回。
 func MentionSkillNames(refs []Mention) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -294,6 +319,7 @@ func MentionSkillNames(refs []Mention) []string {
 }
 
 // lookupSkillMention 先按原名取技能，再按大小写不敏感的名字，最后按目录基名。skills 为空或 ref 为空则失败。
+// skillDirs 非 nil 时用来取目录；按名字对不上时再按目录基名找。
 func lookupSkillMention(skills, skillDirs map[string]string, ref string) (body, dir string, ok bool) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" || skills == nil {
@@ -327,6 +353,9 @@ func lookupSkillMention(skills, skillDirs map[string]string, ref string) (body, 
 }
 
 // mentionChunk 在 remain 小于 32 时返回空串。skill 没有目录时写 no skill catalog，未知技能写 unknown skill，正文经 DecorateSkillBody 再按 remain 截断。harness 用 harnessNote，空则写 refs/active。session 返回空串。folder 最多列 40 项。普通文件按 mentionFileRunes 截断；字节看起来像主文件时改走 mentionPrimaryFile。
+// workspace 在 folder 和文件分支传给 jailPath。
+// skills 传给 lookupSkillMention；为 nil 时 skill 分支返回 no skill catalog。
+// skillDirs 传给 lookupSkillMention。
 func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]string, m Mention, remain int) string {
 	if remain < 32 {
 		return ""
@@ -408,6 +437,8 @@ func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]st
 }
 
 // fileLooksPrimary 在 jailPath 和读文件都成功、且 looksPrimaryBytes 为真时返回真。
+// workspace 与 rel 传给 jailPath。
+// rel 传给 jailPath。
 func fileLooksPrimary(workspace, rel string) bool {
 	p, err := jailPath(workspace, rel)
 	if err != nil {
@@ -421,6 +452,7 @@ func fileLooksPrimary(workspace, rel string) bool {
 }
 
 // looksPrimaryBytes 在长度超过 mentionPrimaryBytes（8*1024）或 rune 数超过 4000 时返回真。
+// raw 的长度超过 mentionPrimaryBytes，或 rune 数超过 4000 时返回 true。
 func looksPrimaryBytes(raw []byte) bool {
 	if len(raw) > mentionPrimaryBytes {
 		return true
@@ -429,6 +461,8 @@ func looksPrimaryBytes(raw []byte) bool {
 }
 
 // mentionPrimaryFile 写出字节数和 rune 数，并要求用 read_file 读原文。非文本只给一句说明。文本则附上 fileOutline，上限是 mentionPrimaryRunes。
+// workspace 与 rel 传给 jailPath。
+// rel 传给 jailPath，并写进标题。
 func mentionPrimaryFile(workspace, rel string) string {
 	p, err := jailPath(workspace, rel)
 	if err != nil {
@@ -454,6 +488,7 @@ func mentionPrimaryFile(workspace, rel string) string {
 }
 
 // looksTextBytes 只检查前 1024 字节。出现 0 则返回假。
+// raw 只检查前 1024 字节，出现 0 则返回 false。
 func looksTextBytes(raw []byte) bool {
 	n := len(raw)
 	if n > 1024 {
@@ -471,6 +506,7 @@ func looksTextBytes(raw []byte) bool {
 var reOutlineLine = regexp.MustCompile(`(?m)^(#{1,6}\s+\S+|第.{0,12}[回章节卷篇].+)$`)
 
 // fileOutline 最多收 80 条标题，再附上前 80 行正文，最后按 maxRunes 截断。
+// body 用 reOutlineLine 最多收 80 条标题，并取前 80 行作为 Head。
 func fileOutline(body string, maxRunes int) string {
 	var lines []string
 	seen := map[string]bool{}
@@ -511,6 +547,7 @@ func fileOutline(body string, maxRunes int) string {
 }
 
 // jailPath 去掉引号后做 CanonicalizeToolPath。相对路径接到 workspace。Clean 之后用 WithinWorkspace 拒绝逃出工作区。本函数不调用 filepath.EvalSymlinks。
+// rel 去掉引号后做 CanonicalizeToolPath；不是绝对路径时接到 workspace。
 func jailPath(workspace, rel string) (string, error) {
 	rel = strings.Trim(rel, `"'`)
 	rel = capability.CanonicalizeToolPath(rel)

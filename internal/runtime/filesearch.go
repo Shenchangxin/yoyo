@@ -19,6 +19,8 @@ type FileHit struct {
 const dirListingCap = 200
 
 // FuzzySearch 按子串、不区分大小写列出工作区里的文件和目录。limit 小于等于 0 时用 40。查询含斜杠且最后一个斜杠前的前缀是真实目录时，改为列出该目录的子项，不再走有上限的整树遍历。
+// root 清理后必须是已存在的目录，并传给 listingPrefix、Walk 和 loadIgnore。
+// q 去掉空白并转成斜杠；能拆出目录前缀时改走列表，否则转小写做子串匹配，空串则保留遇到的项。
 func FuzzySearch(root, q string, limit int) []FileHit {
 	if limit <= 0 {
 		limit = 40
@@ -73,6 +75,8 @@ func FuzzySearch(root, q string, limit int) []FileHit {
 }
 
 // listingPrefix 在查询含斜杠、前缀非空、且 jailPath 之后 Stat 到目录时，拆出目录和剩余过滤串。
+// root 传给 jailPath。
+// q 为空或不含斜杠时返回 false，否则按最后一个斜杠拆开。
 func listingPrefix(root, q string) (dir, rest string, ok bool) {
 	if q == "" || !strings.Contains(q, "/") {
 		return "", "", false
@@ -95,6 +99,10 @@ func listingPrefix(root, q string) (dir, rest string, ok bool) {
 }
 
 // listDirChildren 只读该目录的直接子项，跳过忽略项，并用剩余串过滤文件名，再按 rankHits 截断。
+// root 传给 jailPath 和 loadIgnore。
+// dir 传给 jailPath，并与子项名字拼成相对路径。
+// rest 去掉空白并转小写，非空时用来过滤文件名。
+// limit 传给 rankHits。
 func listDirChildren(root, dir, rest string, limit int) []FileHit {
 	p, err := jailPath(root, dir)
 	if err != nil {
@@ -130,6 +138,7 @@ func listDirChildren(root, dir, rest string, limit int) []FileHit {
 }
 
 // ListTree 用空查询调用 FuzzySearch。limit 小于等于 0 时用 4000。
+// root 传给 FuzzySearch。
 func ListTree(root string, limit int) []FileHit {
 	if limit <= 0 {
 		limit = 4000
@@ -138,6 +147,8 @@ func ListTree(root string, limit int) []FileHit {
 }
 
 // rankHits 按 scoreHit 从高到低排序，同分按路径。limit 大于 0 时截断。
+// hits 按 scoreHit 排序，同分按 Path。
+// q 传给 scoreHit。
 func rankHits(hits []FileHit, q string, limit int) []FileHit {
 	sort.Slice(hits, func(i, j int) bool {
 		si := scoreHit(hits[i], q)
@@ -154,6 +165,8 @@ func rankHits(hits []FileHit, q string, limit int) []FileHit {
 }
 
 // scoreHit 在查询为空时返回 0。基名完全相等为 3，前缀为 2，包含为 1，否则为 0。
+// h 的 Path 取基名后转小写，再与 q 比较。
+// q 为空时返回 0。
 func scoreHit(h FileHit, q string) int {
 	base := strings.ToLower(filepath.Base(h.Path))
 	if q == "" {

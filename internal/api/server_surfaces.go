@@ -13,6 +13,7 @@ import (
 
 // mountSurfaces 挂上暂停、页面、页面提案、档案、语音转写、语音合成、语音回执、连接器提及和日程重试。
 // 保存页面遇到 pages.ConflictError 时写 409，并带上 conflict 里的 page。语音转写先用 decodeSkinB64 解开 audio。
+// mux 用 HandleFunc 挂上 /api/pause、/api/pages、/api/pages/、/api/pages/propose、/api/profiles、/api/voice/transcribe、/api/voice/speak、/api/voice/receipt、/api/connectors/mention、/api/schedule/retry。
 func mountSurfaces(mux *http.ServeMux, a *app.App) {
 	mux.HandleFunc("/api/pause", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {

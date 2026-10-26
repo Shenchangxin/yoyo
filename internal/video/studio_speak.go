@@ -22,6 +22,8 @@ import (
 
 // SpeakStudio 给已锁定的口播配音，并把音频和字幕写上工程。正文空着就用工程里的口播。还没锁定就拒绝。
 // 声音空着用 alloy。语速被接口拒绝时按原速再试一次并记警告。字幕是估算的，或走了 edge-tts，也会记一条说明。配完把闸门改到画面，并尽量按音频重排镜头时长。重排失败仍返回已配好的工程。
+// id 传给 GetStudioProject。
+// text 去掉首尾空白，空串时改用工程里的口播；仍为空则返回错误 no text to speak，否则传给 speakAudio 和 studioSRT。
 func (e *Engine) SpeakStudio(id, text string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -81,6 +83,9 @@ func (e *Engine) SpeakStudio(id, text string) (StudioProject, error) {
 }
 
 // speakAudio 先用已启用且有密钥的语音连接。失败或没有连接时再试 edge-tts。两边都失败时，试过云端就返回云端的错误。
+// text 传给 ttsOpenAI，云端不成再传给 ttsEdge。
+// voice 传给 ttsOpenAI。
+// speed 传给 ttsOpenAI，云端不成再传给 ttsEdge。
 func (e *Engine) speakAudio(text, voice string, speed float64) (raw []byte, engine string, speedIgnored bool, err error) {
 	var cloudErr error
 	if e.Conn != nil {
@@ -110,6 +115,12 @@ func (e *Engine) speakAudio(text, voice string, speed float64) (raw []byte, engi
 }
 
 // ttsOpenAI 按 OpenAI 语音接口要音频。带了语速且对方回 400 或 422 时，去掉语速再要一次，并标明语速被忽略。
+// endpoint 传给 ttsOpenAIOnce。
+// key 传给 ttsOpenAIOnce。
+// model 传给 speechPayload。
+// text 传给 speechPayload。
+// voice 传给 speechPayload。
+// speed 传给 speechPayload；speechPayloadHasSpeed 为真且 speedRejected 为真时，第二次改为 0。
 func (e *Engine) ttsOpenAI(endpoint, key, model, text, voice string, speed float64) ([]byte, bool, error) {
 	raw, err := e.ttsOpenAIOnce(endpoint, key, speechPayload(model, text, voice, speed))
 	if err == nil {
@@ -126,12 +137,14 @@ func (e *Engine) ttsOpenAI(endpoint, key, model, text, voice string, speed float
 }
 
 // speechPayloadHasSpeed 判断这个语速会不会写进请求。接近 1 或小于等于 0 的语速不会写。
+// speed 传给 speechPayload，再看结果里有没有 speed 这个键。
 func speechPayloadHasSpeed(speed float64) bool {
 	_, ok := speechPayload("m", "t", "alloy", speed)["speed"]
 	return ok
 }
 
 // speedRejected 看错误文本里有没有 speech 400 或 speech 422。空错误返回假。
+// err 为 nil 时返回假，否则在 Error 的文本里查找 speech 400 或 speech 422。
 func speedRejected(err error) bool {
 	if err == nil {
 		return false
@@ -141,6 +154,9 @@ func speedRejected(err error) bool {
 }
 
 // ttsOpenAIOnce 向语音接口发一次请求。端点空着用 api.openai.com。路径还没到 /audio/speech 就补上。超过 2 分钟或返回太短都算失败。
+// endpoint 去掉首尾空白和右侧斜杠，空串时用 https://api.openai.com/v1，再补到 /audio/speech。
+// key 写进 Authorization 的 Bearer。
+// payload 经 json.Marshal 后作为 POST 正文。
 func (e *Engine) ttsOpenAIOnce(endpoint, key string, payload map[string]any) ([]byte, error) {
 	base := strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if base == "" {
@@ -189,6 +205,8 @@ func (e *Engine) ttsOpenAIOnce(endpoint, key string, payload map[string]any) ([]
 }
 
 // ttsEdge 用本机 edge-tts，声音是 zh-CN-XiaoxiaoNeural。45 秒内没完成，或文件太短，都算失败。PATH 里没有 edge-tts 就返回查找错误。
+// text 放进 --text。
+// speed 传给 edgeRate，结果放进 --rate。
 func (e *Engine) ttsEdge(text string, speed float64) ([]byte, error) {
 	bin, err := exec.LookPath("edge-tts")
 	if err != nil {
@@ -223,6 +241,8 @@ func (e *Engine) ttsEdge(text string, speed float64) ([]byte, error) {
 }
 
 // studioSRT 优先用 whisper.cpp 把口播对齐到识别时间。对不齐或没有识别程序时，按字数写一份估算字幕，第二个结果为真。
+// text 在识别对齐成功时传给 splitSpeak，否则传给 simpleSRT。
+// audioHash 非空且 WHISPER 去掉首尾空白后非空时，以 .mp3 传给 materialize。
 func (e *Engine) studioSRT(text, audioHash string) (string, bool) {
 	if strings.TrimSpace(e.WHISPER) != "" && audioHash != "" {
 		path, err := e.materialize(audioHash, ".mp3")
@@ -250,6 +270,7 @@ func (e *Engine) studioSRT(text, audioHash string) (string, bool) {
 }
 
 // simpleSRT 按句子写 SRT。每句至少 1.6 秒，再按字数加长。没有句子就返回空串。
+// text 传给 splitSpeak，没有句子时返回空串。
 func simpleSRT(text string) string {
 	parts := splitSpeak(text)
 	if len(parts) == 0 {
@@ -270,6 +291,7 @@ func simpleSRT(text string) string {
 }
 
 // splitSpeak 按句号、问号、叹号和换行把口播拆开。中英文标点都认。
+// text 把 \r\n 换成 \n，遇到句号、问号、叹号或换行就切开。
 func splitSpeak(text string) []string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	var parts []string
@@ -292,6 +314,7 @@ func splitSpeak(text string) []string {
 }
 
 // srtStamp 把秒写成 SRT 的时:分:秒,毫秒。负数当成 0。
+// sec 小于 0 时写成 0，再拆成时、分、秒和毫秒。
 func srtStamp(sec float64) string {
 	if sec < 0 {
 		sec = 0

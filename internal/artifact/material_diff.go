@@ -32,6 +32,8 @@ type MaterialChange struct {
 
 // MaterialDiff 解开两边的对象，把哈希差异写成可读变更。哈希相同的面不会出现。
 // 模型指纹和笔记直接比快照上的字符串。其余面解不开时，退回整对象替换。
+// cas 交给 diffPlaybook、diffLoop、diffPolicy、diffEval、diffPrompts、diffSkills、diffWASM。
+// b 的 ModelFingerprint、Note 直接和 a 比较；Playbook、LoopPreset、PolicyPack、EvalSuite、PromptFragments、Skills、WASMPlugins 把两边哈希交给对应的 diff；Tools、EvalTools 交给 diffNamedList。
 func MaterialDiff(cas *Store, a, b HarnessSnapshot) []MaterialChange {
 	var out []MaterialChange
 	if a.ModelFingerprint != b.ModelFingerprint {
@@ -53,6 +55,7 @@ func MaterialDiff(cas *Store, a, b HarnessSnapshot) []MaterialChange {
 }
 
 // MaterialDiffText 把变更逐行拼成文本。没有变更时返回空串。L3 的行末尾带 [L3]。
+// changes 长度为 0 时返回空串；否则每条先写 Surface 和 Op，ID 非空再接上，有 Detail 就接 Detail，否则在 From 或 To 非空时接上 From、箭头和 To，L3 为真时行末再加 [L3]。
 func MaterialDiffText(changes []MaterialChange) string {
 	if len(changes) == 0 {
 		return ""
@@ -78,6 +81,8 @@ func MaterialDiffText(changes []MaterialChange) string {
 }
 
 // noteOp 在旧笔记为空时记 added，新笔记为空时记 removed，否则记 changed。
+// from 为空时返回 OpAdded。
+// to 为空时返回 OpRemoved，否则返回 OpChanged。
 func noteOp(from, to string) string {
 	if from == "" {
 		return OpAdded
@@ -89,6 +94,9 @@ func noteOp(from, to string) string {
 }
 
 // diffPlaybook 按条目 ID 对照；ID 为空则用去空白并转小写的正文。两边都解不开，或解开后条目没有差异，就记一条不带 L3 的整本替换。
+// cas 交给 load 解出两边的 Playbook。
+// ah 与 bh 相等时返回 nil；否则作为左侧哈希交给 load，解不开或没有条目差异时写入替换行的 From。
+// bh 与 ah 相等时返回 nil；否则作为右侧哈希交给 load，解不开或没有条目差异时写入替换行的 To。
 func diffPlaybook(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -159,6 +167,9 @@ func diffPlaybook(cas *Store, ah, bh string) []MaterialChange {
 }
 
 // diffLoop 按字段列出变化。拓扑字段只在两份预设拓扑不同时标 L3，文案槽不标。有一边解不开时，记一条带 L3 的整份替换；字段都相同但仍是两个哈希时也记整份替换，这时 L3 仍看拓扑是否相同。
+// cas 交给 load 解出两边的 LoopPreset。
+// ah 与 bh 相等时返回 nil；否则作为左侧哈希交给 load，解不开或字段没有差异时写入替换行的 From。
+// bh 与 ah 相等时返回 nil；否则作为右侧哈希交给 load，解不开或字段没有差异时写入替换行的 To。
 func diffLoop(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -222,6 +233,9 @@ func diffLoop(cas *Store, ah, bh string) []MaterialChange {
 }
 
 // diffPolicy 比较 mode，以及 default_allow、require_approval、network_allow。Notes 不单独比较。解不开，或这些字段没有差异时，仍记一条带 L3 的整包替换。
+// cas 交给 load 解出两边的 PolicyPack。
+// ah 与 bh 相等时返回 nil；否则作为左侧哈希交给 load，解不开或没有字段差异时写入替换行的 From。
+// bh 与 ah 相等时返回 nil；否则作为右侧哈希交给 load，解不开或没有字段差异时写入替换行的 To。
 func diffPolicy(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -245,6 +259,9 @@ func diffPolicy(cas *Store, ah, bh string) []MaterialChange {
 }
 
 // diffEval 比较编号、任务目录、重复次数、超时和是否密封，以及 held_in、held_out、safety、transfer。EvolveIn 不参与比较。解不开或没有字段差异时记整套替换，不标 L3。
+// cas 交给 load 解出两边的 EvalSuite。
+// ah 与 bh 相等时返回 nil；否则作为左侧哈希交给 load，解不开或没有字段差异时写入替换行的 From。
+// bh 与 ah 相等时返回 nil；否则作为右侧哈希交给 load，解不开或没有字段差异时写入替换行的 To。
 func diffEval(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -281,6 +298,8 @@ func diffEval(cas *Store, ah, bh string) []MaterialChange {
 }
 
 // diffPrompts 用 ID，否则用槽位，再否则用哈希当键。同一键只留该侧最后一条。键对上但哈希不同算 changed。顺序变化本身不留行；对出空结果时退回哈希增减。
+// cas 用来 load 每条 PromptFragment 的 ID、Slot、Text。
+// b 先和 a 用逗号拼接比较，相同则返回 nil；否则按键对照，结果为空时和 a 一起交给 hashListFallback。
 func diffPrompts(cas *Store, a, b []string) []MaterialChange {
 	if join(a) == join(b) {
 		return nil
@@ -358,6 +377,8 @@ func diffPrompts(cas *Store, a, b []string) []MaterialChange {
 }
 
 // diffSkills 用技能名当键，同名只留最后一条。同名哈希不同算 changed。顺序变化本身不留行；对出空结果时退回哈希增减。
+// cas 用来 load 每条 Skill 的 Name 和 Description；解不开时名字退回该哈希。
+// b 先和 a 用逗号拼接比较，相同则返回 nil；否则按名字对照，结果为空时和 a 一起交给 hashListFallback。
 func diffSkills(cas *Store, a, b []string) []MaterialChange {
 	if join(a) == join(b) {
 		return nil
@@ -416,6 +437,8 @@ func diffSkills(cas *Store, a, b []string) []MaterialChange {
 }
 
 // diffWASM 把哈希解成插件名再做增减。解不开时用哈希前 12 位。同名换了模块不会记成 changed。
+// cas 用来 load WASMPlugin；Name 非空时用 Name，否则用 short 取哈希前 12 位。
+// b 先和 a 用逗号拼接比较，相同则返回 nil；否则换成名字或短哈希后和 a 的结果一起交给 diffNamedList。
 func diffWASM(cas *Store, a, b []string) []MaterialChange {
 	if join(a) == join(b) {
 		return nil
@@ -435,11 +458,16 @@ func diffWASM(cas *Store, a, b []string) []MaterialChange {
 }
 
 // diffNamedList 按字符串集合做增减，不标 L3。
+// surface 作为第一参交给 listChanges，第二参是空串，最后一参是 false。
+// b 和 a 一起交给 listChanges。
 func diffNamedList(surface string, a, b []string) []MaterialChange {
 	return listChanges(surface, "", a, b, false)
 }
 
 // listChanges 忽略空串和顺序，只报告新增和删除。l3 原样抄到每一行。
+// surface 写到每一行的 Surface。
+// id 写到每一行的 ID，并交给 label 做明细。
+// b 和 a 一起交给 sliceDelta，只在 b 里的算新增。
 func listChanges(surface, id string, a, b []string, l3 bool) []MaterialChange {
 	added, removed := sliceDelta(a, b)
 	var out []MaterialChange
@@ -453,6 +481,7 @@ func listChanges(surface, id string, a, b []string, l3 bool) []MaterialChange {
 }
 
 // hashListFallback 在条目对不上时按哈希报增减，明细只留前 12 位。
+// surface 写到增减行的 Surface。
 func hashListFallback(surface string, a, b []string) []MaterialChange {
 	added, removed := sliceDelta(a, b)
 	var out []MaterialChange
@@ -466,6 +495,7 @@ func hashListFallback(surface string, a, b []string) []MaterialChange {
 }
 
 // sliceDelta 用集合比较，忽略空串，结果按字典序。
+// b 里非空且不在 a 里的进入 added。
 func sliceDelta(a, b []string) (added, removed []string) {
 	am, bm := map[string]bool{}, map[string]bool{}
 	for _, v := range a {
@@ -494,6 +524,8 @@ func sliceDelta(a, b []string) (added, removed []string) {
 }
 
 // load 在库为空、哈希为空白或解码失败时返回 false。
+// cas 为 nil 时返回零值和 false，否则交给 Decode。
+// hash 去掉两端空白后为空时返回零值和 false，否则交给 Decode。
 func load[T any](cas *Store, hash string) (T, bool) {
 	var zero T
 	if cas == nil || strings.TrimSpace(hash) == "" {
@@ -507,12 +539,15 @@ func load[T any](cas *Store, hash string) (T, bool) {
 }
 
 // join 用逗号拼接。
+// xs 用逗号拼成一段。
 func join(xs []string) string { return strings.Join(xs, ",") }
 
 // itoa 转成十进制文本。
+// n 交给 strconv.Itoa。
 func itoa(n int) string { return strconv.Itoa(n) }
 
 // boolish 写成 true 或 false。
+// v 为真时返回 true，否则返回 false。
 func boolish(v bool) string {
 	if v {
 		return "true"
@@ -521,6 +556,8 @@ func boolish(v bool) string {
 }
 
 // promptLabel 有槽位时写成「槽位: 正文」。
+// slot 为空时直接返回 text；text 为空时只返回 slot；两者都非空时返回 slot、冒号、空格再加 text。
+// text 在 slot 为空时原样返回；slot 非空且 text 为空时不出现。
 func promptLabel(slot, text string) string {
 	if slot == "" {
 		return text
@@ -532,6 +569,8 @@ func promptLabel(slot, text string) string {
 }
 
 // label 有字段名时写成「字段名 值」。
+// id 为空时只返回 v，否则返回 id、空格再加 v。
+// v 在 id 为空时原样返回，否则接在 id 和空格后面。
 func label(id, v string) string {
 	if id == "" {
 		return v
@@ -540,6 +579,7 @@ func label(id, v string) string {
 }
 
 // short 按字节截到 n 位。n 小于等于 0 或原串更短时原样返回。
+// hash 先去掉两端空白，再按字节截到 n。
 func short(hash string, n int) string {
 	hash = strings.TrimSpace(hash)
 	if n <= 0 || len(hash) <= n {
@@ -549,6 +589,7 @@ func short(hash string, n int) string {
 }
 
 // clip 先把空白收成单空格，再按 rune 截断并加省略号。n 小于等于 0 时不截。
+// s 先经 strings.Fields 把空白收成单空格；收完为空则原样返回，否则按 rune 截断。
 func clip(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if s == "" {

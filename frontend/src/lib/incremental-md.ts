@@ -36,7 +36,7 @@ export interface IncrementalBlocks {
   readonly tailStart: number
 }
 
-/** 渲染键是块在全文里的起始偏移。没有位置时用负的列表下标，只在这一次 update 的尾部里唯一。冻结要求切开的那块有位置，所以没有位置的解析会把所有块留在尾部。 */
+/** 渲染键是块在全文里的起始偏移。没有位置时用负的列表下标，只在这一次 update 的尾部里唯一。冻结要求切开的那块有位置，所以没有位置的解析会把所有块留在尾部。node 读取 position。base 加上 offset。index 加上 1。 */
 function blockKey(node: RootContent, base: number, index: number): number {
   const offset = node.position?.start.offset
   return offset === undefined ? -(index + 1) : base + offset
@@ -55,7 +55,7 @@ interface OpenFenceState {
   readonly endedWithCarriageReturn: boolean
 }
 
-/** 返回 start 处或之后第一个行终止符的结束位置，CRLF 算一个。没有则空。 */
+/** 返回 start 处或之后第一个行终止符的结束位置，CRLF 算一个。没有则空。text 读取 length，按下标读取。 */
 function lineTerminatorEnd(text: string, start: number): number | undefined {
   for (let index = start; index < text.length; index += 1) {
     const char = text[index]
@@ -65,7 +65,7 @@ function lineTerminatorEnd(text: string, start: number): number | undefined {
   return undefined
 }
 
-/** 最后一行完整行之前的源码长度。把那一行留在当前半行旁边，语法才能保住结尾换行的含义。 */
+/** 最后一行完整行之前的源码长度。把那一行留在当前半行旁边，语法才能保住结尾换行的含义。text 读取 length，按下标读取。 */
 function committableLinePrefixLength(text: string): number {
   let previousEnd = 0
   let end = 0
@@ -84,12 +84,12 @@ function committableLinePrefixLength(text: string): number {
   return previousEnd
 }
 
-/** 非空可提交前缀结尾的那个行终止符。CRLF、CR，否则 LF。 */
+/** 非空可提交前缀结尾的那个行终止符。CRLF、CR，否则 LF。text 看结尾。 */
 function trailingLineTerminator(text: string): '\n' | '\r' | '\r\n' {
   return text.endsWith('\r\n') ? '\r\n' : text.endsWith('\r') ? '\r' : '\n'
 }
 
-/** 某一逻辑行上是否有 CommonMark 闭合围栏：缩进不超过三个空格，标记不少于给定长度，其余只有空白。 */
+/** 某一逻辑行上是否有 CommonMark 闭合围栏：缩进不超过三个空格，标记不少于给定长度，其余只有空白。text 读取 length，截取，按下标读取。marker 与 line[run] 比较是否相等。markerLength 大于等于 run - indent。 */
 function containsClosingFence(text: string, marker: '`' | '~', markerLength: number): boolean {
   let start = 0
   while (start <= text.length) {
@@ -108,7 +108,7 @@ function containsClosingFence(text: string, marker: '`' | '~', markerLength: num
   return false
 }
 
-/** 把一个 mdast 点按追加的文本往前推。被拆开的 CRLF 仍算一次换行。 */
+/** 把一个 mdast 点按追加的文本往前推。被拆开的 CRLF 仍算一次换行。point 读取 line、column、offset。appended 读取 length，用来遍历。precededByCarriageReturn 为假时走另一支。 */
 function advancePoint(
   point: OpenFenceState['end'],
   appended: string,
@@ -146,12 +146,12 @@ export class IncrementalMarkdownParser {
   private openFence: OpenFenceState | null = null
   private readonly parse: (text: string) => Root
 
-  /** 语法与渲染块的那一方共用，边界才一致。 */
+  /** 语法与渲染块的那一方共用，边界才一致。parse 记到 this.parse。 */
   constructor(parse: (text: string) => Root) {
     this.parse = parse
   }
 
-  /** 用调用方语法解析一片未闭合围栏的内容。根上不是恰好一个 code 节点则没有。 */
+  /** 用调用方语法解析一片未闭合围栏的内容。根上不是恰好一个 code 节点则没有。state 读取 syntheticPrefix。text 拼进字符串。 */
   private fenceValue(state: Pick<OpenFenceState, 'syntheticPrefix'>, text: string): string | undefined {
     const root = this.parse(`${state.syntheticPrefix}${text}`)
     if (root.children.length !== 1) return undefined
@@ -159,7 +159,13 @@ export class IncrementalMarkdownParser {
     return node.type === 'code' ? node.value : undefined
   }
 
-  /** 认出尾部最后一块未闭合围栏，并准备它的增量内容前沿。对不上则空。 */
+  /**
+   * 认出尾部最后一块未闭合围栏，并准备它的增量内容前沿。对不上则空。
+   * text 读取 length，截取，看结尾。
+   * base 加上 end.offset，加上 terminatorEnd，传给 text.slice。
+   * tail 读取 length，按下标读取，写入字段 tail。
+   * frozen 写入字段 frozen。
+   */
   private openFenceState(
     text: string,
     base: number,
@@ -219,7 +225,12 @@ export class IncrementalMarkdownParser {
     }
   }
 
-  /** 延长已认出的未闭合围栏，不再解析已经完成的内容前缀。出现闭合围栏或语法对不上则空。 */
+  /**
+   * 延长已认出的未闭合围栏，不再解析已经完成的内容前缀。出现闭合围栏或语法对不上则空。
+   * state 读取 pendingStart、marker、markerLength、tail、codeIndex、end 等，传给 fenceValue，展开传递。
+   * text 截取，看结尾。
+   * previousText 读取 length。
+   */
   private updateOpenFence(
     state: OpenFenceState,
     text: string,

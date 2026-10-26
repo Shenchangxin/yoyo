@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { DURATION_FAST, motionTransition, useMotionReduced } from "../../lib/motion";
 import { cn } from "../../lib/utils";
 
-// IconSwap 按 on 在 off 和 live 之间交叉淡入并缩放到 0.72。动的是这次切换，停下来就不再动。减少动效时不做入场和退场。
+/** IconSwap 按 on 在 off 和 live 之间交叉淡入并缩放到 0.72。动的是这次切换，停下来就不再动。减少动效时不做入场和退场。className 传给 cn。 */
 export function IconSwap({
   on,
   off,

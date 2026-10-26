@@ -12,6 +12,8 @@ import (
 
 // rewriteInlineInterpreters 把 `python -c` 和 `py -c` 的正文落到工作区临时文件。cmd.exe 剥引号会把 `python -c "import glob; print(glob.glob('*.pdf'))"` 变成语法错误（`"import`）；-c 里再嵌引号时，直接按 argv 执行同样不稳。文件才是各平台都稳的约定。
 // 同时处理 node -e、-p 和 --eval。写文件失败则保留尚未改写的剩余命令。
+// command 先去掉首尾空白，空串或 hasInlineCode 为假时原样返回；否则逐段交给 nextInlinePython。
+// workspace 连同抽出的脚本和 inlineExt 的结果交给 writeInlineScript。
 func rewriteInlineInterpreters(command, workspace string) (string, func()) {
 	command = strings.TrimSpace(command)
 	if command == "" || !hasInlineCode(command) {
@@ -51,6 +53,7 @@ func rewriteInlineInterpreters(command, workspace string) (string, func()) {
 }
 
 // hasInlineCode 判断命令里有没有 python -c、py -c、node -e、node -p 或 node --eval。
+// command 转成小写后，看是否包含 python -c、py -c、node -e、node -p 或 node --eval 这些片段。
 func hasInlineCode(command string) bool {
 	low := strings.ToLower(command)
 	return strings.Contains(low, "python -c") || strings.Contains(low, "python.exe -c") ||
@@ -63,6 +66,7 @@ func hasInlineCode(command string) bool {
 }
 
 // nextInlinePython 找出下一处内联解释器、代码和其后的尾巴。解释器必须落在边界上。py 启动器可以带 -3 这类版本号。
+// command 从左向右在边界上找解释器；找不到时第一返回值是 -1，最后一项是 command 本身。
 func nextInlinePython(command string) (idx int, interp, script, after string) {
 	for i := 0; i < len(command); i++ {
 		if i > 0 && !isInlineBoundary(rune(command[i-1])) {
@@ -91,6 +95,7 @@ func nextInlinePython(command string) (idx int, interp, script, after string) {
 }
 
 // peekInterpreter 从当前位置匹配 python 或 node 的可执行名，并要求名字在边界处结束。
+// s 转成小写后，用 python 或 node 的可执行名做前缀匹配，并要求名字在边界处结束。
 func peekInterpreter(s string) (string, int) {
 	low := strings.ToLower(s)
 	names := []string{"pythonw.exe", "python.exe", "python3", "pythonw", "python", "py.exe", "py", "nodejs.exe", "node.exe", "nodejs", "node"}
@@ -108,6 +113,7 @@ func peekInterpreter(s string) (string, int) {
 }
 
 // isPyLauncher 判断标记是 py 或 py.exe。
+// token 转成小写后等于 py 或 py.exe 时返回真。
 func isPyLauncher(token string) bool {
 	low := strings.ToLower(token)
 	return low == "py" || low == "py.exe"
@@ -132,6 +138,7 @@ func stripPyLauncherVersion(s string) string {
 }
 
 // inlineCodeFlag 识别 --eval、--print、-e、-p 或 -c，并要求开关在边界处结束。
+// s 看是否以 --eval、--print、-e、-p 或 -c 开头，并且开关在边界处结束。
 func inlineCodeFlag(s string) (int, bool) {
 	for _, fl := range []string{"--eval", "--print", "-e", "-p", "-c"} {
 		if !strings.HasPrefix(s, fl) {
@@ -146,6 +153,7 @@ func inlineCodeFlag(s string) (int, bool) {
 }
 
 // inlineExt 给 node 用 .js，其余用 .py。
+// token 去掉空白并转成小写后，以 node 开头则返回 .js，否则返回 .py。
 func inlineExt(token string) string {
 	low := strings.ToLower(strings.TrimSpace(token))
 	if strings.HasPrefix(low, "node") {
@@ -155,6 +163,7 @@ func inlineExt(token string) string {
 }
 
 // readInlineArg 读取 -c 或 -e 后面的代码。引号内只解开外层引号和反斜杠本身。无引号时读到空白、换行、管道、分号或 &&、||。
+// s 为空时返回空串和 0；以双引号或单引号开头时只解开外层引号，否则读到空白、换行、管道、分号或 &&、||。
 func readInlineArg(s string) (string, int) {
 	if s == "" {
 		return "", 0
@@ -213,6 +222,9 @@ func isInlineBoundary(r rune) bool {
 }
 
 // writeInlineScript 把脚本写到工作区 .yoyo/tmp 的 yoyo-inline-* 文件。工作区为空或建目录失败时改用系统临时目录。返回的函数删除该文件。
+// workspace 去掉空白后非空时，目录用它下面的 .yoyo/tmp；本身为空或建目录失败则改用系统临时目录。
+// script 写入新建的临时文件。
+// ext 为空时改成 .py，并接在临时文件名前缀后面。
 func writeInlineScript(workspace, script, ext string) (string, func(), error) {
 	if ext == "" {
 		ext = ".py"
@@ -243,6 +255,7 @@ func writeInlineScript(workspace, script, ext string) (string, func(), error) {
 
 // quoteShellPath 给会被 shell 拆开或吃掉的路径加引号。Windows 路径即使没有空格也要加引号：Git Bash 把未加引号的反斜杠当转义，C:\Users\x 到 node 时会变成 C:Usersx。工作区临时脚本在 Windows 上总是带反斜杠。
 // 路径不含空格、制表符、引号或反斜杠时原样返回。
+// p 为空时原样返回；不含空格、制表符、引号或反斜杠时也原样返回，否则用双引号包住并把内部引号转义。
 func quoteShellPath(p string) string {
 	if p == "" {
 		return p
@@ -254,6 +267,7 @@ func quoteShellPath(p string) string {
 }
 
 // normalizeWindowsQuotes 整理 Windows 命令的引号。将在 Git Bash 下运行的命令保留引号，因为 bash 会吃掉未加引号路径里的反斜杠。其余交给 cmd，使用放宽后的形式。
+// command 在 looksPosixUnix 为真时原样返回，否则交给 relaxRedundantShellQuotes。
 func normalizeWindowsQuotes(command string) string {
 	if looksPosixUnix(command) {
 		return command
@@ -262,6 +276,7 @@ func normalizeWindowsQuotes(command string) string {
 }
 
 // relaxRedundantShellQuotes 去掉不含空白或 cmd 元字符的引号。否则 cmd /S /C 加上 Go 额外的引号，会把 `node "rel\file.mjs"` 变成当前目录加上 `"\"rel\file.mjs"`。只给 cmd 命令调用；见 normalizeWindowsQuotes。
+// command 为空或不含双引号时原样返回；成对引号内部非空且不含空白或 &|<>^ 时去掉这对引号。
 func relaxRedundantShellQuotes(command string) string {
 	if command == "" || !strings.Contains(command, `"`) {
 		return command
@@ -299,6 +314,7 @@ func unescapeWinPathEscapes(p string) string {
 }
 
 // repairWorkspacePathEscapes 把命令里被转义弄坏的工作区路径换回原始 workspace。两边相同或命令里没有坏路径时原样返回。
+// command 为空，或不包含被 unescapeWinPathEscapes 弄坏的工作区路径时原样返回，否则把坏路径换回 workspace。
 func repairWorkspacePathEscapes(command, workspace string) string {
 	if command == "" || workspace == "" {
 		return command
@@ -311,6 +327,7 @@ func repairWorkspacePathEscapes(command, workspace string) string {
 }
 
 // sameFilePath 在去掉引号、统一斜杠、去掉末尾斜杠并忽略大小写后比较两条路径。
+// b 与 a 做同样的规整后再比较是否相同。
 func sameFilePath(a, b string) bool {
 	canon := func(p string) string {
 		p = strings.TrimSpace(strings.Trim(p, "`'\""))
@@ -322,6 +339,8 @@ func sameFilePath(a, b string) bool {
 }
 
 // isRedundantCwd 判断路径是空、.，或与工作区及其被转义弄坏的形式相同。工具已经以该目录为工作目录。
+// path 去掉空白后为空、等于 .、./ 或 .\ 时返回真；否则和 workspace 以及 unescapeWinPathEscapes 的结果做 sameFilePath。
+// workspace 为空时，path 不是空、.、./ 或 .\ 就返回假。
 func isRedundantCwd(path, workspace string) bool {
 	path = strings.TrimSpace(path)
 	if path == "" || path == "." || path == "./" || path == `.\` {
@@ -334,6 +353,7 @@ func isRedundantCwd(path, workspace string) bool {
 }
 
 // readShellPathToken 读取 cd 后面的路径。引号、单引号和反引号成对剥掉。无引号时读到空白、&、| 或分号。
+// s 为空时返回空串和 0；以双引号、单引号或反引号开头时读到配对符号，否则读到空白、&、| 或分号。
 func readShellPathToken(s string) (string, int) {
 	if s == "" {
 		return "", 0
@@ -361,6 +381,8 @@ func readShellPathToken(s string) (string, int) {
 }
 
 // stripOneWorkspaceCd 去掉开头一次指向工作区的 cd、pushd 或 Set-Location，后面必须是 &&、; 或 &。
+// command 去掉左侧空白后匹配 set-location、pushd 或 cd；对上才继续读路径。
+// workspace 连同读出的路径交给 isRedundantCwd。
 func stripOneWorkspaceCd(command, workspace string) (string, bool) {
 	s := strings.TrimLeft(command, " \t")
 	low := strings.ToLower(s)
@@ -408,6 +430,8 @@ func stripOneWorkspaceCd(command, workspace string) (string, bool) {
 }
 
 // stripRedundantWorkspaceCd 去掉 `cd <工作区> &&`。工具已经以该目录为当前目录。带引号的 `C:\Users\...` 也是 Git Bash 把 `\t` 变成制表符的那种路径。最多剥四层。
+// command 先去掉首尾空白，空串则原样返回；否则最多四次交给 stripOneWorkspaceCd。
+// workspace 每次都交给 stripOneWorkspaceCd。
 func stripRedundantWorkspaceCd(command, workspace string) string {
 	command = strings.TrimSpace(command)
 	if command == "" {

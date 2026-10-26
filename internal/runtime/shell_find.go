@@ -11,6 +11,7 @@ import (
 
 // parseUnixFindGlob 把 `find <根> -name <模式>` 映成 glob。命令不是 find，或没有 -name/-iname，则返回 false。
 // 根为 . 或空时只返回模式。根本身含通配符则失败。Windows FIND.exe 的文本搜索（例如 find "needle" notes.txt）不改写。
+// command 交给 SplitShellArgv，程序名是 find 时从中取根和 -name 或 -iname 后面的模式。
 func parseUnixFindGlob(command string) (string, bool) {
 	argv := SplitShellArgv(command)
 	if len(argv) == 0 {
@@ -62,6 +63,7 @@ func parseUnixFindGlob(command string) (string, bool) {
 
 // unixFindMisuse 判断这是不是 unix find 的写法：含 -name、-type、-maxdepth 等，或以 . 或 ./ 为参数。
 // Windows FIND.exe 的文本搜索返回 false。
+// command 交给 SplitShellArgv；程序名是 find 时，再看后续参数里有没有 -name、-type、-maxdepth 等，或 .、./、.\ 开头的路径。
 func unixFindMisuse(command string) bool {
 	argv := SplitShellArgv(command)
 	if len(argv) == 0 {

@@ -19,12 +19,16 @@ type Source struct {
 }
 
 // HashExcerpt 把 URL、一个换行和摘录做 SHA-256，十六进制只编码摘要的前 8 个字节。
+// url 与一个换行、excerpt 拼成字节交给 sha256.Sum256，并写入返回值的 URL。
+// excerpt 接在 url 和一个换行后面交给 sha256.Sum256，并写入返回值的 Excerpt。
 func HashExcerpt(url, excerpt string) Source {
 	sum := sha256.Sum256([]byte(url + "\n" + excerpt))
 	return Source{URL: url, Excerpt: excerpt, Hash: hex.EncodeToString(sum[:8])}
 }
 
 // Write 把来源写成缩进两个空格的 JSON，文件权限 0o644。
+// path 交给 os.WriteFile，权限是 0o644。
+// srcs 交给 json.MarshalIndent，前缀是空串，缩进是两个空格。
 func Write(path string, srcs []Source) error {
 	b, err := json.MarshalIndent(srcs, "", "  ")
 	if err != nil {

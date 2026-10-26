@@ -15,6 +15,11 @@ import (
 )
 
 // scoreMusic 按协议分发配乐请求。提示词为空时返回「配乐没有描述」。上下文为空时用 Background，超时 4 分钟。minimax-music、mureka、elevenlabs-sound、stability-audio 会真正发请求。google-lyria、suno 和其他协议返回 presetOnly，说明这行预设还不能直接发请求。
+// ctx 为 nil 时换成 Background，再加 4 分钟超时后传给具体配乐函数。
+// protocol 去掉空白并转成小写后与 minimax-music、mureka、elevenlabs-sound、stability-audio、google-lyria、suno 比较。
+// key 传给 minimaxMusic、murekaMusic、elevenMusic 或 stabilityMusic。
+// prompt 去掉空白后为空则返回配乐没有描述，否则传给具体配乐函数。
+// model 先与供应商模型传给 first，再按协议与 music-3.0、auto、eleven_text_to_sound_v2 或 stable-audio-2.5 传给 first。
 func (e *Engine) scoreMusic(ctx context.Context, p Provider, protocol, key, prompt, model string) ([]byte, error) {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
@@ -45,6 +50,10 @@ func (e *Engine) scoreMusic(ctx context.Context, p Provider, protocol, key, prom
 }
 
 // minimaxMusic 向 /v1/music_generation 发送纯器乐请求，采样率 44100、比特率 256000、格式 mp3，输出 hex。base_resp.status_code 非 0 时失败。data.status 为 1 时返回「生成还在进行」。音频以 http 开头则下载，否则按十六进制解码。
+// ctx 设到请求上。
+// key 传给 jsonReq。
+// prompt 写入请求的 prompt。
+// model 写入请求的 model。
 func (e *Engine) minimaxMusic(ctx context.Context, p Provider, key, prompt, model string) ([]byte, error) {
 	body := map[string]any{
 		"model":           model,
@@ -92,6 +101,10 @@ func (e *Engine) minimaxMusic(ctx context.Context, p Provider, key, prompt, mode
 }
 
 // murekaMusic 用歌词占位 [Instrumental] 调用 /v1/song/generate，再每秒查询 /v1/song/query。succeeded、success、completed 时下载音频地址。failed、error、timeouted、cancelled、canceled 时返回错误。没有任务标识时失败。
+// ctx 传给 doJSON，查询循环里取消则返回。
+// key 传给 jsonReq。
+// prompt 写入请求的 prompt。
+// model 写入请求的 model。
 func (e *Engine) murekaMusic(ctx context.Context, p Provider, key, prompt, model string) ([]byte, error) {
 	body := map[string]any{
 		"lyrics": "[Instrumental]",
@@ -160,6 +173,9 @@ func murekaAudioURL(m map[string]any) string {
 }
 
 // elevenMusic 默认向 /sound-generation 发送 12 秒请求。模型名含 music 时改走 /music，长度为 20000 毫秒。基址不含 /v1 时补上这个前缀。鉴权头是 xi-api-key。
+// ctx 传给 NewRequestWithContext。
+// prompt 在模型名含 music 时写入 prompt，否则写入 text。
+// model 含 music 时改走 /music 且长度为 20000 毫秒，否则写入 model_id 且时长为 12 秒。
 func (e *Engine) elevenMusic(ctx context.Context, p Provider, key, prompt, model string) ([]byte, error) {
 	path := "/sound-generation"
 	body := map[string]any{"text": prompt, "model_id": model, "duration_seconds": 12}
@@ -185,6 +201,10 @@ func (e *Engine) elevenMusic(ctx context.Context, p Provider, key, prompt, model
 }
 
 // stabilityMusic 用 multipart 向 Stable Audio 要 20 秒 mp3。模型名含 stable-audio-3 时改走 /v2beta/audio/stable-audio/text-to-audio，否则走 stable-audio-2。鉴权是 Bearer，Accept 为 audio/*。
+// ctx 传给 NewRequestWithContext。
+// key 写成 Authorization Bearer。
+// prompt 写入表单字段 prompt。
+// model 含 stable-audio-3 时改走 /v2beta/audio/stable-audio/text-to-audio，非空时再写入表单字段 model。
 func (e *Engine) stabilityMusic(ctx context.Context, p Provider, key, prompt, model string) ([]byte, error) {
 	path := "/v2beta/audio/stable-audio-2/text-to-audio"
 	if strings.Contains(model, "stable-audio-3") {
@@ -212,6 +232,7 @@ func (e *Engine) stabilityMusic(ctx context.Context, p Provider, key, prompt, mo
 }
 
 // readAudioBody 最多读 48 MiB。空正文失败。类型含 json 或正文以 { 开头时，有 http 地址就下载，否则返回 message 或 error，都没有则报 music returned no audio。其他正文原样返回。
+// req 传给 doRaw。
 func (e *Engine) readAudioBody(req *http.Request) ([]byte, error) {
 	_, ctype, raw, err := e.doRaw(req, 48<<20)
 	if err != nil {

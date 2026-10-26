@@ -63,11 +63,13 @@ func extractZip(zipPath, destDir string) (string, error) {
 }
 
 // zipEntryName 去掉两端空白，并把反斜杠换成斜杠。
+// name 里的反斜杠换成斜杠，再去掉首尾空白。
 func zipEntryName(name string) string {
 	return strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
 }
 
 // safeRel 把 zip 内路径收成相对路径。空、.、或任何一段是 .. 时返回 false。
+// name 先交给 zipEntryName。结果为空或是 . 时返回 false。按斜杠拆开后，任一段是 .. 时返回 false。空段和 . 段丢掉，一段都不留时也返回 false。
 func safeRel(name string) (string, bool) {
 	name = zipEntryName(name)
 	if name == "" || name == "." {
@@ -103,6 +105,7 @@ func within(root, dest string) bool {
 }
 
 // writeZipFile 把条目写到 dest.tmp，权限 0o755，再改名为 dest。复制用 LimitReader 截到 maxZipBytes+1。复制或关闭失败时删掉临时文件。
+// f 调用 Open，再用 LimitReader 截到 maxZipBytes+1 后复制。
 func writeZipFile(f *zip.File, dest string) error {
 	rc, err := f.Open()
 	if err != nil {

@@ -123,12 +123,12 @@ const LEGACY_SECTIONS: Readonly<Record<string, string>> = {
   "generation-styles": "generation-studio",
 };
 
-/** isSettingsTab 判断一个字符串是不是现行页签。 */
+/** isSettingsTab 判断一个字符串是不是现行页签。v 与 t.key 比较是否相等。 */
 export function isSettingsTab(v: string): v is SettingsTab {
   return SETTINGS_TABS.some((t) => t.key === v);
 }
 
-/** resolveSettingsTarget 把现行或旧的页签与区块对到现行布局上。 */
+/** resolveSettingsTarget 把现行或旧的页签与区块对到现行布局上。tab 为真时才继续，用作下标，传给 isSettingsTab，写入字段 tab。section 为真时才继续，用作下标，作为后备值。 */
 export function resolveSettingsTarget(tab?: string, section?: string): { tab: SettingsTab; section: string } {
   const mappedSection = section ? LEGACY_SECTIONS[section] || section : "";
   const owner = mappedSection ? SETTINGS_SECTIONS.find((s) => s.id === mappedSection) : undefined;
@@ -139,7 +139,7 @@ export function resolveSettingsTarget(tab?: string, section?: string): { tab: Se
   return { tab: "general", section: "" };
 }
 
-/** tabsInGroup 取出某一组里的页签。 */
+/** tabsInGroup 取出某一组里的页签。group 与 t.group 比较是否相等。 */
 export function tabsInGroup(group: GroupKey) {
   return SETTINGS_TABS.filter((t) => t.group === group);
 }

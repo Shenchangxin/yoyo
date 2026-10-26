@@ -163,6 +163,7 @@ func (h *Host) StartHTTP(name, endpoint string) error {
 }
 
 // Stop 停掉并摘掉该名字的服务器。名字不存在时返回 nil。
+// name 作为 servers 的键；没有该键时返回 nil，有则摘掉并 kill。
 func (h *Host) Stop(name string) error {
 	h.mu.Lock()
 	s, ok := h.servers[name]
@@ -250,6 +251,7 @@ func (h *Host) Call(server, tool, argsJSON string) (string, error) {
 }
 
 // ReadResource 调用 resources/read，把结果 JSON 当字符串返回。未知服务器返回 "mcp: unknown server"。
+// uri 放进 resources/read 参数的 uri 字段。
 func (h *Host) ReadResource(server, uri string) (string, error) {
 	h.mu.Lock()
 	s := h.servers[server]
@@ -265,6 +267,8 @@ func (h *Host) ReadResource(server, uri string) (string, error) {
 }
 
 // GetPrompt 调用 prompts/get。未知服务器返回 "mcp: unknown server"。
+// name 放进 prompts/get 参数的 name 字段。
+// args 放进参数的 arguments 字段。
 func (h *Host) GetPrompt(server, name string, args map[string]any) (string, error) {
 	h.mu.Lock()
 	s := h.servers[server]
@@ -356,6 +360,7 @@ func (s *Server) drainStderr(r io.Reader) {
 }
 
 // sanitizeMCPName 只保留字母、数字、下划线和连字符，其余换成下划线。空白或结果为空时返回 unknown。
+// name 先去掉两端空白，空则返回 unknown；其余只保留字母、数字、下划线和连字符。
 func sanitizeMCPName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -376,6 +381,7 @@ func sanitizeMCPName(name string) string {
 }
 
 // watchExit 等待进程结束。stopping 已置位时记一条退出信息，否则记 mcp crashed。
+// cmd 为 nil 时直接返回，否则 Wait。
 func (s *Server) watchExit(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -520,6 +526,7 @@ func (s *Server) refreshPrompts() {
 }
 
 // boolOf 取出 map 里的布尔值。键不存在或类型不是 bool 时返回 false。
+// k 作为键；map 为 nil、键不存在或值不是 bool 时返回 false。
 func boolOf(m map[string]any, k string) bool {
 	if m == nil {
 		return false
@@ -552,6 +559,8 @@ type rpcRes struct {
 }
 
 // call 在有 Endpoint 时走 callHTTP。stdio 写出带 id 的请求，并在超时内读响应。timeout 小于等于 0 时限时 30 秒。读到带 method 的入站消息就交给 handleIncoming 并继续等。id 不匹配则跳过。对端错误返回 "mcp: " 加对方 message。超时返回 "mcp: timeout calling " 加方法名。
+// method 在有 Endpoint 时和 params 一起交给 callHTTP；否则写入请求的 Method，超时错误里也会带上它。
+// params 写入请求的 Params。
 func (s *Server) call(method string, params any) (json.RawMessage, error) {
 	if s.Endpoint != "" {
 		return s.callHTTP(method, params)
@@ -588,6 +597,8 @@ func (s *Server) call(method string, params any) (json.RawMessage, error) {
 }
 
 // callHTTP 向 Endpoint POST 一条 JSON-RPC。Content-Type 是 application/json，Accept 是 application/json, text/event-stream。对端错误返回 "mcp: " 加对方 message。
+// method 写入请求的 Method。
+// params 写入请求的 Params。
 func (s *Server) callHTTP(method string, params any) (json.RawMessage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -630,12 +641,14 @@ func (s *Server) callHTTP(method string, params any) (json.RawMessage, error) {
 func (s *Server) handleIncoming(res rpcRes) {
 	switch res.Method {
 	case "sampling/createMessage", "sampling/create_message":
+		// 模型调用留在宿主循环。服务器不能借 sampling 再开一次。错误码 -32000。
 		_ = s.write(map[string]any{
 			"jsonrpc": "2.0",
 			"id":      res.ID,
 			"error":   map[string]any{"code": -32000, "message": "sampling is denied: model calls stay in the TCB"},
 		})
 	case "elicitation/create":
+		// 向用户要输入必须走宿主 Gate。同样回 -32000，不在 MCP 连接里直接弹问。
 		_ = s.write(map[string]any{
 			"jsonrpc": "2.0",
 			"id":      res.ID,
@@ -657,6 +670,8 @@ func (s *Server) handleIncoming(res rpcRes) {
 }
 
 // notify 发送一条不带 id 的 JSON-RPC。Endpoint 非空时改走 callHTTP，因此 HTTP 上的通知仍会带上 id。
+// method 在有 Endpoint 时和 params 一起交给 callHTTP；否则写入不带 id 的请求 Method。
+// params 写入请求的 Params。
 func (s *Server) notify(method string, params any) error {
 	if s.Endpoint != "" {
 		_, err := s.callHTTP(method, params)
@@ -668,6 +683,7 @@ func (s *Server) notify(method string, params any) error {
 }
 
 // write 以 Content-Length 头加 JSON 正文写入 stdin。stdin 为 nil 时返回 "mcp: not connected"。
+// v 先 json.Marshal，再带上 Content-Length 头写入 stdin。
 func (s *Server) write(v any) error {
 	if s.stdin == nil {
 		return fmt.Errorf("mcp: not connected")
@@ -740,6 +756,7 @@ type ringBuf struct {
 func newRing(n int) *ringBuf { return &ringBuf{buf: make([]byte, n), max: n} }
 
 // Write 按字节写入环形缓冲，写满后覆盖最旧的字节。
+// p 的每个字节写入缓冲，返回 len(p) 和 nil。
 func (r *ringBuf) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

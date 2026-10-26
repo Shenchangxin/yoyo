@@ -15,7 +15,7 @@ export type InspTab = "files" | "browser" | "trace" | "context";
 /** SkillsTab 技能表面的三个页签。 */
 export type SkillsTab = "installed" | "market" | "packs";
 
-/** coerceInspTab 识别四个页签。旧的改动、差异、队列和记忆页都归到文件页，其余返回空。 */
+/** coerceInspTab 识别四个页签。旧的改动、差异、队列和记忆页都归到文件页，其余返回空。v 与 files、browser、trace、context、changes、diff 等比较是否相等，有的分支原样返回。 */
 export function coerceInspTab(v: string | null | undefined): InspTab | null {
   if (v === "files" || v === "browser" || v === "trace" || v === "context") return v;
   if (v === "changes" || v === "diff" || v === "queue" || v === "memory") return "files";
@@ -133,7 +133,7 @@ function readDrafts(): Record<string, string> {
   }
 }
 
-/** 把非空草稿写回本地。写入失败时忽略。 */
+/** 把非空草稿写回本地。写入失败时忽略。drafts 传给 Object.entries。 */
 function writeDrafts(drafts: Record<string, string>) {
   try {
     const slim: Record<string, string> = {};
@@ -202,7 +202,7 @@ function readVideoMode(): VideoMode {
   return "drama";
 }
 
-/** 记下视频模式。 */
+/** 记下视频模式。mode 传给 localStorage.setItem。 */
 function writeVideoMode(mode: VideoMode) {
   try {
     localStorage.setItem("yoyo-video-mode", mode);
@@ -211,7 +211,7 @@ function writeVideoMode(mode: VideoMode) {
   }
 }
 
-/** 读某个通道上次的对话 id。 */
+/** 读某个通道上次的对话 id。key 传给 localStorage.getItem。 */
 function readThreadId(key: string): string {
   try {
     return localStorage.getItem(key) || "";
@@ -220,7 +220,7 @@ function readThreadId(key: string): string {
   }
 }
 
-/** 记下或清除某个通道的对话 id。 */
+/** 记下或清除某个通道的对话 id。key 传给 localStorage.setItem，传给 localStorage.removeItem。 */
 function writeThreadId(key: string, id: string) {
   try {
     if (id) localStorage.setItem(key, id);
@@ -241,7 +241,7 @@ function readHarnessTab(): HarnessTab {
   return "overview";
 }
 
-/** 把布尔写成 1 或 0。 */
+/** 把布尔写成 1 或 0。key 传给 localStorage.setItem。on 为真时才继续。 */
 function writeFlag(key: string, on: boolean) {
   try {
     localStorage.setItem(key, on ? "1" : "0");
@@ -250,7 +250,7 @@ function writeFlag(key: string, on: boolean) {
   }
 }
 
-/** 记下 Harness 页签。 */
+/** 记下 Harness 页签。tab 传给 localStorage.setItem。 */
 function writeHarnessTab(tab: HarnessTab) {
   try {
     localStorage.setItem("yoyo-harness-tab", tab);
@@ -283,19 +283,19 @@ export const useUI = create<UIState>((set, get) => ({
   noticesOpen: false,
   pendingAuthMode: null,
   renameTick: 0,
-  /** 切换实验室，并让表面和页签跟着走。离开智能体时记下页签。 */
+  /** 切换实验室，并让表面和页签跟着走。离开智能体时记下页签。lab 与 agent 比较是否相等，与 agent 比较是否不等，传给 tabFromLab，传给 surfaceForLab，写入字段 lab。 */
   setLab: (lab) =>
     set((s) => {
       const harnessTab = lab === "agent" ? s.harnessTab : tabFromLab(lab);
       if (lab !== "agent") writeHarnessTab(harnessTab);
       return { lab, surface: surfaceForLab(lab), harnessTab };
     }),
-  /** 打开 Harness 表面并落到指定页签。 */
+  /** 打开 Harness 表面并落到指定页签。tab 传给 writeHarnessTab，传给 labFromTab，写入字段 harnessTab。 */
   openHarness: (tab = "overview") => {
     writeHarnessTab(tab);
     set({ lab: labFromTab(tab), surface: "harness", harnessTab: tab });
   },
-  /** 在 Harness 内换页签，实验室跟着页签变。 */
+  /** 在 Harness 内换页签，实验室跟着页签变。harnessTab 传给 writeHarnessTab，传给 labFromTab，写入字段 harnessTab。 */
   setHarnessTab: (harnessTab) => {
     writeHarnessTab(harnessTab);
     set({ harnessTab, lab: labFromTab(harnessTab), surface: "harness" });
@@ -304,7 +304,7 @@ export const useUI = create<UIState>((set, get) => ({
   requestRename: () => set((s) => ({ renameTick: s.renameTick + 1 })),
   /** 回到智能体对话，并收起视频侧的画板、舞台和工作室。 */
   showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false, studioDesk: false, footageOpen: false, videoPane: "chat", videoEntry: "" }),
-  /** 打开设置表面。section 非空时记下要滚到的小节，并用当前时间戳触发导航。 */
+  /** 打开设置表面。section 非空时记下要滚到的小节，并用当前时间戳触发导航。tab 为假时改用后备值，为假时用 general，写入字段 settingsTab。 */
   openSettings: (tab, section) =>
     set((s) => ({
       surface: "settings",
@@ -329,12 +329,12 @@ export const useUI = create<UIState>((set, get) => ({
   /** 关掉 idol 表面，回到对话。 */
   closeIdol: () => get().showConversation(),
   skillsTab: "market",
-  /** 切换技能页签。 */
+  /** 切换技能页签。skillsTab 写入字段 skillsTab。 */
   setSkillsTab: (skillsTab) => set({ skillsTab }),
   videoMode: readVideoMode(),
   agentThreadId: readThreadId("yoyo-agent-thread"),
   videoThreadId: readThreadId("yoyo-video-thread"),
-  /** 按通道记住这段对话的 id。没有 id 则不动。 */
+  /** 按通道记住这段对话的 id。没有 id 则不动。t 读取 id，为空时不读，传给 threadChannel。 */
   rememberThread: (t) => {
     if (!t?.id) return;
     const ch = threadChannel(t);
@@ -342,13 +342,13 @@ export const useUI = create<UIState>((set, get) => ({
     writeThreadId(key, t.id);
     set(ch === "video" ? { videoThreadId: t.id } : { agentThreadId: t.id });
   },
-  /** 取出该通道上次记住的对话。 */
+  /** 取出该通道上次记住的对话。ch 与 video 比较是否相等。 */
   lastThreadId: (ch) => (ch === "video" ? get().videoThreadId : get().agentThreadId),
   videoBoard: false,
   canvasStage: false,
   studioDesk: false,
   footageOpen: false,
-  /** 打开或关掉素材抽屉。 */
+  /** 打开或关掉素材抽屉。v 写入字段 footageOpen。 */
   setFootageOpen: (v) => set({ footageOpen: v }),
   videoPane: "chat",
   canvasFocus: "library",
@@ -359,7 +359,11 @@ export const useUI = create<UIState>((set, get) => ({
   closeVideo: () => get().showConversation(),
   /** 打开工作室面板。 */
   openStudioDesk: () => get().openVideoPane("studio"),
-  /** 按面板切换视频表面。游戏面板改走创作台。工作室记下创作模式并打开桌面。剧集和画布世界分别记下对应模式。 */
+  /**
+   * 按面板切换视频表面。游戏面板改走创作台。工作室记下创作模式并打开桌面。剧集和画布世界分别记下对应模式。
+   * pane 与 chat、create、studio、game、drama、canvas 比较是否相等，写入字段 videoPane。
+   * opts 读取 entry、canvasFocus，为空时不读，传给 openVideoPane。
+   */
   openVideoPane: (pane, opts) => {
     const videoEntry = opts?.entry || "";
     if (pane === "chat") {
@@ -406,7 +410,7 @@ export const useUI = create<UIState>((set, get) => ({
       canvasFocus: pane === "canvas" ? (opts?.canvasFocus ?? "library") : s.canvasFocus,
     }));
   },
-  /** 打开或关掉剧集画板。打开时进入剧集模式。 */
+  /** 打开或关掉剧集画板。打开时进入剧集模式。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.videoBoard。 */
   setVideoBoard: (v) =>
     set((s) => {
       const videoBoard = typeof v === "function" ? v(s.videoBoard) : v;
@@ -416,7 +420,7 @@ export const useUI = create<UIState>((set, get) => ({
       }
       return { videoBoard: false, canvasStage: true, studioDesk: false, videoPane: "drama" as const, videoMode: "drama" as const, videoEntry: "" };
     }),
-  /** 打开或关掉画布舞台。打开时留在岛内面板。关掉时岛内面板回到对话，并清掉入口。 */
+  /** 打开或关掉画布舞台。打开时留在岛内面板。关掉时岛内面板回到对话，并清掉入口。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.canvasStage。 */
   setCanvasStage: (v) =>
     set((s) => {
       const canvasStage = typeof v === "function" ? v(s.canvasStage) : v;
@@ -441,7 +445,7 @@ export const useUI = create<UIState>((set, get) => ({
         videoEntry: "",
       };
     }),
-  /** 按模式打开剧集、画布或工作室。 */
+  /** 按模式打开剧集、画布或工作室。videoMode 与 drama、canvas 比较是否相等。 */
   setVideoMode: (videoMode) => {
     if (videoMode === "drama") {
       get().openVideoPane("drama");
@@ -453,26 +457,26 @@ export const useUI = create<UIState>((set, get) => ({
     }
     get().openVideoPane("studio");
   },
-  /** 切换设置页签，清掉小节，并用当前时间触发导航。 */
+  /** 切换设置页签，清掉小节，并用当前时间触发导航。settingsTab 写入字段 settingsTab。 */
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
-  /** 打开或关掉检查器。 */
+  /** 打开或关掉检查器。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.inspector。 */
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),
-  /** 打开或关掉对话坞，并写入本地。 */
+  /** 打开或关掉对话坞，并写入本地。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.chatDock。 */
   setChatDock: (v) =>
     set((s) => {
       const chatDock = typeof v === "function" ? v(s.chatDock) : v;
       writeFlag("yoyo-chat-dock", chatDock);
       return { chatDock };
     }),
-  /** 打开或关掉命令面板。 */
+  /** 打开或关掉命令面板。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.palette。 */
   setPalette: (v) => set((s) => ({ palette: typeof v === "function" ? v(s.palette) : v })),
-  /** 设置命令面板的查询。 */
+  /** 设置命令面板的查询。query 写入字段 query。 */
   setQuery: (query) => set({ query }),
-  /** 设置检查器页签。无法识别时落到文件页。 */
+  /** 设置检查器页签。无法识别时落到文件页。inspTab 传给 coerceInspTab。 */
   setInspTab: (inspTab) => set({ inspTab: coerceInspTab(inspTab) || "files" }),
-  /** 设置检查器里正在审阅的文件。 */
+  /** 设置检查器里正在审阅的文件。reviewFile 为假时用空字符串，写入字段 reviewFile。 */
   setReviewFile: (reviewFile) => set({ reviewFile: reviewFile || "" }),
-  /** 设置差异模式并写入本地。 */
+  /** 设置差异模式并写入本地。diffMode 传给 localStorage.setItem，写入字段 diffMode。 */
   setDiffMode: (diffMode) => {
     try {
       localStorage.setItem("yoyo-diff-mode", diffMode);
@@ -481,32 +485,32 @@ export const useUI = create<UIState>((set, get) => ({
     }
     set({ diffMode });
   },
-  /** 打开或关掉计划面板。 */
+  /** 打开或关掉计划面板。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.plan。 */
   setPlan: (v) => set((s) => ({ plan: typeof v === "function" ? v(s.plan) : v })),
-  /** 按键写入草稿并持久化。 */
+  /** 按键写入草稿并持久化。key 用作下标。value 写入字段 [key]。 */
   setDraft: (key, value) =>
     set((s) => {
       const drafts = { ...s.drafts, [key]: value };
       writeDrafts(drafts);
       return { drafts };
     }),
-  /** 合并一批草稿并持久化。 */
+  /** 合并一批草稿并持久化。patch 展开传递。 */
   patchDrafts: (patch) =>
     set((s) => {
       const drafts = { ...s.drafts, ...patch };
       writeDrafts(drafts);
       return { drafts };
     }),
-  /** 折叠或展开侧栏。展开时清掉悬停展开。 */
+  /** 折叠或展开侧栏。展开时清掉悬停展开。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.sidebarCollapsed。 */
   setSidebarCollapsed: (v) =>
     set((s) => {
       const sidebarCollapsed = typeof v === "function" ? v(s.sidebarCollapsed) : v;
       writeFlag("yoyo-sidebar-collapsed", sidebarCollapsed);
       return { sidebarCollapsed, sidebarHover: sidebarCollapsed ? s.sidebarHover : false };
     }),
-  /** 设置折叠侧栏上的悬停展开。 */
+  /** 设置折叠侧栏上的悬停展开。sidebarHover 写入字段 sidebarHover。 */
   setSidebarHover: (sidebarHover) => set({ sidebarHover }),
-  /** 折叠或展开回合大纲。 */
+  /** 折叠或展开回合大纲。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.outlineCollapsed。 */
   setOutlineCollapsed: (v) =>
     set((s) => {
       const outlineCollapsed = typeof v === "function" ? v(s.outlineCollapsed) : v;
@@ -514,35 +518,35 @@ export const useUI = create<UIState>((set, get) => ({
       return { outlineCollapsed };
     }),
   // 同一条通知可能从实时补齐和流各到一次，按 id 只留一条。
-  // 比窗口更旧的重放在这里丢掉，其余交给 pruneNotices 变旧。列表保留最新的 30 条。
+  /** pushNotice 比窗口更旧的重放在这里丢掉，其余交给 pruneNotices 变旧。列表保留最新的 30 条。n 读取 id，传给 noticeExpired。 */
   pushNotice: (n) => set((s) => (s.notices.some((x) => x.id === n.id) || noticeExpired(n)
     ? s
     : { notices: [n, ...s.notices.filter((x) => !noticeExpired(x))].slice(0, 30) })),
   /** 按 id 关掉一条通知。 */
   dismissNotice: (id) => set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
-  /** 关掉属于该会话的通知。没有匹配时保持原状态。 */
+  /** 关掉属于该会话的通知。没有匹配时保持原状态。sessionId 与 n.sessionId 比较是否相等，与 n.sessionId 比较是否不等。 */
   dismissNoticesFor: (sessionId) => set((s) => (s.notices.some((n) => n.sessionId === sessionId)
     ? { notices: s.notices.filter((n) => n.sessionId !== sessionId) }
     : s)),
-  /** 丢掉已过期的通知。没有变化时保持原状态。 */
+  /** 丢掉已过期的通知。没有变化时保持原状态。now 传给 noticeExpired。 */
   pruneNotices: (now = Date.now()) => set((s) => {
     const kept = s.notices.filter((n) => !noticeExpired(n, now));
     return kept.length === s.notices.length ? s : { notices: kept };
   }),
-  /** 打开或关掉通知列表。 */
+  /** 打开或关掉通知列表。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.noticesOpen。 */
   setNoticesOpen: (v) => set((s) => ({ noticesOpen: typeof v === "function" ? v(s.noticesOpen) : v })),
   /** 清空通知。 */
   clearNotices: () => set({ notices: [] }),
-  /** 记下还没有对话时选中的权限模式。 */
+  /** 记下还没有对话时选中的权限模式。mode 写入字段 pendingAuthMode。 */
   setPendingAuthMode: (mode) => set({ pendingAuthMode: mode }),
   voicePhase: "off",
-  /** 设置语音阶段。 */
+  /** 设置语音阶段。voicePhase 写入字段 voicePhase。 */
   setVoicePhase: (voicePhase) => set({ voicePhase }),
   moduleLoading: false,
-  /** 设置模块是否仍在加载。 */
+  /** 设置模块是否仍在加载。moduleLoading 写入字段 moduleLoading。 */
   setModuleLoading: (moduleLoading) => set({ moduleLoading }),
   showHarnessLab: readShowHarnessLab(),
-  /** 是否显示 Harness 实验室入口，并写入本地。 */
+  /** 是否显示 Harness 实验室入口，并写入本地。showHarnessLab 传给 writeFlag，写入字段 showHarnessLab。 */
   setShowHarnessLab: (showHarnessLab) => {
     writeFlag("yoyo-show-harness-lab", showHarnessLab);
     set({ showHarnessLab });

@@ -13,7 +13,10 @@ import { RunningHub } from "./RunningHub";
 import * as api from "../lib/client";
 import { InboxMenu, inboxBadgeCount } from "./InboxMenu";
 
-// Titlebar 没有标题时不显示标题按钮。有 runningThreads 时用 RunningHub，否则有 runningCount 才显示数字，窄屏藏起数字。Escape 放弃重命名，不提交。
+/**
+ * Titlebar 没有标题时不显示标题按钮。有 runningThreads 时用 RunningHub，否则有 runningCount 才显示数字，窄屏藏起数字。Escape 放弃重命名，不提交。
+ * props 读取 title、renameTick、onPause、paused、runningThreads、onSelectRunning 等，调用 onRename。
+ */
 export function Titlebar(props: {
   onToggleInspector: () => void;
   inspector: boolean;
@@ -162,7 +165,10 @@ export function Titlebar(props: {
   );
 }
 
-// 每 15000 毫秒拉一次收件和队列。打开、通知条数或待批数变化时立刻再拉。
+/**
+ * NoticeButton 每 15000 毫秒拉一次收件和队列。打开、通知条数或待批数变化时立刻再拉。
+ * props 读取 notices、approvalCount、threadTitleOf、onDismissNotice、onClearNotices、onResolve，调用 onNotice，调用 onOpenThread。
+ */
 function NoticeButton(props: {
   notices: Notice[];
   onNotice?: (n: Notice) => void;

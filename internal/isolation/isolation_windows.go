@@ -33,6 +33,7 @@ func probe() Report {
 }
 
 // apply 隐藏控制台窗口，并在 CreationFlags 上加上 CREATE_NEW_PROCESS_GROUP。
+// cmd 为 nil 时直接返回；否则交给 osutil.HideConsole，并在 CreationFlags 上或上 CREATE_NEW_PROCESS_GROUP。
 func apply(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -43,6 +44,7 @@ func apply(cmd *exec.Cmd) {
 
 // assign 在 Start 之后把进程放进新作业，并把句柄按 pid 放进 jobByPID。
 // 建作业失败或打开进程失败时直接返回，这次命令没有作业。
+// cmd 为 nil 或 Process 为 nil 时直接返回；否则按 Pid 打开进程、放进新作业，并把句柄以 Pid 放进 jobByPID。
 func assign(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
@@ -63,6 +65,7 @@ func assign(cmd *exec.Cmd) {
 
 // release 按 pid 取出作业。kill 为 true 时用 TerminateJobObject 拆掉进程树，再关闭句柄。
 // kill 为 false 时只关闭句柄，后台子进程还在。
+// cmd 为 nil 或 Process 为 nil 时直接返回；否则按 Pid 从 jobByPID 取出作业。
 func release(cmd *exec.Cmd, kill bool) {
 	if cmd == nil || cmd.Process == nil {
 		return
@@ -113,6 +116,7 @@ func signingProbe() string {
 }
 
 // peAuthenticode 在 PE32 或 PE32+ 的安全数据目录大小大于 0 时返回 true。只看目录项有没有体积，不校验证书链。
+// path 交给 pe.Open，打开失败返回 false；数据目录下标 4 的 Size 大于 0 时返回 true。
 func peAuthenticode(path string) bool {
 	f, err := pe.Open(path)
 	if err != nil {

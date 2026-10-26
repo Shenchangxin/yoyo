@@ -136,6 +136,8 @@ func windowsScriptNote(goos string) string {
 }
 
 // MappingFile 是安装时写入 references/yoyo-tools.md 的正文，供 read_skill_file 按需读取。它不是上游仓库自带的文件。
+// id 和 goos 一起交给 ToolMapping。
+// goos 和 id 一起交给 ToolMapping。
 func MappingFile(id, goos string) string {
 	return "# Yoyo Tool Mapping\n\n" + ToolMapping(id, goos)
 }

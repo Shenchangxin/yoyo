@@ -53,6 +53,7 @@ type RPCResponse struct {
 // Hub 订阅 * 后，每条轨迹写成无 id 通知 item.event，参数含 seq、type、item_kind、session、session_id、source、payload，Notice 带了 event 或 frame 时一并写入。
 // 类型为 approval 且 source 为 gate 时再写 approval.request。类型为 turn_end 时再写 turn.completed。状态订阅写成 state.changed，参数是 epoch、topic、object。
 // 上下文取消时返回该错误。读到 EOF 返回 nil。
+// ctx 在订阅循环里看 Done，在读循环里看 Err，非 nil 时返回该错误，并把 ctx 传给 Dispatch。
 func ServeRPC(ctx context.Context, a *app.App, r io.Reader, w io.Writer) error {
 	dec := json.NewDecoder(r)
 	var mu sync.Mutex
@@ -175,6 +176,8 @@ func handleRPC(a *app.App) http.HandlerFunc {
 
 // Dispatch 要求 jsonrpc 为空或 2.0，否则返回 -32600。空 params 当成 {}。然后 callMethod。
 // L3 错误的 code 是 403，data 是该错误。runtime.ErrBudget 的 code 是 429，data 是预算。其余错误的 code 是 -32000。成功后调用 a.NoteRPC。
+// ctx 先交给 diaglog.With，再传给 DebugContext 和 callMethod。失败时也传给 ErrorContext。
+// req 的 JSONRPC 不是空且不是 2.0 时直接返回 -32600。ID 写入应答。Params 长度为 0 时换成 {}。Method 传给 callMethod，成功且 a 非 nil 时再传给 NoteRPC。
 func Dispatch(ctx context.Context, a *app.App, req RPCRequest) RPCResponse {
 	res := RPCResponse{JSONRPC: "2.0", ID: req.ID}
 	if req.JSONRPC != "" && req.JSONRPC != "2.0" {
@@ -217,6 +220,8 @@ func Dispatch(ctx context.Context, a *app.App, req RPCRequest) RPCResponse {
 // host.open 按 kind 分到 editor、terminal、url，其余走 OpenPath。about 在 Health 上加上 goos。logs.tail 带了 level、component 或 session 时改用日志过滤。provider.test 的 id 为空时走 TestProvider。fiber.unload 先 Dispose 同名 fiber，没有则 Unload WASM。skins.import 有 path 时走 ImportSkinPath，否则解码 bytes_b64。
 // evolve.overlay 用 OverlayFlagConflict 拒绝 promote、sealed、behavior、index、baselines、k、rounds 这些混进来的进化参数。reuse_turn 缺省为真。超时按 overlay_k 夹到 1 到 4 后乘 15 分钟，再抬到 max_wall，上限 1 小时。传给 OverlaySession 的 K 仍是原来的 overlay_k。solver 为 heuristic 或 fixture 时用 HeuristicSolver，prompt-sensitive 时用 PromptSensitiveSolver。
 // eval.run 有 snapshot 时走 RunEvalAt，超时 10 分钟。eval.best_of_n、eval.best_of_models、密封、迁移、索引和基线搜索超时 20 分钟。evolve.run 每轮 15 分钟，多轮相乘，上限 2 小时。update.apply 经 applyUpdateResult。config.set 把原始 params 交给 ApplyConfigPatch。key.set 把去掉空白的 value 写入 vault 的 default。未知方法返回 errMethod。
+// ctx 传给 remoteHandler 和 SendOpts，也传给 context.WithTimeout。
+// method 为空时返回 ok。带 remote. 前缀时传给 remoteHandler。带 video.、drama.、media.、canvas. 或 connections. 前缀时传给 VideoCall。其余进入 switch，未知时传给 errMethod。
 func callMethod(ctx context.Context, a *app.App, method string, params json.RawMessage) (any, error) {
 	if method == "" {
 		return map[string]any{"ok": true}, nil
@@ -1644,6 +1649,7 @@ func decodeSkinB64(s string) ([]byte, error) {
 }
 
 // encodeSkinB64 用标准 Base64 编码，不换行。
+// b 传给 base64.StdEncoding.EncodeToString。
 func encodeSkinB64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
@@ -1663,6 +1669,7 @@ func applyUpdateResult(err error) (map[string]any, error) {
 }
 
 // asMap 把 JSON 解成 map。空参数、null 或解出来是 nil 时返回空 map。
+// params 长度为 0 时返回空 map，否则交给 json.Unmarshal。结果是 nil 时也返回空 map。
 func asMap(params json.RawMessage) map[string]any {
 	m := map[string]any{}
 	if len(params) == 0 {
@@ -1676,6 +1683,7 @@ func asMap(params json.RawMessage) map[string]any {
 }
 
 // overlayFixtureSolver 在名字是 heuristic 或 fixture 时返回 HeuristicSolver，是 prompt-sensitive 或 prompt_sensitive 时返回 PromptSensitiveSolver。其他名字返回 nil。
+// name 去掉空白并转成小写后比较。等于 heuristic 或 fixture 时返回 HeuristicSolver，等于 prompt-sensitive 或 prompt_sensitive 时返回 PromptSensitiveSolver，其他返回 nil。
 func overlayFixtureSolver(name string) runtime.Client {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "heuristic", "fixture":
@@ -1688,6 +1696,7 @@ func overlayFixtureSolver(name string) runtime.Client {
 }
 
 // parseOverlayWall 把 max_wall 收成 time.Duration。空或 null 返回 0。字符串按 time.ParseDuration 解析，空字符串返回 0。数字按秒换算，小于等于 0 返回 0。两种都不是则返回 overlay: max_wall 错误。
+// raw 长度为 0 或内容是 null 时返回 0。能解成字符串时去掉空白，空字符串返回 0，否则交给 time.ParseDuration。能解成数字时，小于等于 0 返回 0，否则按秒换算。
 func parseOverlayWall(raw json.RawMessage) (time.Duration, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return 0, nil

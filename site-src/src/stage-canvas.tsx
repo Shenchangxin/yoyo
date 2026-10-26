@@ -25,6 +25,7 @@ export function ShotLight({ lit }: { lit: boolean }) {
 
     const geometries: THREE.BufferGeometry[] = [];
     const materials: THREE.Material[] = [];
+    /** add 调用 push。geometry 放进 geometries，传给 THREE.Mesh。material 放进 materials，传给 THREE.Mesh。position 展开传递。 */
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, position: [number, number, number]) => {
       geometries.push(geometry);
       materials.push(material);

@@ -168,16 +168,19 @@ func (s *Store) path(sessionID string) string {
 }
 
 // Append 追加一行。只有类型是 user 时才 fsync。
+// ev 交给 append；类型是 user 时第二个实参为 true。
 func (s *Store) Append(ev Event) error {
 	return s.append(ev, ev.Type == TypeUser)
 }
 
 // AppendDurable 追加一行并 fsync，不看类型。
+// ev 和 true 一起交给 append。
 func (s *Store) AppendDurable(ev Event) error {
 	return s.append(ev, true)
 }
 
 // append 补上 ItemKind 和 TS，把 Seq 置 0，再以 O_APPEND 写入，权限 0o644。durable 为真时 Sync。成功后更新内存索引。
+// ev 补上 ItemKind 和 TS，Seq 置 0，再按 SessionID 追加写入。
 func (s *Store) append(ev Event, durable bool) error {
 	if ev.ItemKind == "" {
 		ev.ItemKind = ItemKindOf(ev.Type)
@@ -220,6 +223,7 @@ func (s *Store) append(ev Event, durable bool) error {
 }
 
 // Read 读出该会话的全部事件。文件不存在时返回 nil, nil。
+// sessionID 以 0、0 交给 readRangeLocked。
 func (s *Store) Read(sessionID string) ([]Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -227,6 +231,7 @@ func (s *Store) Read(sessionID string) ([]Event, error) {
 }
 
 // Remove 删掉内存索引、.idx 文件和 jsonl。jsonl 本来就不存在时返回 nil。
+// sessionID 交给 dropIndexLocked 和 path。
 func (s *Store) Remove(sessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -239,6 +244,7 @@ func (s *Store) Remove(sessionID string) error {
 }
 
 // Replace 用 evs 整文件重写该会话。每行 Seq 置 0，空 ItemKind 和零 TS 会补上。写完后丢掉旧索引并重建。
+// sessionID 交给 path，写完后交给 dropIndexLocked 和 rebuildIndexLocked。
 func (s *Store) Replace(sessionID string, evs []Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

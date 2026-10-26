@@ -77,6 +77,7 @@ func (s *Store) List() []Project {
 }
 
 // Get 按 ID 精确查找。找不到时返回零值和 false。
+// id 与每个项目的 ID 做字符串相等比较。
 func (s *Store) Get(id string) (Project, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

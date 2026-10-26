@@ -26,11 +26,17 @@ type Record struct {
 }
 
 // Install 以空记录调用 InstallRecord。
+// homeSkills 交给 InstallRecord。
+// slug 交给 InstallRecord。
+// scan 交给 InstallRecord。
+// files 交给 InstallRecord。
 func Install(homeSkills, slug string, scan Scan, files []PackFile) (string, error) {
 	return InstallRecord(homeSkills, slug, scan, files, Record{})
 }
 
 // InstallRecord 把文件写到 homeSkills/<slug>。先写到该目录加 .install-tmp，放上 .market.json，再改名换上。scan.OK 为假返回 "scan blocked"。没有根上的 SKILL.md 返回 "pack missing SKILL.md"。脚本用 0o755，其余用 0o644。来源为空时记成 HubWorkBuddy。
+// files 交给 packHasSkillMD，再逐个写入临时目录。
+// rec 的 Source 为空时改成 HubWorkBuddy，再写入 .market.json。
 func InstallRecord(homeSkills, slug string, scan Scan, files []PackFile, rec Record) (string, error) {
 	slug = SanitizeSlug(slug)
 	if slug == "" {
@@ -96,6 +102,8 @@ func InstallRecord(homeSkills, slug string, scan Scan, files []PackFile, rec Rec
 }
 
 // Uninstall 删掉 ResolveInstall 找到的目录。没有 .market.json 时返回 "not a market install"。
+// homeSkills 和 name 一起交给 ResolveInstall。
+// name 和 homeSkills 一起交给 ResolveInstall。
 func Uninstall(homeSkills, name string) error {
 	dir, err := ResolveInstall(homeSkills, name)
 	if err != nil {
@@ -108,6 +116,7 @@ func Uninstall(homeSkills, name string) error {
 }
 
 // ResolveInstall 先按净化后的目录名找带 .market.json 的安装。找不到再按记录里的 Name 或 Slug 扫 homeSkills。都没有返回 "not a market install"。
+// name 先交给 SanitizeSlug 当目录名；对不上时再和记录里的 Name、Slug 比较，去掉两端空白后为空则返回错误。
 func ResolveInstall(homeSkills, name string) (string, error) {
 	slug := SanitizeSlug(name)
 	if slug != "" {
@@ -145,6 +154,7 @@ func ResolveInstall(homeSkills, name string) (string, error) {
 }
 
 // ReadRecord 读取目录下的 .market.json。读失败或 JSON 无效时返回 false。
+// dir 拼上 .market.json 后交给 os.ReadFile。
 func ReadRecord(dir string) (Record, bool) {
 	var rec Record
 	b, err := os.ReadFile(filepath.Join(dir, ".market.json"))
@@ -155,6 +165,8 @@ func ReadRecord(dir string) (Record, bool) {
 }
 
 // PackIncomplete 在正文提到 scripts/，且 scripts 目录打不开或里面没有非点开头的文件时返回 true。
+// dir 为空时返回 false；否则和 scripts 拼成目录去读。
+// body 交给 MentionsScripts，没有提到脚本时返回 false。
 func PackIncomplete(dir, body string) bool {
 	if dir == "" || !MentionsScripts(body) {
 		return false
@@ -173,6 +185,7 @@ func PackIncomplete(dir, body string) bool {
 }
 
 // validPackRel 拒绝空路径、绝对路径和逃出目录的路径，其余交给 packAllowed。
+// rel 为空或是绝对路径时返回 false，Clean 之后是 . 或以 .. 开头也返回 false，否则交给 packAllowed。
 func validPackRel(rel string) bool {
 	if rel == "" || filepath.IsAbs(rel) {
 		return false
@@ -202,6 +215,7 @@ func withinDir(root, p string) bool {
 }
 
 // isScriptRel 在扩展名是 sh、py、ps1、rb、js、mjs、ts，或无扩展名且位于 scripts/ 下时返回 true。
+// rel 转成小写斜杠路径后看扩展名，或无扩展名且以 scripts/ 开头。
 func isScriptRel(rel string) bool {
 	rel = strings.ToLower(filepath.ToSlash(rel))
 	switch filepath.Ext(rel) {

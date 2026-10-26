@@ -14,6 +14,7 @@ import (
 )
 
 // PutBytes 把字节写入 CAS。CAS 为空时返回 cas missing。
+// b 传给 CAS.PutRaw。
 func (e *Engine) PutBytes(b []byte) (string, error) {
 	if e.CAS == nil {
 		return "", fmt.Errorf("cas missing")
@@ -25,6 +26,7 @@ func (e *Engine) PutBytes(b []byte) (string, error) {
 const maxMediaFile = 4 << 30
 
 // PutPath 把用户选中的文件抄进 CAS，不把整文件读进网页视图。空路径、非普通文件、空文件，以及大于 4 GiB 的文件都会拒绝。能用 PutFile 时按路径写入，否则整文件读入再 PutBytes。返回哈希和按扩展名得到的 MIME，未知扩展名用 application/octet-stream。
+// path 去掉空白后为空则返回 path required，否则取绝对路径；不是普通文件、大小小于等于 0 或大于 maxMediaFile 时拒绝。
 func (e *Engine) PutPath(path string) (string, string, error) {
 	if e.CAS == nil {
 		return "", "", fmt.Errorf("cas missing")
@@ -73,6 +75,7 @@ func (e *Engine) PutPath(path string) (string, string, error) {
 }
 
 // GetBytes 按哈希读回字节。哈希不安全或 CAS 为空时返回 missing media。
+// hash 传给 safeCASHash，通过后去掉空白再传给 CAS.GetRaw。
 func (e *Engine) GetBytes(hash string) ([]byte, error) {
 	if !safeCASHash(hash) || e.CAS == nil {
 		return nil, fmt.Errorf("missing media")
@@ -81,6 +84,7 @@ func (e *Engine) GetBytes(hash string) ([]byte, error) {
 }
 
 // safeCASHash 拒绝空串、含 .. 或含斜杠、反斜杠的哈希。
+// hash 去掉空白后为空，或含 ..、斜杠、反斜杠时返回假。
 func safeCASHash(hash string) bool {
 	h := strings.TrimSpace(hash)
 	if h == "" || strings.Contains(h, "..") || strings.ContainsAny(h, `/\`) {
@@ -90,6 +94,7 @@ func safeCASHash(hash string) bool {
 }
 
 // FilePath 返回哈希对应的本地路径。CAS 为空或哈希不安全时返回空串。
+// hash 传给 safeCASHash，通过后去掉空白再传给 CAS.Path。
 func (e *Engine) FilePath(hash string) string {
 	if e.CAS == nil || !safeCASHash(hash) {
 		return ""
@@ -98,6 +103,7 @@ func (e *Engine) FilePath(hash string) string {
 }
 
 // casFile 返回磁盘上已存在、非空的普通文件路径。调用方探测这条路径，而不是把整段视频读进内存。
+// hash 传给 FilePath；路径为空、不是普通文件或大小小于等于 0 时返回空串。
 func (e *Engine) casFile(hash string) string {
 	path := e.FilePath(hash)
 	if path == "" {
@@ -111,6 +117,7 @@ func (e *Engine) casFile(hash string) string {
 }
 
 // MediaURL 在 MediaBase 和哈希都非空时拼出 /media/ 地址。
+// hash 为空或 MediaBase 为空时返回空串，否则接到 /media/ 后面。
 func (e *Engine) MediaURL(hash string) string {
 	if hash == "" {
 		return ""
@@ -122,6 +129,7 @@ func (e *Engine) MediaURL(hash string) string {
 }
 
 // Thumb 把图片压成宽高不超过 400、质量 70 的 JPEG，再写回 CAS。
+// hash 传给 GetBytes，再按宽高不超过 400、质量 70 压缩。
 func (e *Engine) Thumb(hash string) (string, error) {
 	raw, err := e.GetBytes(hash)
 	if err != nil {
@@ -135,6 +143,7 @@ func (e *Engine) Thumb(hash string) (string, error) {
 }
 
 // RefDataURL 把图片压成宽高不超过 768、质量 68 的 JPEG 数据 URL。压不成且原字节是图片时，按探测到的类型直接做成数据 URL。
+// hash 传给 GetBytes，再按宽高不超过 768、质量 68 压缩。
 func (e *Engine) RefDataURL(hash string) (string, error) {
 	raw, err := e.GetBytes(hash)
 	if err != nil {
@@ -151,6 +160,7 @@ func (e *Engine) RefDataURL(hash string) (string, error) {
 }
 
 // DownloadURL 读取 data: URL，或用 Engine.HTTP 做 GET。状态码大于等于 400 时失败。正文最多读 80 MiB。
+// rawURL 以 data: 开头时传给 decodeDataURL，否则作为 GET 地址。
 func (e *Engine) DownloadURL(rawURL string) ([]byte, error) {
 	if strings.HasPrefix(rawURL, "data:") {
 		return decodeDataURL(rawURL)
@@ -171,6 +181,7 @@ func (e *Engine) DownloadURL(rawURL string) ([]byte, error) {
 }
 
 // StoreUpload 写入字节，缩略图能生成时一并返回。缩略图失败不影响哈希。
+// b 传给 PutBytes。
 func (e *Engine) StoreUpload(b []byte) (hash, thumb string, err error) {
 	hash, err = e.PutBytes(b)
 	if err != nil {
@@ -192,6 +203,7 @@ func decodeDataURL(s string) ([]byte, error) {
 }
 
 // ServeFile 返回哈希对应且确实存在的本地路径。路径为空时返回 missing。
+// hash 传给 FilePath，路径为空时返回 missing。
 func (e *Engine) ServeFile(hash string) (path string, err error) {
 	p := e.FilePath(hash)
 	if p == "" {

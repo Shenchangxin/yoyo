@@ -15,7 +15,7 @@ export { presenceOf } from "./director";
 /** PresenceInput 从导演再导出。 */
 export type { PresenceInput } from "./director";
 
-/** PresenceLayer 用当前语音和加载状态算出一个表情，再交给运行时。 */
+/** PresenceLayer 用当前语音和加载状态算出一个表情，再交给运行时。props 读取 input、children。 */
 export function PresenceLayer(props: { input: Omit<PresenceInput, "voicePhase">; children: ReactNode }) {
   const reduced = useMotionReduced();
   const voicePhase = useUI((s) => s.voicePhase);

@@ -46,6 +46,8 @@ func NewStreamAccumulator() *AssistantStreamAccumulator {
 
 // Push 收下一块。文本和推理在上一段种类、序号都相同且时间差不小于 0 时并进去；时间倒退就新开一段。
 // 工具参数增量在 id 或名字为空时整块留下。两者都非空时，上一段是同一序号、同一 id、同一名字且时间差不小于 0 才合并。其他类型整块留下。
+// time 作为新段的起点，或与上一段 lastTime 相减得到间隔。
+// chunk 按 Type 处理，并读取 Index、Text、ID、Name 和 ArgumentsDelta。
 func (a *AssistantStreamAccumulator) Push(time int64, chunk StreamChunk) {
 	switch chunk.Type {
 	case ChunkTextDelta, ChunkReasoningDelta:
@@ -143,6 +145,7 @@ func (a *AssistantStreamAccumulator) Snapshot() []AssistantStreamRecord {
 }
 
 // ExpandAssistantStream 把压缩记录展开成带时间的块。第一片用 Time0，后面的片累加对应的 DT。工具记录的 Name 为空时，展开的块也不带名字。类型对不上的记录跳过。
+// records 按 Type 展开，对不上的类型跳过。
 func ExpandAssistantStream(records []AssistantStreamRecord) []timedChunk {
 	var out []timedChunk
 	for _, rec := range records {

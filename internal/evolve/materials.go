@@ -15,6 +15,7 @@ type MaterialSet struct {
 }
 
 // MaterialsFromSnapshot 用 snap 和 hash 覆盖 fallback。循环、剧本、片段、技能只在对应哈希非空且解码成功时替换；片段或技能一条都解不出时保留 fallback 里的列表。
+// cas 在循环、剧本、片段或技能的哈希非空时交给 Decode。
 func MaterialsFromSnapshot(cas *artifact.Store, snap artifact.HarnessSnapshot, hash string, fallback MaterialSet) MaterialSet {
 	out := fallback
 	out.Snap = snap

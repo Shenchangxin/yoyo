@@ -37,7 +37,7 @@ const STEP_INDEX: Partial<Record<HarnessTab, string>> = {
   promote: "03",
 };
 
-// HarnessWorkspace 画页签。总览用 HarnessOverview，其余三页直接放 children 里对应的一块。
+/** HarnessWorkspace 画页签。总览用 HarnessOverview，其余三页直接放 children 里对应的一块。props 读取 harness、fallbackActive、report、tab、onTab、onReveal 等，调用 onTab。 */
 export function HarnessWorkspace(props: {
   tab: HarnessTab;
   onTab: (tab: HarnessTab) => void;
@@ -116,7 +116,10 @@ export function HarnessWorkspace(props: {
   );
 }
 
-// 按 next.action 选原因和要去的页：checkout 去采用，eval 和 blocked 去证明，其余去提出。实验室开关打开才多显示 head，谱系上的打开按钮也只在那时传下去。
+/**
+ * HarnessOverview 按 next.action 选原因和要去的页：checkout 去采用，eval 和 blocked 去证明，其余去提出。实验室开关打开才多显示 head，谱系上的打开按钮也只在那时传下去。
+ * props 读取 report、refs、harness、next、onTab、onReveal，调用 onTab。
+ */
 function HarnessOverview(props: {
   refs: HarnessRefs;
   harness: unknown;
@@ -247,7 +250,7 @@ function HarnessOverview(props: {
   );
 }
 
-// 没有指针时列出提出、证明、采用三步。第一步用 default 按钮，后两步用 lift。
+/** FirstRun 没有指针时列出提出、证明、采用三步。第一步用 default 按钮，后两步用 lift。onTab 被调用，并传入 s.tab。 */
 function FirstRun({ onTab }: { onTab: (tab: HarnessTab) => void }) {
   const copy = useCopy();
   const steps: { tab: HarnessTab; n: string; hint: string }[] = [
@@ -281,7 +284,13 @@ function FirstRun({ onTab }: { onTab: (tab: HarnessTab) => void }) {
   );
 }
 
-// 种子且没有变更时不画变更列表。有父节点但没有变更时才用空文案。标题依次取 note、proposalId、对照父节点或种子。
+/**
+ * LineageRow 种子且没有变更时不画变更列表。有父节点但没有变更时才用空文案。标题依次取 note、proposalId、对照父节点或种子。
+ * node 读取 createdAt、note、proposalId、parent、hash、seed 等。
+ * first 为假时走另一支。
+ * onReveal 为真时才继续，传给 reveal。
+ * showIds 为真时才继续。
+ */
 function LineageRow({ node, first, onReveal, showIds }: { node: LineageNode; first: boolean; onReveal?: (hash?: string) => Promise<void> | void; showIds: boolean }) {
   const copy = useCopy();
   const stamp = formatStamp(node.createdAt);
@@ -319,7 +328,7 @@ function LineageRow({ node, first, onReveal, showIds }: { node: LineageNode; fir
   );
 }
 
-// 显示 12 位短哈希。复制成功后勾保持 1200 毫秒，失败时提示复制失败。
+/** HashLine 显示 12 位短哈希。复制成功后勾保持 1200 毫秒，失败时提示复制失败。hash 传给 writeClipboard，传给 shortHash。compact 为假时走另一支。 */
 function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
   const copy = useCopy();
   const [done, setDone] = useState(false);
@@ -351,7 +360,7 @@ function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
   );
 }
 
-// 没有回调就返回。出错时不在这里提示，由调用方去弹提示。
+/** reveal 没有回调就返回。出错时不在这里提示，由调用方去弹提示。fn 为假时走另一支，被调用，并传入 hash。hash 传给 fn。 */
 async function reveal(fn: ((hash?: string) => Promise<void> | void) | undefined, hash: string) {
   if (!fn) return;
   try {

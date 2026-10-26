@@ -27,7 +27,7 @@ export type StudioNext = {
   gate?: StudioGate;
 };
 
-/** studioNext 按当前短片和所在栏决定下一步。没绑短片时雷达去收集，其他栏去选题开拍。 */
+/** studioNext 按当前短片和所在栏决定下一步。没绑短片时雷达去收集，其他栏去选题开拍。current 没有时按栏返回收集或开拍，有则按阶段、成片、剧本、声音和镜头决定下一步。pane 只在没有短片时区分雷达和其他栏。 */
 export function studioNext(current: StudioProject | null | undefined, pane: StudioPane): StudioNext {
   if (!current) {
     if (pane === "topics" || pane === "assemble" || pane === "publish") return { key: "produce", pane: "topics" };
@@ -84,7 +84,7 @@ type NextCopy = {
   promptWatch: string;
 };
 
-/** studioNextCopy 按动作名取下一步按钮的短文案。 */
+/** studioNextCopy 按动作名取下一步按钮的短文案。s 按动作名取 nextCollect 到 nextWatch。key 选择其中一项。 */
 export function studioNextCopy(s: NextCopy, key: StudioNextKey) {
   const map: Record<StudioNextKey, string> = {
     collect: s.nextCollect,
@@ -101,7 +101,7 @@ export function studioNextCopy(s: NextCopy, key: StudioNextKey) {
   return map[key];
 }
 
-/** studioNextPrompt 按动作名取下一步要填进输入框的长文案。 */
+/** studioNextPrompt 按动作名取下一步要填进输入框的长文案。s 按动作名取 promptCollect 到 promptWatch。key 选择其中一项。 */
 export function studioNextPrompt(s: NextCopy, key: StudioNextKey) {
   const map: Record<StudioNextKey, string> = {
     collect: s.promptCollect,

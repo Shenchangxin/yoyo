@@ -7,7 +7,7 @@ import type { Approval } from "../../lib/protocol";
 import { AskDeck } from "../AskDeck";
 import { useCopy } from "../../lib/i18n";
 
-/** ApprovalTakeover 占住作曲区，让人回答或作出决定。 */
+/** ApprovalTakeover 占住作曲区，让人回答或作出决定。props 读取 ask、approval、onResolve，调用 onResolve。 */
 export function ApprovalTakeover(props: {
   ask?: Approval | null;
   approval?: Approval | null;
@@ -31,14 +31,14 @@ export function ApprovalTakeover(props: {
     );
   }
 
-  /** 同一条只接受一次。记下已回答再回调。 */
+  /** 同一条只接受一次。记下已回答再回调。decision 传给 props.onResolve。 */
   const answer = (decision: "once" | "deny") => {
     if (answered) return;
     setAnswered(true);
     props.onResolve(item.id, decision);
   };
 
-  /** 焦点在输入里时不抢键。回车允许一次，退出则拒绝。 */
+  /** 焦点在输入里时不抢键。回车允许一次，退出则拒绝。event 读取 target、defaultPrevented、currentTarget、key、ctrlKey、metaKey 等，调用 preventDefault，调用 stopPropagation。 */
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const el = event.target as Element;
     if (event.defaultPrevented || !event.currentTarget.contains(document.activeElement)) return;

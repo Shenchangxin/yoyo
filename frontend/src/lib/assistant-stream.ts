@@ -46,13 +46,16 @@ export class ClientAssistantStream {
     this.retained = undefined;
   }
 
-  /** hydrate 装入一个已在进行的尝试，并清掉留下的尝试。 */
+  /** hydrate 装入一个已在进行的尝试，并清掉留下的尝试。active 展开传递。 */
   hydrate(active: ActiveAttempt): void {
     this.active = { ...active };
     this.retained = undefined;
   }
 
-  /** acceptFrame 开始时若已有别的尝试则要求重新对齐。同一尝试的重复开始忽略。块的起点高于 nextIndex 则重新对齐，低于则忽略。结束时清掉当前尝试；结果为 committed 才留下。对不上当前尝试的结束，用帧上的结果，没有则是 abandoned。 */
+  /**
+   * acceptFrame 开始时若已有别的尝试则要求重新对齐。同一尝试的重复开始忽略。块的起点高于 nextIndex 则重新对齐，低于则忽略。结束时清掉当前尝试；结果为 committed 才留下。对不上当前尝试的结束，用帧上的结果，没有则是 abandoned。
+   * frame 读取 kind、attemptId、turn、step、indexFrom、index 等。
+   */
   acceptFrame(frame: AssistantStreamFrame): ClientStreamResult {
     switch (frame.kind) {
       case "start":
@@ -108,7 +111,7 @@ export class ClientAssistantStream {
   }
 }
 
-/** frameFromItem 从 assistant_stream 条目取出一帧。kind 不是开始、块或结束则没有帧。块用 parseStreamChunk。下标缺省为 0。 */
+/** frameFromItem 从 assistant_stream 条目取出一帧。kind 不是开始、块或结束则没有帧。块用 parseStreamChunk。下标缺省为 0。item 读取 type、payload、seq。 */
 export function frameFromItem(item: Item): AssistantStreamFrame | undefined {
   if (item.type !== "assistant_stream") return undefined;
   const p = item.payload || {};

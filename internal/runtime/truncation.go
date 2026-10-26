@@ -12,6 +12,7 @@ const outputCutNudge = "Your last reply hit the output limit before it finished,
 const writeFilePartMax = 32 * 1024
 
 // trimTruncatedReply 只留下参数完整的工具调用。回复未截断时原样返回，催促文案为空。被输出上限切断的调用不执行，半截文本也不当文件内容留下。
+// msg 的 Truncated 为假时原样返回；为真时丢掉 toolArgsTruncated 判定为不完整的工具调用，并带上 outputCutNudge。
 func trimTruncatedReply(msg Message) (Message, string) {
 	if !msg.Truncated {
 		return msg, ""
@@ -28,6 +29,7 @@ func trimTruncatedReply(msg Message) (Message, string) {
 }
 
 // isOutputLimitStop 判断供应商的结束原因是不是输出 token 上限。只有 length 和 max_tokens 返回 true。
+// reason 等于 length 或 max_tokens 时返回 true。
 func isOutputLimitStop(reason string) bool {
 	switch reason {
 	case "length", "max_tokens":

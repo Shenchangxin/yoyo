@@ -24,6 +24,7 @@ func keychainSet(name, value string) error {
 }
 
 // keychainGet 执行 secret-tool lookup，只去掉输出末尾的回车和换行。命令失败时返回空串和该错误。
+// name 作为 account 传给 secret-tool lookup。
 func keychainGet(name string) (string, error) {
 	out, err := exec.Command("secret-tool", "lookup", "service", "yoyo", "account", name).Output()
 	if err != nil {
@@ -33,6 +34,7 @@ func keychainGet(name string) (string, error) {
 }
 
 // keychainDelete 执行 secret-tool clear，service 和 account 与写入时相同。
+// name 作为 account 传给 secret-tool clear。
 func keychainDelete(name string) error {
 	return exec.Command("secret-tool", "clear", "service", "yoyo", "account", name).Run()
 }

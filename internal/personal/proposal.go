@@ -20,6 +20,10 @@ import (
 const proposalTTL = 30 * time.Minute
 
 // proposalHash 对种类、数据、账号和 target_version 的 JSON 做 SHA-256，返回十六进制。
+// kind 放进待哈希的 JSON。
+// data 放进待哈希的 JSON。
+// account 放进待哈希的 JSON。
+// targetVersion 放进待哈希的 JSON，字段名是 target_version。
 func proposalHash(kind ProposalKind, data map[string]any, account, targetVersion string) string {
 	payload, _ := json.Marshal(struct {
 		Kind          ProposalKind   `json:"kind"`
@@ -32,6 +36,12 @@ func proposalHash(kind ProposalKind, data map[string]any, account, targetVersion
 }
 
 // Propose 只接受 email.send 和 calendar 的 create、update、delete。带 recurrence 直接拒绝。日历更新和删除要求 event_id 与 target_version。非空的幂等键会复用已有提案。
+// kind 去掉空白后必须是 email.send 或 calendar 的 create、update、delete，否则返回错误。它写入提案，并传给 proposalTitle 和 proposalHash。
+// data 为 nil 时改成空映射。recurrence 非空时返回错误。日历更新或删除时还读取 event_id 和 target_version。它写入提案，并传给 proposalTitle 和 proposalHash。
+// account 非空且 Connectors 非 nil 时，必须出现在 List 的 ID 里，否则返回错误。它写入提案，并传给 proposalHash。
+// taskID 写入提案的 TaskID，并传给 notify。
+// source 写入提案的 Source。
+// idempotency 为空时用 newID。非空时经 hashID 得到 ID，已有提案则直接返回。
 func (e *Engine) Propose(kind ProposalKind, data map[string]any, account, taskID, source, idempotency string) (Proposal, error) {
 	if data == nil {
 		data = map[string]any{}
@@ -94,6 +104,8 @@ func (e *Engine) Propose(kind ProposalKind, data map[string]any, account, taskID
 }
 
 // proposalTitle 按种类和主题或标题拼出审阅标题。
+// kind 为 ProposalEmailSend 时用 data 的 subject。删除和更新用 title，空则用 subject。其余用 title，空则用 subject，并加上 Create。
+// data 的 subject 或 title 经 strMap 后写进标题。
 func proposalTitle(kind ProposalKind, data map[string]any) string {
 	switch kind {
 	case ProposalEmailSend:
@@ -154,6 +166,8 @@ func looksCalendarDraft(d connector.Draft) bool {
 }
 
 // FinishChatSend 按发送错误把提案标成 failed、outcome_unknown 或 succeeded。找不到提案时返回零值。
+// id 传给 proposal。
+// sendErr 为 nil 时状态写成 ProposalSucceeded，Result 写成 sent。非 nil 时 Error 写成它的 Error。unknownOutcome 为真则状态是 ProposalOutcomeUnknown，否则 ProposalFailed。
 func (e *Engine) FinishChatSend(id string, sendErr error) Proposal {
 	p, ok := e.store.proposal(id)
 	if !ok {
@@ -178,6 +192,7 @@ func (e *Engine) FinishChatSend(id string, sendErr error) Proposal {
 }
 
 // Decide 在哈希不符或已过期时拒绝。approve 为假则标成 denied，并取消关联任务。为真则先标成 executing，再 executeProposal。
+// hash 非空且与提案的 Hash 不同时返回错误。
 func (e *Engine) Decide(id, hash string, approve bool) (Proposal, error) {
 	p, ok := e.store.proposal(id)
 	if !ok {
@@ -301,6 +316,8 @@ func (e *Engine) executeProposal(p Proposal) (string, error) {
 }
 
 // draftFromData 从提案数据填出 connector.Draft。标题在主题为空时补到 Subject。
+// account 写入 Draft 的 Account。
+// data 的 to、subject、body、cc、bcc、thread_id、reply_to、location、time_zone、start、end、calendar_id、event_id、target_version、recurrence、op 经 strMap 写入。all_day、attachments、attendees 按类型写入。title 在 Subject 为空时补上。
 func draftFromData(account string, data map[string]any) connector.Draft {
 	d := connector.Draft{
 		Account:       account,
@@ -364,6 +381,7 @@ func (e *Engine) expireProposals() {
 }
 
 // unknownOutcome 在错误文本含 outcome_unknown、timeout、deadline、429 或 HTTP 500 到 599 时返回真。
+// err 为 nil 时返回 false。否则把 Error 转成小写后查找这些片段。
 func unknownOutcome(err error) bool {
 	if err == nil {
 		return false

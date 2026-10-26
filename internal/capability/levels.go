@@ -53,6 +53,7 @@ func NeverAlways(l Level) bool {
 // NeverAlwaysAction 判断动作本身能不能记成 Always。级别可以仍是 WriteWorkspace。
 // 去掉首尾空白并转成小写后，review_page、page.save、page.edit 返回 true，其余返回 false。
 // CheckCtx 对命中的动作不会写入始终表。审批返回 Session，或把 Always 改记本会话时，本会话仍然可以记住该级别。
+// action 去掉首尾空白并转成小写后，与 review_page、page.save、page.edit 比较。
 func NeverAlwaysAction(action string) bool {
 	switch strings.ToLower(strings.TrimSpace(action)) {
 	case "review_page", "page.save", "page.edit":
@@ -63,6 +64,7 @@ func NeverAlwaysAction(action string) bool {
 }
 
 // DropSticky 丢掉 HighRisk、SendAsYou、ComputerUse，其余级别按原顺序保留。
+// levels 逐项检查，等于 HighRisk、SendAsYou 或 ComputerUse 的丢掉。
 func DropSticky(levels []Level) []Level {
 	out := make([]Level, 0, len(levels))
 	for _, l := range levels {
@@ -120,6 +122,7 @@ func ParseAuthMode(s string) string {
 // AuthAutoEdit 返回 WriteWorkspace、SpecifiedPath、MemoryWrite。
 // AuthFull 返回 ReadWorkspace、WriteWorkspace、SpecifiedPath、MemoryWrite、Shell、Network、Browser、Schedule、ReadConnector、WriteConnector、Clipboard。
 // AuthDefault 和 AuthAsk 都落到 default 并返回 nil：Default 随后能否直接通过取决于 Broker 里已有的始终表；Ask 跳过始终表靠的是 ApplyAuthMode 写上的 strict。
+// mode 先交给 ParseAuthMode，再按 AuthAutoEdit、AuthFull 或其余分支返回级别。
 func AuthModeLevels(mode string) []Level {
 	switch ParseAuthMode(mode) {
 	case AuthAutoEdit:
@@ -136,6 +139,7 @@ func AuthModeLevels(mode string) []Level {
 }
 
 // AuthModeCapStrings 把 AuthModeLevels 的结果经 DropSticky 后收成字符串。
+// mode 交给 AuthModeLevels。
 func AuthModeCapStrings(mode string) []string {
 	lv := DropSticky(AuthModeLevels(mode))
 	out := make([]string, 0, len(lv))

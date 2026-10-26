@@ -8,7 +8,7 @@ type MarkProps = {
   compact?: boolean;
 };
 
-// YoyoMark 用界面字体画小写 yoyo。
+/** YoyoMark 用界面字体画小写 yoyo。className 传给 cn。compact 为真时才继续。 */
 export function YoyoMark({ className, compact }: MarkProps) {
   return (
     <span
@@ -23,7 +23,7 @@ export function YoyoMark({ className, compact }: MarkProps) {
   );
 }
 
-// MarkWell 是空状态里的静置印记，不是海报。它对读屏隐藏。
+/** MarkWell 是空状态里的静置印记，不是海报。它对读屏隐藏。className 传给 cn。markClassName 写到 YoyoMark 的 className。 */
 export function MarkWell({ className, markClassName }: { className?: string; markClassName?: string }) {
   return (
     <span className={cn("mark-well inline-flex", className)} aria-hidden>

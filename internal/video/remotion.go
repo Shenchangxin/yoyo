@@ -244,6 +244,7 @@ func (e *Engine) beginRemotionInstall() (<-chan struct{}, error) {
 }
 
 // runRemotionInstall 跑完安装后把阶段写成 ready 或 error，关闭通道，并送出 remotion 快照。
+// done 与 rmWait 是同一个通道时把 rmWait 清掉，函数退出前关闭 done。
 func (e *Engine) runRemotionInstall(done chan struct{}) {
 	defer func() {
 		e.rmMu.Lock()
@@ -268,6 +269,9 @@ func (e *Engine) runRemotionInstall(done chan struct{}) {
 }
 
 // setRemotionProgress 更新阶段、百分比和错误，并送出 remotion 快照。百分比小于 0 时不改百分比。
+// phase 非空时写入 rmPhase。
+// percent 大于等于 0 时写入 rmPercent。
+// errMsg 非空，或 phase 为 error 时，写入 rmErr。
 func (e *Engine) setRemotionProgress(phase string, percent int, errMsg string) {
 	if e == nil {
 		return
@@ -390,6 +394,7 @@ func remotionChrome() string {
 }
 
 // probeVideo 用 ffprobe 读第一路视频的宽高和时长，超时 20 秒。读不到时宽 1080、高 1920、时长 5 秒。宽高会收成偶数。
+// path 在 FFProbe 非空时传给 ffprobe。
 func (e *Engine) probeVideo(path string) (w, h int, seconds float64) {
 	w, h = 1080, 1920
 	seconds = 5
@@ -431,6 +436,9 @@ func (e *Engine) probeVideo(path string) (w, h int, seconds float64) {
 }
 
 // RenderTitleCard 用托管的 TitleCard 合成片头。源片按哈希取出后放到 public，按 30 帧每秒向上取整，不足 30 帧时用 30。传入画幅时改用该画幅的宽高。渲染超时 12 分钟。找到浏览器时加上 --browser-executable。成片入库，来源是 studio-wrap-remotion。
+// hash 去掉首尾空白，空串时返回错误 hash and title required；否则传给 GetBytes，并作为 public 下的文件名。
+// title 去掉首尾空白，空串时返回错误 hash and title required；否则写入 props 的 title。
+// aspect 传给 normalizeAspect，非空时用返回值调用 aspectSize 改宽高。
 func (e *Engine) RenderTitleCard(hash, title, aspect string) (MediaRef, error) {
 	if !e.managedRemotionReady() {
 		return MediaRef{}, fmt.Errorf("remotion is not installed")

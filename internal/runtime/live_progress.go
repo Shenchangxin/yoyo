@@ -19,6 +19,8 @@ type toolProgressGate struct {
 }
 
 // allow 在 id 为空时返回 false。同一个 id、本次参数增量长度与上次相差小于 2048、且间隔小于 250 毫秒时返回 false。否则记下 id、长度和时间并返回 true。
+// n 与上次记下的长度相差小于 2048，且 id 相同、间隔也小于 250 毫秒时返回 false。
+// now 与上次时间的间隔小于 250 毫秒时参与这次拒绝。
 func (g *toolProgressGate) allow(id string, n int, now time.Time) bool {
 	if id == "" {
 		return false
@@ -33,6 +35,9 @@ func (g *toolProgressGate) allow(id string, n int, now time.Time) bool {
 }
 
 // emitToolProgress 向实时总线发一条 progress 为真的 tool_call。id 或名字去掉空白后为空则返回。arguments 只保留从参数里抽出的 path，bytes 仍是原始参数的字节长度。
+// req 传给 emit。
+// roundID 写入载荷的 round。
+// tc 的 ID 或 Name 去掉空白后为空则返回，否则写入载荷，并从 Arguments 抽出 path。
 func emitToolProgress(req RunRequest, roundID string, tc ToolCall) {
 	if strings.TrimSpace(tc.ID) == "" || strings.TrimSpace(tc.Name) == "" {
 		return

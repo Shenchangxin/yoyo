@@ -35,6 +35,7 @@ func SkillRoots(home, workspace, bundled string, packDirs ...string) []string {
 }
 
 // LoadSkillDirs 遍历每个根下的 SKILL.md。同名技能后者覆盖前者，但 order 保留第一次出现的位置。解析失败的文件跳过。
+// roots 逐个遍历；空串跳过，其余用 filepath.Walk 找 SKILL.md。
 func LoadSkillDirs(roots ...string) []artifact.Skill {
 	seen := map[string]artifact.Skill{}
 	order := []string{}
@@ -68,6 +69,7 @@ func LoadSkillDirs(roots ...string) []artifact.Skill {
 }
 
 // SkillPackFiles 列出目录下非点开头的文件，相对路径用斜杠，并按名字排序。空目录返回 nil。
+// dir 为空时返回 nil；否则 Walk 该目录，收集非点开头文件的斜杠相对路径。
 func SkillPackFiles(dir string) []string {
 	if dir == "" {
 		return nil
@@ -115,6 +117,7 @@ func SkillAliasKeys(s artifact.Skill) []string {
 }
 
 // MapSkills 先按主名写入正文、目录和元数据，再把尚未占用的别名指到同一技能，使 load_skill 和 @skill 能用安装目录名。
+// skills 里 Name 为空的项跳过；其余先按主名写入，再把尚未占用的别名指到同一技能。
 func MapSkills(skills []artifact.Skill) (bodies map[string]string, dirs map[string]string, meta map[string]artifact.Skill) {
 	bodies = map[string]string{}
 	dirs = map[string]string{}
@@ -169,6 +172,7 @@ func MergeSkills(base, extra []artifact.Skill) []artifact.Skill {
 }
 
 // FilterSkills 在 planMode 为假时原样返回。为真时丢掉 Compatibility 含 network 的技能。
+// skills 在 planMode 为假时原样返回；为真时丢掉 Compatibility 小写后含 network 的项。
 func FilterSkills(skills []artifact.Skill, planMode bool) []artifact.Skill {
 	if !planMode {
 		return skills

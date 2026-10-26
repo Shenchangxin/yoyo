@@ -9,6 +9,8 @@ import (
 )
 
 // remoteMap 在 Service 或 App 都不可用且没有 RPC 时返回 remote unavailable。RPC 非空时 call 再解码成 map。同进程用 Dispatch 调同一方法，再把 Result 解回 map。
+// method 在 RPC 非空时传给 call。否则写入 Dispatch 请求的 Method。
+// params 在 RPC 非空时传给 call。否则非 nil 时编成 JSON，为 nil 时用 {}。
 func (s *Service) remoteMap(method string, params any) (map[string]any, error) {
 	if s == nil {
 		return nil, fmt.Errorf("remote unavailable")
@@ -53,16 +55,19 @@ func (s *Service) RemotePair() (map[string]any, error) {
 }
 
 // RemoteApprove 调用 remote.pair.approve，让扫过配对码的手机加入这台工作站。
+// id 放进参数 id 后传给 remoteMap。
 func (s *Service) RemoteApprove(id string) (map[string]any, error) {
 	return s.remoteMap("remote.pair.approve", map[string]any{"id": id})
 }
 
 // RemoteDeny 调用 remote.pair.deny，拒绝还在等配对码的手机。
+// id 放进参数 id 后传给 remoteMap。
 func (s *Service) RemoteDeny(id string) (map[string]any, error) {
 	return s.remoteMap("remote.pair.deny", map[string]any{"id": id})
 }
 
 // RemoteRevoke 调用 remote.revoke，摘掉一台手机。它可以再用新的配对码加入。
+// id 放进参数 id 后传给 remoteMap。
 func (s *Service) RemoteRevoke(id string) (map[string]any, error) {
 	return s.remoteMap("remote.revoke", map[string]any{"id": id})
 }

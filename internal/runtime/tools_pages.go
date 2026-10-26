@@ -13,6 +13,8 @@ import (
 )
 
 // readPage 在 Pages 为空时返回错误。Get 成功后把页面 JSON 标成 untrusted page。
+// id 作为第二参交给 Pages.Get。
+// spaceID 作为第一参交给 Pages.Get。
 func (t *WorkspaceTools) readPage(id, spaceID string) ToolResult {
 	if t == nil || t.Pages == nil {
 		return ToolResult{Err: fmt.Errorf("pages store unavailable")}
@@ -26,6 +28,7 @@ func (t *WorkspaceTools) readPage(id, spaceID string) ToolResult {
 }
 
 // listPages 在 Pages 为空时返回 []。query 非空则 Search，否则 List。
+// spaceID 在 query 去掉空白后非空时交给 Search，否则交给 List。
 func (t *WorkspaceTools) listPages(query, spaceID string) ToolResult {
 	if t == nil || t.Pages == nil {
 		return ToolResult{Content: "[]"}
@@ -41,6 +44,7 @@ func (t *WorkspaceTools) listPages(query, spaceID string) ToolResult {
 }
 
 // reviewPage 要求 title 和 content 都非空白。能力请求的级别是 WriteWorkspace，动作是 review_page，ForceAsk 为假。Propose 成功后若有 Inbox 就推一条提案，并返回 awaiting page review。
+// args 读取 title、content、space_id、id、parent_id 和 expected_revision；title 或 content 去掉空白后为空则返回错误。
 func (t *WorkspaceTools) reviewPage(args map[string]any) ToolResult {
 	if t == nil || t.Pages == nil {
 		return ToolResult{Err: fmt.Errorf("pages store unavailable")}
@@ -92,6 +96,8 @@ func (t *WorkspaceTools) reviewPage(args map[string]any) ToolResult {
 }
 
 // PageInject 把标题和正文标成不可信来源。两者都空则返回空串。再用 capRunes 按 budget 截断。
+// title 去掉空白；和 body 都空时返回空串，否则写进 Current page 那一行。
+// body 去掉空白；和 title 都空时返回空串，否则接在标题后面。
 func PageInject(title, body string, budget int) string {
 	title = strings.TrimSpace(title)
 	body = strings.TrimSpace(body)

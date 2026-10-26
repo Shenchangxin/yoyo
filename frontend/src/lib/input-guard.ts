@@ -15,19 +15,19 @@ export type PasteStamp = {
   signature: string;
 };
 
-/** pasteSignature 文件个数和文本拼成签名。 */
+/** pasteSignature 文件个数和文本拼成签名。text 拼进字符串。fileCount 拼进字符串。 */
 export function pasteSignature(text: string, fileCount: number): string {
   return `${fileCount}:${text}`;
 }
 
-/** isDuplicateStamp 同一目标、同一签名，且时间差落在窗口内。没有上一次，或时间倒退，则不是重复。 */
+/** isDuplicateStamp 同一目标、同一签名，且时间差落在窗口内。没有上一次，或时间倒退，则不是重复。prev 为假时返回假。next 读取 at、target、signature。windowMs 小于 dt。 */
 export function isDuplicateStamp(prev: PasteStamp | null, next: PasteStamp, windowMs = DUPLICATE_PASTE_MS): boolean {
   if (!prev) return false;
   const dt = next.at - prev.at;
   return prev.target === next.target && prev.signature === next.signature && dt >= 0 && dt < windowMs;
 }
 
-/** shouldSkipProgrammaticInsert 插入文本与上次粘贴相同，时间差在 DUPLICATE_INSERT_MS 内，且光标前已经是这段文本。 */
+/** shouldSkipProgrammaticInsert 插入文本与上次粘贴相同，时间差在 DUPLICATE_INSERT_MS 内，且光标前已经是这段文本。opts 读取 inserted、elapsedMs、lastPasteText、caret、fieldValue。 */
 export function shouldSkipProgrammaticInsert(opts: {
   inserted: string;
   fieldValue: string;
@@ -54,7 +54,10 @@ const SKIP_INPUT_TYPES = new Set([
   "image",
 ]);
 
-/** isEditableTarget 可写的输入框、文本域，或 contentEditable。按钮、选择、文件、范围、颜色、隐藏和图片类型排除。只读和禁用排除。 */
+/**
+ * isEditableTarget 可写的输入框、文本域，或 contentEditable。按钮、选择、文件、范围、颜色、隐藏和图片类型排除。只读和禁用排除。
+ * target 用 instanceof 看是不是 HTMLElement，读取 type、readOnly、disabled、isContentEditable。
+ */
 export function isEditableTarget(target: EventTarget | null): target is HTMLElement {
   if (!(target instanceof HTMLElement)) return false;
   if (target instanceof HTMLInputElement) {
@@ -67,7 +70,7 @@ export function isEditableTarget(target: EventTarget | null): target is HTMLElem
 
 type TextField = HTMLInputElement | HTMLTextAreaElement;
 
-/** 是文本输入或文本域。 */
+/** 是文本输入或文本域。el 用 instanceof 看是不是 HTMLInputElement。 */
 function isTextField(el: Element | null): el is TextField {
   return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
 }
@@ -83,7 +86,13 @@ export function installInputGuards(): void {
   let lastBeforePaste: PasteStamp | null = null;
   let lastCommitted = { at: 0, text: "" };
 
-  /** 同一槽位、同一目标、同一签名且落在窗口内则拦下。否则记下这次签名和正文。 */
+  /**
+   * 同一槽位、同一目标、同一签名且落在窗口内则拦下。否则记下这次签名和正文。
+   * e 读取 target，调用 preventDefault，调用 stopImmediatePropagation。
+   * text 传给 pasteSignature，写入字段 text。
+   * files 传给 pasteSignature。
+   * slot 与 paste 比较是否相等。
+   */
   const remember = (e: Event, text: string, files: number, slot: "paste" | "before") => {
     const stamp: PasteStamp = {
       at: performance.now(),

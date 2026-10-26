@@ -75,6 +75,7 @@ func RemoveWorktree(src, dest string) {
 }
 
 // gitWorktree 先确认 src 在 git 工作树里，再执行 git worktree add --detach。
+// dst 作为 git worktree add --detach 的目标路径传给 gitCmd。
 func gitWorktree(src, dst string) error {
 	cmd := gitCmd("-C", src, "rev-parse", "--is-inside-work-tree")
 	if err := cmd.Run(); err != nil {
@@ -124,6 +125,8 @@ func gitApply(origin, dest string) error {
 }
 
 // copyTree 用 filepath.Walk 复制文件。目录名在 skipDirNames 里且不是源根时跳过。文件按原模式覆盖写入。
+// src 交给 filepath.Walk；目录名在 skipDirNames 里且当前路径不是 src 时跳过该目录。
+// dst 和 Walk 得到的相对路径拼成写入目标。
 func copyTree(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

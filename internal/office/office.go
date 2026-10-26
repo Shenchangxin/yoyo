@@ -40,6 +40,7 @@ type CreateReq struct {
 // Create 按 path 的扩展名改写 Kind，再编码并原子替换文件。
 // 扩展名是 .docx、.xlsx、.pptx、.pdf 时覆盖 Kind。编码失败则不写文件。
 // 父目录权限 0o755。先写 path.tmp，权限 0o644，再改成 path。
+// req 的 Kind 在扩展名是 .docx、.xlsx、.pptx、.pdf 时被改写，再传给 encodeDocx、encodeXlsx、encodePptx 或 encodePDF。
 func Create(path string, req CreateReq) error {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".docx":
@@ -80,6 +81,7 @@ func Create(path string, req CreateReq) error {
 
 // Query 把文档收成文本。xlsx 是每格一行，格式为地址=值。docx、pptx、pdf 分别走对应的读取函数。
 // 其他扩展名返回错误，文案说明这不是办公文档。没有扩展名时错误里的类型写成 unknown。
+// path 用来取扩展名。xlsx 传给 ReadXlsx，docx 传给 readDocxText，pptx 传给 readPptxText，pdf 传给 readPDFText。
 func Query(path string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
@@ -108,6 +110,7 @@ func Query(path string) (string, error) {
 }
 
 // splitSlides 按空行切开文本。一段都没有时返回只含原文的切片。
+// text 按空行切开，每段去掉空白，空段丢掉。一段都没有时返回只含原文的切片。
 func splitSlides(text string) []string {
 	parts := strings.Split(text, "\n\n")
 	var out []string
@@ -124,6 +127,8 @@ func splitSlides(text string) []string {
 }
 
 // cellAddr 把 1 起始的列和行收成 A1 这种地址。列号按 26 进制，A 是 1。
+// col 大于 0 时按 26 进制收成字母，A 对应 1。不大于 0 时没有列字母。
+// row 用 strconv.Itoa 接在列字母后面。
 func cellAddr(col, row int) string {
 	s := ""
 	for col > 0 {
@@ -135,6 +140,7 @@ func cellAddr(col, row int) string {
 }
 
 // zipw 把名字到正文的映射打成 zip。映射的遍历顺序不稳定。
+// files 的每个名字用 zip.Create，正文转成字节写入。
 func zipw(files map[string]string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -161,6 +167,7 @@ func xmlEsc(s string) string {
 }
 
 // encodeDocx 生成一份只含正文部件的 docx。标题为空时用 Document。标题加粗，每个标题行用 Heading1，正文按换行分段。
+// req 的 Title 为空时用 Document。Headings 各成一段 Heading1，Body 按换行分段。
 func encodeDocx(req CreateReq) ([]byte, error) {
 	title := req.Title
 	if title == "" {
@@ -193,6 +200,7 @@ func encodeDocx(req CreateReq) ([]byte, error) {
 
 // encodeXlsx 生成只含 Sheet1 的 xlsx。Rows 为空时用一行标题，再把 Body 按制表符拆成第二行。
 // 以 = 开头的格子写成公式，能按十进制浮点解析且非空的写成数字，其余写成内联字符串。
+// req 的 Rows 为空时用一行 Title，再把 Body 按制表符拆成第二行。
 func encodeXlsx(req CreateReq) ([]byte, error) {
 	rows := req.Rows
 	if len(rows) == 0 {
@@ -241,6 +249,7 @@ func encodeXlsx(req CreateReq) ([]byte, error) {
 
 // encodePptx 生成演示文稿。Slides 为空时依次放入非空的标题、正文和 Headings。最后仍为空则用一页 Slide。
 // 幻灯片 id 从 256 起，即 255 加页码，页码从 1 计。
+// req 的 Slides 为空时依次放入非空的 Title、Body 和全部 Headings。最后仍为空则用一页 Slide。每一页传给 slideXML。
 func encodePptx(req CreateReq) ([]byte, error) {
 	slides := req.Slides
 	if len(slides) == 0 {
@@ -324,6 +333,7 @@ func presentationRels(n int) string {
 }
 
 // slideXML 生成一页，正文放在名为 Title 的文本框里。
+// text 经 xmlEsc 放进名为 Title 的文本框。
 func slideXML(text string) string {
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">

@@ -14,12 +14,15 @@ import (
 func keychainAvailable() bool { return true }
 
 // keychainSet 执行 security add-generic-password。-w 传入明文，-U 表示已存在则更新。命令失败时返回该错误。
+// name 接在服务名 yoyo.vault. 后面。
+// value 作为 -w 的参数。
 func keychainSet(name, value string) error {
 	cmd := exec.Command("security", "add-generic-password", "-a", "yoyo", "-s", "yoyo.vault."+name, "-w", value, "-U")
 	return cmd.Run()
 }
 
 // keychainGet 执行 security find-generic-password -w，对标准输出做 TrimSpace。命令失败时返回空串和该错误。
+// name 接在服务名 yoyo.vault. 后面。
 func keychainGet(name string) (string, error) {
 	out, err := exec.Command("security", "find-generic-password", "-a", "yoyo", "-s", "yoyo.vault."+name, "-w").Output()
 	if err != nil {
@@ -29,6 +32,7 @@ func keychainGet(name string) (string, error) {
 }
 
 // keychainDelete 执行 security delete-generic-password，账户和服务名与写入时相同。
+// name 接在服务名 yoyo.vault. 后面。
 func keychainDelete(name string) error {
 	return exec.Command("security", "delete-generic-password", "-a", "yoyo", "-s", "yoyo.vault."+name).Run()
 }

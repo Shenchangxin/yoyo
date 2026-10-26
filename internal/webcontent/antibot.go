@@ -10,6 +10,7 @@ import (
 // LooksAntibot 判断正文是不是高置信度的拦截页。只检查前 4000 个 rune 的小写文本。
 // 同时含 warning: 和 requiring captcha 为真。同时含 just a moment 以及 cloudflare、cf- 或 challenge 为真。
 // 含 attention required! | cloudflare、/cdn-cgi/challenge-platform/，或 enable javascript and cookies to continue 也为真。
+// body 多于 4000 个 rune 时只检查前 4000 个。转成小写后查找 warning:、requiring captcha、just a moment、cloudflare、cf-、challenge、attention required! | cloudflare、/cdn-cgi/challenge-platform/、enable javascript and cookies to continue。
 func LooksAntibot(body string) bool {
 	sample := body
 	if utf8.RuneCountInString(sample) > 4000 {

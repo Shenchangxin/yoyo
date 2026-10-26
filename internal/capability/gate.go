@@ -43,6 +43,8 @@ func (g *Gate) SetOnOffer(fn func(Offer)) {
 }
 
 // Ask 调用 AskOffer，丢掉 Offer，只返回决定和错误。
+// ctx 交给 AskOffer。
+// req 交给 AskOffer。
 func (g *Gate) Ask(ctx context.Context, req Request) (Decision, error) {
 	d, _, err := g.AskOffer(ctx, req)
 	return d, err
@@ -50,6 +52,7 @@ func (g *Gate) Ask(ctx context.Context, req Request) (Decision, error) {
 
 // AskOffer 登记一条待决审批并阻塞。ctx 为 nil 时用 context.Background。id 由 newOfferID 生成。
 // 登记后先放开锁，再调用 onOffer。Resolve 送来决定则返回该决定；ctx 取消时从待决表删除，并返回 Deny、这份 Offer 和 ctx.Err()。
+// req 放进 Offer 的 Request。
 func (g *Gate) AskOffer(ctx context.Context, req Request) (Decision, Offer, error) {
 	if ctx == nil {
 		ctx = context.Background()

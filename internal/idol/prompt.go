@@ -10,6 +10,8 @@ import (
 )
 
 // formatInstructions 写出标签格式。口语和字幕相同时只用一种语言标签；不同时每段口语后面紧跟字幕。用户要办事时先写 work 标签，要照片时可以先写 photo 标签。
+// spoken 交给 lang。与 sub 相同时格式里只用这一种标签。
+// sub 交给 lang。与 spoken 不同时写进口语后面的字幕标签。
 func formatInstructions(spoken, sub string) string {
 	spoken = lang(spoken)
 	sub = lang(sub)
@@ -27,6 +29,13 @@ func formatInstructions(spoken, sub string) string {
 }
 
 // buildPrompt 拼出一轮要发给 Brain 的消息。系统消息依次是人设、用户卡片、当轮时间和好感；中间回放最近 12 条记录。最后一条是用户这句话。
+// st 的 User 用来取时区、称呼、性别和生日。Lore 传给 retrieve。也和 idol 一起传给 formatMemories。
+// idol 的 Name 为空时写成「偶像」。Intro、Sheet、SpokenLang、SubtitleLang 写进人设，并传给 replay、formatMemories 和 retrieve。
+// con 的 Records 交给 tailRecords，第二个参数是 12。
+// userText 作为最后一条 user 消息，并传给 retrieve。
+// call 为真时在动态系统消息里写上通话那句。
+// aff 的 Tier 传给 Feeling。等于 TierCold 时再写上发不了照片。
+// now 换到 st.User 的时区后格式化成 2006-01-02 15:04，并传给 BirthdayToday。
 func buildPrompt(st *State, idol Idol, con Conversation, userText string, call bool, aff Affinity, now time.Time) []Msg {
 	nowLine := now.In(st.User.Location()).Format("2006-01-02 15:04")
 	var stable strings.Builder
@@ -109,6 +118,8 @@ func buildPrompt(st *State, idol Idol, con Conversation, userText string, call b
 }
 
 // replay 把一条记录的分段套回语言标签，供下一轮当助手消息回放。
+// idol 的 SpokenLang 和 SubtitleLang 交给 lang，作为标签名。
+// rec 的 Segments 逐段写成标签。两种语言相同时只写口语标签。
 func replay(idol Idol, rec Record) string {
 	spoken := lang(idol.SpokenLang)
 	sub := lang(idol.SubtitleLang)
@@ -124,6 +135,7 @@ func replay(idol Idol, rec Record) string {
 }
 
 // tailRecords 返回最后 n 条记录。不足 n 条时原样返回。
+// in 的长度小于等于 n 时原样返回，否则返回最后 n 条。
 func tailRecords(in []Record, n int) []Record {
 	if len(in) <= n {
 		return in
@@ -132,6 +144,8 @@ func tailRecords(in []Record, n int) []Record {
 }
 
 // judgePrompt 拼出裁决用的用户消息。要求只输出 JSON，并写上当前好感档位和用户原话。
+// userText 写在「用户说：」后面。
+// tier 写在「当前好感档位是」后面。
 func judgePrompt(userText, tier string) string {
 	return fmt.Sprintf(`只输出 JSON，不要解释。根据用户对偶像说的这句话判断：
 {"affinity":0,"out_of_line":false,"photo":false,"work":false,"emotion":"calm","memory":""}

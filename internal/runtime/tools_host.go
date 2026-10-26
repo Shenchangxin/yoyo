@@ -130,6 +130,7 @@ func init() {
 		if msg == "" {
 			return ToolResult{Err: fmt.Errorf("empty commit message")}
 		}
+		// add -A 暂存工作区里全部改动，包括这次任务没碰过的脏文件。失败就不再 commit。
 		if res := t.git([]string{"add", "-A"}, true); res.Err != nil {
 			return res
 		}
@@ -421,6 +422,7 @@ func specJSON(s artifact.ToolSpec) ToolJSON {
 }
 
 // HostAnn 从 HostSpecMap 取该名字的注解。没有则返回空注解。
+// name 用来查 HostSpecMap；没有则返回空注解。
 func HostAnn(name string) tool.Annotations {
 	if s, ok := tool.HostSpecMap()[name]; ok {
 		return tool.AnnFromSpec(s)

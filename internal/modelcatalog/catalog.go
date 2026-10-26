@@ -104,12 +104,14 @@ func catalogURL() string {
 }
 
 // Install 存一份目录的副本，供 WindowFor 和 OutputFor 读取。
+// c 先复制，再把副本的指针交给 live.Store。
 func Install(c Catalog) {
 	cp := c
 	live.Store(&cp)
 }
 
 // WindowFor 从已安装的目录返回模型的上下文长度。还没有目录时返回 0。
+// model 在已安装目录非 nil 时传给目录的 WindowFor。目录为 nil 时返回 0。
 func WindowFor(model string) int {
 	c := live.Load()
 	if c == nil {
@@ -119,6 +121,7 @@ func WindowFor(model string) int {
 }
 
 // WindowFor 返回该模型的 ContextWindow。没有条目或长度不是正数时返回 0。
+// model 传给 lookup。没有条目或 ContextWindow 小于等于 0 时返回 0。
 func (c Catalog) WindowFor(model string) int {
 	e := c.lookup(model)
 	if e == nil || e.Model.ContextWindow <= 0 {
@@ -129,6 +132,7 @@ func (c Catalog) WindowFor(model string) int {
 
 // OutputFor 从已安装的目录返回该模型写明的输出 token 上限，未知时返回 0。
 // 调用方对 0 保留供应商默认值，所以未知模型不会被发一个可能被拒绝的上限。
+// model 在已安装目录非 nil 时传给目录的 OutputFor。目录为 nil 时返回 0。
 func OutputFor(model string) int {
 	c := live.Load()
 	if c == nil {
@@ -138,6 +142,7 @@ func OutputFor(model string) int {
 }
 
 // OutputFor 返回该模型的 MaxTokens。没有条目或上限不是正数时返回 0。
+// model 传给 lookup。没有条目或 MaxTokens 小于等于 0 时返回 0。
 func (c Catalog) OutputFor(model string) int {
 	e := c.lookup(model)
 	if e == nil || e.Model.MaxTokens <= 0 {
@@ -148,6 +153,7 @@ func (c Catalog) OutputFor(model string) int {
 
 // lookup 按模型 id 找条目。候选依次是原 id、最后一个斜杠后面的一段，以及各自去掉末尾 -\d{8} 的形式。
 // 每个候选先按映射键精确匹配，再按大小写不敏感匹配。都没有时返回 nil。
+// model 去掉空白。为空或 Providers 为 nil 时返回 nil。否则作为候选，并可能加上最后一个斜杠后的一段，以及去掉末尾日期后缀的形式。
 func (c Catalog) lookup(model string) *Entry {
 	id := strings.TrimSpace(model)
 	if id == "" || c.Providers == nil {
@@ -214,6 +220,9 @@ func Load(cacheDir string, refresh bool) (Catalog, error) {
 }
 
 // staleOrErr 在没有上一份目录时返回空目录和原错误。有上一份时把 Stale 设为真，Install 之后返回它和 nil。
+// previous 在 hasPrev 为真时把 Stale 设为 true，传给 Install，并作为返回值。
+// hasPrev 为假时返回空目录和 err。为真时不返回 err。
+// err 在 hasPrev 为假时原样返回。
 func staleOrErr(previous Catalog, hasPrev bool, err error) (Catalog, error) {
 	if !hasPrev {
 		return Catalog{}, err
@@ -236,6 +245,7 @@ func cacheFresh(c Catalog) bool {
 }
 
 // readCache 读取缓存文件。读失败、JSON 失败或 Providers 为空时返回假。成功时把 Stale 设为假。
+// path 交给 os.ReadFile。读失败、JSON 失败或 Providers 为空时返回 false。
 func readCache(path string) (Catalog, bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -290,6 +300,7 @@ type apiCost struct {
 
 // Parse 把 models.dev 的 JSON 收成 Catalog。Version 是 CatalogVer，Source 是 models.dev。
 // 没有任何映到的来源时返回 models.dev: no mapped providers。
+// raw 传给 decodeOrigins。
 func Parse(raw []byte) (Catalog, error) {
 	origins, err := decodeOrigins(raw)
 	if err != nil {
@@ -329,6 +340,7 @@ func Parse(raw []byte) (Catalog, error) {
 
 // decodeOrigins 读取来源表。顶层对象能解出并且不是只含一个 providers 键时，就把它当来源表。
 // 否则再按 {"providers": ...} 解。包一层的结果为空时返回 models.dev: empty catalog。
+// raw 交给 json.Unmarshal。先按顶层来源表解，不行再按带 providers 的包装解。
 func decodeOrigins(raw []byte) (map[string]apiProvider, error) {
 	var origins map[string]apiProvider
 	if err := json.Unmarshal(raw, &origins); err == nil && len(origins) > 0 {
@@ -351,6 +363,7 @@ func decodeOrigins(raw []byte) (map[string]apiProvider, error) {
 // convertModel 把一条来源模型收成 Entry。id 为空时用映射键。keepModel 拒绝时返回假。
 // 名字为空时用 id。family 为空或与 id 只是大小写不同时改用 FamilyOf。输入模态经 filterInput。
 // 价格四个字段全是 0 或 Cost 为 nil 时不填 Cost。
+// key 在来源模型的 ID 去掉空白后为空时，去掉空白后当作 id。
 func convertModel(key string, am apiModel) (Entry, bool) {
 	id := strings.TrimSpace(am.ID)
 	if id == "" {
@@ -395,6 +408,7 @@ func convertModel(key string, am apiModel) (Entry, bool) {
 }
 
 // keepModel 在上下文长度大于 0 时保留。否则输出模态里要有 text 或 image 才保留。
+// am 的 Limit.Context 大于 0 时返回 true。否则看 Modalities.Output 去掉空白并转成小写后是否为 text 或 image。
 func keepModel(am apiModel) bool {
 	if am.Limit.Context > 0 {
 		return true
@@ -412,6 +426,7 @@ func keepModel(am apiModel) bool {
 }
 
 // filterInput 只留下 text 和 image，转成小写并去重，顺序与第一次出现相同。
+// in 逐项去掉空白并转成小写，只留下 text 和 image，并按第一次出现去重。
 func filterInput(in []string) []string {
 	var out []string
 	seen := map[string]bool{}

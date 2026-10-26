@@ -27,6 +27,7 @@ type xlsxCell struct {
 
 // ReadXlsx 读取第一张名为 worksheets/sheet1.xml 的工作表。找不到时返回 office: no sheet1。
 // 有内联字符串时用它。有公式时值写成等号加公式。地址为空的格子不放入结果。
+// path 用 zip.OpenReader 打开，找以 worksheets/sheet1.xml 结尾的成员。
 func ReadXlsx(path string) (map[string]string, error) {
 	r, err := zip.OpenReader(path)
 	if err != nil {
@@ -82,6 +83,7 @@ func ReadXlsx(path string) (map[string]string, error) {
 
 // EvaluateXlsx 先 ReadXlsx，再把公式算成 float64。地址在计算时转成大写。
 // 非公式且能解析成浮点的格子先放进数值表。公式按映射顺序计算，某个公式失败则整次返回错误。
+// path 传给 ReadXlsx。
 func EvaluateXlsx(path string) (map[string]float64, error) {
 	cells, err := ReadXlsx(path)
 	if err != nil {
@@ -116,6 +118,9 @@ var cellRe = regexp.MustCompile(`[A-Z]+\d+`)
 // SUM 支持冒号区域和逗号列表。AVERAGE 只按逗号拆，空列表返回 empty average。
 // 纯数字直接解析。没有加减乘除且整段像单元格时走 cellNum。
 // 四则运算只在第一个运算符处切开，除以 0 返回 div0。无法识别时返回 unsupported formula。
+// expr 去掉空白并转成大写。以 SUM( 开头且以 ) 结尾时按冒号或逗号计算。以 AVERAGE( 开头且以 ) 结尾时按逗号计算。能 ParseFloat 时直接返回。没有 +-*/ 且整段匹配 cellRe 时传给 cellNum。否则用 splitBin 切开后对左右两边递归，并把 raw、vals 传下去。
+// raw 传给 cellNum，递归时也传下去。
+// vals 传给 cellNum，递归时也传下去。
 func evalFormula(expr string, raw map[string]string, vals map[string]float64) (float64, error) {
 	expr = strings.TrimSpace(strings.ToUpper(expr))
 	if strings.HasPrefix(expr, "SUM(") && strings.HasSuffix(expr, ")") {
@@ -194,6 +199,7 @@ func evalFormula(expr string, raw map[string]string, vals map[string]float64) (f
 }
 
 // splitBin 在第一个 +、-、* 或 / 处切开。运算符在开头时返回假，避免把负号当成二元运算。
+// expr 在第一个下标大于 0 的 +、-、* 或 / 处切开。都没有时返回假。
 func splitBin(expr string) (string, string, string, bool) {
 	for _, op := range []string{"+", "-", "*", "/"} {
 		i := strings.Index(expr, op)
@@ -206,6 +212,8 @@ func splitBin(expr string) (string, string, string, bool) {
 
 // cellNum 读取一个单元格的数值。地址转成大写。已有数值直接用。
 // 值以等号开头时递归 evalFormula，并把结果写回 vals。不能解析成浮点时返回 cell 加地址 not numeric。
+// addr 去掉空白并转成大写，用作 vals 和 raw 的键。
+// raw 按该地址取值。以 = 开头时去掉等号后传给 evalFormula，否则用 ParseFloat。
 func cellNum(addr string, raw map[string]string, vals map[string]float64) (float64, error) {
 	addr = strings.ToUpper(strings.TrimSpace(addr))
 	if n, ok := vals[addr]; ok {
@@ -229,6 +237,7 @@ func cellNum(addr string, raw map[string]string, vals map[string]float64) (float
 }
 
 // expandRange 展开两个地址之间的矩形，列和行都会先排成从小到大。地址由 splitAddr 解析。
+// b 传给 splitAddr，和 a 一起决定列、行的较小端和较大端。
 func expandRange(a, b string) []string {
 	c1, r1 := splitAddr(a)
 	c2, r2 := splitAddr(b)
@@ -260,11 +269,13 @@ func splitAddr(s string) (col, row int) {
 }
 
 // readDocxText 抽出 word/document.xml 里的文本。
+// path 传给 zipXMLText，成员名是 word/document.xml。
 func readDocxText(path string) (string, error) {
 	return zipXMLText(path, "word/document.xml")
 }
 
 // readPptxText 把 ppt/slides/slide 下每个 xml 的文本拼起来，页与页之间空一行。
+// path 用 zip.OpenReader 打开。
 func readPptxText(path string) (string, error) {
 	r, err := zip.OpenReader(path)
 	if err != nil {
@@ -289,6 +300,7 @@ func readPptxText(path string) (string, error) {
 }
 
 // zipXMLText 打开 zip 里名字完全等于 name 的成员，并去掉标签。没有这个成员时返回 os.ErrNotExist。
+// path 用 zip.OpenReader 打开。
 func zipXMLText(path, name string) (string, error) {
 	r, err := zip.OpenReader(path)
 	if err != nil {
@@ -334,6 +346,7 @@ func stripXMLText(s string) string {
 }
 
 // SlideCount 用 readPptxText 的结果按空行计数，空段不计。读取失败时返回 0 和该错误。
+// path 传给 readPptxText。
 func SlideCount(path string) (int, error) {
 	text, err := readPptxText(path)
 	if err != nil {

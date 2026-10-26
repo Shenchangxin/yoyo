@@ -262,12 +262,12 @@ export const STYLE_COVER_SEEDS: Record<string, StyleCoverSeed> = {
   fadegrain: { a: "#1c1410", b: "#8a7060", c: "#e0d0b8", mark: "FADE", motif: "film" },
 };
 
-/** 转义要写进 SVG 文本的字符。 */
+/** 转义要写进 SVG 文本的字符。value 把 &、<、>、引号换成实体。 */
 function escapeXml(value: string) {
-  return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[ch] || ch));
+  return value.replace(/[&<>"']/g, /** ch 换成对应实体，不在表里就原样返回。 */ (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[ch] || ch));
 }
 
-/** 用风格值的字符算出一组色板和纹样。 */
+/** 用风格值的字符算出一组色板和纹样。key 用每个字符的编码滚动哈希，取色相、角标前 10 个字符和纹样。 */
 function hashPalette(key: string): StyleCoverSeed {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
@@ -282,7 +282,7 @@ function hashPalette(key: string): StyleCoverSeed {
   };
 }
 
-/** dramaStylePoster 返回一张 SVG data URL。角标最多 18 个字符。 */
+/** dramaStylePoster 返回一张 SVG data URL。角标最多 18 个字符。value 去掉空白后当风格键，空的用 cover。label 有内容时当角标，否则用色板的 mark 或键，最多 18 个字符。 */
 export function dramaStylePoster(value: string, label = "") {
   const key = String(value || "").trim() || "cover";
   const seed = STYLE_COVER_SEEDS[key] || hashPalette(key);

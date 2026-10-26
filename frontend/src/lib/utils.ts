@@ -6,7 +6,7 @@ import { twMerge } from "tailwind-merge";
  * 不拥有：具体组件的样式。
  */
 
-/** cn 合并类名。 */
+/** cn 合并类名。inputs 传给 clsx。 */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

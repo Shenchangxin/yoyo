@@ -145,7 +145,7 @@ const mistOver: TokenMap = {
   "--ctx-system": "color-mix(in srgb, var(--foreground) 22%, #7a8aa0)",
 };
 
-/** 以一套完整调色为底，盖上少量覆盖项。 */
+/** 以一套完整调色为底，盖上少量覆盖项。base 展开传递。over 展开传递。 */
 function merge(base: TokenMap, over: TokenMap): TokenMap {
   return { ...base, ...over };
 }
@@ -160,12 +160,12 @@ export const BUILTIN_PALETTES: Record<BuiltinPaletteId, TokenMap> = {
   mist: merge(neutral, mistOver),
 };
 
-/** builtinTokens 拷贝一套内置调色，避免调用方改到共享表。 */
+/** builtinTokens 拷贝一套内置调色，避免调用方改到共享表。id 用作下标。 */
 export function builtinTokens(id: BuiltinPaletteId): TokenMap {
   return { ...BUILTIN_PALETTES[id] };
 }
 
-/** windowRGBFromTokens 从 --background 的十六进制色取出窗口 RGB。不是 # 开头或长度不够时返回空。 */
+/** windowRGBFromTokens 从 --background 的十六进制色取出窗口 RGB。不是 # 开头或长度不够时返回空。tokens 按下标读取。 */
 export function windowRGBFromTokens(tokens: TokenMap): [number, number, number] | null {
   const hex = tokens["--background"];
   if (!hex || !hex.startsWith("#")) return null;

@@ -73,6 +73,7 @@ func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	out := copyMessages(msgs)
 	per := opts.Loop.ToolResultBudget
 	if per <= 0 {
+		// 单条工具结果没给预算时用 8000。这是投影截断，不是聊天规则前缀的 1600。
 		per = 8_000
 	}
 	if n := applyBudget(out, per, opts.Spill); n > 0 {
@@ -86,6 +87,7 @@ func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		}
 	}
 	rep.Note = strings.Join(rep.Layers, "+")
+	// 只整理这份副本。调用方手里的消息和 JSONL 保持原样。
 	return Legalize(out), rep
 }
 
@@ -199,6 +201,7 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		keep = 24
 	}
 	if opts.Aggressive && keep > 8 {
+		// 溢出重试把保留的压缩条数收到 8。平时的 CompactionKeep 不走这里。
 		keep = 8
 	}
 	budget := effectiveBudget(opts)
@@ -207,6 +210,7 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		per = 8_000
 	}
 	if opts.Aggressive && per > 1_500 {
+		// 同一次重试把单条工具结果收到 1500。写操作参数仍不换成占位。
 		per = 1_500
 	}
 	microKeep := loop.MicroKeep

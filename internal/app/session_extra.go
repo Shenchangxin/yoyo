@@ -22,6 +22,7 @@ import (
 )
 
 // bundledSkillsDir 由评测目录推出旁边的 skills 目录。评测路径为空时返回 skills。
+// evals 为空时返回 skills，否则取其目录旁边的 skills。
 func bundledSkillsDir(evals string) string {
 	if evals == "" {
 		return "skills"
@@ -30,6 +31,7 @@ func bundledSkillsDir(evals string) string {
 }
 
 // toRuntimeAtts 把本包附件转成 runtime 附件。
+// atts 逐项抄出 Path、Name、MIME 和 DataB64。
 func toRuntimeAtts(atts []Attachment) []runtime.Attachment {
 	out := make([]runtime.Attachment, 0, len(atts))
 	for _, a := range atts {
@@ -39,6 +41,7 @@ func toRuntimeAtts(atts []Attachment) []runtime.Attachment {
 }
 
 // fromRuntimeAtts 把 runtime 附件转回本包附件。
+// atts 逐项抄出 Path、Name、MIME 和 DataB64。
 func fromRuntimeAtts(atts []runtime.Attachment) []Attachment {
 	out := make([]Attachment, 0, len(atts))
 	for _, a := range atts {
@@ -48,6 +51,7 @@ func fromRuntimeAtts(atts []runtime.Attachment) []Attachment {
 }
 
 // attachmentMeta 抽出附件的路径、名字和 MIME，供用户事件保存。没有这些字段则跳过。
+// atts 长度为 0 时返回 nil，否则抄出非空的 path、name 和 mime。
 func attachmentMeta(atts []Attachment) []map[string]string {
 	if len(atts) == 0 {
 		return nil
@@ -76,6 +80,9 @@ func attachmentMeta(atts []Attachment) []map[string]string {
 }
 
 // prepareAttachments 把附件落到会话工具根，并在消息里盖上文件提及。没有附件则原样返回。
+// sessionID 传给 GetSession。
+// message 在没有附件时原样返回，否则传给 StampFileMentions。
+// atts 长度为 0 时原样返回，否则经 MaterializeAttachments 落到工具根。
 func (a *App) prepareAttachments(sessionID, message string, atts []Attachment) (string, []Attachment, error) {
 	if len(atts) == 0 {
 		return message, atts, nil
@@ -93,6 +100,7 @@ func (a *App) prepareAttachments(sessionID, message string, atts []Attachment) (
 }
 
 // DeleteSession 先删掉名字带任务前缀的子会话，再打断运行、清掉队列和 steer，并删除 meta、轨迹、上下文和工作区副本。
+// id 先 TrimSpace，空串则返回错误，否则用来删子会话、打断运行并清掉队列、steer、meta 和轨迹。
 func (a *App) DeleteSession(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -151,6 +159,7 @@ func (a *App) DeleteSession(id string) error {
 }
 
 // childSessionIDs 找出父 id 加任务前缀的子会话文件。
+// parent 先 TrimSpace，空串则返回 nil，否则作为 --task-- 前缀去匹配会话文件。
 func (a *App) childSessionIDs(parent string) []string {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {
@@ -182,6 +191,8 @@ func (a *App) childSessionIDs(parent string) []string {
 }
 
 // ArchiveSession 设置归档标记并保存。
+// id 传给 GetSession。
+// archived 写入 Archived。
 func (a *App) ArchiveSession(id string, archived bool) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -194,6 +205,8 @@ func (a *App) ArchiveSession(id string, archived bool) (SessionMeta, error) {
 }
 
 // PinSession 设置置顶标记并保存。
+// id 传给 GetSession。
+// pinned 写入 Pinned。
 func (a *App) PinSession(id string, pinned bool) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -230,6 +243,8 @@ func (a *App) SweepExpiredSessions() int {
 }
 
 // SetSessionModel 把模型写成会话自己的模型和连接，再保存。
+// id 传给 GetSession。
+// model 传给 splitSessionModel，模型名写入 Model，连接 id 非空时写入 ConnectionID。
 func (a *App) SetSessionModel(id, model string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -247,6 +262,8 @@ func (a *App) SetSessionModel(id, model string) (SessionMeta, error) {
 }
 
 // SetSessionAuthMode 解析授权模式，写进能力代理和 meta。
+// id 传给 GetSession 和 applySessionAuth。
+// mode 经 ParseAuthMode 后写入 AuthMode，并传给 applySessionAuth。
 func (a *App) SetSessionAuthMode(id, mode string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -262,6 +279,8 @@ func (a *App) SetSessionAuthMode(id, mode string) (SessionMeta, error) {
 }
 
 // SetSessionWorkspace 在回合没在跑时改项目根。Isolate 为真时丢掉旧副本再建一份新的工作区副本。目录不存在则失败。
+// id 传给 GetSession 和 Running，Isolate 为真时再传给 EnsureSessionWorktree。
+// workspace 先 TrimSpace 再 Clean，WorkspaceReady 为假则返回错误，否则写入 Workspace 和 OriginWorkspace。
 func (a *App) SetSessionWorkspace(id, workspace string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -298,6 +317,7 @@ func (a *App) SetSessionWorkspace(id, workspace string) (SessionMeta, error) {
 }
 
 // collectSkills 合并工作区技能目录和当前 harness 里的技能。
+// workspace 去掉首尾空白后，WorkspaceReady 为假时改用 App.Workspace，再传给 skillRoots。
 func (a *App) collectSkills(workspace string) []artifact.Skill {
 	ws := strings.TrimSpace(workspace)
 	if !WorkspaceReady(ws) {
@@ -311,6 +331,7 @@ func (a *App) collectSkills(workspace string) []artifact.Skill {
 }
 
 // ListSkills 列出技能的名称、来源、图标和是否不完整。正文只留开头一段。
+// workspace 传给 collectSkills。
 func (a *App) ListSkills(workspace string) []map[string]string {
 	sk := a.collectSkills(workspace)
 	out := make([]map[string]string, 0, len(sk))
@@ -341,6 +362,8 @@ func (a *App) ListSkills(workspace string) []map[string]string {
 }
 
 // GetSkill 按名称、目录名或显示名找一个技能。找不到返回 nil。
+// workspace 传给 collectSkills。
+// name 先 TrimSpace，再和技能的 Name、目录名、DisplayName 比较。
 func (a *App) GetSkill(workspace, name string) map[string]string {
 	name = strings.TrimSpace(name)
 	for _, item := range a.collectSkills(workspace) {
@@ -368,6 +391,7 @@ func (a *App) GetSkill(workspace, name string) map[string]string {
 }
 
 // skillIcon 返回技能自带的图标，否则读目录里的图标文件并做成 data URL。
+// item 用来读 Icon 和 Dir；Icon 非空则返回，Dir 为空则返回空串，否则在目录里找图标文件。
 func skillIcon(item artifact.Skill) string {
 	if item.Icon != "" {
 		return item.Icon
@@ -401,6 +425,8 @@ func skillIcon(item artifact.Skill) string {
 }
 
 // SearchSessions 按标题、id、工作区或轨迹正文过滤。有索引时先用索引。默认跳过归档。
+// q 去掉首尾空白并转小写，空串则不过滤正文，否则用来匹配标题、id、工作区或轨迹文本。
+// includeArchived 为假时跳过已归档会话。
 func (a *App) SearchSessions(q string, includeArchived bool) ([]SessionMeta, error) {
 	list, err := a.ListSessions()
 	if err != nil {
@@ -447,6 +473,7 @@ func (a *App) SearchSessions(q string, includeArchived bool) ([]SessionMeta, err
 }
 
 // ResumeSession 按运行状态恢复该会话的授权模式和会话能力，不重新发送。
+// id 传给 GetSession、Load、ApplyAuthMode 和 RestoreSession。
 func (a *App) ResumeSession(id string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -467,6 +494,7 @@ func (a *App) ResumeSession(id string) (SessionMeta, error) {
 }
 
 // ExportSession 把标题、用户和已落定的助手正文导出成 Markdown。
+// id 传给 ReadTrace 和 GetSession。
 func (a *App) ExportSession(id string) (string, error) {
 	evs, err := a.ReadTrace(id)
 	if err != nil {
@@ -492,11 +520,14 @@ func (a *App) ExportSession(id string) (string, error) {
 }
 
 // CompactSession 按用户触发做检查点，不带焦点。
+// id 传给 CompactSessionFocus。
 func (a *App) CompactSession(id string) (string, error) {
 	return a.CompactSessionFocus(id, "")
 }
 
 // CompactSessionFocus 按焦点做检查点。焦点是回绕时先对齐用户原文，需要时再按时间点恢复文件，并向 Hub 发布检查点事件。
+// id 传给 ReadTrace、GetSession、BindSpill、CompactHistoryOpts、lookupEventTime 和 WriteDiscoverIndex，并写入 Hub 事件的 SessionID。
+// focus 写入 CompactOpts；去掉空白并转小写后以 from 开头，或 ParseRewindScope 得到的 from 非空时，改成回绕。
 func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 	evs, err := a.ReadTrace(id)
 	if err != nil {
@@ -646,6 +677,7 @@ func (a *App) JournalTail(limit int) map[string]any {
 }
 
 // ExportDiagnostics 把医生信息、日志、隔离状态和配置打成诊断包。
+// dest 写入 BundleOpts 的 Dest。
 func (a *App) ExportDiagnostics(dest string) (string, error) {
 	dir := ""
 	if a.Log != nil {
@@ -676,6 +708,8 @@ func (a *App) ExportDiagnostics(dest string) (string, error) {
 }
 
 // DiagnoseSession 取该会话的日志尾部，打码后写成注入事件并发布到 Hub。
+// sessionID 传给日志过滤，非空时写入轨迹事件的 SessionID。
+// limit 小于等于 0 时改成 80，再传给 Tail。
 func (a *App) DiagnoseSession(sessionID string, limit int) (string, error) {
 	if limit <= 0 {
 		limit = 80
@@ -723,6 +757,7 @@ func (a *App) persistMCP() {
 }
 
 // ReplaceMCP 停掉现有 MCP，再按列表用 HTTP 或命令重新启动，并保存。
+// servers 按 Name 启动；Name 为空则跳过，Endpoint 非空走 StartHTTP，否则 Command 非空时走 Start。
 func (a *App) ReplaceMCP(servers []MCPServerConfig) error {
 	for _, info := range a.MCP.Info() {
 		_ = a.MCP.Stop(info.Name)
@@ -749,6 +784,9 @@ func (a *App) ReplaceMCP(servers []MCPServerConfig) error {
 }
 
 // StartMCP 按命令启动一个 MCP，成功后保存配置。
+// name 传给 MCP.Start。
+// command 传给 MCP.Start。
+// args 传给 MCP.Start。
 func (a *App) StartMCP(name, command string, args []string) error {
 	if err := a.MCP.Start(name, command, args); err != nil {
 		diaglog.Error("mcp start failed", "component", "mcp", "name", name, "err", err)
@@ -760,6 +798,7 @@ func (a *App) StartMCP(name, command string, args []string) error {
 }
 
 // StopMCP 停掉一个 MCP，成功后保存配置。
+// name 传给 MCP.Stop。
 func (a *App) StopMCP(name string) error {
 	if err := a.MCP.Stop(name); err != nil {
 		diaglog.Error("mcp stop failed", "component", "mcp", "name", name, "err", err)

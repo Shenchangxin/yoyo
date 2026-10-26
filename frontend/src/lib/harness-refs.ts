@@ -32,14 +32,14 @@ export type HarnessNext = {
 
 const KNOWN = new Set(["active", "staging", "canary", "head", "HEAD"]);
 
-/** shortHash 去掉 blake3 或 sha256 前缀。长于 n 则截到 n。空哈希返回空串。 */
+/** shortHash 去掉 blake3 或 sha256 前缀。长于 n 则截到 n。空哈希返回空串。hash 转成字符串，做替换。 */
 export function shortHash(hash: string, n = 7): string {
   const s = str(hash).replace(/^(blake3:|sha256:)/i, "");
   if (!s) return "";
   return s.length > n ? s.slice(0, n) : s;
 }
 
-/** parseHarnessRefs 读出四个已知指针。active 没有时用 fallbackActive。其余非空指针放进 extra。 */
+/** parseHarnessRefs 读出四个已知指针。active 没有时用 fallbackActive。其余非空指针放进 extra。harness 传给 pick。 */
 export function parseHarnessRefs(harness: unknown, fallbackActive = ""): HarnessRefs {
   const raw = (pick(harness, "refs", "Refs") || {}) as Record<string, unknown>;
   const active = firstHash(raw, ["active", "Active"]) || str(pick(harness, "active", "Active"), fallbackActive);
@@ -55,17 +55,17 @@ export function parseHarnessRefs(harness: unknown, fallbackActive = ""): Harness
   return { active, staging, canary, head, extra };
 }
 
-/** stagingDirty staging 非空且不等于 active。 */
+/** stagingDirty staging 非空且不等于 active。refs 读取 staging、active。 */
 export function stagingDirty(refs: HarnessRefs): boolean {
   return !!refs.staging && refs.staging !== refs.active;
 }
 
-/** canaryDirty canary 非空且不等于 active。 */
+/** canaryDirty canary 非空且不等于 active。refs 读取 canary、active。 */
 export function canaryDirty(refs: HarnessRefs): boolean {
   return !!refs.canary && refs.canary !== refs.active;
 }
 
-/** readHarborMetrics 从报告的 metrics 里读出五项计数。报告不是对象时返回空。 */
+/** readHarborMetrics 从报告的 metrics 里读出五项计数。报告不是对象时返回空。report 判断是否为空，用 typeof 看类型，传给 pick。 */
 export function readHarborMetrics(report: unknown): HarborMetrics | null {
   if (report == null || typeof report !== "object") return null;
   const metrics = pick(report, "metrics", "Metrics") || {};
@@ -78,7 +78,11 @@ export function readHarborMetrics(report: unknown): HarborMetrics | null {
   };
 }
 
-/** harnessNext 安全失败则停在证明页并阻断。staging 或 canary 与 active 不同且闸门干净，则去晋升并检出。指针脏但闸门不干净则去证明并评测。已有指标则提议页空闲。否则提议页演化。 */
+/**
+ * harnessNext 安全失败则停在证明页并阻断。staging 或 canary 与 active 不同且闸门干净，则去晋升并检出。指针脏但闸门不干净则去证明并评测。已有指标则提议页空闲。否则提议页演化。
+ * refs 传给 stagingDirty，传给 canaryDirty。
+ * report 传给 readHarborMetrics。
+ */
 export function harnessNext(refs: HarnessRefs, report: unknown): HarnessNext {
   const metrics = readHarborMetrics(report);
   if (metrics && metrics.safetyFail > 0) return { tab: "prove", action: "blocked" };
@@ -91,14 +95,14 @@ export function harnessNext(refs: HarnessRefs, report: unknown): HarnessNext {
   return { tab: "propose", action: "evolve" };
 }
 
-/** 留入集有题且全过，留出集为空或全过，且没有安全失败。 */
+/** 留入集有题且全过，留出集为空或全过，且没有安全失败。m 读取 heldInTotal、heldInPass、heldOutTotal、heldOutPass、safetyFail。 */
 function gateClean(m: HarborMetrics): boolean {
   const inOk = m.heldInTotal > 0 && m.heldInPass === m.heldInTotal;
   const outOk = m.heldOutTotal === 0 || m.heldOutPass === m.heldOutTotal;
   return inOk && outOk && m.safetyFail === 0;
 }
 
-/** 按键名顺序取出第一个非空字符串。 */
+/** 按键名顺序取出第一个非空字符串。raw 按下标读取。keys 用来遍历。 */
 function firstHash(raw: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
     const v = str(raw[k]);
@@ -143,7 +147,7 @@ export type HarnessDirs = {
   archive: string;
 };
 
-/** parseMaterialChange 从松散形状读出一处变更。缺的字段成空串或假。 */
+/** parseMaterialChange 从松散形状读出一处变更。缺的字段成空串或假。v 用 pick 读取 surface、op、id、from、to、detail 等字段。 */
 export function parseMaterialChange(v: unknown): MaterialChange {
   return {
     surface: str(pick(v, "surface", "Surface")),
@@ -156,12 +160,12 @@ export function parseMaterialChange(v: unknown): MaterialChange {
   };
 }
 
-/** parseMaterialChanges 逐条解析，并丢掉表面、说明和操作都空的项。 */
+/** parseMaterialChanges 逐条解析，并丢掉表面、说明和操作都空的项。v 传给 asArray。 */
 export function parseMaterialChanges(v: unknown): MaterialChange[] {
   return asArray(v).map(parseMaterialChange).filter((c) => c.surface || c.detail || c.op);
 }
 
-/** parseLineageNode 从松散形状读出一个谱系节点。创建时间走 stamp。 */
+/** parseLineageNode 从松散形状读出一个谱系节点。创建时间走 stamp。v 用 pick 读取 hash、parent、id、note、model、created_at 等字段。 */
 export function parseLineageNode(v: unknown): LineageNode {
   return {
     hash: str(pick(v, "hash", "Hash")),
@@ -180,13 +184,13 @@ export function parseLineageNode(v: unknown): LineageNode {
   };
 }
 
-/** parseLineage 读 lineage，没有则读 nodes。丢掉没有哈希的节点。 */
+/** parseLineage 读 lineage，没有则读 nodes。丢掉没有哈希的节点。harness 传给 pick。 */
 export function parseLineage(harness: unknown): LineageNode[] {
   const raw = pick(harness, "lineage", "Lineage") ?? pick(harness, "nodes", "Nodes");
   return asArray(raw).map(parseLineageNode).filter((n) => n.hash);
 }
 
-/** parseHarnessDirs 从 dirs 里读出四条路径。 */
+/** parseHarnessDirs 从 dirs 里读出四条路径。harness 传给 pick。 */
 export function parseHarnessDirs(harness: unknown): HarnessDirs {
   const raw = pick(harness, "dirs", "Dirs") || {};
   return {
@@ -197,14 +201,14 @@ export function parseHarnessDirs(harness: unknown): HarnessDirs {
   };
 }
 
-/** formatStamp 把 T 换成空格。长度不少于 16 时截到 16，即到分钟。 */
+/** formatStamp 把 T 换成空格。长度不少于 16 时截到 16，即到分钟。iso 转成字符串，做替换。 */
 export function formatStamp(iso: string): string {
   const s = str(iso).replace("T", " ");
   if (s.length >= 16) return s.slice(0, 16);
   return s;
 }
 
-/** 字符串原样返回。有限数字当成毫秒时间戳转成 ISO。对象取 Time、time 或 Format。其余收成字符串。空值返回空串。 */
+/** 字符串原样返回。有限数字当成毫秒时间戳转成 ISO。对象取 Time、time 或 Format。其余收成字符串。空值返回空串。v 为 null 时返回 空字符串，其余分支还看别的条件；转成字符串，判断是否为空，用 typeof 看类型，传给 Number.isFinite，传给 Date。 */
 function stamp(v: unknown): string {
   if (v == null) return "";
   if (typeof v === "string") return v;

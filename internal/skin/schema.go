@@ -120,18 +120,21 @@ var specByName = func() map[string]Spec {
 }()
 
 // Lookup 按名字返回 Spec。不在表里时返回假。
+// name 作为 specByName 的键。
 func Lookup(name string) (Spec, bool) {
 	s, ok := specByName[name]
 	return s, ok
 }
 
 // IsEvidence 报告该名字是不是证据色。
+// name 作为 evidenceNames 的键。
 func IsEvidence(name string) bool {
 	_, ok := evidenceNames[name]
 	return ok
 }
 
 // KnownCap 报告去掉空白后的名字是否在 KnownCaps 里。
+// name 去掉空白后与 KnownCaps 的每一项比较。
 func KnownCap(name string) bool {
 	n := strings.TrimSpace(name)
 	for _, c := range KnownCaps {
@@ -166,6 +169,7 @@ func ValidUserID(id string) bool {
 }
 
 // BuiltinPaletteID 接受 ink、dim、slate、neutral、paper、mist，以及它们的 builtin. 前缀。其他返回假。
+// id 去掉空白。等于 ink、dim、slate、neutral、paper、mist 时原样返回并带上 true。以前缀 builtin. 开头时去掉该前缀再调用自己。
 func BuiltinPaletteID(id string) (string, bool) {
 	id = strings.TrimSpace(id)
 	switch id {

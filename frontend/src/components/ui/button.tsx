@@ -34,7 +34,7 @@ const buttonVariants = cva(
 type Props = ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants> & { asChild?: boolean };
 
-// Button 套上变体 class。type 默认 button，避免落在表单里误提交。
+/** Button 套上变体 class。type 默认 button，避免落在表单里误提交。className 传给 cn。variant 写入字段 variant。size 写入字段 size。asChild 为真时才继续。props 展开到 Comp。ref 写到 Comp 的 ref。 */
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
   { className, variant, size, asChild, type = "button", ...props },
   ref,

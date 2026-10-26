@@ -26,6 +26,7 @@ func SpawnWorker(exe, home, evals string) (*Service, error) {
 		}
 	}
 	cmd := exec.Command(exe)
+	// 子进程是同一个可执行文件。YOYO_WORKER=1 让它不建窗口，stdout 只出 JSON-RPC。
 	cmd.Env = append(os.Environ(), "YOYO_WORKER=1")
 	if home != "" {
 		cmd.Env = append(cmd.Env, "YOYO_HOME="+home)
@@ -69,6 +70,7 @@ func SpawnWorker(exe, home, evals string) (*Service, error) {
 			return nil, err
 		}
 	case <-time.After(8 * time.Second):
+		// 8 秒内 health 没回来就杀掉子进程。OpenIsolated 收到这个错误后改在本进程打开 App。这不是沙箱检查。
 		_ = cmd.Process.Kill()
 		if logf != nil {
 			_ = logf.Close()
@@ -79,6 +81,7 @@ func SpawnWorker(exe, home, evals string) (*Service, error) {
 }
 
 // openWorkerLog 在诊断日志目录下追加打开工作者日志，权限 0600。目录或文件创建失败时返回 nil。
+// home 传给 diaglog.DefaultLogDir。
 func openWorkerLog(home string) *os.File {
 	dir := diaglog.DefaultLogDir(home)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -94,6 +97,8 @@ func openWorkerLog(home string) *os.File {
 // OpenIsolated 用当前可执行文件调用 SpawnWorker，从而再启动同一程序并带上 YOYO_WORKER=1。
 // SpawnWorker 成功时返回该 Service，核心留在子进程，这里的 App 为 nil。失败则在本进程 app.Open 并 NewService，退回同进程。两步都失败时，错误同时带上工作者错误和本地错误。
 // 这不是安全沙箱，工作者仍握有 vault 和工具。
+// home 传给 SpawnWorker。失败时传给 app.Open。
+// evals 传给 SpawnWorker。失败时传给 app.Open。
 func OpenIsolated(home, evals string) (*Service, *app.App, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -103,6 +108,7 @@ func OpenIsolated(home, evals string) (*Service, *app.App, error) {
 	if err == nil {
 		return svc, nil, nil
 	}
+	// 工作者没起来就在本进程打开 App。窗口和循环回到同一个进程。
 	core, err2 := app.Open(home, evals)
 	if err2 != nil {
 		return nil, nil, fmt.Errorf("worker: %v; local: %w", err, err2)

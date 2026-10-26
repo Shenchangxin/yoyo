@@ -19,6 +19,7 @@ func (e UnavailableError) Error() string {
 }
 
 // unavailable 用元数据里的标识和 UnavailableReason 构造 UnavailableError。
+// metadata 的 ID 写入 Protocol，UnavailableReason 写入 Reason。
 func unavailable(metadata Metadata) error {
 	return UnavailableError{Protocol: metadata.ID, Reason: metadata.UnavailableReason}
 }

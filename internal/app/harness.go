@@ -117,6 +117,7 @@ func (a *App) Seed() error {
 }
 
 // Fingerprint 用供应商和模型拼出模型指纹。
+// cfg 用来拼接 Provider 和 Model。
 func Fingerprint(cfg Config) string {
 	return cfg.Provider + "/" + cfg.Model
 }
@@ -127,6 +128,7 @@ func (a *App) ActiveHash() string {
 }
 
 // LoadSnapshot 按哈希读取快照。哈希为空时用当前 active。
+// hash 为空时改用 ActiveHash，再传给 CAS.GetSnapshot。
 func (a *App) LoadSnapshot(hash string) (artifact.HarnessSnapshot, error) {
 	if hash == "" {
 		hash = a.ActiveHash()
@@ -135,6 +137,7 @@ func (a *App) LoadSnapshot(hash string) (artifact.HarnessSnapshot, error) {
 }
 
 // Checkout 切换 active，不带 L3 确认。
+// hash 传给 CheckoutOpts。
 func (a *App) Checkout(hash string) error {
 	return a.CheckoutOpts(hash, CheckoutOpts{})
 }
@@ -157,6 +160,7 @@ func (e ErrL3Required) Error() string {
 }
 
 // AsL3 判断错误是不是 ErrL3Required。
+// err 传给 errors.As，看是不是 ErrL3Required。
 func AsL3(err error) (ErrL3Required, bool) {
 	var e ErrL3Required
 	if errors.As(err, &e) {
@@ -166,6 +170,9 @@ func AsL3(err error) (ErrL3Required, bool) {
 }
 
 // l3Surfaces 列出策略包或循环拓扑的差异。循环哈希相同则不再比较拓扑。
+// cas 为 nil 且两边 LoopPreset 不同时直接记 loop_topology，否则用来 Decode 两份 LoopPreset。
+// cur 用来读 PolicyPack 和 LoopPreset。
+// next 用来读 PolicyPack 和 LoopPreset。
 func l3Surfaces(cas *artifact.Store, cur, next artifact.HarnessSnapshot) []string {
 	var out []string
 	if cur.PolicyPack != next.PolicyPack {
@@ -187,6 +194,8 @@ func l3Surfaces(cas *artifact.Store, cur, next artifact.HarnessSnapshot) []strin
 }
 
 // CheckoutOpts 在需要 L3 且未确认时拒绝切换。通过后归档旧 active，写入新 active 和 head，并同步 WASM。
+// hash 传给 GetSnapshot，并写入 RefActive、ModelActive、Journal 和 RefHead。
+// opts 只读 ConfirmL3；未确认且有 L3 表面时返回 ErrL3Required。
 func (a *App) CheckoutOpts(hash string, opts CheckoutOpts) error {
 	next, err := a.CAS.GetSnapshot(hash)
 	if err != nil {
@@ -249,6 +258,7 @@ const (
 )
 
 // Materials 按快照哈希解出循环、提示片段、playbook、技能、评测套件和策略。任一解码失败就返回错误。
+// hash 传给 LoadSnapshot。
 func (a *App) Materials(hash string) (artifact.LoopPreset, []artifact.PromptFragment, artifact.Playbook, []artifact.Skill, artifact.EvalSuite, artifact.PolicyPack, error) {
 	snap, err := a.LoadSnapshot(hash)
 	if err != nil {

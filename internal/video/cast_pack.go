@@ -211,6 +211,7 @@ func (m *characterCastManifest) validate() error {
 }
 
 // CharacterCastRoot 返回某个主目录下解压后的静帧包目录。主目录空着就用默认主目录。默认主目录也没有就返回空串。
+// homeRoot 去掉空白后为空时改用 home.Default，再拼上 video/packs/character-cast；默认主目录也拿不到时返回空串。
 func CharacterCastRoot(homeRoot string) string {
 	root := strings.TrimSpace(homeRoot)
 	if root == "" {
@@ -301,6 +302,9 @@ func (e *Engine) StartCharacterCast() {
 }
 
 // finishCharacterCast 装好静帧包并导入。来源没变且文件都对时什么都不做。拿不到锁就等别人装完再导入。安装或导入失败只记日志。
+// ctx 已取消时直接返回；kind 为 url 时传给 downloadAndInstallCharacterCast。
+// kind 为空时直接返回；为 file 时把 value 传给 installCharacterCastFile，为 url 时走下载，其他值直接返回。
+// value 为空时直接返回，否则传给 characterCastCurrent；kind 为 file 时作为本地 zip 路径，为 url 时作为下载地址。
 func (e *Engine) finishCharacterCast(ctx context.Context, kind, value string) {
 	if kind == "" || value == "" || ctx.Err() != nil {
 		return
@@ -338,6 +342,7 @@ func (e *Engine) finishCharacterCast(ctx context.Context, kind, value string) {
 }
 
 // waitAndImportCharacterCast 在别人持有锁时每秒看一次文件齐没齐，齐了就导入。取消或超过 15 分钟就停。
+// ctx 取消时返回。
 func (e *Engine) waitAndImportCharacterCast(ctx context.Context) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -383,6 +388,7 @@ func (e *Engine) tryCastLock() (func(), bool) {
 }
 
 // characterCastCurrent 判断这份来源已经装好，且文件和钉住的 SHA-256 都对得上。
+// source 与安装记录的 Source 比较，不相等则返回 false。
 func (e *Engine) characterCastCurrent(source string) bool {
 	if !e.characterCastFilesOK() {
 		return false
@@ -433,6 +439,8 @@ func (e *Engine) importCharacterCastNow() error {
 }
 
 // importCharacterCast 按清单把还没有的静帧写进素材库，并保证文件夹存在。目录空着，或清单还没有，就返回。文件缺了或大小不对就返回错误。
+// now 传给 ensureCastFolder，并写入每条素材的 createdAt 和 updatedAt。
+// existing 为 nil 时换成空 map；已有的素材 id 跳过，写入后把该 id 标成已有。
 func (e *Engine) importCharacterCast(now string, existing map[string]bool) error {
 	dir := e.CharacterCastDir()
 	if dir == "" {
@@ -487,6 +495,8 @@ func (e *Engine) importCharacterCast(now string, existing map[string]bool) error
 }
 
 // ensureCastFolder 保证清单里的文件夹还在。已经有且没删除就不动。
+// man 的 Folder.ID、Name、Position 用来查找或写入文件夹。
+// now 写入新建文件夹的 CreatedAt 和 UpdatedAt。
 func (e *Engine) ensureCastFolder(man characterCastManifest, now string) error {
 	if folder, err := getDoc[canvasFolderRec](e, colFolders, man.Folder.ID); err == nil && folder.DeletedAt == "" {
 		return nil
@@ -499,6 +509,7 @@ func (e *Engine) ensureCastFolder(man characterCastManifest, now string) error {
 }
 
 // readCharacterCastManifest 读并校验 manifest.json。超过大小上限或校验失败就返回错误。
+// path 传给 ReadFile；读到的字节超过 maxCastManifest 时返回错误。
 func readCharacterCastManifest(path string) (characterCastManifest, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -518,6 +529,7 @@ func readCharacterCastManifest(path string) (characterCastManifest, error) {
 }
 
 // readCastMeta 读安装记录。没有来源就返回错误。
+// dir 与 castInstallMetaName 拼成要读的安装记录路径。
 func readCastMeta(dir string) (characterCastMeta, error) {
 	b, err := os.ReadFile(filepath.Join(dir, castInstallMetaName))
 	if err != nil {
@@ -536,6 +548,7 @@ func readCastMeta(dir string) (characterCastMeta, error) {
 }
 
 // installCharacterCastFile 校验本地 zip 的大小、魔数和 SHA-256，再解压到静帧包目录。钉住的摘要对不上就拒绝。
+// src 传给 Stat、assertZipMagic 和 fileSHA256；不是普通文件、小于 22 字节或大于 maxCastZip 时返回 bad archive，通过后作为 Source 传给 extractCharacterCastZip。
 func (e *Engine) installCharacterCastFile(src string) error {
 	st, err := os.Stat(src)
 	if err != nil {
@@ -558,6 +571,8 @@ func (e *Engine) installCharacterCastFile(src string) error {
 }
 
 // downloadAndInstallCharacterCast 按候选地址依次下载。摘要对上并解压成功就返回。全部失败时返回最后一次错误。
+// ctx 已取消时返回该错误，并传给 downloadCastFile。
+// rawURL 传给 characterCastDownloadURLs，解压成功时作为安装记录的 Source。
 func (e *Engine) downloadAndInstallCharacterCast(ctx context.Context, rawURL string) error {
 	urls := characterCastDownloadURLs(rawURL)
 	if len(urls) == 0 {
@@ -604,6 +619,9 @@ func (e *Engine) downloadAndInstallCharacterCast(ctx context.Context, rawURL str
 }
 
 // downloadCastFile 把一个地址下载到目标文件，并返回 SHA-256。超过大小上限、不是 zip，或状态码大于等于 300，都算失败。ModelScope 的地址会带上 Referer。
+// ctx 传给 NewRequestWithContext。
+// rawURL 作为 GET 地址，并传给 modelscopeReferer。
+// dest 用来创建下载文件，再传给 assertZipMagic。
 func (e *Engine) downloadCastFile(ctx context.Context, rawURL, dest string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -655,6 +673,7 @@ func goTestBinary() bool {
 }
 
 // normalizeModelScopeURL 把 modelscope.ai 收成 https://www.modelscope.ai。解不开或不是这个主机就原样返回。
+// raw 传给 url.Parse；解不开或主机为空时原样返回，主机为 modelscope.ai 时改成 https://www.modelscope.ai。
 func normalizeModelScopeURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
@@ -669,6 +688,7 @@ func normalizeModelScopeURL(raw string) string {
 }
 
 // characterCastDownloadURLs 给出下载要试的地址。ModelScope 的 resolve 链接会补上 view=false，并再加一条数据集 API 地址。普通地址只返回它自己。
+// raw 去掉空白后为空时返回 nil，否则传给 normalizeModelScopeURL；主机含 modelscope.、路径含 /resolve/ 且没有查询串时补上 view=false。
 func characterCastDownloadURLs(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -688,6 +708,7 @@ func characterCastDownloadURLs(raw string) []string {
 }
 
 // characterCastAPIURL 把 ModelScope 的 resolve 路径换成数据集 API。不是 ModelScope，或路径里没有仓库和文件，就返回空串。
+// raw 去掉空白后解析；主机不含 modelscope.、路径没有 /resolve/，或仓库、修订、文件不齐时返回空串。
 func characterCastAPIURL(raw string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || !strings.Contains(strings.ToLower(u.Host), "modelscope.") {
@@ -725,6 +746,7 @@ func characterCastAPIURL(raw string) string {
 }
 
 // modelscopeReferer 给 ModelScope 下载拼 Referer。不是这个主机就返回空串。
+// rawURL 传给 url.Parse；协议或主机为空，或主机不含 modelscope. 时返回空串，否则返回协议加主机再加斜杠。
 func modelscopeReferer(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme == "" || u.Host == "" || !strings.Contains(strings.ToLower(u.Host), "modelscope.") {
@@ -734,6 +756,9 @@ func modelscopeReferer(rawURL string) string {
 }
 
 // extractCharacterCastZip 校验清单和每张静帧后，先解到临时目录，再整目录换上。中途失败会清掉临时目录，原来的安装还在。拒绝符号链接和越界路径。
+// zipPath 传给 zip.OpenReader。
+// dest 为空时返回 missing install directory，否则作为换上的正式目录，临时目录是 dest 加 .staging。
+// meta 写入 Version 和转成小写的 SHA256 后，编成安装记录。
 func extractCharacterCastZip(zipPath, dest string, meta characterCastMeta) error {
 	if dest == "" {
 		return fmt.Errorf("character cast: missing install directory")
@@ -811,6 +836,7 @@ func extractCharacterCastZip(zipPath, dest string, meta characterCastMeta) error
 }
 
 // castZipEntries 把 zip 收成相对路径表。拒绝符号链接、绝对路径、.. 和重复项，并限制单文件和总大小。清单在唯一的一层目录里时会剥掉这一层。
+// files 逐条检查符号链接、路径和未压缩大小，收成相对路径表。
 func castZipEntries(files []*zip.File) (map[string]*zip.File, error) {
 	raw := map[string]*zip.File{}
 	var total uint64
@@ -868,6 +894,8 @@ func castZipEntries(files []*zip.File) (map[string]*zip.File, error) {
 }
 
 // readZipEntry 读一条 zip 记录，超过上限就拒绝。
+// f 的未压缩大小超过 limit 时拒绝，否则打开并读取。
+// limit 用来比较未压缩大小，并作为最多读取的字节数加 1 的上限。
 func readZipEntry(f *zip.File, limit int64) ([]byte, error) {
 	if f.UncompressedSize64 > uint64(limit) {
 		return nil, fmt.Errorf("character cast: entry too large")
@@ -888,6 +916,9 @@ func readZipEntry(f *zip.File, limit int64) ([]byte, error) {
 }
 
 // writeVerifiedFile 把内容写到临时文件，核对大小和 SHA-256 后再改成目标名。对不上就删掉临时文件。
+// dest 加上 .partial 作为临时文件，核对通过后改名为 dest。
+// wantSHA 与算出的摘要比较，不等就删掉临时文件。
+// wantBytes 大于 0 且与写入字节数不等时删掉临时文件。
 func writeVerifiedFile(dest string, r io.Reader, wantSHA string, wantBytes int) error {
 	tmp := dest + ".partial"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
@@ -926,6 +957,8 @@ func writeVerifiedFile(dest string, r io.Reader, wantSHA string, wantBytes int) 
 }
 
 // swapDir 用临时目录换上正式目录。换失败时把备份移回去。
+// staging 改名为 dest。
+// dest 已存在时先改名为 dest 加 .bak，staging 改名失败再把备份移回去。
 func swapDir(staging, dest string) error {
 	backup := dest + ".bak"
 	_ = os.RemoveAll(backup)
@@ -945,6 +978,7 @@ func swapDir(staging, dest string) error {
 }
 
 // assertZipMagic 检查文件头是不是 PK 的 zip 本地文件头。
+// path 打开后读 4 字节，不是 P、K、3、4 时返回 not a zip。
 func assertZipMagic(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -962,6 +996,7 @@ func assertZipMagic(path string) error {
 }
 
 // fileSHA256 计算整个文件的 SHA-256 十六进制。
+// path 打开后整文件计算 SHA-256。
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -976,6 +1011,7 @@ func fileSHA256(path string) (string, error) {
 }
 
 // characterCastName 从 URL 路径取出静帧文件名。不在 /character-cast/ 下，或文件名不合法，就返回假。
+// urlPath 经 path.Clean 后必须以前缀 characterCastPublicPrefix 开头，剩下的名字还要匹配 castFileRe。
 func characterCastName(urlPath string) (string, bool) {
 	p := path.Clean("/" + urlPath)
 	if !strings.HasPrefix(p, characterCastPublicPrefix) {
@@ -989,6 +1025,8 @@ func characterCastName(urlPath string) (string, bool) {
 }
 
 // characterCastFile 在清单里找到这张 JPEG，并确认解析后的路径仍在包目录里。符号链接逃出目录就返回空串。
+// dir 为空时返回空串，否则与 manifest.json 和 name 拼路径，并用来确认解析后的文件仍在这个目录里。
+// name 为空时返回空串，否则必须出现在清单的 File 里。
 func characterCastFile(dir, name string) string {
 	if dir == "" || name == "" {
 		return ""
@@ -1028,6 +1066,7 @@ func characterCastFile(dir, name string) string {
 }
 
 // CharacterCastHandler 在 /character-cast/ 下提供已安装的 JPEG。只接受 GET 和 HEAD。找不到就 404。
+// dir 传给 characterCastFile，用来打开要返回的 JPEG。
 func CharacterCastHandler(dir string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -1063,6 +1102,8 @@ func CharacterCastHandler(dir string) http.Handler {
 }
 
 // CharacterCastMiddleware 有这张已安装的静帧就直接返回，否则交给下一个处理器。目录空着就完全交给下一个。下一个是空的就回 404。
+// dir 去掉空白后为空时直接返回 next，否则传给 CharacterCastHandler 和 characterCastFile。
+// next 为 nil 时换成返回 404 的处理器；没有这张静帧或方法不是 GET、HEAD 时调用 next。
 func CharacterCastMiddleware(dir string, next http.Handler) http.Handler {
 	if next == nil {
 		next = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

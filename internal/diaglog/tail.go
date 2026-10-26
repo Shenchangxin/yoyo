@@ -36,6 +36,7 @@ type Filter struct {
 }
 
 // Tail 从当前日志文件取最后 n 条。l 为 nil 时返回 nil, nil。n 小于等于 0 时用 80。
+// f 传给 TailFile。
 func (l *Logger) Tail(n int, f Filter) ([]Record, error) {
 	if l == nil {
 		return nil, nil
@@ -48,6 +49,8 @@ func (l *Logger) Tail(n int, f Filter) ([]Record, error) {
 
 // TailFile 扫描整个文件，只保留匹配的行，最后再截到 n 条。文件不存在时返回 nil, nil。
 // 扫描器初始缓冲 64*1024，单行最大 1<<20。缓冲长度超过 n*4 时先收成最后 n 条。扫描出错时仍返回已经收下的行。
+// path 交给 os.Open。文件不存在时返回 nil, nil。
+// f 传给 matchFilter。
 func TailFile(path string, n int, f Filter) ([]Record, error) {
 	raw, err := os.Open(path)
 	if err != nil {
@@ -84,6 +87,7 @@ func TailFile(path string, n int, f Filter) ([]Record, error) {
 }
 
 // parseRecord 把一行解成 Record，Raw 始终是原文。err 为空时再从对象里的 err 或 error 字符串补上。
+// line 交给 json.Unmarshal，并写入 Raw。Err 为空时再从同一行对象的 err 或 error 字符串补上。
 func parseRecord(line string) Record {
 	var rec Record
 	_ = json.Unmarshal([]byte(line), &rec)
@@ -102,6 +106,8 @@ func parseRecord(line string) Record {
 }
 
 // matchFilter 按级别、组件、会话和分类筛选。级别、组件、分类不区分大小写。会话必须完全相等。空条件跳过。
+// rec 的 Level、Component、SessionID、Cat 用来和 f 比较。
+// f 的 Level、Component、Cat 非空时与 rec 不区分大小写比较，SessionID 非空时必须与 rec 完全相等。
 func matchFilter(rec Record, f Filter) bool {
 	if f.Level != "" && !strings.EqualFold(rec.Level, f.Level) {
 		return false
@@ -130,6 +136,7 @@ func (l *Logger) LastError() string {
 }
 
 // FormatRecords 把记录拼成多行文本。有 Raw 时用 Raw，否则依次写 TS、级别、组件和消息，中间用空格。
+// recs 逐条写入。Raw 非空时用 Raw，否则依次写 TS、Level、Component 和 Msg。条与条之间写换行。
 func FormatRecords(recs []Record) string {
 	var b strings.Builder
 	for i, r := range recs {

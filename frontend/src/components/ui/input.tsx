@@ -3,7 +3,14 @@
 import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
-// Input 默认关掉自动完成和拼写检查，并带上 no-drag，避免窗口拖拽吃掉输入。
+/**
+ * Input 默认关掉自动完成和拼写检查，并带上 no-drag，避免窗口拖拽吃掉输入。
+ * className 传给 cn。
+ * autoComplete 写到 input 的 autoComplete。
+ * spellCheck 写到 input 的 spellCheck。
+ * props 展开到 input。
+ * ref 写到 input 的 ref。
+ */
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, autoComplete = "off", spellCheck = false, ...props },
   ref,
@@ -25,7 +32,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   );
 });
 
-// Textarea 去掉缩放和焦点轮廓，高度由调用方的行数或 class 决定。
+/** Textarea 去掉缩放和焦点轮廓，高度由调用方的行数或 class 决定。className 传给 cn。props 展开到 textarea。ref 写到 textarea 的 ref。 */
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea(
   { className, ...props },
   ref,

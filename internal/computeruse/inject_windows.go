@@ -29,6 +29,8 @@ var (
 )
 
 // inject 对 open 和 launch 调用 launchOnVirtual。click、type、key 直接调 user32，不检查句柄是否为 0。screenshot 在句柄为 0 时返回错误，不抓主屏。句柄非 0 时先切到该桌面，结束再切回。
+// app 在 open 和 launch 时传给 launchOnVirtual。
+// detail 在 open 和 launch 时传给 launchOnVirtual。click 时传给 parsePoint，type 时传给 typeUnicode，key 时传给 keyTap。
 func (h *Host) inject(op, app, detail string) (string, error) {
 	op = strings.ToLower(strings.TrimSpace(op))
 	if op == "" || op == "record" {
@@ -72,6 +74,7 @@ func (h *Host) inject(op, app, detail string) (string, error) {
 }
 
 // Capture 在桌面句柄为 0 时返回错误，不抓屏。句柄非 0 时切到该桌面再 captureDesktop，失败则报告不能切换并拒绝主屏。
+// path 传给 captureDesktop。
 func (h *Host) Capture(path string) error {
 	h.ensureVirtual()
 	h.mu.Lock()
@@ -98,6 +101,8 @@ func (h *Host) Capture(path string) error {
 }
 
 // launchOnVirtual 启动可执行文件。名字不含斜杠时尝试查找同名 .exe。没有把桌面名字传给进程。
+// app 不含 / 或 \ 时尝试 LookPath 加上 .exe，作为要启动的程序。
+// detail 用 Fields 拆成参数。
 func launchOnVirtual(app, detail string) error {
 	bin := app
 	if !strings.ContainsAny(bin, `/\`) {
@@ -111,6 +116,7 @@ func launchOnVirtual(app, detail string) error {
 }
 
 // parsePoint 从明细里解析 x、y。不足两个数时返回 40, 40。
+// detail 按逗号、空格或 x 切开。至少两个字段时返回前两个字段的 Atoi 结果，否则返回 40, 40。
 func parsePoint(detail string) (int, int) {
 	fields := strings.FieldsFunc(detail, func(r rune) bool {
 		return r == ',' || r == ' ' || r == 'x'
@@ -124,6 +130,7 @@ func parsePoint(detail string) (int, int) {
 }
 
 // typeUnicode 把每个码元交给 keybd_event。换行发送回车的按下和抬起。
+// text 的每个码元交给 keybd_event。换行发送 0x0D 的按下和抬起。
 func typeUnicode(text string) error {
 	for _, r := range text {
 		if r == '\n' {
@@ -139,6 +146,7 @@ func typeUnicode(text string) error {
 }
 
 // keyTap 发送 esc、tab、enter 或 space。其他名字发送回车。
+// name 去掉空白并转小写。esc 或 escape 用 0x1B，tab 用 0x09，enter 或 return 用 0x0D，space 用 0x20。其他名字也用 0x0D。
 func keyTap(name string) error {
 	vk := uintptr(0x0D)
 	switch strings.ToLower(strings.TrimSpace(name)) {

@@ -77,26 +77,35 @@ type UnavailableAdapter struct {
 func (a UnavailableAdapter) Metadata() Metadata { return a.Info }
 
 // BuildCreate 返回协议不可用。
+// Context 没有传出，函数体直接返回 unavailable。
+// RequestContext 没有传出，函数体直接返回 unavailable。
 func (a UnavailableAdapter) BuildCreate(context.Context, RequestContext) (RequestSpec, error) {
 	return RequestSpec{}, unavailable(a.Info)
 }
 
 // ParseCreate 返回协议不可用。
+// Context 没有传出，函数体直接返回 unavailable。
 func (a UnavailableAdapter) ParseCreate(context.Context, []byte) (CreateResult, error) {
 	return CreateResult{}, unavailable(a.Info)
 }
 
 // BuildPoll 返回协议不可用。
+// Context 没有传出，函数体直接返回 unavailable。
+// PollContext 没有传出，函数体直接返回 unavailable。
 func (a UnavailableAdapter) BuildPoll(context.Context, PollContext) (RequestSpec, error) {
 	return RequestSpec{}, unavailable(a.Info)
 }
 
 // ParsePoll 返回协议不可用。
+// Context 没有传出，函数体直接返回 unavailable。
+// PollContext 没有传出，函数体直接返回 unavailable。
 func (a UnavailableAdapter) ParsePoll(context.Context, PollContext, []byte) (PollResult, error) {
 	return PollResult{}, unavailable(a.Info)
 }
 
 // BuildCancel 返回协议不可用。
+// Context 没有传出，函数体直接返回 unavailable。
+// PollContext 没有传出，函数体直接返回 unavailable。
 func (a UnavailableAdapter) BuildCancel(context.Context, PollContext) (RequestSpec, error) {
 	return RequestSpec{}, unavailable(a.Info)
 }

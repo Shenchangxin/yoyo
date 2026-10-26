@@ -433,6 +433,8 @@ func labEvalMut(index, transfer, sealed, tb, safety, behavior bool) (string, fun
 }
 
 // printEval 打印套件名、held-in、held-out、safety_fail、美元、令牌、墙钟、快照前 12 位和指纹，再逐条打印结果。Kind 为空时印成 -。
+// kind 作为第一行的第一个字段打印。
+// rep 的 Metrics、USD、TokensIn、TokensOut、WallMs、Snapshot、ModelFingerprint 打在第一行，Results 逐条打印。
 func printEval(kind string, rep eval.RunReport) {
 	fmt.Printf("%s held-in %d/%d held-out %d/%d safety_fail=%d usd=%.4f tokens=%d/%d wall_ms=%d snap=%s fp=%s\n",
 		kind, rep.Metrics.HeldInPass, rep.Metrics.HeldInTotal, rep.Metrics.HeldOutPass, rep.Metrics.HeldOutTotal, rep.Metrics.SafetyFail,
@@ -633,6 +635,14 @@ func evolveCmd() *cobra.Command {
 // runOverlayEvolve 要求 --session 非空，否则错误文案含 evolve --overlay requires --session。
 // --promote、--sealed、--behavior、--index、--baselines 大于 0，或命令行改过 --k、--rounds，会交给 OverlayFlagConflict。
 // --overlay-library 为真时只打印领域索引。overlayK 先收到 1 到 4。超时是该值乘 15 分钟，maxWall 更大时用 maxWall，再超过 1 小时就截成 1 小时。
+// cmd 用来看 k 和 rounds 是否改过，超时用它的 Context，打印用 OutOrStdout 和 ErrOrStderr。
+// sessionID 去掉空白后为空时返回错误。传给 OverlayLibrary，或写入 OverlayRun。
+// task 写入 OverlayRun 的 Task。
+// solver 传给 labClient，结果写入 OverlayRun 的 Client。
+// reuseTurn 写入 OverlayRun 的 ReuseTurn。
+// overlayMode 写入 OverlayRun 的 Mode。
+// overlayLib 为真时只调用 OverlayLibrary 并打印，然后返回。
+// maxUSD 写入 OverlayRun 的 MaxUSD。
 func runOverlayEvolve(cmd *cobra.Command, sessionID, task, solver string, reuseTurn bool, overlayK int, overlayMode string, overlayLib, promote, sealed, behavior, index bool, baselines int, maxUSD float64, maxWall time.Duration) error {
 	if strings.TrimSpace(sessionID) == "" {
 		return fmt.Errorf("evolve --overlay requires --session")

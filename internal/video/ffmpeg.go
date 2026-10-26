@@ -70,6 +70,8 @@ func LookFFmpegIn(extra []string) (ffmpeg, ffprobe string) {
 }
 
 // look 先查 PATH，没有再在给定目录里找同名文件。
+// name 传给 LookPath，没有再传给 lookFile。
+// dirs 传给 lookFile。
 func look(name string, dirs []string) string {
 	if p, err := exec.LookPath(name); err == nil {
 		return p
@@ -78,6 +80,8 @@ func look(name string, dirs []string) string {
 }
 
 // lookFile 返回目录里第一个存在的普通文件。空目录跳过。
+// name 接到每个目录后面再 Stat。
+// dirs 里去掉空白后为空的项跳过。
 func lookFile(name string, dirs []string) string {
 	for _, d := range dirs {
 		if strings.TrimSpace(d) == "" {
@@ -97,11 +101,14 @@ func (e *Engine) FFmpegOK() bool {
 }
 
 // Concat 用后台上下文把多段拼成一个 mp4，并返回字节。
+// paths 传给 ConcatContext。
 func (e *Engine) Concat(paths []string) ([]byte, error) {
 	return e.ConcatContext(context.Background(), paths)
 }
 
 // ConcatContext 先确保 ffmpeg 可用。任一片段不在磁盘上就返回 clip N is missing on disk。用 concat 列表拼接，视频 libx264、medium、crf 23，音频 aac、48 kHz、192k。带音频失败时去掉音频再拼。上下文已取消时返回该错误。
+// ctx 为 nil 时换成 Background，并传给 EnsureFFmpeg 和 CommandContext。
+// paths 逐个 Stat，不存在时返回 clip N is missing on disk，并写入 concat 列表。
 func (e *Engine) ConcatContext(ctx context.Context, paths []string) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -152,6 +159,7 @@ func (e *Engine) ConcatContext(ctx context.Context, paths []string) ([]byte, err
 }
 
 // Poster 从视频抽出一帧 JPEG。ffmpeg 路径为空时返回 ffmpeg missing。-ss 放在 -i 前面，跳到关键帧，而不是从头解码。只取一小帧、不要音频，超时 8 秒，避免大文件把导入挂住。先缩到长边不超过 640，失败再取原尺寸。空文件视为失败。
+// videoPath 作为 ffmpeg 的 -i 参数。
 func (e *Engine) Poster(videoPath string) ([]byte, error) {
 	if strings.TrimSpace(e.FFMPEG) == "" {
 		return nil, fmt.Errorf("ffmpeg missing")
@@ -195,6 +203,7 @@ func (e *Engine) Poster(videoPath string) ([]byte, error) {
 }
 
 // CompressJPEG 解码图片。maxEdge 大于 0 且任一边更长时，把长边缩到 maxEdge，用 CatmullRom。quality 小于等于 0 时用 68。结果编成 JPEG。
+// src 传给 image.Decode。
 func CompressJPEG(src []byte, maxEdge int, quality int) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(src))
 	if err != nil {
@@ -228,6 +237,7 @@ func CompressJPEG(src []byte, maxEdge int, quality int) ([]byte, error) {
 }
 
 // DataURLJPEG 返回 image/jpeg 的 base64 数据 URL。
+// jpegBytes 编成 base64 后接在 data:image/jpeg;base64, 后面。
 func DataURLJPEG(jpegBytes []byte) string {
 	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(jpegBytes)
 }

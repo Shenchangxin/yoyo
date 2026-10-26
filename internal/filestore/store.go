@@ -30,6 +30,7 @@ func New(root string) (*Store, error) {
 }
 
 // Abs 把相对路径清洗后接到 Root 上。反斜杠先换成斜杠。
+// rel 里的反斜杠换成斜杠，前面加斜杠后 Clean，再去掉开头的分隔符，接到 Root 上。
 func (s *Store) Abs(rel string) string {
 	rel = filepath.Clean("/" + strings.ReplaceAll(rel, "\\", "/"))
 	rel = strings.TrimPrefix(rel, string(filepath.Separator))
@@ -45,6 +46,8 @@ func (s *Store) Put(rel string, v any) error {
 
 // putLocked 创建父目录，权限 0o755。JSON 缩进两个空格并在末尾加换行。
 // 先写到路径加 .tmp，权限 0o644，再改成目标名。改名失败时删掉临时文件。
+// rel 交给 Abs，得到要写的路径。
+// v 交给 json.MarshalIndent，前缀是空串，缩进是两个空格，末尾再加换行。
 func (s *Store) putLocked(rel string, v any) error {
 	path := s.Abs(rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -74,6 +77,8 @@ func (s *Store) Get(rel string, v any) error {
 }
 
 // getLocked 读取文件并 json 解码。文件不存在时返回 ErrNotFound。
+// rel 交给 Abs 后读取该文件。文件不存在时返回 ErrNotFound。
+// v 交给 json.Unmarshal。
 func (s *Store) getLocked(rel string, v any) error {
 	b, err := os.ReadFile(s.Abs(rel))
 	if err != nil {
@@ -97,6 +102,7 @@ func (s *Store) Delete(rel string) error {
 }
 
 // Exists 在 Stat 没有错误时返回真。
+// rel 交给 Abs 后 Stat。错误为 nil 时返回 true。
 func (s *Store) Exists(rel string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

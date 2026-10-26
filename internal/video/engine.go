@@ -118,11 +118,17 @@ type Bind struct {
 }
 
 // Open 用给定目录、字节库和密钥库打开引擎，连接表由 OpenWith 自己创建。
+// dir 传给 OpenWith。
+// cas 传给 OpenWith。
+// secrets 传给 OpenWith。
 func Open(dir string, cas Blobs, secrets Secrets) (*Engine, error) {
 	return OpenWith(dir, cas, secrets, nil)
 }
 
 // OpenWith 创建目录和 docs 文档库。conn 为空时在目录下的 connections 打开连接表。默认 HTTP 超时 12 分钟。随后在 bin 里找 ffmpeg 和 whisper，并查找 yt-dlp、whisperx、区域检测和浏览器。接着迁移旧的 sqlite，播种样式，装入画布插件和短片素材，恢复未完成任务，再按 800 毫秒节拍推进排队中的生成任务。
+// dir 传给 MkdirAll，并作为 docs、connections、bin 和 Dir 的目录。
+// cas 写入 CAS。
+// secrets 写入 Vault；conn 为 nil 时也传给 connection.Open。
 func OpenWith(dir string, cas Blobs, secrets Secrets, conn *connection.Registry) (*Engine, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -167,6 +173,9 @@ func OpenWith(dir string, cas Blobs, secrets Secrets, conn *connection.Registry)
 }
 
 // OpenDefault 在密钥库非空时，用视频目录的上一级打开连接表，再交给 OpenWith。
+// dir 传给 OpenWith；v 非空时用它的父目录打开连接表。
+// cas 传给 OpenWith。
+// v 非空时作为密钥库打开连接表，并传给 OpenWith。
 func OpenDefault(dir string, cas *artifact.Store, v *vault.Store) (*Engine, error) {
 	var conn *connection.Registry
 	if v != nil {
@@ -195,6 +204,7 @@ func (e *Engine) Close() error {
 }
 
 // Setting 读键值设置。缺了或是空串时用 fallback。
+// key 作为 kvSettings 的键，值为空串时改用 fallback。
 func (e *Engine) Setting(key, fallback string) string {
 	m := e.kvSettings()
 	if v := m[key]; v != "" {
@@ -204,6 +214,8 @@ func (e *Engine) Setting(key, fallback string) string {
 }
 
 // SetSetting 改一个键并写回设置文档。
+// key 作为设置的键。
+// value 写入该键。
 func (e *Engine) SetSetting(key, value string) error {
 	m := e.kvSettings()
 	m[key] = value
@@ -216,6 +228,7 @@ func (e *Engine) ContentLanguage() string {
 }
 
 // emit 在 OnJob 非空时把任务交出去。
+// j 在 OnJob 非空时传给 OnJob。
 func (e *Engine) emit(j Job) {
 	if e.OnJob != nil {
 		e.OnJob(j)
@@ -223,6 +236,8 @@ func (e *Engine) emit(j Job) {
 }
 
 // BindSession 把会话绑到已存在的一集，短剧标识取自该集。
+// sessionID 写入绑定的 SessionID。
+// episodeID 传给 GetEpisode，并写入绑定的 EpisodeID。
 func (e *Engine) BindSession(sessionID, episodeID string) error {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -232,6 +247,8 @@ func (e *Engine) BindSession(sessionID, episodeID string) error {
 }
 
 // BindSessionDrama 把会话绑到已存在的短剧。当前集仍属于这部剧时，集标识保留。
+// sessionID 传给 SessionBind，并写入绑定的 SessionID。
+// dramaID 传给 GetDrama。
 func (e *Engine) BindSessionDrama(sessionID, dramaID string) error {
 	d, err := e.GetDrama(dramaID)
 	if err != nil {
@@ -247,6 +264,7 @@ func (e *Engine) BindSessionDrama(sessionID, dramaID string) error {
 }
 
 // putBind 把绑定写入文档并放进内存表。
+// b 按 SessionID 写入文档和内存表。
 func (e *Engine) putBind(b Bind) error {
 	m := e.loadBinds()
 	m[b.SessionID] = b
@@ -260,6 +278,7 @@ func (e *Engine) putBind(b Bind) error {
 }
 
 // ReleaseWorkshopBinds 去掉该会话的短片、短剧和画布绑定，使会话回到剪辑工具和 video_route 那条通道。
+// sessionID 去掉空白后为空则返回，否则从短片、画布和短剧绑定里删除。
 func (e *Engine) ReleaseWorkshopBinds(sessionID string) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -286,6 +305,7 @@ func (e *Engine) ReleaseWorkshopBinds(sessionID string) {
 }
 
 // SessionBind 先查内存，没有再读文档，并把读到的绑定放回内存。
+// sessionID 作为内存表和文档绑定的键。
 func (e *Engine) SessionBind(sessionID string) (Bind, bool) {
 	e.mu.Lock()
 	b, ok := e.binds[sessionID]
@@ -305,6 +325,7 @@ func (e *Engine) SessionBind(sessionID string) (Bind, bool) {
 }
 
 // leaseProvider 从密钥库取出该供应商的 VaultKey。密钥库为空时返回 vault missing。
+// p 的 VaultKey 传给 Vault.Lease。
 func (e *Engine) leaseProvider(p Provider) (string, error) {
 	if e.Vault == nil {
 		return "", fmt.Errorf("vault missing")
@@ -313,6 +334,7 @@ func (e *Engine) leaseProvider(p Provider) (string, error) {
 }
 
 // marshalJSON 把值编成 JSON 文本。失败时返回 {}。
+// v 传给 json.Marshal，失败时返回 {}。
 func marshalJSON(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {

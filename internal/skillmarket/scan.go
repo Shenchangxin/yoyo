@@ -24,6 +24,8 @@ type Scan struct {
 }
 
 // scanPackFile 拒绝空文件。png、jpg、jpeg、gif、webp、ico 不再检查正文。含 NUL 返回 "binary content"，非法 UTF-8 返回 "invalid UTF-8"。同时出现 "curl " 和 "| sh" 或 "| bash" 时返回 "install script pipe-to-shell"。
+// rel 交给 isImageRel，是图片则不再检查正文。
+// raw 长度为 0 时返回错误；不是图片时检查 NUL、UTF-8，以及 curl 和管道到 sh 或 bash。
 func scanPackFile(rel string, raw []byte) error {
 	if len(raw) == 0 {
 		return fmt.Errorf("empty file")
@@ -45,6 +47,7 @@ func scanPackFile(rel string, raw []byte) error {
 }
 
 // isImageRel 在扩展名是 png、jpg、jpeg、gif、webp、ico 时返回 true。
+// rel 的扩展名转成小写后与 png、jpg、jpeg、gif、webp、ico 比较。
 func isImageRel(rel string) bool {
 	switch strings.ToLower(path.Ext(rel)) {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico":
@@ -55,6 +58,8 @@ func isImageRel(rel string) bool {
 }
 
 // ScanSkillMD 解析 SKILL.md。空文件、超过 256 KiB、含 NUL、非法 UTF-8、解析失败，或正文里有 curl 管道到 sh/bash，都会把 OK 设为假。allowed-tools 含 bash、shell、powershell、cmd，或正文提到 scripts/ 时 NeedsShell 为真。
+// raw 长度为 0、大于 256<<10、含 NUL 或不是合法 UTF-8 时失败；否则转成字符串和 slug 一起交给 ParseSkillMD。
+// slug 交给 artifact.ParseSkillMD。
 func ScanSkillMD(raw []byte, slug string) (artifact.Skill, Scan) {
 	s := Scan{OK: true, BodyBytes: len(raw)}
 	if len(raw) == 0 {
@@ -90,6 +95,8 @@ func ScanSkillMD(raw []byte, slug string) (artifact.Skill, Scan) {
 }
 
 // fail 把 OK 设为假并追加一条原因。
+// s 的 OK 设为 false。
+// reason 追加进 Reasons。
 func fail(s Scan, reason string) Scan {
 	s.OK = false
 	s.Reasons = append(s.Reasons, reason)
@@ -97,6 +104,7 @@ func fail(s Scan, reason string) Scan {
 }
 
 // MentionsScripts 在正文含 scripts/ 或 scripts\\ 时返回 true。
+// body 含 scripts/，或转成小写后含 scripts\ 时返回 true。
 func MentionsScripts(body string) bool {
 	return strings.Contains(body, "scripts/") || strings.Contains(strings.ToLower(body), "scripts\\")
 }
@@ -109,6 +117,7 @@ type Peek struct {
 }
 
 // PeekMeta 读 YAML 前言里的 icon、display_name 和 version。不是以 --- 开头时返回零值。icon 还要过 SafeIconURL。
+// raw 把回车换行换成换行后，不以 --- 加换行开头则返回零值。
 func PeekMeta(raw []byte) Peek {
 	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	if !strings.HasPrefix(text, "---\n") {

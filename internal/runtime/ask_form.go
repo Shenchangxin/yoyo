@@ -40,6 +40,7 @@ type AskForm struct {
 }
 
 // parseAskForm 从 questions 或单个 question 解析表单，再规范化。questions 可以是 JSON 字符串。
+// args 提供 title、questions，以及 questions 为空时的 question。
 func parseAskForm(args map[string]any) AskForm {
 	form := AskForm{Title: strings.TrimSpace(str(args["title"]))}
 	form.Questions = questionsOf(args["questions"])
@@ -54,6 +55,7 @@ func parseAskForm(args map[string]any) AskForm {
 }
 
 // questionsOf 解析问题列表。缺 id 时用 q 加序号。prompt 为空的对象丢掉。字符串项当成只有题干的问题。
+// raw 是列表本身。字符串且去掉空白后非空时先按 JSON 解开，再要求是数组。
 func questionsOf(raw any) []AskQuestion {
 	if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
 		var parsed any
@@ -95,6 +97,7 @@ func questionsOf(raw any) []AskQuestion {
 }
 
 // optionsOf 解析选项。label 为空时用 id。id 为空时用从 1 起的序号。字符串项的 id 也是序号。
+// raw 不是数组时返回 nil，否则逐项读对象或字符串。
 func optionsOf(raw any) []AskOption {
 	list, ok := raw.([]any)
 	if !ok {
@@ -128,6 +131,7 @@ func optionsOf(raw any) []AskOption {
 }
 
 // normalizeAskForm 最多留 6 道题，每题最多 8 个选项。recommended 不在选项里时改成第一项。没有选项则清空 recommended。
+// form 为 nil 时直接返回，否则就地截断并改写 Questions。
 func normalizeAskForm(form *AskForm) {
 	if form == nil {
 		return
@@ -161,6 +165,7 @@ func normalizeAskForm(form *AskForm) {
 }
 
 // askForm 把表单交给 AskUser。没有回调时返回空闲答案。没有题目时返回错误。
+// form 先规范化，题目为空则报错，否则编成 JSON 交给 AskUser 或 AskIdleAnswer。
 func (t *WorkspaceTools) askForm(form AskForm) ToolResult {
 	normalizeAskForm(&form)
 	if len(form.Questions) == 0 {
@@ -178,6 +183,7 @@ func (t *WorkspaceTools) askForm(form AskForm) ToolResult {
 }
 
 // AskPrompt 是记在询问事件上的短文本。卡片读的是 JSON 命令，不是这一行。优先用标题，否则用第一题的题干。
+// payload 交给 decodeAskPayload，解不开或没有可用标题和题干时返回去掉空白后的原文。
 func AskPrompt(payload string) string {
 	form, ok := decodeAskPayload(payload)
 	if !ok {
@@ -194,6 +200,7 @@ func AskPrompt(payload string) string {
 
 // AskIdleAnswer 是没人碰卡片，或桌面空闲计时器用推荐选项触发时的工具结果。
 // 任一道题没有选项时返回 askNoOperator，不编造选择。
+// payload 交给 decodeAskPayload，解不开或 askCanIdle 为假时返回 askNoOperator。
 func AskIdleAnswer(payload string) string {
 	form, ok := decodeAskPayload(payload)
 	if !ok || !askCanIdle(form) {
@@ -203,6 +210,7 @@ func AskIdleAnswer(payload string) string {
 }
 
 // askCanIdle 在每道题都有选项时才允许用推荐项继续。
+// form 的 Questions 为空，或任一道题没有选项时返回 false。
 func askCanIdle(form AskForm) bool {
 	if len(form.Questions) == 0 {
 		return false
@@ -249,6 +257,7 @@ func formatAsk(form AskForm, idle bool) string {
 }
 
 // decodeAskPayload 解析以 { 开头的 JSON 表单。没有题目或 JSON 无效时返回 false。
+// payload 去掉空白后必须以前缀 { 开头，再解成表单。
 func decodeAskPayload(payload string) (AskForm, bool) {
 	payload = strings.TrimSpace(payload)
 	if !strings.HasPrefix(payload, "{") {
@@ -263,6 +272,7 @@ func decodeAskPayload(payload string) (AskForm, bool) {
 }
 
 // chosenOption 从 ask_user 结果里找出卡片写下的选项 id。跳过 note: 行。只接受 ids 里有的 id。
+// answer 按行切开，跳过空行和 note: 前缀，从冒号后取选项 id。
 func chosenOption(answer string, ids []string) string {
 	for _, line := range strings.Split(answer, "\n") {
 		line = strings.TrimSpace(line)
@@ -286,6 +296,7 @@ func chosenOption(answer string, ids []string) string {
 }
 
 // waitsForNod 判断结束语是不是在等用户点头或确认，而不是已经做完。
+// text 转成小写，去掉空白后为空则返回 false，否则看是否包含 nodNeedles。
 func waitsForNod(text string) bool {
 	s := strings.ToLower(text)
 	if strings.TrimSpace(s) == "" {

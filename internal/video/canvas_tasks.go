@@ -10,6 +10,7 @@ import (
 )
 
 // createCanvasTask 把画布生成请求登记成任务。文本任务进入 text_replay，其余进入 queued。
+// req 读取 type、prompt、projectId、project_id、provider、model、operation、input、clientOperationId、retryOf、attemptGroupId、clientContext；type 为空时按 image，为 text 或 text_replay 时把任务类型写成 canvas_text、状态写成 text_replay。
 func (e *Engine) createCanvasTask(req map[string]any) (map[string]any, error) {
 	typ := strings.ToLower(firstNonEmpty(strAnyMap(req, "type"), "image"))
 	prompt := strAnyMap(req, "prompt")
@@ -69,6 +70,9 @@ func (e *Engine) createCanvasTask(req map[string]any) (map[string]any, error) {
 }
 
 // listCanvasTasks 列出画布任务。只要活动任务时，只留排队、运行、轮询和文本回放。
+// projectID 非空时必须等于任务参数里的 CanvasProjectID。
+// activeOnly 为真时只保留状态为 queued、running、polling 或 text_replay 的任务。
+// limit 小于等于 0 时改成 50，结果多过 limit 时截断。
 func (e *Engine) listCanvasTasks(projectID string, activeOnly bool, limit int) []map[string]any {
 	if limit <= 0 {
 		limit = 50
@@ -110,6 +114,7 @@ func (e *Engine) canvasTask(id string) (map[string]any, error) {
 }
 
 // taskView 把任务收成前端字段。轮询状态对外显示为 running。
+// j 的 ID、Type、Status、Prompt、Provider、Model、ResultHash、PosterHash、RemoteID、Error、CreatedAt、UpdatedAt、CompletedAt 和 Params 写入返回字段；Status 为 polling 时对外写成 running，progress 按 queued 5、running 35、polling 70、succeeded 100、text_replay 50，失败且 RecoverAttempts 小于 3 时 canRecoverMedia 为真。
 func (e *Engine) taskView(j Job) map[string]any {
 	p := parseParams(j.Params)
 	status := j.Status
@@ -175,12 +180,17 @@ func (e *Engine) taskView(j Job) map[string]any {
 }
 
 // appendTaskLog 追加一条任务日志。
+// taskID 写入 TaskID。
+// level 写入 Level。
+// stage 写入 Stage。
+// message 写入 Message。
 func (e *Engine) appendTaskLog(taskID, level, stage, message string) {
 	rec := canvasTaskLogRec{ID: NewID(), TaskID: taskID, Level: level, Stage: stage, Message: message, CreatedAt: Now()}
 	_ = e.putDoc(colTaskLogs, rec.ID, rec)
 }
 
 // taskLogs 按时间顺序列出任务日志。
+// id 与日志的 TaskID 比较，相等的才留下。
 func (e *Engine) taskLogs(id string) []map[string]any {
 	var recs []canvasTaskLogRec
 	for _, r := range loadCol[canvasTaskLogRec](e, colTaskLogs) {
@@ -197,6 +207,8 @@ func (e *Engine) taskLogs(id string) []map[string]any {
 }
 
 // appendTextDelta 给文本任务追加一段增量，并更新草稿。
+// id 传给 GetJob，并作为增量的 TaskID。
+// content 写入增量的 Content，并追加到 TextDraft。
 func (e *Engine) appendTextDelta(id, content string) (map[string]any, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -223,6 +235,7 @@ func (e *Engine) appendTextDelta(id, content string) (map[string]any, error) {
 }
 
 // textReplay 返回序号大于 after 的文本增量，以及草稿和是否已经结束。
+// id 用来匹配 TaskID，并传给 canvasTask。
 func (e *Engine) textReplay(id string, after int) map[string]any {
 	var recs []canvasDeltaRec
 	for _, d := range loadCol[canvasDeltaRec](e, colTextDeltas) {
@@ -257,6 +270,8 @@ func (e *Engine) textReplay(id string, after int) map[string]any {
 }
 
 // completeTextReplay 用最终文本结束文本回放，并把任务标成成功。
+// id 传给 GetJob。
+// text 非空时写入 TextDraft。
 func (e *Engine) completeTextReplay(id, text string) (map[string]any, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -288,6 +303,7 @@ func (e *Engine) queryProviderTask(id string) (map[string]any, error) {
 }
 
 // cancelCanvasTask 取消任务并返回取消后的视图。
+// id 传给 CancelJob 和 canvasTask。
 func (e *Engine) cancelCanvasTask(id string) (map[string]any, error) {
 	if err := e.CancelJob(id); err != nil {
 		return nil, err
@@ -296,6 +312,7 @@ func (e *Engine) cancelCanvasTask(id string) (map[string]any, error) {
 }
 
 // retryCanvasTask 重试任务并返回新的任务视图。
+// id 传给 RetryJob。
 func (e *Engine) retryCanvasTask(id string) (map[string]any, error) {
 	j, err := e.RetryJob(id)
 	if err != nil {
@@ -305,6 +322,7 @@ func (e *Engine) retryCanvasTask(id string) (map[string]any, error) {
 }
 
 // recoverCanvasTask 调用 RecoverCanvasMedia，再返回任务视图。
+// id 传给 RecoverCanvasMedia。
 func (e *Engine) recoverCanvasTask(id string) (map[string]any, error) {
 	j, err := e.RecoverCanvasMedia(id)
 	if err != nil {
@@ -314,6 +332,7 @@ func (e *Engine) recoverCanvasTask(id string) (map[string]any, error) {
 }
 
 // deleteCanvasTask 删掉这条任务文档。
+// id 传给 delDoc，从 colJobs 删除。
 func (e *Engine) deleteCanvasTask(id string) error {
 	return e.delDoc(colJobs, id)
 }

@@ -74,7 +74,7 @@ const SkillsWorkspace = lazy(() => import("./features/skills/SkillsWorkspace").t
 const PagesWorkspace = lazy(() => import("./features/pages/PagesWorkspace").then((m) => ({ default: m.PagesWorkspace })));
 const VideoWorkshop = lazy(() => import("./features/video/VideoWorkshop").then((m) => ({ default: m.VideoWorkshop })));
 
-/** 按 id 合并字段。置顶的排在前面。 */
+/** 按 id 合并字段。置顶的排在前面。list 做映射。patch 展开传递。 */
 function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread[] {
   const next = list.map((x) => (x.id === id ? { ...x, ...patch } : x));
   next.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
@@ -194,7 +194,7 @@ function WorkstationApp() {
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
   const toolRoot = sessionFsRoot(ws.active, sessionWs);
-  /** 空路径直接返回。还没有会话时新建一个，并套用待定的权限。已有会话则改它的工作区。 */
+  /** 空路径直接返回。还没有会话时新建一个，并套用待定的权限。已有会话则改它的工作区。path 为假时走另一支，传给 api.createSession，传给 api.setSessionWorkspace。 */
   const applySessionWorkspace = async (path: string) => {
     if (!path) return;
     if (!ws.activeId) {
@@ -224,17 +224,20 @@ function WorkstationApp() {
     workspace: toolRoot,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
     isolate: !!ws.active?.isolate,
+    /** onWorkspace 调用 applySessionWorkspace。path 传给 applySessionWorkspace。 */
     onWorkspace: (path: string) => { void applySessionWorkspace(path); },
     onBrowseWorkspace: async () => {
       const p = await api.pickFolder();
       if (p) await applySessionWorkspace(p);
     },
+    /** onIsolate 调用 setSessionIsolate。isolate 传给 api.setSessionIsolate。 */
     onIsolate: async (isolate: boolean) => {
       if (!ws.activeId) return;
       const t = await api.setSessionIsolate(ws.activeId, isolate);
       ws.setActive(t);
       ws.setThreads((list) => patchThread(list, t.id, t));
     },
+    /** onSearchFiles 调用 catch。q 传给 api.searchFiles。 */
     onSearchFiles: (q: string) => {
       const n = ++fileSearchGen.current;
       void api.searchFiles(toolRoot, q).then((hits) => {
@@ -245,7 +248,9 @@ function WorkstationApp() {
       const paths = await api.pickFiles();
       return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
     },
+    /** onIngestVideo 调用 ingestVideo。source 传给 ws.ingestVideo。 */
     onIngestVideo: (source: { path?: string; file?: File }) => ws.ingestVideo(source),
+    /** onAuthMode 调用 setPendingAuthMode。mode 传给 setPendingAuthMode，传给 api.setSessionAuthMode。 */
     onAuthMode: async (mode: AuthMode) => {
       if (!ws.activeId) {
         /** 还没有对话：把选择留给即将创建的第一段（见 adoptPendingAuthMode）。 */
@@ -259,7 +264,9 @@ function WorkstationApp() {
     onClipboard: async () => api.clipboardRead(),
     onScreenshot: async () => api.captureScreenshot(toolRoot),
     queueItems: ws.queueItems,
+    /** onQueueCancel 调用 onQueueCancel。id 传给 ws.onQueueCancel。 */
     onQueueCancel: (id: string) => { void ws.onQueueCancel(id); },
+    /** onQueueReorder 调用 onQueueReorder。id 传给 ws.onQueueReorder。delta 传给 ws.onQueueReorder。 */
     onQueueReorder: (id: string, delta: number) => { void ws.onQueueReorder(id, delta); },
     onApplyWorktree: () => { void ws.onApplyWorktree(); },
     taskPlan: latestTaskPlan(ws.items) || parsePlanText(ws.active?.planText || ""),
@@ -1237,7 +1244,11 @@ function WorkstationApp() {
   );
 }
 
-/** 把工作站的配置、健康和插件操作交给设置页。写密钥时空字符串不调用 setAPIKey。 */
+/**
+ * 把工作站的配置、健康和插件操作交给设置页。写密钥时空字符串不调用 setAPIKey。
+ * ws 读取 copy、savedCfg、health、plugins、logs、journal 等，调用 patchConfig，调用 refresh，调用 fail。
+ * navInRail 写到 SettingsPage 的 navInRail。
+ */
 function SettingsSurface({ ws, navInRail }: { ws: ReturnType<typeof useWorkstation>; navInRail?: boolean }) {
   const copy = ws.copy;
   return (
@@ -1253,6 +1264,7 @@ function SettingsSurface({ ws, navInRail }: { ws: ReturnType<typeof useWorkstati
         vault: ws.vault,
         sessionId: ws.activeId,
         patch: ws.patchConfig,
+        /** saveProvider 调用 trim。next 传给 ws.patchConfig。key 去掉首尾空白，为真时才继续，传给 api.setAPIKey。 */
         saveProvider: async (next, key) => {
           if (key.trim()) await api.setAPIKey(key.trim());
           await ws.patchConfig(next);
@@ -1260,10 +1272,15 @@ function SettingsSurface({ ws, navInRail }: { ws: ReturnType<typeof useWorkstati
         },
         refresh: ws.refresh,
         onBrowse: () => api.pickFolder(),
+        /** onStartMcp 调用 startMCP。name 传给 api.startMCP。command 传给 api.startMCP。args 传给 api.startMCP。 */
         onStartMcp: async (name, command, args) => { await api.startMCP(name, command, args); await ws.refresh(); },
+        /** onStartMcpHttp 调用 startMCPHTTP。name 传给 api.startMCPHTTP。endpoint 传给 api.startMCPHTTP。 */
         onStartMcpHttp: async (name, endpoint) => { await api.startMCPHTTP(name, endpoint); await ws.refresh(); },
+        /** onStopMcp 调用 stopMCP。name 传给 api.stopMCP。 */
         onStopMcp: async (name) => { await api.stopMCP(name); await ws.refresh(); },
+        /** onReplaceMcp 调用 replaceMCP。servers 传给 api.replaceMCP。 */
         onReplaceMcp: async (servers) => { await api.replaceMCP(servers); await ws.refresh(); },
+        /** onUnload 调用 unloadFiber。name 传给 api.unloadFiber。 */
         onUnload: async (name) => { await api.unloadFiber(name); await ws.refresh(); },
         onCheckUpdate: () => api.checkUpdate(),
         onUpdateStatus: () => api.updateStatus(),

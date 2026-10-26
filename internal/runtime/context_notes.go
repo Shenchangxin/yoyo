@@ -21,6 +21,7 @@ const (
 )
 
 // AttachMention 把操作者原话放在前面，注入的提及或技能正文跟在后面。注入为空时原样返回 user。
+// inject 去掉空白后为空时返回 user，否则接在 mentionUserPrefix 后面。
 func AttachMention(user, inject string) string {
 	user = strings.TrimSpace(user)
 	inject = strings.TrimSpace(inject)
@@ -95,6 +96,7 @@ func (n SessionNotes) Markdown() string {
 }
 
 // isResumeUser 识别「继续」一类短句。会先去掉首尾空白和句号、叹号、省略号。
+// text 去掉首尾空白和句号、叹号、省略号后，与这些短句比较。
 func isResumeUser(text string) bool {
 	s := strings.TrimSpace(text)
 	s = strings.Trim(s, "。.!！…")
@@ -108,6 +110,7 @@ func isResumeUser(text string) bool {
 }
 
 // isControlUser 把运行时催促、检查点、占位、提及和 steer 当成控制行。空文本也算。这些行不进入笔记目标。
+// text 去掉空白后为空则返回 true，否则与这些催促、前缀和 Context checkpoint 比较。
 func isControlUser(text string) bool {
 	s := strings.TrimSpace(text)
 	if s == "" {
@@ -171,6 +174,7 @@ func isControlUser(text string) bool {
 }
 
 // ExtractNotes 从轨迹事件收集笔记。steer 来源的用户事件跳过。目标、文件、工具、错误和 spill id 各有条数上限。
+// evs 只看用户、工具调用和工具结果三类事件。
 func ExtractNotes(evs []trace.Event) SessionNotes {
 	n := SessionNotes{}
 	files := map[string]bool{}
@@ -224,6 +228,7 @@ func ExtractNotes(evs []trace.Event) SessionNotes {
 }
 
 // NotesFromMessages 从消息收集笔记。控制行和继续短句不改目标。文件和工具的条数上限在 mergeNotes。
+// msgs 按用户、助手和工具三种 Role 收集目标、文件、工具、错误和 spill id。
 func NotesFromMessages(msgs []Message) SessionNotes {
 	n := SessionNotes{}
 	files := map[string]bool{}
@@ -261,6 +266,7 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 }
 
 // stickObjective 把第一句非空用户话记成目标，截到 400 个 rune。之后不同的句子进入决定，只留最近 12 条。提及前缀之后的正文不计入。
+// text 先丢掉 mentionUserPrefix 及其后的内容，去掉空白并收起整段重复，空则返回。
 func stickObjective(n *SessionNotes, text string) {
 	if i := strings.Index(text, mentionUserPrefix); i >= 0 {
 		text = text[:i]
@@ -282,6 +288,8 @@ func stickObjective(n *SessionNotes, text string) {
 }
 
 // mergeNotes 保留已有目标。新目标不同且不是继续短句时，收进决定。文件、工具、错误、spill 和决定按给定上限合并。新的 Next 为空时沿用旧的。
+// prev 的 Objective 非空时写回结果，并参与各列和 Next 的合并。
+// next 作为结果返回；Objective 与 prev 不同且不是继续短句时，先收进决定。
 func mergeNotes(prev, next SessionNotes) SessionNotes {
 	if prev.Objective != "" {
 		if next.Objective != "" && next.Objective != prev.Objective && !isResumeUser(next.Objective) {
@@ -303,6 +311,7 @@ func mergeNotes(prev, next SessionNotes) SessionNotes {
 }
 
 // ParseNotes 按 Markdown 小节解析笔记。目标是该小节的非空行直接拼接。
+// md 按换行拆开，用 ## 小节标题切换解析。
 func ParseNotes(md string) SessionNotes {
 	n := SessionNotes{}
 	section := ""
@@ -373,6 +382,7 @@ func ReadNotes(spill *Spill) string {
 }
 
 // extractJSONPaths 从工具参数里取 path、file 和 glob 三个字符串字段里能当笔记路径的值。
+// args 去掉空白后为空时返回 nil，否则交给 parseToolArgs。
 func extractJSONPaths(args string) []string {
 	if strings.TrimSpace(args) == "" {
 		return nil
@@ -423,6 +433,7 @@ func collapseDoubledText(s string) string {
 }
 
 // keys 返回映射里的非空键，按字典序排列。
+// m 的非空键按字典序返回。
 func keys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -435,6 +446,8 @@ func keys(m map[string]bool) []string {
 }
 
 // appendUnique 在去掉空白后非空、且尚未出现时追加。
+// in 用来判断去掉空白后的 v 是否已经出现，没有则追加。
+// v 去掉空白后为空时返回 in。
 func appendUnique(in []string, v string) []string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -449,6 +462,7 @@ func appendUnique(in []string, v string) []string {
 }
 
 // unionCap 合并两列，去重后排序，n 大于 0 时只留前 n 个。
+// b 与另一列合并，去掉空白后为空的项丢掉。
 func unionCap(a, b []string, n int) []string {
 	seen := map[string]bool{}
 	var out []string

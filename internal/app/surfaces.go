@@ -27,6 +27,7 @@ func (a *App) IsPaused() bool {
 }
 
 // SetPaused 写入配置。变为暂停时 StopTurn 每一个正在跑的会话。两种方向都记 journal，并向 Hub 发 pause 事件，然后 SaveConfig。
+// paused 写入 Config.Paused；为真时对每个正在跑的会话调用 StopTurn，并写入 journal 和 Hub 事件。
 func (a *App) SetPaused(paused bool) error {
 	a.Config.Paused = paused
 	if paused {
@@ -51,6 +52,8 @@ func (a *App) SetPaused(paused bool) error {
 }
 
 // PagesList 在查询非空时搜索，否则按空间列出。页面库为空返回 nil。
+// q 去掉首尾空白后非空时传给 Pages.Search，否则走 Pages.List。
+// spaceID 传给 Pages.Search 或 Pages.List。
 func (a *App) PagesList(q, spaceID string) []pages.Meta {
 	if a.Pages == nil {
 		return nil
@@ -62,6 +65,8 @@ func (a *App) PagesList(q, spaceID string) []pages.Meta {
 }
 
 // PagesGet 读取一页。页面库为空返回 pages store unavailable。
+// spaceID 传给 Pages.Get。
+// id 传给 Pages.Get。
 func (a *App) PagesGet(spaceID, id string) (pages.Page, error) {
 	if a.Pages == nil {
 		return pages.Page{}, fmt.Errorf("pages store unavailable")
@@ -89,6 +94,7 @@ func (a *App) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 }
 
 // PagesDelete 删除页面，并清掉仍指向它的会话 PageID。id 空白返回 page not found。
+// spaceID 传给 Pages.Delete。
 func (a *App) PagesDelete(spaceID, id string) error {
 	if a.Pages == nil {
 		return fmt.Errorf("pages store unavailable")
@@ -115,6 +121,13 @@ func (a *App) PagesDelete(spaceID, id string) error {
 }
 
 // PagesPropose 提交一页审阅，并向收件箱推一条提案。
+// sessionID 写入 Review 的 ThreadID 和 SessionID，并传给收件箱。
+// title 写入 Review 的 Title。
+// content 写入 Review 的 Content。
+// pageID 写入 Review 的 PageID。
+// spaceID 写入 Review 的 SpaceID。
+// parentID 写入 Review 的 ParentID。
+// expected 写入 Review 的 ExpectedRevision。
 func (a *App) PagesPropose(sessionID, title, content, pageID, spaceID, parentID string, expected int) (pages.Review, error) {
 	if a.Pages == nil {
 		return pages.Review{}, fmt.Errorf("pages store unavailable")
@@ -144,6 +157,7 @@ func (a *App) PagesReviews() []pages.Review {
 }
 
 // PagesDecide 按 hash 批准或拒绝审阅。成功时记 page.save。
+// approve 传给 Pages.Decide，成功时写入 journal。
 func (a *App) PagesDecide(id, hash string, approve bool) (pages.Page, pages.Review, error) {
 	if a.Pages == nil {
 		return pages.Page{}, pages.Review{}, fmt.Errorf("pages store unavailable")
@@ -164,6 +178,7 @@ func (a *App) ProfilesList() []profile.Profile {
 }
 
 // ProfilesGet 读取一份档案。档案库为空返回 profiles unavailable。
+// id 传给 Profiles.Get。
 func (a *App) ProfilesGet(id string) (profile.Profile, error) {
 	if a.Profiles == nil {
 		return profile.Profile{}, fmt.Errorf("profiles unavailable")
@@ -188,6 +203,7 @@ func (a *App) ProfilesSave(p profile.Profile) (profile.Profile, error) {
 }
 
 // abortProfileSessions 对 ProfileID 匹配且正在跑的会话调用 StopTurn。
+// profileID 用来匹配会话的 ProfileID。
 func (a *App) abortProfileSessions(profileID string) {
 	list, err := a.ListSessions()
 	if err != nil {
@@ -200,7 +216,9 @@ func (a *App) abortProfileSessions(profileID string) {
 	}
 }
 
-// SetSessionProfile 把空 id 换成默认档案。档案变化且会话正在跑时 StopTurn。返回前 attachAuthMode。
+// SetSessionProfile 把空的 profileID 换成默认档案。档案变化且会话正在跑时 StopTurn。返回前 attachAuthMode。
+// id 用来取出会话。档案变了且该会话正在跑时，StopTurn 也用这个 id。
+// profileID 为空时改成 profile.DefaultID，再写入 ProfileID；与原来不同且会话正在跑时 StopTurn。
 func (a *App) SetSessionProfile(id, profileID string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -226,6 +244,8 @@ func (a *App) SetSessionProfile(id, profileID string) (SessionMeta, error) {
 }
 
 // SetSessionPage 写入会话的 PageID，返回前 attachAuthMode。
+// id 传给 GetSession。
+// pageID 去掉首尾空白后写入 PageID。
 func (a *App) SetSessionPage(id, pageID string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -239,6 +259,7 @@ func (a *App) SetSessionPage(id, pageID string) (SessionMeta, error) {
 }
 
 // sessionProfile 读取会话档案。视频频道、有 ParentID 或 id 含 --task-- 的会话返回 nil。档案 id 为空时用默认档案。
+// sessionID 传给 GetSession。
 func (a *App) sessionProfile(sessionID string) *profile.Profile {
 	if a.Profiles == nil {
 		return nil
@@ -265,6 +286,9 @@ func (a *App) sessionProfile(sessionID string) *profile.Profile {
 }
 
 // rememberCapture 把 shot 路径写入 ResearchShot。其他种类写入 ResearchBrief，summary 非空时同时写入 Preview。
+// sessionID 传给 GetSession。
+// kind 等于 shot 时把 path 写入 ResearchShot，否则写入 ResearchBrief。
+// path 按 kind 写入 ResearchShot 或 ResearchBrief。
 func (a *App) rememberCapture(sessionID, kind, path, summary string) {
 	m, err := a.GetSession(sessionID)
 	if err != nil {
@@ -283,6 +307,7 @@ func (a *App) rememberCapture(sessionID, kind, path, summary string) {
 }
 
 // ScheduleRetry 重试一条日程，向收件箱推一条，并在后台 runScheduledJob。
+// id 传给 Schedule.Retry。
 func (a *App) ScheduleRetry(id string) (schedule.Job, error) {
 	if a.Schedule == nil {
 		return schedule.Job{}, fmt.Errorf("no scheduler")
@@ -299,6 +324,7 @@ func (a *App) ScheduleRetry(id string) (schedule.Job, error) {
 }
 
 // runScheduledJob 在暂停时 Interrupt 并返回。KindFollow 用 StartSendOpts 续上原会话。短片任务交给 runStudioJob，其余交给 runIsolatedJob。
+// j 用来读 ID、Kind、SessionID 和 Prompt；暂停时 Interrupt，KindFollow 且 SessionID 去掉空白后非空时 StartSendOpts，短片任务交给 runStudioJob，其余交给 runIsolatedJob。
 func (a *App) runScheduledJob(j schedule.Job) {
 	if a.IsPaused() {
 		if a.Schedule != nil {
@@ -331,6 +357,8 @@ func (a *App) runScheduledJob(j schedule.Job) {
 }
 
 // ConnectorMention 把文本发给第一场未归档的代理会话，没有则 NewSession。暂停返回 paused，空文本返回 empty mention。
+// account 去掉首尾空白后非空时写进发给会话的前缀。
+// text 先 TrimSpace，空串则返回错误，否则接在前缀后传给 StartSendOpts。
 func (a *App) ConnectorMention(account, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -363,6 +391,7 @@ func (a *App) ConnectorMention(account, text string) error {
 }
 
 // VoiceTranscribe 用 speechCreds 把音频 POST 到 /audio/transcriptions。模型空则用 gpt-4o-mini-transcribe。响应体最多读 1 MiB。暂停返回 paused。
+// filename 传给 firstNonEmpty，结果用作上传文件名。
 func (a *App) VoiceTranscribe(filename string, audio []byte) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
@@ -409,6 +438,7 @@ func (a *App) VoiceTranscribe(filename string, audio []byte) (string, error) {
 }
 
 // VoiceSpeak 把文本 POST 到 /audio/speech，声音固定 alloy。模型空则用 gpt-4o-mini-tts。响应体最多读 8 MiB。
+// text 先 TrimSpace，空串则返回错误，否则作为 input 发给 /audio/speech。
 func (a *App) VoiceSpeak(text string) ([]byte, string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -448,6 +478,9 @@ func (a *App) VoiceSpeak(text string) ([]byte, string, error) {
 }
 
 // VoiceReceipt 往轨迹追加一条语音事件。转写截到 4000 个 rune。轨迹库或会话 id 为空则返回。
+// sessionID 为空或轨迹库为空则返回，否则写入事件的 SessionID。
+// durationSec 写入 payload 的 duration_sec。
+// transcript 经 clipRunes 截到 4000 个 rune 后写入 payload。
 func (a *App) VoiceReceipt(sessionID string, durationSec int, transcript string) {
 	if a.Traces == nil || sessionID == "" {
 		return
@@ -491,6 +524,8 @@ func (a *App) speechCreds() (endpoint, key, model string, err error) {
 }
 
 // firstNonEmpty 返回两个字符串里第一个去掉空白后非空的值。
+// a 去掉首尾空白后非空则返回 a。
+// b 在 a 去掉空白后为空时返回。
 func firstNonEmpty(a, b string) string {
 	if strings.TrimSpace(a) != "" {
 		return a
@@ -499,6 +534,9 @@ func firstNonEmpty(a, b string) string {
 }
 
 // profileMCPAllowed 在允许名单为空时返回真，否则名字或服务器名有一个通过 profile.MCPAllowed 即可。
+// allow 长度为 0 时返回真，否则传给 profile.MCPAllowed。
+// name 传给 profile.MCPAllowed。
+// server 传给 profile.MCPAllowed。
 func profileMCPAllowed(allow []string, name, server string) bool {
 	if len(allow) == 0 {
 		return true

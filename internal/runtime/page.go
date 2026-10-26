@@ -20,12 +20,18 @@ type TrajectoryPage struct {
 }
 
 // ProjectPage 瘦身存储页，并按字节预算丢掉最旧的用户回合。默认不丢当前最后一段。
+// raw 交给 ProjectPageKeep。
+// hubSeq 交给 ProjectPageKeep。
+// byteCap 交给 ProjectPageKeep。
 func ProjectPage(raw trace.Page, hubSeq int64, byteCap int) TrajectoryPage {
 	return ProjectPageKeep(raw, hubSeq, byteCap, 0)
 }
 
 // ProjectPageKeep 与 ProjectPage 相同，但不会丢掉含 keepSeq 的用户回合。
 // 目标不在最后一段时，先删最后一段，直到目标变成最后一段，再删更早的段。
+// raw 的 Events 交给 UITrajectory，Older、HeadSeq、TailSeq 填进返回页。
+// hubSeq 写入返回页的 HubSeq。
+// byteCap 大于 0 时和瘦身后的事件、keepSeq 一起交给 capTrajectoryBytesKeep。
 func ProjectPageKeep(raw trace.Page, hubSeq int64, byteCap int, keepSeq int64) TrajectoryPage {
 	ui := UITrajectory(raw.Events)
 	older := raw.Older
@@ -56,11 +62,14 @@ func ProjectPageKeep(raw trace.Page, hubSeq int64, byteCap int, keepSeq int64) T
 }
 
 // capTrajectoryBytes 按字节预算从最旧的用户回合删起。
+// evs 交给 capTrajectoryBytesKeep。
+// byteCap 交给 capTrajectoryBytesKeep。
 func capTrajectoryBytes(evs []trace.Event, byteCap int) ([]trace.Event, bool) {
 	return capTrajectoryBytesKeep(evs, byteCap, 0)
 }
 
 // capTrajectoryBytesKeep 在 JSON 超过 byteCap 时按用户回合整段删除，直到不超或只剩一段。keepSeq 为 0 时只删最旧段。
+// evs 长度为 0 时原样返回；否则整段序列化，超长时按 userRanges 删掉若干用户回合。
 func capTrajectoryBytesKeep(evs []trace.Event, byteCap int, keepSeq int64) ([]trace.Event, bool) {
 	if len(evs) == 0 {
 		return evs, false
@@ -118,6 +127,7 @@ func capTrajectoryBytesKeep(evs []trace.Event, byteCap int, keepSeq int64) ([]tr
 }
 
 // userRanges 按非插话的用户消息切回合。第一段用户消息之前的事件单独成段，并放在最前。
+// evs 里类型是用户且不是插话的下标作为段起点；没有这种事件时返回从 0 到 len(evs) 的一段。
 func userRanges(evs []trace.Event) [][2]int {
 	var starts []int
 	for i, ev := range evs {
@@ -143,6 +153,7 @@ func userRanges(evs []trace.Event) [][2]int {
 }
 
 // rangeHasSeq 判断半开区间 r 里是否有序号 seq。
+// evs 在下标落进 r 时取出，用事件的 Seq 和 seq 比较。
 func rangeHasSeq(evs []trace.Event, r [2]int, seq int64) bool {
 	for i := r[0]; i < r[1] && i < len(evs); i++ {
 		if evs[i].Seq == seq {

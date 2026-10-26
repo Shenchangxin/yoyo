@@ -21,6 +21,7 @@ var (
 )
 
 // ParseDuckDuckGoHTML 从 html.duckduckgo.com 或 lite 页面抽出结果。空白页面返回 nil。result__a 没有命中时改用 lite 链接。
+// page 去掉空白后为空时返回 nil。否则先传给 parseResultA，没有结果再传给 parseLiteLinks。
 func ParseDuckDuckGoHTML(page string) []Hit {
 	if strings.TrimSpace(page) == "" {
 		return nil
@@ -33,6 +34,7 @@ func ParseDuckDuckGoHTML(page string) []Hit {
 }
 
 // parseResultA 用 result__a 抽链接，并用同序号的 result__snippet 当摘要。正则最多取 maxHits*2 处，结果停在 maxHits 条。skipSERPLink 为真的跳过。
+// page 交给 reResultA 和 reResultSnippet，匹配上限是 maxHits 的 2 倍。
 func parseResultA(page string) []Hit {
 	anchors := reResultA.FindAllStringSubmatch(page, maxHits*2)
 	snips := reResultSnippet.FindAllStringSubmatch(page, maxHits*2)
@@ -59,6 +61,7 @@ func parseResultA(page string) []Hit {
 }
 
 // parseLiteLinks 从 rel=nofollow 的链接抽结果，最多看 40 处匹配，留下 maxHits 条。同一链接只留一次。
+// page 交给 reLiteLink，最多取 40 处匹配。
 func parseLiteLinks(page string) []Hit {
 	seen := map[string]bool{}
 	var hits []Hit
@@ -82,6 +85,7 @@ func parseLiteLinks(page string) []Hit {
 
 // decodeDDGHref 解开 HTML 转义。以 // 开头时补上 https:。查询参数 uddg 非空时返回解码后的值。
 // 主机名含 duckduckgo.com 的 http(s) 地址返回空。其他 http(s) 返回原 URL。其余返回空。
+// raw 先 TrimSpace 再 html.UnescapeString。空则返回空字符串。以 // 开头时前面加上 https:。
 func decodeDDGHref(raw string) string {
 	raw = html.UnescapeString(strings.TrimSpace(raw))
 	if raw == "" {
@@ -110,6 +114,8 @@ func decodeDDGHref(raw string) string {
 }
 
 // skipSERPLink 在链接和标题都空、链接含 duckduckgo.com，或标题是 next、previous、more results、feedback、privacy、all、images、videos、news、maps 时返回 true。
+// link 为空且 title 为空时返回 true。转小写后含 duckduckgo.com 时返回 true。
+// title 去掉空白并转小写后是 next、previous、more results、feedback、privacy、all、images、videos、news 或 maps 时返回 true。
 func skipSERPLink(link, title string) bool {
 	if link == "" && title == "" {
 		return true

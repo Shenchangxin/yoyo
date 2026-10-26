@@ -18,6 +18,11 @@ func toolsJSONTokens(tools []ToolJSON) int {
 }
 
 // fillLedger 写入前缀、动态尾、schema 和窗口。DynamicAt 为空时写成 tail。
+// rep 为 nil 时直接返回。
+// prefix 交给 estimateTokens，写入 PrefixTokens。
+// dynamic 交给 estimateTokens，写入 DynamicTokens。
+// tools 交给 toolsJSONTokens。
+// window 写入 Window。
 func fillLedger(rep *ShapeReport, prefix, dynamic string, tools []ToolJSON, window int) {
 	if rep == nil {
 		return

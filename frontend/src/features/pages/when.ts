@@ -3,7 +3,7 @@
  * 不拥有：正文。本地格式化，不改服务端。
  */
 
-/** formatPageWhen 把时刻写成相对时间。太远就写成月日。无法解析则空。 */
+/** formatPageWhen 把时刻写成相对时间。太远就写成月日。无法解析则空。iso 传给 Date.parse。locale 看开头。 */
 export function formatPageWhen(iso: string, locale = "en"): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
@@ -17,7 +17,7 @@ export function formatPageWhen(iso: string, locale = "en"): string {
   return new Intl.DateTimeFormat(locale.startsWith("zh") ? "zh-CN" : "en", { month: "short", day: "numeric" }).format(t);
 }
 
-/** pageMeasure 中文按字数，英文按词数。 */
+/** pageMeasure 中文按字数，英文按词数。text 去掉首尾空白后，做替换，切开，为假时走另一支。locale 看开头。 */
 export function pageMeasure(text: string, locale = "en"): { n: number; kind: "words" | "chars" } {
   const t = text.trim();
   if (!t) return { n: 0, kind: locale.startsWith("zh") ? "chars" : "words" };

@@ -8,6 +8,7 @@ import (
 )
 
 // RevealPath 在路径为空时返回 nil。否则交给 hostopen.Reveal。
+// path 为空时返回 nil。否则传给 hostopen.Reveal。
 func RevealPath(path string) error {
 	if path == "" {
 		return nil

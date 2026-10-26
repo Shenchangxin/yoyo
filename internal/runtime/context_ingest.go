@@ -13,6 +13,7 @@ import (
 const defaultIngestBudget = 8_000
 
 // ingestBudget 取 ToolResultBudget，否则返回 defaultIngestBudget。
+// loop 的 ToolResultBudget 大于 0 时用它，否则返回 defaultIngestBudget。
 func ingestBudget(loop artifact.LoopPreset) int {
 	if loop.ToolResultBudget > 0 {
 		return loop.ToolResultBudget
@@ -22,6 +23,9 @@ func ingestBudget(loop artifact.LoopPreset) int {
 
 // ingestToolResult 先把全文写入 spill，再返回预览。budget 是 rune 上限，小于等于 0 时用 defaultIngestBudget。截断保留头尾。
 // 正文为空时返回 emptyToolAnchor。noStub 为真，或正文已经是占位时，预览保持原文。
+// id 作为 spillID 的初值，spill 非 nil 时传给 Put。
+// name 在正文去掉空白后为空时传给 emptyToolAnchor，截断时传给 stubTool。
+// content 去掉空白后为空时改走 emptyToolAnchor；否则在 spill 非 nil 时传给 Put，并按 budget 截断。
 func ingestToolResult(spill *Spill, id, name, content string, budget int, noStub bool) (preview, spillID string) {
 	spillID = id
 	if strings.TrimSpace(content) == "" {

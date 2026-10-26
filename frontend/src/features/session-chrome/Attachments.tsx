@@ -7,7 +7,7 @@ import { Camera, Paperclip, X } from "lucide-react";
 import type { Attachment } from "../../lib/protocol";
 import { useCopy } from "../../lib/i18n";
 
-/** AttachmentRail 把附件排成一排，点一下交给外面移除。 */
+/** AttachmentRail 把附件排成一排，点一下交给外面移除。props 读取 items，调用 onRemove。 */
 export function AttachmentRail(props: {
   items: Attachment[];
   onRemove: (index: number) => void;
@@ -22,14 +22,14 @@ export function AttachmentRail(props: {
   );
 }
 
-/** DropOverlay 在拖进文件时盖住一层提示。 */
+/** DropOverlay 在拖进文件时盖住一层提示。props 读取 active、label。 */
 export function DropOverlay(props: { active: boolean; label?: string }) {
   const copy = useCopy();
   if (!props.active) return null;
   return <div className="sc-drop">{props.label || copy.composer.attach}</div>;
 }
 
-/** 画一张附件：图片用缩略图，其余用文件名。 */
+/** 画一张附件：图片用缩略图，其余用文件名。att 读取 name、path、mime、data_b64。onRemove 写到 button 的 onClick。 */
 function AttachmentChip({ att, onRemove }: { att: Attachment; onRemove: () => void }) {
   const name = att.name || att.path || "file";
   const preview = useMemo(() => {

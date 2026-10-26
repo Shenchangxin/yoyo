@@ -22,6 +22,8 @@ type pageErrors struct {
 }
 
 // add 记下一条 CDP 事件。不是页面错误的事件忽略。新错误超过 pageErrorCap 时只增加 dropped。
+// method 传给 pageErrorFromEvent。
+// params 传给 pageErrorFromEvent。返回的文字为空时不加记录。
 func (p *pageErrors) add(method string, params json.RawMessage) {
 	msg := pageErrorFromEvent(method, params)
 	if msg == "" {
@@ -67,6 +69,8 @@ func (p *pageErrors) take() string {
 }
 
 // pageErrorFromEvent 把一条 CDP 事件收成一行。Runtime.exceptionThrown 用异常描述和文件行号；Runtime.consoleAPICalled 只收 type 为 error 的。其他事件返回空字符串。
+// method 为 Runtime.exceptionThrown 或 Runtime.consoleAPICalled 时才解析，其他值返回空字符串。
+// params 按 method 解成异常详情或控制台参数。Unmarshal 失败时返回空字符串。
 func pageErrorFromEvent(method string, params json.RawMessage) string {
 	switch method {
 	case "Runtime.exceptionThrown":
@@ -115,6 +119,7 @@ func pageErrorFromEvent(method string, params json.RawMessage) string {
 }
 
 // consoleArgText 取控制台参数的字符串。优先 value 里的字符串，其次 description，再其次 fmt 打印 value，最后用类型名。
+// typ 在 value 不是字符串、description 为空且 value 为 nil 时作为返回值。
 func consoleArgText(value any, description, typ string) string {
 	if s, ok := value.(string); ok {
 		return s
@@ -138,6 +143,8 @@ func firstLine(s string) string {
 }
 
 // shortLocation 写成「 (文件名:行号)」。CDP 的行号从 0 起，这里加 1。地址为空时返回空字符串。问号和井号后面的部分丢掉。
+// raw 为空时返回空字符串。否则丢掉 ? 或 # 及其后面的部分，取最后一个 / 后面的名字，名字空则用剩下的整段。
+// line0 小于 0 时只写文件名，否则行号写成 line0 加 1。
 func shortLocation(raw string, line0 int) string {
 	if raw == "" {
 		return ""

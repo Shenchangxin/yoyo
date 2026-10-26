@@ -11,7 +11,7 @@ type GhostProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   danger?: boolean;
 };
 
-/** GhostButton 是可标成选中或危险的幽灵按钮。 */
+/** GhostButton 是可标成选中或危险的幽灵按钮。className 拼进按钮类名。active 为真时加上 is-active。danger 为真时加上 sg-danger。type 传给 button 的 type。props 摊到按钮上。 */
 export function GhostButton({ className, active, danger, type = "button", ...props }: GhostProps) {
   return (
     <button
@@ -22,17 +22,17 @@ export function GhostButton({ className, active, danger, type = "button", ...pro
   );
 }
 
-/** GlassGroup 把一组控件包进玻璃容器。 */
+/** GlassGroup 把一组控件包进玻璃容器。className 拼进玻璃容器类名。children 放进容器。 */
 export function GlassGroup({ className, children }: { className?: string; children: ReactNode }) {
   return <div className={cn("sg-glass-group", className)}>{children}</div>;
 }
 
-/** FillButton 是填充按钮。 */
+/** FillButton 是填充按钮。className 拼进填充按钮类名。type 传给 button 的 type。props 摊到按钮上。 */
 export function FillButton({ className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button type={type} className={cn("sg-fill", className)} {...props} />;
 }
 
-/** DangerButton 是危险按钮。 */
+/** DangerButton 是危险按钮。className 拼进危险按钮类名。type 传给 button 的 type。props 摊到按钮上。 */
 export function DangerButton({ className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button type={type} className={cn("sg-danger", className)} {...props} />;
 }

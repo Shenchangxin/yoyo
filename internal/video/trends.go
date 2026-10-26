@@ -46,6 +46,7 @@ type trendCacheEntry struct {
 }
 
 // FetchTrends 按平台拉热榜。limit 小于等于 0 时用 15，大于 30 时用 30。平台为空时拉微博、抖音和知乎。Engine.HTTP 为空时用 12 秒超时的客户端。五分钟内的缓存直接复用。返回 trends 和 updated 的 Unix 秒。
+// platforms 逐项去掉首尾空白并转成小写，空串丢掉；一项都没有时改为 weibo、douyin 和 zhihu。
 func (e *Engine) FetchTrends(platforms []string, limit int) (map[string]any, error) {
 	if limit <= 0 {
 		limit = 15
@@ -88,6 +89,7 @@ func (e *Engine) FetchTrends(platforms []string, limit int) (map[string]any, err
 }
 
 // cachedTrend 返回未超过五分钟的缓存。没有缓存时返回零值。
+// key 用来查 trendCache，没有或超过 5 分钟时返回零值。
 func (e *Engine) cachedTrend(key string) TrendGroup {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -102,6 +104,8 @@ func (e *Engine) cachedTrend(key string) TrendGroup {
 }
 
 // storeTrend 把这一组热榜放进内存缓存。
+// key 作为 trendCache 的键。
+// g 写入该键对应的 group。
 func (e *Engine) storeTrend(key string, g TrendGroup) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -112,6 +116,11 @@ func (e *Engine) storeTrend(key string, g TrendGroup) {
 }
 
 // fetchTrendGroup 先请求主地址。结果为空且备用地址非空时再请求备用。拿到条目时 OK 为真。
+// httpDo 传给 fetchTrendURL。
+// key 写入 Platform。
+// label 写入 Label。
+// primary 传给 fetchTrendURL。
+// fallback 在主结果长度为 0 且自身非空时再传给 fetchTrendURL。
 func fetchTrendGroup(httpDo HTTPDoer, key, label, primary, fallback string) TrendGroup {
 	g := TrendGroup{Platform: key, Label: label, Items: []TrendItem{}}
 	items := fetchTrendURL(httpDo, primary)
@@ -124,6 +133,8 @@ func fetchTrendGroup(httpDo HTTPDoer, key, label, primary, fallback string) Tren
 }
 
 // fetchTrendURL 用 GET 拉取 JSON，超时 10 秒，Accept 为 application/json，User-Agent 为 yoyo-studio/0.4。状态码大于等于 300、客户端为空或正文读失败时返回 nil。正文最多 1 MiB。
+// httpDo 为 nil 或 rawURL 为空时返回 nil，否则用来执行 GET。
+// rawURL 为空时返回 nil，否则作为 GET 的地址。
 func fetchTrendURL(httpDo HTTPDoer, rawURL string) []TrendItem {
 	if httpDo == nil || rawURL == "" {
 		return nil
@@ -152,6 +163,7 @@ func fetchTrendURL(httpDo HTTPDoer, rawURL string) []TrendItem {
 }
 
 // parseTrendJSON 从条目里取标题、热度和链接。标题依次看 title、name、word、query。热度看 hot、hotval、heat、index、num。链接看 url、link、href。没有标题的条目丢掉。
+// raw 传给 json.Unmarshal。
 func parseTrendJSON(raw []byte) []TrendItem {
 	var top map[string]any
 	if err := json.Unmarshal(raw, &top); err != nil {
@@ -178,6 +190,7 @@ func parseTrendJSON(raw []byte) []TrendItem {
 }
 
 // trendArray 从 data 数组、data 里嵌套的 data、以及 data 对象或顶层的 list、items、result、hot 里取出条目数组。
+// top 先看 data，再看其中的 data、list、items、result、hot，以及顶层的 list、items、result。
 func trendArray(top map[string]any) []any {
 	if arr := asSlice(top["data"]); len(arr) > 0 {
 		if m, ok := arr[0].(map[string]any); ok {
@@ -203,6 +216,8 @@ func trendArray(top map[string]any) []any {
 }
 
 // trendStr 返回第一个非空且不是 <nil> 的字段文本。
+// m 按 keys 依次取值。
+// keys 按给出的顺序查找，返回第一个去掉首尾空白后非空、且不是 <nil> 的文本。
 func trendStr(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if v, ok := m[k]; ok {

@@ -57,6 +57,7 @@ var nativeZH = nativeStrings{
 }
 
 // chromeWord 按托盘状态返回暂停、待审批、处理中或空闲。优先级已经由 chromeStatusOf 决定，这里只取词。
+// st 为 chromePaused 时返回 StatusPaused，为 chromeApproval 时返回 StatusApproval，为 chromeWorking 时返回 Working，其他返回 StatusIdle。
 func (n nativeStrings) chromeWord(st chromeStatus) string {
 	switch st {
 	case chromePaused:
@@ -71,11 +72,13 @@ func (n nativeStrings) chromeWord(st chromeStatus) string {
 }
 
 // chromeLine 返回 Yoyo · 加上 chromeWord。
+// st 传给 chromeWord。
 func (n nativeStrings) chromeLine(st chromeStatus) string {
 	return "Yoyo · " + n.chromeWord(st)
 }
 
 // trayTooltip 在 wake 为真且 WakeHint 非空时，在状态行下面再加一行唤醒提示。
+// st 传给 chromeLine。
 func (n nativeStrings) trayTooltip(st chromeStatus, wake bool) string {
 	line := n.chromeLine(st)
 	if !wake || n.WakeHint == "" {

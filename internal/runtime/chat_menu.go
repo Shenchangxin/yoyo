@@ -41,6 +41,7 @@ var ChatDeferredTools = []string{
 }
 
 // ApplyChatToolMenu 把驾驭目录投影到开场模式。推迟的家族即使快照里有也不拉回来。alwaysAdvertise 的工具即使这里省略，仍经 AllToolJSON 保持可见。
+// have 里属于核心、浏览器核心或 alwaysAdvertise 的名字先收进来，空串跳过。
 func ApplyChatToolMenu(have []string) []string {
 	core := map[string]bool{}
 	for _, n := range ChatCoreTools {
@@ -77,6 +78,7 @@ func ApplyChatToolMenu(have []string) []string {
 }
 
 // deferredHostTools 返回宿主规格里尚未广告、且不是 alwaysAdvertise 的名字，按字母排序。
+// advertised 里的名字从宿主规格结果中排除。
 func deferredHostTools(advertised []string) []string {
 	want := map[string]bool{}
 	for _, n := range advertised {
@@ -94,6 +96,7 @@ func deferredHostTools(advertised []string) []string {
 }
 
 // hostToolKnown 判断名字是不是宿主工具规格。
+// name 与宿主规格的 Name 逐个比较。
 func hostToolKnown(name string) bool {
 	for _, s := range tool.HostSpecs() {
 		if s.Name == name {
@@ -104,6 +107,7 @@ func hostToolKnown(name string) bool {
 }
 
 // unlockAdvertised 把名字并进 Advertised，已有的不重复。
+// names 长度为 0 时直接返回，否则把非空且尚未出现的名字追加进 Advertised。
 func (t *WorkspaceTools) unlockAdvertised(names []string) {
 	if t == nil || len(names) == 0 {
 		return
@@ -124,6 +128,7 @@ func (t *WorkspaceTools) unlockAdvertised(names []string) {
 }
 
 // searchHostSpecs 在宿主工具的名字和描述里做不区分大小写的子串搜索。查询为空返回 nil。
+// q 去掉空白并转小写，空串时返回 nil，否则在宿主规格的 Name 和 Description 里做子串匹配。
 func searchHostSpecs(q string) []string {
 	q = strings.ToLower(strings.TrimSpace(q))
 	if q == "" {
@@ -141,6 +146,7 @@ func searchHostSpecs(q string) []string {
 }
 
 // hostSpecJSON 返回同名宿主工具的 JSON 规格。没有则返回 false。
+// name 与宿主规格的 Name 相等时，把该规格交给 specJSON。
 func hostSpecJSON(name string) (ToolJSON, bool) {
 	for _, s := range tool.HostSpecs() {
 		if s.Name == name {

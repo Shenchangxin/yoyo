@@ -5,13 +5,13 @@ import { useCopy } from "../../lib/i18n";
 import { statusBarVisible, type TurnStatus } from "../../lib/turn-status";
 import { WorkingLine } from "./ProcessGroup";
 
-// verb 为 other 时用 other 文案并换上工具名，缺名时用 tool。其余动词取 live 里的句子，没有就用 live.think。
+/** statusLabel verb 为 other 时用 other 文案并换上工具名，缺名时用 tool。其余动词取 live 里的句子，没有就用 live.think。status 读取 verb、toolName。 */
 function statusLabel(status: TurnStatus, other: string, live: Record<string, string>): string {
   if (status.verb === "other") return other.replace("{name}", status.toolName || "tool");
   return live[status.verb] || live.think;
 }
 
-// TurnStatusBar 在 statusBarVisible 为假时不渲染。字节超过 2048 时改显示成 KB。compact 为真时不传停止提示。
+/** TurnStatusBar 在 statusBarVisible 为假时不渲染。字节超过 2048 时改显示成 KB。compact 为真时不传停止提示。status 传给 statusBarVisible。 */
 export function TurnStatusBar({
   status,
   compact,

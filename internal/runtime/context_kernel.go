@@ -101,6 +101,7 @@ func (k *ContextKernel) seed() ([]Message, error) {
 		admitted = true
 		latest = text
 		identity, pins = head.identity, head.pins
+		// 热前缀钉在已准入事件的 identity 和 pins 上，头部字节不动。当前 prefix 和那次 text 不同时，把新前缀当成用户消息追加，不改写系统消息。
 		k.seriesPrefix = identity + pins
 		if k.prefix != latest || (k.prefix != k.seriesPrefix && !transcriptHasPrompt(stripSystem(k.req.History), k.prefix)) {
 			update = promptUpdateLead + k.prefix
@@ -129,6 +130,7 @@ func (k *ContextKernel) seed() ([]Message, error) {
 	if user == "" && len(k.req.UserParts) > 0 {
 		user = "(image attached)"
 	}
+	// UserCommitted 为真表示 sendLocked 已经把用户行写入轨迹，这里不再发第二条。
 	if user != "" && !k.req.UserCommitted {
 		payload := map[string]any{"text": user}
 		if len(k.req.UserParts) > 0 {
@@ -157,6 +159,7 @@ func (k *ContextKernel) seed() ([]Message, error) {
 	} else if inject != "" {
 		messages = append(messages, Message{Role: RoleUser, Content: AttachMention("", inject)})
 	} else if len(stripSystem(k.req.History)) == 0 {
+		// 没有新用户文本、没有注入、去掉系统消息后历史也是空的，这一轮无从继续。
 		return nil, fmt.Errorf("nothing to continue")
 	}
 	return messages, nil
@@ -276,6 +279,7 @@ func (k *ContextKernel) prompt(messages []Message, aggressive bool) (out []Messa
 		// SoftHorizon 且这次不是 aggressive：走 projectChat，不做 snip 和 forceFit，写操作参数原样保留。超长回合靠检查点，不靠改写头部。
 		out, report = projectChat(messages, opts)
 	} else {
+		// 硬循环，或溢出重试把 aggressive 设为真。Shape 之后再 Legalize。projectChat 在返回前已经 Legalize。两处都只改投影，不写 JSONL。
 		out, report = Shape(messages, opts)
 		out = Legalize(out)
 	}
@@ -285,6 +289,7 @@ func (k *ContextKernel) prompt(messages []Message, aggressive bool) (out []Messa
 	report.Tokens = messagesTokens(out) + overhead
 	hot := hotPrefixBytes(out)
 	report.PrefixHash = hotPrefixHash(out)
+	// 本轮热前缀仍以前一轮的字节开头才算缓存稳定。第一轮没有前一轮，也算稳定。检查点会把 prevHot 清掉，下一轮重新算。
 	report.CacheStable = k.prevHot == "" || strings.HasPrefix(hot, k.prevHot)
 	k.prevHot = hot
 	k.lastHash = report.PrefixHash
@@ -308,6 +313,7 @@ func (k *ContextKernel) shouldCheckpoint(report ShapeReport) bool {
 		return false
 	}
 	limit := report.Budget
+	// 有模型窗口时，用到预算的 0.65 就检查点，给摘要和后面几轮留余量。窗口是 0 时用整段预算。
 	if k.req != nil && k.req.ModelWindow > 0 {
 		limit = int(float64(report.Budget) * chatCompactAt)
 	}

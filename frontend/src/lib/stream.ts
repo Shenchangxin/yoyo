@@ -62,7 +62,7 @@ export function emptyTrajectoryPage(): TrajectoryPageView {
   return { events: [], headSeq: 0, tailSeq: 0, older: false, hubSeq: 0 };
 }
 
-/** 拉取种子页。失败时返回空窗。空窗还能靠实时通知补上，整份轨迹 JSONL 不能倒进桌面 webview。 */
+/** 拉取种子页。失败时返回空窗。空窗还能靠实时通知补上，整份轨迹 JSONL 不能倒进桌面 webview。sessionId 传给 api.trajectoryPage。 */
 async function loadSeedPage(sessionId: string): Promise<TrajectoryPageView> {
   try {
     return await api.trajectoryPage(sessionId);
@@ -86,13 +86,18 @@ export type SeedOptions = { resync: boolean };
 /** 按会话登记补齐回调。已知有回合在跑时，界面会要一次补齐，丢掉的尾部不必等下一条通知露出缺口。 */
 const catchUps = new Map<string, Set<() => void>>();
 
-/** catchUpSession 触发该会话已登记的补齐。 */
+/** catchUpSession 触发该会话已登记的补齐。sessionId 传给 catchUps.get。 */
 export function catchUpSession(sessionId: string): void {
   const fns = catchUps.get(sessionId);
   if (fns) for (const fn of fns) fn();
 }
 
-/** subscribeSession 订阅一段会话的实时转录。先种下轨迹页，再按游标吃通知。返回停止函数。 */
+/**
+ * subscribeSession 订阅一段会话的实时转录。先种下轨迹页，再按游标吃通知。返回停止函数。
+ * sessionId 与 notice.sessionId 比较是否相等，与 item.sessionId 比较是否不等，拼进字符串，传给 api.liveSync，传给 api.trajectoryPage，传给 loadSeedPage，传给 catchUps.get，交给 catchUps.set，传给 catchUps.delete。
+ * onItem 传给 items.forEach，被调用，并传入 item。
+ * onSeed 为真时才继续，被调用，并传入 items、page。
+ */
 export function subscribeSession(
   sessionId: string,
   onItem: (item: Item) => void,
@@ -109,7 +114,7 @@ export function subscribeSession(
   const seen = new Set<string>();
   const lastIndex = new Map<string, number>();
 
-  /** 记下这一帧的序号。开始和结束帧不算缺口。序号跳过已见的下一号时返回真，调用方应回拉。 */
+  /** 记下这一帧的序号。开始和结束帧不算缺口。序号跳过已见的下一号时返回真，调用方应回拉。item 读取 payload、type、delta、key。frame 读取 kind、index_from、index、attempt_id，为空时不读。 */
   const noteFrame = (item: Item, frame?: { index?: number; index_from?: number; kind?: string; attempt_id?: string }) => {
     const kind = frame?.kind || String(item.payload?.kind || "");
     if (item.type === "assistant_stream" && kind !== "chunk") return false;
@@ -123,10 +128,10 @@ export function subscribeSession(
     return gapped;
   };
 
-  /** 原始事件收成条目，并带上流帧。 */
+  /** 原始事件收成条目，并带上流帧。event 传给 itemFromEvent。frame 传给 attachStreamFrame。 */
   const toItem = (event: any, frame?: Parameters<typeof attachStreamFrame>[1]) => attachStreamFrame(itemFromEvent(event), frame);
 
-  /** 指纹没见过才交给调用方。见过太多时清掉集合，避免一直涨。 */
+  /** 指纹没见过才交给调用方。见过太多时清掉集合，避免一直涨。raw 传给 eventFingerprint。item 传给 onItem。 */
   const applyItem = (raw: any, item: Item) => {
     if (seen.size > 4000) seen.clear();
     const fp = eventFingerprint(raw);
@@ -135,7 +140,7 @@ export function subscribeSession(
     onItem(item);
   };
 
-  /** 把一页种子重放成条目。resync 为真时让调用方并进屏幕上的窗口。 */
+  /** 把一页种子重放成条目。resync 为真时让调用方并进屏幕上的窗口。raws 为假时改用后备值，逐项处理，传给 replayEvents。page 传给 onSeed。 */
   const applySeed = (raws: any[], page: TrajectoryPageView | undefined, resync: boolean) => {
     (raws || []).forEach((raw) => seen.add(eventFingerprint(raw)));
     const items = replayEvents(raws || []);
@@ -145,7 +150,7 @@ export function subscribeSession(
     seeded = true;
   };
 
-  /** 按序号应用回拉到的一条。回拉事件是完整追踪事件，序号在事件自己身上。已经由实时通知应用过的序号跳过。 */
+  /** 按序号应用回拉到的一条。回拉事件是完整追踪事件，序号在事件自己身上。已经由实时通知应用过的序号跳过。raw 传给 parseLiveNotice。 */
   const applyPulled = (raw: any) => {
     const notice = parseLiveNotice(raw);
     const seq = notice.seq;
@@ -215,7 +220,7 @@ export function subscribeSession(
     if (alive) void pullSince(false);
   };
 
-  /** 处理一条实时通知。种子落地之前什么都不应用，种子自己的回拉会把页上 hubSeq 之后的事件从环里重放，包括此刻到达的。 */
+  /** 处理一条实时通知。种子落地之前什么都不应用，种子自己的回拉会把页上 hubSeq 之后的事件从环里重放，包括此刻到达的。raw 传给 parseLiveNotice。 */
   const onLive = (raw: any) => {
     if (!seeded) return;
     const notice = parseLiveNotice(raw);
@@ -271,6 +276,7 @@ export function subscribeSession(
         /* 隐私模式走 cookie，不把令牌放进地址 */
       }
       const es = new EventSource(eventsURL, { withCredentials: true });
+      /** onmessage 调用 onLive。msg 读取 data。 */
       es.onmessage = (msg) => {
         try {
           onLive(JSON.parse(msg.data));
@@ -311,7 +317,7 @@ export function subscribeSession(
   };
 }
 
-/** subscribeStopped 订阅会话停止。回调拿到会话 id。 */
+/** subscribeStopped 订阅会话停止。回调拿到会话 id。onStop 被调用，并传入 id。 */
 export function subscribeStopped(onStop: (sessionId: string) => void): () => void {
   let off: (() => void) | undefined;
   let alive = true;
@@ -330,7 +336,7 @@ export function subscribeStopped(onStop: (sessionId: string) => void): () => voi
   };
 }
 
-/** subscribeItems 订阅全部会话的条目通知，不按游标过滤。 */
+/** subscribeItems 订阅全部会话的条目通知，不按游标过滤。onItem 被调用，并传入 attachStreamFrame(itemFromEvent(notice.e。 */
 export function subscribeItems(onItem: (item: Item) => void): () => void {
   let off: (() => void) | undefined;
   let alive = true;
@@ -349,7 +355,7 @@ export function subscribeItems(onItem: (item: Item) => void): () => void {
   };
 }
 
-/** subscribeSessions 会话列表变化时回调。 */
+/** subscribeSessions 会话列表变化时回调。onChange 被调用。 */
 export function subscribeSessions(onChange: () => void): () => void {
   let off: any;
   let alive = true;
@@ -364,7 +370,7 @@ export function subscribeSessions(onChange: () => void): () => void {
   };
 }
 
-/** subscribeState 订阅运行时状态主题。桌面用事件并稍作合并，浏览器没有桌面桥时改为轮询。 */
+/** subscribeState 订阅运行时状态主题。桌面用事件并稍作合并，浏览器没有桌面桥时改为轮询。onChange 被调用，并传入 "poll"。 */
 export function subscribeState(onChange: (topic: string) => void): () => void {
   let off: any;
   let alive = true;

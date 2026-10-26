@@ -57,6 +57,7 @@ func (e *Engine) ProjectHistory() ([]map[string]any, error) {
 }
 
 // SessionProject 按会话绑定填回画布、短片和短剧。已有 kind 时不再用后面的绑定覆盖种类和标题。
+// sessionID 写入 session_id，并传给 CanvasSessionBind、StudioSessionBind 和 SessionBind。
 func (e *Engine) SessionProject(sessionID string) map[string]any {
 	out := map[string]any{"session_id": sessionID}
 	if cid, ok := e.CanvasSessionBind(sessionID); ok {
@@ -135,6 +136,7 @@ func (e *Engine) latestDramaSessions() map[string]dramaSessionHit {
 }
 
 // LatestStudioSession 返回短片工程第一次出现的会话。引擎或工程标识为空时返回空串。
+// projectID 为空或引擎为 nil 时返回空串，否则作为 latestStudioSessions 的键。
 func (e *Engine) LatestStudioSession(projectID string) string {
 	if e == nil || projectID == "" {
 		return ""
@@ -160,6 +162,7 @@ func (e *Engine) latestStudioSessions() map[string]string {
 }
 
 // firstEpisodeID 返回该剧列表里的第一集标识。没有集时返回空串。
+// dramaID 为空或引擎为 nil 时返回空串，否则传给 ListEpisodes。
 func (e *Engine) firstEpisodeID(dramaID string) string {
 	if e == nil || dramaID == "" {
 		return ""

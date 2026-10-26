@@ -65,11 +65,11 @@ export const chrome = {
   close() {
     Window.Close().catch(() => {});
   },
-  /** setAlwaysOnTop 设置窗口是否置顶。 */
+  /** setAlwaysOnTop 设置窗口是否置顶。v 传给 Window.SetAlwaysOnTop。 */
   setAlwaysOnTop(v: boolean) {
     Window.SetAlwaysOnTop(v).catch(() => {});
   },
-  /** setZoom 设置窗口缩放。 */
+  /** setZoom 设置窗口缩放。v 传给 Window.SetZoom。 */
   setZoom(v: number) {
     Window.SetZoom(v).catch(() => {});
   },

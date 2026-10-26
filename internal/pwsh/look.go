@@ -70,6 +70,7 @@ func lookDir(dir string) string {
 }
 
 // pwshBin 在 Windows 上只找 pwsh.exe，其他系统先找 pwsh.exe 再找 pwsh。命中 isPwshBin 的第一个路径返回。
+// dir 与 pwsh.exe 拼接。非 Windows 时再与 pwsh 拼接。命中 isPwshBin 的第一个路径返回，否则返回空字符串。
 func pwshBin(dir string) string {
 	cands := []string{"pwsh.exe", "pwsh"}
 	if runtime.GOOS == "windows" {
@@ -85,6 +86,7 @@ func pwshBin(dir string) string {
 }
 
 // isPwshBin 在路径存在且不是目录时返回 true。
+// p 交给 os.Stat。错误为 nil 且不是目录时返回 true。
 func isPwshBin(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()

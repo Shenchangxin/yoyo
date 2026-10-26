@@ -5,7 +5,7 @@
 import type { ThemeConfig } from "antd";
 import { theme as antdTheme } from "antd";
 
-/** yoyoHostAntTheme 按明暗返回石色前景、焦点描边，以及本文件里的圆角和控件高度。 */
+/** yoyoHostAntTheme 按明暗返回石色前景、焦点描边，以及本文件里的圆角和控件高度。dark 为真时用暗色前景、背景和 darkAlgorithm，否则用亮色和 defaultAlgorithm。 */
 export function yoyoHostAntTheme(dark: boolean): ThemeConfig {
   const fg = dark ? "#f4f4f0" : "#1c1c1a";
   const bg = dark ? "#1c1c1a" : "#fbfbfa";

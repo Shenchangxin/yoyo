@@ -16,7 +16,7 @@ import { cn } from "../../lib/utils";
 import { SettingRow, SettingSection, SettingSegmented } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
-/** 把文件读成去掉前缀的 base64。 */
+/** 把文件读成去掉前缀的 base64。file 传给 r.readAsDataURL。 */
 function fileToB64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -30,7 +30,7 @@ function fileToB64(file: File): Promise<string> {
   });
 }
 
-/** SkinStudio 选择壁纸和蒙层，并写成当前皮肤。 */
+/** SkinStudio 选择壁纸和蒙层，并写成当前皮肤。host 读取 cfg，调用 patch。 */
 export function SkinStudio({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const { resolved, skinId, setSkinOverlay } = useTheme();
@@ -44,7 +44,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
 
   const activeId = isUserSkinId(host.cfg.skin || skinId) ? host.cfg.skin || skinId : "";
 
-  /** 把这套材质画到界面上。 */
+  /** 把这套材质画到界面上。id 传给 isUserSkinId，写入字段 id。mats 写入字段 materials。url 为假时走另一支，写入字段 wallpaperUrl。file 写入字段 wallpaperFile。 */
   const paint = useCallback(
     (id: string, mats: SkinMaterials, url: string, file: string) => {
       if (!isUserSkinId(id) || !url) {
@@ -63,7 +63,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     [setSkinOverlay],
   );
 
-  /** 按编号取回皮肤并画出来。 */
+  /** 按编号取回皮肤并画出来。id 传给 api.getSkin，传给 setDraftId，传给 paint。 */
   const hydrate = useCallback(async (id: string) => {
     const got = await api.getSkin(id);
     const mats = got.info.materials || defaultMaterials();
@@ -87,7 +87,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     void hydrate(activeId).catch(() => setSkinOverlay(null));
   }, [activeId, hydrate, setSkinOverlay]);
 
-  /** 保存材质并设成当前皮肤。 */
+  /** 保存材质并设成当前皮肤。id 写入字段 id。mats 传给 paint，写入字段 materials。extra 读取 wallpaper_b64、wallpaper_name，为空时不读。 */
   const persist = useCallback(
     async (id: string, mats: SkinMaterials, extra?: { wallpaper_b64?: string; wallpaper_name?: string }) => {
       const info = await api.saveSkin({
@@ -113,7 +113,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     [copy.settings.skinWallpaper, host, paint, wallpaperFile, wallpaperUrl],
   );
 
-  /** 把一次保存排到稍后。 */
+  /** 把一次保存排到稍后。mats 传给 persist。 */
   function queueSave(mats: SkinMaterials) {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -122,7 +122,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     }, 400);
   }
 
-  /** 选了壁纸就上传并保存。 */
+  /** 选了壁纸就上传并保存。file 读取 name，传给 fileToB64，传给 wallpaperVeil。 */
   async function onPick(file: File) {
     setBusy(true);
     try {

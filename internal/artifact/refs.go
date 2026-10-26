@@ -28,17 +28,21 @@ type Refs struct {
 }
 
 // NewRefs 只记下根目录，不创建它。
+// root 记到返回的 Refs.Root。
 func NewRefs(root string) *Refs {
 	return &Refs{Root: root}
 }
 
 // path 去掉名字开头的斜杠，再按系统分隔符拼到根目录下。
+// name 去掉开头的斜杠后，按系统分隔符拼到 Root 下。
 func (r *Refs) path(name string) string {
 	name = strings.TrimPrefix(name, "/")
 	return filepath.Join(r.Root, filepath.FromSlash(name))
 }
 
 // Set 先把哈希写进同路径的临时文件，再改名换成正式指针。哈希会去掉首尾空白，并补一个换行。
+// name 交给 path，得到要替换的指针文件。
+// hash 去掉首尾空白，补一个换行，先写入同路径加 .tmp 的临时文件，再改名换成正式文件。
 func (r *Refs) Set(name, hash string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -47,6 +51,7 @@ func (r *Refs) Set(name, hash string) error {
 		return err
 	}
 	tmp := p + ".tmp"
+	// 先写临时文件再改名。读指针的人不会看到写到一半的哈希。空白被去掉，末尾补一个换行。
 	if err := os.WriteFile(tmp, []byte(strings.TrimSpace(hash)+"\n"), 0o644); err != nil {
 		return err
 	}
@@ -54,6 +59,7 @@ func (r *Refs) Set(name, hash string) error {
 }
 
 // Get 读出指针里的哈希并去掉首尾空白。文件不存在时返回错误。
+// name 交给 path，读出该文件并去掉首尾空白。
 func (r *Refs) Get(name string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -65,6 +71,7 @@ func (r *Refs) Get(name string) (string, error) {
 }
 
 // GetOrEmpty 在读失败时返回空串。文件里只有空白时也是空串。
+// name 交给 Get，读失败时返回空串。
 func (r *Refs) GetOrEmpty(name string) string {
 	h, err := r.Get(name)
 	if err != nil {
@@ -101,6 +108,7 @@ func (r *Refs) List() (map[string]string, error) {
 }
 
 // Archive 把哈希写到 archive/ 加上哈希前 12 位。空哈希报错。不足或刚好 12 位时，文件名用整段哈希。
+// hash 为空时返回错误；长于 12 时文件名只用前 12 位，再经 Set 写到 archive/ 加该文件名。
 func (r *Refs) Archive(hash string) error {
 	if hash == "" {
 		return fmt.Errorf("refs: empty archive hash")
@@ -113,11 +121,13 @@ func (r *Refs) Archive(hash string) error {
 }
 
 // ModelActive 返回 models/<指纹>/active。指纹里的 /、\、: 会换成下划线。
+// fingerprint 经 sanitize 后嵌进 models/ 与 /active 之间。
 func ModelActive(fingerprint string) string {
 	return "models/" + sanitize(fingerprint) + "/active"
 }
 
 // ModelCanary 返回 models/<指纹>/canary。清洗规则与 ModelActive 相同。
+// fingerprint 经 sanitize 后嵌进 models/ 与 /canary 之间。
 func ModelCanary(fingerprint string) string {
 	return "models/" + sanitize(fingerprint) + "/canary"
 }

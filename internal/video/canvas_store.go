@@ -29,6 +29,7 @@ type canvasProjectRow struct {
 }
 
 // getCanvasProject 读取未删除的画布项目行。
+// id 传给 getDoc，从 colProjects 取值。
 func (e *Engine) getCanvasProject(id string) (canvasProjectRow, error) {
 	r, err := getDoc[canvasProjectRow](e, colProjects, id)
 	if err != nil || r.DeletedAt != "" {
@@ -38,6 +39,10 @@ func (e *Engine) getCanvasProject(id string) (canvasProjectRow, error) {
 }
 
 // listCanvasProjectRows 按标题或 id 搜索画布，支持按名称、节点数或更新时间排序并分页。
+// search 去掉空白并转成小写，非空时要出现在标题或 ID 的小写文本里。
+// sortKey 为 name 时按标题排序，为 nodes 时按节点数再按更新时间，其他值按更新时间。
+// page 小于 1 时改成 1，再用来计算切片起点。
+// pageSize 小于等于 0 时改成 40，再用来计算切片长度。
 func (e *Engine) listCanvasProjectRows(search, sortKey string, page, pageSize int) ([]canvasProjectRow, int, error) {
 	if page < 1 {
 		page = 1
@@ -87,6 +92,7 @@ func (e *Engine) listCanvasProjectRows(search, sortKey string, page, pageSize in
 }
 
 // decodeProjectDoc 把画布 JSON 解成对象。空文档、null 或坏 JSON 返回格式错误。
+// raw 去掉空白后为空或等于 null 时返回格式错误，否则按 JSON 对象解析，结果为 nil 也返回格式错误。
 func decodeProjectDoc(raw []byte) (map[string]any, error) {
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" || trimmed == "null" {
@@ -163,6 +169,7 @@ func canvasSummary(r canvasProjectRow) map[string]any {
 }
 
 // canvasNodeCount 数出文档里的节点数量。
+// payload 按 JSON 解析后返回 nodes 的长度。
 func canvasNodeCount(payload string) int {
 	var document struct {
 		Nodes []json.RawMessage `json:"nodes"`
@@ -172,6 +179,7 @@ func canvasNodeCount(payload string) int {
 }
 
 // canvasConnectionCount 数出文档里的连线数量。
+// payload 按 JSON 解析后返回 connections 的长度。
 func canvasConnectionCount(payload string) int {
 	var document struct {
 		Connections []json.RawMessage `json:"connections"`
@@ -181,6 +189,8 @@ func canvasConnectionCount(payload string) int {
 }
 
 // upsertCanvasProject 按客户端修订号保存画布。修订号不一致则冲突。非修复保存会先检查引用的资源都在。
+// raw 传给 decodeProjectDoc。
+// repair 为 false 时把序列化后的文档传给 validateCanvasResources；为 true 时把快照原因写成 before_resource_repair。
 func (e *Engine) upsertCanvasProject(raw json.RawMessage, repair bool) (map[string]any, canvasEnv) {
 	doc, err := decodeProjectDoc(raw)
 	if err != nil {
@@ -265,6 +275,7 @@ func (e *Engine) upsertCanvasProject(raw json.RawMessage, repair bool) (map[stri
 }
 
 // validateCanvasResources 拒绝引用了已缺失资源的画布。
+// payload 传给 collectResourceIDs。
 func (e *Engine) validateCanvasResources(payload []byte) error {
 	ids := collectResourceIDs(payload)
 	for _, id := range ids {
@@ -276,6 +287,7 @@ func (e *Engine) validateCanvasResources(payload []byte) error {
 }
 
 // collectResourceIDs 从文档文本里收集 resource: 后面的资源 id。
+// payload 转成字符串后查找 resource:，并收集后面的连续标识字符。
 func collectResourceIDs(payload []byte) []string {
 	s := string(payload)
 	seen := map[string]struct{}{}
@@ -310,6 +322,8 @@ func collectResourceIDs(payload []byte) []string {
 }
 
 // maybeSnapshot 在保存前写入快照。普通保存间隔短于 5 分钟则跳过，恢复和修复强制记一版，并只留最近 20 条。
+// existing 的 ID、Revision、Title、PayloadJSON 写入快照，并用 ID 找出同一画布的旧快照。
+// reason 为 before_restore 或 before_resource_repair 时不看 5 分钟间隔，并写入快照的 Reason。
 func (e *Engine) maybeSnapshot(existing canvasProjectRow, reason string) error {
 	force := reason == "before_restore" || reason == "before_resource_repair"
 	if !force {
@@ -351,6 +365,7 @@ func (e *Engine) maybeSnapshot(existing canvasProjectRow, reason string) error {
 }
 
 // listCanvasHistory 列出画布最近的快照和当前修订号。
+// id 传给 getCanvasProject，并筛选同一画布的快照，超过 20 条时只留前 20 条。
 func (e *Engine) listCanvasHistory(id string) (map[string]any, error) {
 	row, err := e.getCanvasProject(id)
 	if err != nil {
@@ -381,6 +396,8 @@ func (e *Engine) listCanvasHistory(id string) (map[string]any, error) {
 }
 
 // getCanvasSnapshot 读取一条快照及其当时的画布文档。
+// canvasID 必须与快照的 CanvasID 相等，并写入返回文档的 id。
+// snapshotID 传给 getDoc，从 colSnapshots 取值。
 func (e *Engine) getCanvasSnapshot(canvasID, snapshotID string) (map[string]any, map[string]any, error) {
 	s, err := getDoc[canvasSnapshotRec](e, colSnapshots, snapshotID)
 	if err != nil || s.CanvasID != canvasID {
@@ -400,6 +417,9 @@ func (e *Engine) getCanvasSnapshot(canvasID, snapshotID string) (map[string]any,
 }
 
 // restoreCanvasSnapshot 在修订号仍匹配时把快照写回画布，并先记一份恢复前快照。
+// canvasID 传给 getCanvasProject、getCanvasSnapshot 和 putDoc。
+// snapshotID 传给 getCanvasSnapshot。
+// revision 与当前 Revision 不等时返回冲突。
 func (e *Engine) restoreCanvasSnapshot(canvasID, snapshotID string, revision int64) (map[string]any, canvasEnv) {
 	existing, err := e.getCanvasProject(canvasID)
 	if err != nil {
@@ -433,6 +453,7 @@ func (e *Engine) restoreCanvasSnapshot(canvasID, snapshotID string, revision int
 }
 
 // deleteCanvasProject 把画布标成已删除。
+// id 传给 getCanvasProject 和 putDoc。
 func (e *Engine) deleteCanvasProject(id string) error {
 	r, err := e.getCanvasProject(id)
 	if err != nil {
@@ -443,6 +464,7 @@ func (e *Engine) deleteCanvasProject(id string) error {
 }
 
 // createEmptyCanvas 创建空画布，标题默认是无限画布，修订号从 1 开始。
+// title 去掉空白后为空时写成无限画布，并写入文档和项目行。
 func (e *Engine) createEmptyCanvas(title string) (map[string]any, error) {
 	id := NewID()
 	now := Now()
@@ -468,6 +490,8 @@ func (e *Engine) createEmptyCanvas(title string) (map[string]any, error) {
 }
 
 // BindCanvasSession 把会话绑到已经存在的画布。
+// sessionID 去掉空白后为空则返回 session required，否则作为绑定表的键。
+// canvasID 传给 getCanvasProject，并作为绑定值。
 func (e *Engine) BindCanvasSession(sessionID, canvasID string) error {
 	if strings.TrimSpace(sessionID) == "" {
 		return fmt.Errorf("session required")
@@ -481,6 +505,7 @@ func (e *Engine) BindCanvasSession(sessionID, canvasID string) error {
 }
 
 // CanvasSessionBind 返回会话当前绑定的画布 id。
+// sessionID 作为绑定表的键取出画布 id。
 func (e *Engine) CanvasSessionBind(sessionID string) (string, bool) {
 	m := e.loadCanvasBinds()
 	id := m[sessionID]
@@ -491,6 +516,10 @@ func (e *Engine) CanvasSessionBind(sessionID string) (string, bool) {
 }
 
 // saveCanvasPayload 在期望修订号仍匹配时写回画布正文并把修订号加一。
+// id 传给 getCanvasProject 和 putDoc。
+// payload 写入 PayloadJSON。
+// title 写入 Title。
+// expectedRev 与当前 Revision 不等时返回「画布已被更新，请重新加载」。
 func (e *Engine) saveCanvasPayload(id string, payload []byte, title string, expectedRev int64) error {
 	r, err := e.getCanvasProject(id)
 	if err != nil {

@@ -5,6 +5,7 @@ package video
 import "fmt"
 
 // skillTagLabel 按分类值返回中文标签，没有则返回空串。
+// tag 与 skillCategories 每项的 value 比较，相等时返回对应 label。
 func skillTagLabel(tag string) string {
 	for _, item := range skillCategories() {
 		if fmt.Sprint(item["value"]) == tag {
@@ -31,6 +32,11 @@ type canvasSkillDef struct {
 }
 
 // skillMD 把标题、时机、步骤、输出和禁止拼成一份技能 Markdown。
+// title 拼在一级标题后面。
+// when 拼在「何时使用」后面。
+// steps 拼在「步骤」后面。
+// output 拼在「输出」后面。
+// forbid 拼在「禁止」后面。
 func skillMD(title, when, steps, output, forbid string) string {
 	return "# " + title + "\n\n## 何时使用\n" + when + "\n\n## 步骤\n" + steps + "\n\n## 输出\n" + output + "\n\n## 禁止\n" + forbid + "\n"
 }

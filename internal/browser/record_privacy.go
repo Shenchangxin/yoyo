@@ -22,6 +22,7 @@ var sensitiveQuery = []string{
 }
 
 // looksSensitiveField 看拼起来的字段文本里有没有 sensitiveField 中的词。
+// hay 转成小写后，看是否包含 sensitiveField 里的词。
 func looksSensitiveField(hay string) bool {
 	low := strings.ToLower(hay)
 	for _, k := range sensitiveField {
@@ -33,6 +34,7 @@ func looksSensitiveField(hay string) bool {
 }
 
 // redactRecordValue 在字段名敏感或值像密钥时返回 {{sensitive_value}}。长于 2000 个字符时返回 {{redacted_value}}。其余原样返回。
+// target 的 Type、Name、NameAttr、ID、Placeholder、Label、Text 用空格拼起来，传给 looksSensitiveField。
 func redactRecordValue(target RecordTarget, value string) string {
 	hay := strings.Join([]string{
 		target.Type, target.Name, target.NameAttr, target.ID, target.Placeholder, target.Label, target.Text,
@@ -52,6 +54,7 @@ func looksSecretValue(s string) bool {
 }
 
 // redactRecordURL 把查询里 sensitiveQuery 那些键的值改成 ***。没有这些键或解析失败时原样返回。
+// raw 交给 url.Parse。失败或 RawQuery 为空时原样返回。sensitiveQuery 里的键有值时改成 ***，有改动才返回重新编码的地址，否则仍返回 raw。
 func redactRecordURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.RawQuery == "" {
@@ -73,6 +76,7 @@ func redactRecordURL(raw string) string {
 }
 
 // skipReplayURL 在空白、about:blank，或以 chrome://、devtools://、edge:// 开头时返回真。这些地址不写成回放步骤。
+// raw 去掉空白并转小写。空或等于 about:blank 时返回真。以 chrome://、devtools:// 或 edge:// 开头时返回真。
 func skipReplayURL(raw string) bool {
 	low := strings.ToLower(strings.TrimSpace(raw))
 	if low == "" || low == "about:blank" {

@@ -46,7 +46,7 @@ import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outl
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
 import { useStudioSelection } from "./video/workshop-store";
 
-/** 从最后一行往前找，返回最近一条流式片段的 key。没有就返回空字符串。 */
+/** 从最后一行往前找，返回最近一条流式片段的 key。没有就返回空字符串。rows 读取 length，按下标读取。 */
 function lastStreamKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i];
@@ -57,7 +57,7 @@ function lastStreamKey(rows: LayoutRow[]): string {
   return "";
 }
 
-/** 在这一层和嵌套的 work 里，从后往前找 stream 的 key。 */
+/** 在这一层和嵌套的 work 里，从后往前找 stream 的 key。parts 读取 length，按下标读取。 */
 function streamKeyInParts(parts: AgentPart[]): string {
   for (let j = parts.length - 1; j >= 0; j--) {
     const part = parts[j];
@@ -70,7 +70,7 @@ function streamKeyInParts(parts: AgentPart[]): string {
   return "";
 }
 
-/** 返回最后一块过程所在的下标。嵌套在 work 里时返回这块 work 的下标。没有返回 -1。 */
+/** 返回最后一块过程所在的下标。嵌套在 work 里时返回这块 work 的下标。没有返回 -1。parts 读取 length，按下标读取。 */
 function lastProcessIndex(parts: AgentPart[]): number {
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i];
@@ -83,7 +83,7 @@ function lastProcessIndex(parts: AgentPart[]): number {
   return -1;
 }
 
-/** 最后一条 type 为 error 的 key。没有就返回空字符串。 */
+/** 最后一条 type 为 error 的 key。没有就返回空字符串。items 读取 length，按下标读取。 */
 function lastErrorKey(items: Item[]): string {
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].type === "error") return items[i].key;
@@ -91,7 +91,7 @@ function lastErrorKey(items: Item[]): string {
   return "";
 }
 
-/** 最后一行 agent 的 key。没有就返回空字符串。 */
+/** 最后一行 agent 的 key。没有就返回空字符串。rows 读取 length，按下标读取。 */
 function lastAgentKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i].kind === "agent") return rows[i].key;
@@ -99,17 +99,17 @@ function lastAgentKey(rows: LayoutRow[]): string {
   return "";
 }
 
-/** 这些片段里有没有 artifact。 */
+/** 这些片段里有没有 artifact。parts 调用 some。 */
 function turnHasArtifact(parts: AgentPart[]): boolean {
   return parts.some((p) => p.kind === "artifact");
 }
 
-/** 这一行是不是用户消息。 */
+/** 这一行是不是用户消息。row 读取 kind。 */
 function isUserRow(row: LayoutRow): boolean {
   return row.kind === "user";
 }
 
-/** 第一行不加顶距。紧凑时用户行 pt-4、其余 pt-2。普通时用户行 pt-10，用户后面的 agent 行 pt-4，连续 agent 行 pt-5。 */
+/** 第一行不加顶距。紧凑时用户行 pt-4、其余 pt-2。普通时用户行 pt-10，用户后面的 agent 行 pt-4，连续 agent 行 pt-5。rows 按下标读取。i 减去 1，用作下标。compact 为真时才继续。 */
 function rowSpace(rows: LayoutRow[], i: number, compact?: boolean): string {
   const row = rows[i];
   const prev = rows[i - 1];
@@ -124,7 +124,7 @@ function rowSpace(rows: LayoutRow[], i: number, compact?: boolean): string {
   return "pt-4";
 }
 
-/** 第一块不加顶距。过程和 work 紧跟普通条目时用 pt-2.5，否则 pt-1.5。 */
+/** 第一块不加顶距。过程和 work 紧跟普通条目时用 pt-2.5，否则 pt-1.5。parts 按下标读取。i 为 0 时返回 空字符串；减去 1，用作下标。 */
 function partSpace(parts: AgentPart[], i: number): string {
   if (i === 0) return "";
   const prev = parts[i - 1];
@@ -140,7 +140,10 @@ function partSpace(parts: AgentPart[], i: number): string {
   return "pt-2";
 }
 
-/** Transcript 在没有可见条目、没在跑、也没有待批时显示空态。showThinking 为假时丢掉 reasoning。紧凑模式不给用户行复制、恢复和分叉。 */
+/**
+ * Transcript 在没有可见条目、没在跑、也没有待批时显示空态。showThinking 为假时丢掉 reasoning。紧凑模式不给用户行复制、恢复和分叉。
+ * props 读取 flush、compact、transcriptView、collapseTiming、showThinking、items 等。
+ */
 export function Transcript(props: {
   items: Item[];
   showThinking?: boolean;
@@ -353,7 +356,17 @@ export function Transcript(props: {
   );
 }
 
-/** 折起来时过程不再标成进行中。展开时，只有最后一轮、且这块过程自己在动或它是最后一块且还没有流式正文时，才标成进行中。 */
+/**
+ * 折起来时过程不再标成进行中。展开时，只有最后一轮、且这块过程自己在动或它是最后一块且还没有流式正文时，才标成进行中。
+ * part 读取 parts、folded。
+ * running 为假时走另一支，写到 ArtifactTimeline 的 running。
+ * last 为真时才继续。
+ * compact 写到 ProcessGroup 的 compact。
+ * liveDetail 写到 ProcessGroup 的 liveDetail。
+ * workspace 写到 ArtifactTimeline 的 workspace。
+ * onOpenReview 写到 ArtifactTimeline 的 onOpenReview。
+ * streamingKey 为假时走另一支。
+ */
 function TurnWork({
   part,
   running,
@@ -427,7 +440,13 @@ function TurnWork({
   );
 }
 
-/** 结构、策略和是否显示思考没变时，沿用上次排好的行，再用当前条目把内容填回去。 */
+/**
+ * 结构、策略和是否显示思考没变时，沿用上次排好的行，再用当前条目把内容填回去。
+ * items 传给 structureSig，传给 layoutRows，传给 hydrateLayout。
+ * running 传给 structureSig，写入字段 running。
+ * policy 读取 mode、collapseTiming，写入字段 policy。
+ * showThinking 为真时才继续，写入字段 showThinking。
+ */
 function useStableLayout(items: Item[], running: boolean, policy: ReturnType<typeof presentationPolicyFor>, showThinking: boolean): LayoutRow[] {
   const sig = `${structureSig(items, running)}\n${policy.mode}\t${policy.collapseTiming}\t${showThinking ? 1 : 0}`;
   const ref = useRef({ sig: "", rows: [] as LayoutRow[] });
@@ -437,12 +456,12 @@ function useStableLayout(items: Item[], running: boolean, policy: ReturnType<typ
   return hydrateLayout(ref.current.rows, items);
 }
 
-/** 陪伴侧空列表只占住剩余高度，不画问候。 */
+/** 陪伴侧空列表只占住剩余高度，不画问候。className 传给 cn。 */
 function CompactCopilotEmpty({ className }: { className: string }) {
   return <div className={cn(className, "min-h-0 flex-1")} />;
 }
 
-/** 空线程贴在输入框上方，问候、提示和输入读成一块。 */
+/** 空线程贴在输入框上方，问候、提示和输入读成一块。workspace 传给 displayWorkspace。onPrompt 被调用，并传入 s.text。 */
 function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (text: string) => void }) {
   const copy = useCopy();
   const surface = useUI((s) => s.surface);
@@ -557,12 +576,27 @@ type TranscriptRow = {
   render: () => ReactNode;
 };
 
-/** 按正文字数估算高度，夹在 520 和 2400 之间，底数是 160 加长度乘 0.48。 */
+/** 按正文字数估算高度，夹在 520 和 2400 之间，底数是 160 加长度乘 0.48。copyText 读取 length，为空时不读。 */
 function agentEstimate(copyText: string): number {
   return Math.max(520, Math.min(2400, 160 + Math.round((copyText?.length || 0) * 0.48)));
 }
 
-/** 跟底阈值是 80。跳转序号变了就先停止跟随。锚在列表末尾。 */
+/**
+ * 跟底阈值是 80。跳转序号变了就先停止跟随。锚在列表末尾。
+ * className 传给 cn。
+ * compact 为真时才继续。
+ * rows 取第一段，读取 length、key，为空时不读，调用 findIndex，按下标读取，展开传递。
+ * older 为真时才继续。
+ * loadingOlder 写到 button 的 disabled。
+ * overscan 写入字段 overscan。
+ * onLoadOlder 为真时才继续，被调用。
+ * follow 为假时走另一支。
+ * followNonce 放进数组。
+ * jumpTo 读取 nonce、key、aliases，为空时不读。
+ * latestNonce 与 appliedLatest.current 比较是否相等，为假时走另一支，赋给 appliedLatest.current。
+ * onActiveTurn 为假时走另一支，被调用，并传入 key。
+ * onJumpLatest 为真时才继续，被调用。
+ */
 function TranscriptLane({
   className,
   compact,
@@ -613,15 +647,17 @@ function TranscriptLane({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
+    /** estimateSize 根据参数得到结果。i 用作下标。 */
     estimateSize: (i) => rows[i]?.estimate ?? 96,
     overscan,
+    /** getItemKey 根据参数得到结果。i 用作下标，作为后备值。 */
     getItemKey: (i) => rows[i]?.key ?? i,
     anchorTo: "end",
     followOnAppend: follow && following,
     scrollEndThreshold: 80,
     scrollMargin,
   });
-  /** 没在跟随且这次是瞬间滚动、调用方也不要求跟随时，直接返回。 */
+  /** 没在跟随且这次是瞬间滚动、调用方也不要求跟随时，直接返回。behavior 与 instant 比较是否相等，传给 ctl.toBottom。 */
   const followEnd = useCallback((behavior: "instant" | "smooth" = "instant") => {
     const el = scrollRef.current;
     const ctl = followCtl.current;
@@ -831,7 +867,7 @@ function TranscriptLane({
   );
 }
 
-/** 还在生成时只留一行空白。否则悬停或焦点才显示复制，以及可选的打开审查。 */
+/** 还在生成时只留一行空白。否则悬停或焦点才显示复制，以及可选的打开审查。text 写到 CopyAction 的 text。live 为真时才继续。pinned 为真时才继续。showReview 为真时才继续。onOpenReview 为真时才继续，被调用。 */
 function TurnActions({
   text,
   live,
@@ -871,7 +907,7 @@ function TurnActions({
   );
 }
 
-/** ask_user 要先有非空回答才能以 once 提交。其余审批用条目上的命令、路径或级别当标题。 */
+/** ask_user 要先有非空回答才能以 once 提交。其余审批用条目上的命令、路径或级别当标题。item 读取 action、command、path、level、id。onResolve 被调用，并传入 item.id、"once"。 */
 function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: string, decision: string, answer?: string) => void }) {
   const copy = useCopy();
   const ask = item.action === "ask_user";
@@ -981,7 +1017,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
 const turnActionBtn =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground disabled:opacity-40";
 
-/** 没有文字就不渲染。写入成功后勾选保持 1400 毫秒。失败弹出复制失败。 */
+/** 没有文字就不渲染。写入成功后勾选保持 1400 毫秒。失败弹出复制失败。text 为假时返回 null；传给 writeClipboard，写到 button 的 data-copy-text。 */
 function CopyAction({ text }: { text: string }) {
   const copy = useCopy();
   const [done, setDone] = useState(false);
@@ -1014,7 +1050,7 @@ function CopyAction({ text }: { text: string }) {
   );
 }
 
-/** canceled、max_turns、plan_open 用柔和样式。细节和标题相同就不展开。可重试且给了 onRetry 才显示重试。 */
+/** canceled、max_turns、plan_open 用柔和样式。细节和标题相同就不展开。可重试且给了 onRetry 才显示重试。item 读取 payload，传给 classifyItem。 */
 function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   const copy = useCopy();
   const classified = classifyItem(item);
@@ -1063,7 +1099,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   );
 }
 
-/** 没有正文、也没有恢复或分叉回调时不渲染。正在跑其中一个时不再接受第二次。 */
+/** 没有正文、也没有恢复或分叉回调时不渲染。正在跑其中一个时不再接受第二次。text 为假时走另一支，写到 CopyAction 的 text。from 为假时走另一支，传给 fn。onRestore 为假时走另一支，传给 run。onFork 为假时走另一支，传给 run。 */
 function UserMsgActions({
   text,
   from,
@@ -1077,7 +1113,7 @@ function UserMsgActions({
 }) {
   const copy = useCopy();
   const [busy, setBusy] = useState<"restore" | "fork" | "">("");
-  /** 没有来源、没有回调或已经在跑时直接返回。结束后清掉忙碌标记。 */
+  /** 没有来源、没有回调或已经在跑时直接返回。结束后清掉忙碌标记。kind 传给 setBusy。fn 为假时走另一支，被调用，并传入 from。 */
   const run = async (kind: "restore" | "fork", fn?: (from: string) => void | Promise<void>) => {
     if (!from || !fn || busy) return;
     setBusy(kind);
@@ -1134,7 +1170,7 @@ function UserMsgActions({
   );
 }
 
-/** 优先用 note，否则拼保留、省略、补回的数量。都没有时用压缩文案。 */
+/** 优先用 note，否则拼保留、省略、补回的数量。都没有时用压缩文案。item 读取 payload、text。 */
 function CompactRow({ item }: { item: Item }) {
   const copy = useCopy();
   const p = item.payload || {};
@@ -1158,7 +1194,7 @@ function CompactRow({ item }: { item: Item }) {
   );
 }
 
-/** 文件夹、技能、harness、会话各用自己的图标，其余用文件图标。 */
+/** 文件夹、技能、harness、会话各用自己的图标，其余用文件图标。kind 与 folder、skill、harness、session 比较是否相等。 */
 function MentionGlyph({ kind }: { kind: MentionKind }) {
   const cls = "size-3 shrink-0 opacity-80";
   if (kind === "folder") return <Folder className={cls} />;
@@ -1168,7 +1204,7 @@ function MentionGlyph({ kind }: { kind: MentionKind }) {
   return <FileText className={cls} />;
 }
 
-/** 把完成的提及和附件收成芯片，剩下的正文照原文显示。图片只取带 image_url 且类型是图片的部分。 */
+/** 把完成的提及和附件收成芯片，剩下的正文照原文显示。图片只取带 image_url 且类型是图片的部分。text 作为后备值，传给 peelCompletedMentions。parts 为假时改用后备值，做过滤。attachments 传给 pinsFromAttachments。 */
 function UserPrompt({
   text,
   parts,
@@ -1216,7 +1252,18 @@ function UserPrompt({
   );
 }
 
-/** 用户的改道消息去掉固定前缀后居中。turn_end、system、plan、file_change、ask_user、approval 不在这里画。 */
+/**
+ * 用户的改道消息去掉固定前缀后居中。turn_end、system、plan、file_change、ask_user、approval 不在这里画。
+ * item 作为分支结果，展开传递。
+ * streaming 为假时走另一支，写到 Markdown 的 streaming。
+ * liveText 与 null 比较是否不等，写入字段 text。
+ * copyText 为假时用 onRestore，为假时用 onFork，写到 UserMsgActions 的 text。
+ * from 写到 UserMsgActions 的 from。
+ * onRestore 作为后备值，写到 UserMsgActions 的 onRestore。
+ * onFork 作为后备值，写到 UserMsgActions 的 onFork。
+ * rich 为假时走另一支。
+ * onRetry 写到 ErrorCard 的 onRetry。
+ */
 const ItemRow = memo(function ItemRow({
   item,
   streaming,
@@ -1293,7 +1340,13 @@ const ItemRow = memo(function ItemRow({
   return null;
 });
 
-/** 没有产物对就返回 null。一次多显示 ARTIFACT_PAGE 条，更早的用按钮展开。 */
+/**
+ * 没有产物对就返回 null。一次多显示 ARTIFACT_PAGE 条，更早的用按钮展开。
+ * items 传给 pairTools。
+ * running 写到 ArtifactCard 的 running。
+ * workspace 写到 ArtifactCard 的 workspace。
+ * onOpenReview 写到 ArtifactCard 的 onOpenReview。
+ */
 function ArtifactTimeline({
   items,
   running,
@@ -1337,7 +1390,14 @@ function ArtifactTimeline({
   );
 }
 
-/** 页面审查和浏览器截图交给各自的卡片。代码改动或还在等待结果时不自动展开。 */
+/**
+ * 页面审查和浏览器截图交给各自的卡片。代码改动或还在等待结果时不自动展开。
+ * call 为假时用 item，为假时用 result，作为后备值，传给 artifactView，传给 formatToolBody，传给 toolArgs，传给 isPageReviewItem，传给 isBrowserShotItem，写到 PageReviewCard 的 item。
+ * result 为假时改用后备值，为假时用 call，为假时用 item，作为后备值，传给 artifactView，传给 toolDetail，传给 formatToolBody，传给 isPageReviewItem，传给 isBrowserShotItem，写到 PageReviewCard 的 result。
+ * running 为假时走另一支。
+ * workspace 为假时走另一支，写到 ArtifactBody 的 workspace。
+ * onOpenReview 为真时才继续，被调用，并传入 path || undefined。
+ */
 function ArtifactCard({
   call,
   result,

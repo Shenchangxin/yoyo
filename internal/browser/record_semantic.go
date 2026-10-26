@@ -42,6 +42,8 @@ type StepsDocument struct {
 var emailRE = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // collapseRecordEvents 把事件收成 StepsDocument。起始地址可回放时先加一步 open。点击后四条之内的同目标 input 或 change 并成 fill。连续 scroll 只留最后一条。
+// events 按 Kind 处理 navigation、click、input、change、keydown 和 scroll，其他 Kind 忽略。
+// startURL 非空且 skipReplayURL 为假时先加一步 open。导航地址与它不同时再加 navigate。最后写入文档的 StartURL，并传给 inferSkillName。
 func collapseRecordEvents(events []RecordEvent, startURL string) StepsDocument {
 	used := map[string]bool{}
 	var inputs []SkillInput
@@ -141,6 +143,7 @@ func targetName(t RecordTarget) string {
 }
 
 // sameRecordTarget 先比角色、名字、name 属性和 id 拼成的键，再看选择器候选有没有交集。
+// b 与 a 比较角色、targetName、NameAttr 和 ID 拼成的键，再看 SelectorCandidates 有没有交集。
 func sameRecordTarget(a, b RecordTarget) bool {
 	key := func(t RecordTarget) string {
 		return strings.ToLower(t.Role + "|" + targetName(t) + "|" + t.NameAttr + "|" + t.ID)
@@ -162,6 +165,9 @@ func sameRecordTarget(a, b RecordTarget) bool {
 }
 
 // nextInputOnSame 在后面最多 4 条里找同目标的 input 或 change。先遇到 click 或 navigation 就返回没有。
+// events 从 from 向后看，下标小于 from 加 4。
+// from 是起始下标，循环不超过 from 加 4。
+// target 传给 sameRecordTarget。
 func nextInputOnSame(events []RecordEvent, from int, target RecordTarget) (RecordEvent, bool) {
 	for i := from; i < len(events) && i < from+4; i++ {
 		if events[i].Kind == "input" || events[i].Kind == "change" {
@@ -177,6 +183,8 @@ func nextInputOnSame(events []RecordEvent, from int, target RecordTarget) (Recor
 }
 
 // skipSameFill 跳过从 from 起连续的、同一目标的 input 和 change，返回最后一条的下标。
+// events 从 from 向后看，Kind 是 input 或 change 且与 target 同一目标时继续。
+// target 传给 sameRecordTarget。
 func skipSameFill(events []RecordEvent, from int, target RecordTarget) int {
 	i := from
 	for i < len(events) && (events[i].Kind == "input" || events[i].Kind == "change") && sameRecordTarget(events[i].Target, target) {
@@ -186,6 +194,8 @@ func skipSameFill(events []RecordEvent, from int, target RecordTarget) int {
 }
 
 // nextNavigation 在后面最多 5 条里找一条可回放的 navigation，返回它的地址。
+// events 从 from 向后看，下标小于 from 加 5，找 Kind 为 navigation 且 skipReplayURL 为假的 URL。
+// from 是起始下标。
 func nextNavigation(events []RecordEvent, from int) string {
 	for i := from; i < len(events) && i < from+5; i++ {
 		if events[i].Kind == "navigation" && !skipReplayURL(events[i].URL) {
@@ -196,6 +206,7 @@ func nextNavigation(events []RecordEvent, from int) string {
 }
 
 // isBlankBodyClick 在点击发生在 about:blank，且目标是 body、html 或没有标签时返回真。
+// ev 的 Kind 不是 click 时返回假。URL 不是 about:blank 且不以 about:blank 开头时返回假。Target.Tag 转小写后是 body、html 或空字符串时返回真。
 func isBlankBodyClick(ev RecordEvent) bool {
 	if ev.Kind != "click" {
 		return false
@@ -208,6 +219,7 @@ func isBlankBodyClick(ev RecordEvent) bool {
 }
 
 // isLowSignalClick 丢掉正文很长的 div，以及没有选择器候选、正文里却带 :nth-of-type 的点击。
+// ev 的 Target.Tag 是 div 且 Text 的长度大于等于 160 时返回真。SelectorCandidates 为空且 Text 含有 :nth-of-type 时返回真。
 func isLowSignalClick(ev RecordEvent) bool {
 	if ev.Target.Tag == "div" && len(ev.Target.Text) >= 160 {
 		return true
@@ -224,6 +236,9 @@ func isSelectTarget(t RecordTarget) bool {
 }
 
 // varFor 给一个输入值起 {{名字}}。已经是占位符的当成 secret。邮箱、搜索框各有固定名字。重名时加 _2、_3。
+// target 的 Name、Label、Placeholder、NameAttr、ID、Text 拼成小写文本，用来选择名字。
+// value 以 {{ 开头且以 }} 结尾时名字用 sensitive_value、种类用 secret。否则可能作为 email 或 query 的示例，并去掉空白后交给 emailRE。
+// used 里已经有这个名字时从 _2 起加数字后缀，最后把用过的名字设为真。
 func varFor(target RecordTarget, value string, used map[string]bool) (string, SkillInput) {
 	hay := strings.ToLower(strings.Join([]string{
 		target.Name, target.Label, target.Placeholder, target.NameAttr, target.ID, target.Text,
@@ -281,6 +296,7 @@ func isDigits(s string) bool {
 }
 
 // pathHint 返回地址路径的最后一段，前面加斜杠。根路径或解析失败时返回空字符串。
+// raw 交给 url.Parse。失败、路径为空或路径是 / 时返回空字符串。否则返回路径最后一段，前面加斜杠。
 func pathHint(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -297,6 +313,7 @@ func pathHint(raw string) string {
 }
 
 // inferSkillName 用起始地址的主机名做成 recorded-<主机>。没有主机时用 recorded-browser-workflow。www. 前缀和端口去掉。
+// start 为空、url.Parse 失败或主机为空时返回 recorded-browser-workflow。否则用小写主机名去掉 www. 和端口，再经 slugInput 拼成 recorded- 加结果。
 func inferSkillName(start string) string {
 	if start == "" {
 		return "recorded-browser-workflow"

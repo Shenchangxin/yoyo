@@ -5,6 +5,7 @@ package app
 import "encoding/json"
 
 // UnmarshalJSON 在现有 Config 上合并 JSON，缺省键保留。locale 仍为空时再接受 Locale 或 language。
+// b 传给 json.Unmarshal，先合并进 Config，Locale 仍为空时再按 Locale 和 language 解一次。
 func (c *Config) UnmarshalJSON(b []byte) error {
 	type plain Config
 	p := plain(*c)

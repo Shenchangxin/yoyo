@@ -9,6 +9,7 @@ import (
 )
 
 // PutSnapshot 以 KindHarnessSnapshot 写入。ID 为空时用 harness，只影响这一次写入，不改调用方手里的值。
+// snap 的 ID 为空时这次写入改用 harness，再以 KindHarnessSnapshot、该 ID 和 snap 交给 Put。
 func (s *Store) PutSnapshot(snap HarnessSnapshot) (string, error) {
 	if snap.ID == "" {
 		snap.ID = "harness"
@@ -17,6 +18,7 @@ func (s *Store) PutSnapshot(snap HarnessSnapshot) (string, error) {
 }
 
 // GetSnapshot 按哈希解出 HarnessSnapshot。读取或 JSON 解码失败时返回错误，不另查信封的 Kind。
+// hash 交给 Decode 解出 HarnessSnapshot。
 func (s *Store) GetSnapshot(hash string) (HarnessSnapshot, error) {
 	snap, _, err := Decode[HarnessSnapshot](s, hash)
 	return snap, err
@@ -31,6 +33,7 @@ type DiffField struct {
 }
 
 // SnapshotDiffFields 逐面比较两份快照，始终返回全部面，包含没变的。切片按逗号拼起来比，顺序不同算有变化。这里不读对象库。
+// b 的 ModelFingerprint、Parent、LoopPreset、Playbook、PolicyPack、EvalSuite、PromptFragments、Skills、Tools、EvalTools、WASMPlugins、Note 分别和 a 的同名字段比较，切片先按逗号拼接。
 func SnapshotDiffFields(a, b HarnessSnapshot) []DiffField {
 	join := func(xs []string) string { return strings.Join(xs, ",") }
 	rows := []DiffField{
@@ -51,6 +54,7 @@ func SnapshotDiffFields(a, b HarnessSnapshot) []DiffField {
 }
 
 // SnapshotDiff 把 SnapshotDiffFields 打成多行文本。没变的面只写当前值，变了的面写成 from -> to。
+// b 和 a 一起交给 SnapshotDiffFields。
 func SnapshotDiff(a, b HarnessSnapshot) string {
 	var buf bytes.Buffer
 	for _, f := range SnapshotDiffFields(a, b) {

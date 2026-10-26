@@ -41,6 +41,7 @@ const (
 )
 
 // maxTurnsInfo 是轮数用尽的终局卡片，可重试。继续这一轮会从历史接着走，不再另起一条用户消息。
+// limit 写进 Detail 的括号里。
 func maxTurnsInfo(limit int) ErrorInfo {
 	return ErrorInfo{
 		Kind:      ErrKindMaxTurns,
@@ -66,6 +67,8 @@ func stuckLoopInfo(detail string) ErrorInfo {
 }
 
 // planOpenInfo 是聊天回合停住时计划仍有步骤未完成的卡片，可重试。催促次数用尽，或催促之后模型改用散文回答，都会走到这里。没有这张卡片时，这一轮看起来像任务已经做完。
+// open 写进 Detail，作为仍开着的步数。
+// total 写进 Detail，作为总步数。
 func planOpenInfo(open, total int) ErrorInfo {
 	return ErrorInfo{
 		Kind:      ErrKindPlanOpen,
@@ -226,6 +229,7 @@ func extractProviderMsg(s string) string {
 }
 
 // containsAny 在 s 含有任一 needle 时返回 true。
+// needles 逐个交给 strings.Contains。
 func containsAny(s string, needles ...string) bool {
 	for _, n := range needles {
 		if strings.Contains(s, n) {

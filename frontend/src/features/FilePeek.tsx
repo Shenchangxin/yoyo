@@ -10,7 +10,10 @@ import type { Hunk } from "../lib/protocol";
 import { normPath } from "./FileTree";
 import { WorkspaceFileView } from "./transcript/FilePreview";
 
-// FilePeek 按路径末段显示名字。换路径时回到文件视图。没有属于这个文件的 hunk 时只能看文件。差异正文截到 8000。Escape 关闭。
+/**
+ * FilePeek 按路径末段显示名字。换路径时回到文件视图。没有属于这个文件的 hunk 时只能看文件。差异正文截到 8000。Escape 关闭。
+ * props 读取 path、hunks、onClose、mode、onQuote、onOpenPath 等，调用 onClose，调用 onMode，调用 onQuote，调用 onOpenPath。
+ */
 export function FilePeek(props: {
   workspace?: string;
   path: string;
@@ -33,6 +36,7 @@ export function FilePeek(props: {
   const name = shown.replace(/\\/g, "/").split("/").pop() || shown;
 
   useEffect(() => {
+    /** onKey 调用 preventDefault。e 读取 key，调用 preventDefault。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -125,7 +129,7 @@ export function FilePeek(props: {
   );
 }
 
-// 带提示的方形按钮。引用按钮写入 @file: 加当前路径。
+/** PeekAction 带提示的方形按钮。引用按钮写入 @file: 加当前路径。label 写到 Tooltip 的 content。onClick 写到 button 的 onClick。children 作为子节点渲染。 */
 function PeekAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip content={label}>

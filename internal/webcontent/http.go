@@ -33,6 +33,9 @@ func httpClient(c *http.Client) *http.Client {
 
 // get 发 GET。ctx 为 nil 时用 20 秒超时。Accept 为空时用 text/html、application/json、text/plain 和 */*。
 // 正文最多读 maxBody。返回状态码、最终 URL、Content-Type 和正文。本函数不因状态码大于等于 300 而返回错误。
+// client 传给 httpClient。
+// rawURL 作为 GET 的地址。构造请求失败时仍作为最终 URL 返回。
+// accept 为空时改成 text/html, application/json;q=0.9, text/plain;q=0.8, */*;q=0.7，然后写入 Accept。
 func get(ctx context.Context, client *http.Client, rawURL, accept string) (status int, finalURL, contentType, body string, err error) {
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -62,6 +65,9 @@ func get(ctx context.Context, client *http.Client, rawURL, accept string) (statu
 
 // postJSON 发 JSON POST。ctx 为 nil 时用 20 秒超时。authHeader 和 authVal 都非空才设置该头。
 // 正文最多读 maxBody。状态码大于等于 300 时把正文截到 400 字节放进错误。成功时返回状态码和完整读到的正文。
+// client 传给 httpClient。
+// rawURL 作为 POST 的地址。
+// payload 转成字符串后作为请求体。
 func postJSON(ctx context.Context, client *http.Client, rawURL, authHeader, authVal string, payload []byte) (status int, body string, err error) {
 	if ctx == nil {
 		var cancel context.CancelFunc

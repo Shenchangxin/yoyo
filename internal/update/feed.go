@@ -45,6 +45,7 @@ func Referer() string {
 }
 
 // normalizeEndpoint 去掉末尾斜杠。主机名是 modelscope.ai 时改成 https://www.modelscope.ai。解析失败或没有主机则原样返回去掉斜杠后的字符串。
+// raw 去掉两端空白和末尾斜杠；主机是 modelscope.ai 时改成 https://www.modelscope.ai。
 func normalizeEndpoint(raw string) string {
 	raw = strings.TrimSpace(strings.TrimRight(raw, "/"))
 	u, err := url.Parse(raw)
@@ -80,6 +81,7 @@ func Revision() string {
 }
 
 // NormalizeChannel 忽略传入值，总是返回 DefaultChannel。
+// ch 赋给空白标识符，不另作使用。
 func NormalizeChannel(ch string) Channel {
 	_ = ch
 	return DefaultChannel
@@ -98,6 +100,7 @@ func ResolveURL(file string) string {
 }
 
 // APIFileURL 拼出数据集 API：/api/v1/datasets/<repo>/repo，查询参数 Revision 和 FilePath。
+// file 把反斜杠换成斜杠并去掉开头的斜杠，写入查询的 FilePath。
 func APIFileURL(file string) string {
 	file = strings.TrimPrefix(strings.ReplaceAll(file, "\\", "/"), "/")
 	u, err := url.Parse(Endpoint() + "/api/v1/datasets/" + RepoID() + "/repo")
@@ -112,6 +115,7 @@ func APIFileURL(file string) string {
 }
 
 // SigURL 在清单地址末尾加上 .sig。
+// manifestURL 去掉末尾斜杠后加上 .sig。
 func SigURL(manifestURL string) string {
 	return strings.TrimRight(manifestURL, "/") + ".sig"
 }

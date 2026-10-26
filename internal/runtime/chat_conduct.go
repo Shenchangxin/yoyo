@@ -45,11 +45,13 @@ type ConductOpts struct {
 
 // ChatConductFragments 是桌面和命令行聊天叠层。Harbor 评测从不接收它：评测不等于个人口吻。语言跟随用户消息，这些规则没有按地区各写一份。
 // 交付物是计划还是实现，由模型判断。这些片段只陈述对应关系，不预先解析那句话。
+// plan 写入 ConductOpts 的 Plan，再传给 ChatConduct。
 func ChatConductFragments(plan bool) []artifact.PromptFragment {
 	return ChatConduct(ConductOpts{Plan: plan})
 }
 
 // ChatConduct 在计划模式只返回语言和计划模式两句。否则返回引导、执行和运行时三槽。Methodology 为真时运行时槽换成方法论版本。
+// opts 的 Plan 为真时只返回语言和计划模式一句，否则用 Methodology 选择运行时槽文本。
 func ChatConduct(opts ConductOpts) []artifact.PromptFragment {
 	if opts.Plan {
 		return []artifact.PromptFragment{{Slot: "runtime", Text: chatLang + " " + chatPlanMode}}
@@ -66,6 +68,8 @@ func ChatConduct(opts ConductOpts) []artifact.PromptFragment {
 }
 
 // OverlayConduct 去掉已有的聊天行为文本，再附上当前选项对应的片段。
+// frags 逐条保留，正文被 isChatConductText 判中的丢掉。
+// opts 传给 ChatConduct，结果附在末尾。
 func OverlayConduct(frags []artifact.PromptFragment, opts ConductOpts) []artifact.PromptFragment {
 	var out []artifact.PromptFragment
 	for _, f := range frags {
@@ -90,6 +94,8 @@ func isChatConductText(t string) bool {
 }
 
 // OperatorVoice 是最近一条真正的操作者发言，跳过转向和轻推。空的当前输入会回头找历史。
+// user 去掉空白后非空，且不是控制或续跑发言时，去掉附件尾巴后返回。
+// hist 在 user 不合用时从末尾往前找 Role 为用户、且不是控制或续跑的消息。
 func OperatorVoice(user string, hist []Message) string {
 	if t := strings.TrimSpace(user); t != "" && !isControlUser(t) && !isResumeUser(t) {
 		return stripMentionAttachment(t)
@@ -121,6 +127,9 @@ func prefersCJK(s string) bool {
 }
 
 // voiceNudge 在操作者最近发言含汉字时返回中文轻推，否则返回英文。
+// req 的 User 和 History 传给 OperatorVoice。
+// en 在发言不含汉字时返回。
+// zh 在发言含汉字时返回。
 func voiceNudge(req RunRequest, en, zh string) string {
 	if prefersCJK(OperatorVoice(req.User, req.History)) {
 		return zh
@@ -129,6 +138,7 @@ func voiceNudge(req RunRequest, en, zh string) string {
 }
 
 // LanguagePin 是放在前面的短提醒，避免操作者写中文时弱模型用英文开场。不含汉字则返回空片段。
+// voice 交给 prefersCJK，不含汉字时返回空片段。
 func LanguagePin(voice string) artifact.PromptFragment {
 	if !prefersCJK(voice) {
 		return artifact.PromptFragment{}
@@ -137,6 +147,7 @@ func LanguagePin(voice string) artifact.PromptFragment {
 }
 
 // languageDynPin 在发言含汉字时返回输出语言小节，否则返回空串。
+// voice 交给 prefersCJK，不含汉字时返回空串。
 func languageDynPin(voice string) string {
 	if !prefersCJK(voice) {
 		return ""
@@ -162,6 +173,8 @@ func englishOpener(s string) bool {
 }
 
 // pinVisibleLanguage 在操作者说中文但可见回复仍以英文开场时，清掉 Content 并返回中文重写轻推。工具调用保留，由调用方再要中文可见句子。
+// msg 为 nil 时返回空串，否则在需要重写时把 Content 清成空串。
+// voice 交给 prefersCJK，不含汉字时返回空串。
 func pinVisibleLanguage(msg *Message, voice string) string {
 	if msg == nil || !prefersCJK(voice) || !englishOpener(msg.Content) {
 		return ""

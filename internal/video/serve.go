@@ -27,6 +27,7 @@ func (e *Engine) StartMediaServer() error {
 }
 
 // MediaAssetMiddleware 在应用自己的源上提供 /media 和 /resource。环回媒体服务是 http，https 网页视图不会播放它。
+// next 为 nil 时换成 http.NotFoundHandler；引擎为 nil 时直接返回它，否则只把 /media/ 和 /resource/ 以外的请求交给它。
 func MediaAssetMiddleware(e *Engine, next http.Handler) http.Handler {
 	if next == nil {
 		next = http.NotFoundHandler()
@@ -129,6 +130,8 @@ func (e *Engine) mediaHandler() http.Handler {
 }
 
 // peekMedia 读文件头并写上媒体类型。读失败时返回假。
+// w 传给 applyMediaType。
+// f 传给 peekOpen。
 func peekMedia(w http.ResponseWriter, f *os.File) bool {
 	head, err := peekOpen(f)
 	if err != nil {
@@ -139,6 +142,7 @@ func peekMedia(w http.ResponseWriter, f *os.File) bool {
 }
 
 // peekOpen 读最多 512 字节，再把文件指针拨回开头。
+// f 最多读 512 字节，再把偏移拨回开头。
 func peekOpen(f *os.File) ([]byte, error) {
 	head := make([]byte, 512)
 	n, err := f.Read(head)
@@ -152,6 +156,7 @@ func peekOpen(f *os.File) ([]byte, error) {
 }
 
 // headBytes 返回正文的前 512 字节；更短时返回全部。
+// raw 长度大于 512 时返回前 512 字节，否则原样返回。
 func headBytes(raw []byte) []byte {
 	if len(raw) > 512 {
 		return raw[:512]
@@ -160,6 +165,8 @@ func headBytes(raw []byte) []byte {
 }
 
 // presentableMime 保留已经具体的 MIME。空串或 application/octet-stream 时改用 mediaType，仍没有且原文非空时再用 http.DetectContentType。
+// mime 去掉首尾空白，非空且不是 application/octet-stream 时直接返回。
+// raw 传给 mediaType；mime 为空且长度大于 0 时再传给 http.DetectContentType。
 func presentableMime(mime string, raw []byte) string {
 	mime = strings.TrimSpace(mime)
 	if mime != "" && !strings.EqualFold(mime, "application/octet-stream") {
@@ -177,6 +184,8 @@ func presentableMime(mime string, raw []byte) string {
 }
 
 // applyMediaType 在 mediaType 认得出类型时写上 Content-Type 和 nosniff。
+// w 在认得出类型时写入 Content-Type 和 X-Content-Type-Options。
+// raw 传给 mediaType。
 func applyMediaType(w http.ResponseWriter, raw []byte) {
 	ct := mediaType(raw)
 	if ct == "" {
@@ -187,6 +196,7 @@ func applyMediaType(w http.ResponseWriter, raw []byte) {
 }
 
 // mediaType 识别没有文件名的内容寻址对象。ftyp 视为 video/mp4，EBML 头视为 video/webm，RIFF AVI 视为 video/x-msvideo，并识别 JPEG 和 PNG。嗅探结果为空或 application/octet-stream 时返回空串，避免网页视图把 MP4 画成 0 秒黑屏。
+// raw 按长度核对 ftyp、EBML、RIFF、AVI、JPEG 和 PNG 的字节；长度为 0 时返回空串，否则传给 http.DetectContentType，结果为空或 application/octet-stream 时也返回空串。
 func mediaType(raw []byte) string {
 	if len(raw) >= 12 && string(raw[4:8]) == "ftyp" {
 		return "video/mp4"
@@ -237,6 +247,7 @@ func (e *Engine) Status() Status {
 }
 
 // JSON 把值编成 RawMessage。编码错误被忽略。
+// v 传给 json.Marshal。
 func (e *Engine) JSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b

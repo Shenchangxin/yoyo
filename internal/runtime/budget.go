@@ -39,6 +39,7 @@ func (m *Meter) Add(in, out int) {
 	m.OutputTok += out
 	rate := m.USDPerMTok
 	if rate <= 0 {
+		// 费率没设或设成 0 时用 0.40 美元每百万 token。增量是 (in+out) 乘费率再除以 1e6。
 		rate = 0.40
 	}
 	m.USD += float64(in+out) * rate / 1_000_000
@@ -52,6 +53,7 @@ func (m *Meter) Check(cap float64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.USD > cap {
+		// 等于上限不算超过。cap 小于等于 0 时函数开头已经返回，不会进到这里。
 		return ErrBudget{Used: m.USD, Cap: cap}
 	}
 	return nil

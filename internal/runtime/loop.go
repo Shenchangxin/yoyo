@@ -75,6 +75,7 @@ var emitSeq atomic.Int64
 // Run 跑一轮模型循环。Loop.MaxTurns 小于等于 0 时写成 24，后面的 turnLimit 再小于等于 0 时也写成 24。SoftHorizon 为真时 for 不看 turnLimit。
 // 上下文溢出只重试当前这一步，见下面的溢出分支。Depth 小于 MaxTaskDepth 且 Task 还是 nil 时，把 Task 设为 spawnTask。子代理的循环预设在 tools_task.go。
 func Run(ctx context.Context, req RunRequest) (string, error) {
+	// 调用方没给轮数上限时，硬循环先用 24。桌面在进 Run 之前已经套过 ApplyChatHorizon，MaxTurns 至少是 64，不会落到这里。
 	if req.Loop.MaxTurns <= 0 {
 		req.Loop.MaxTurns = 24
 	}
@@ -89,12 +90,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		if req.Tools.Spill == nil {
 			req.Tools.Spill = BindSpill(req.Home, req.Workspace, req.SessionID)
 		}
+		// 深度还没到 MaxTaskDepth（2）才挂上子代理。深度 2 的循环不能再往下生。
 		if req.Tools.Task == nil && req.Tools.Depth < MaxTaskDepth {
 			parent := req
 			req.Tools.Task = func(prompt string, isolate bool, profile string) (string, error) {
 				return spawnTask(ctx, parent, prompt, isolate, profile)
 			}
 		}
+		// 工具自己没设并行上限时，沿用循环预设。DefaultLoop 的 MaxParallel 是 4，后面的并发信号量会比起步的 8 更紧。
 		if req.Tools.MaxParallel <= 0 {
 			req.Tools.MaxParallel = req.Loop.MaxParallel
 		}
@@ -112,6 +115,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 	}
 	loop := req.Loop
+	// 策略写成 plan 时，循环也进入计划模式。催促和停止都看这份 loop，不另开一条计划循环。
 	if req.Policy.Mode == "plan" {
 		loop.PlanMode = true
 		req.Loop = loop
@@ -141,6 +145,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	if req.Tools != nil {
 		req.Tools.setRepeatBlock("", "")
 	}
+	// 只有软地平线才从已有消息里播种重复监视。硬循环不在这里截停同一段脚本。
 	if req.SoftHorizon {
 		seedCheckWatch(req, &watch, messages)
 		if req.Tools != nil {
@@ -149,6 +154,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 	}
 	lastPlan := planTextOf(req.Tools)
+	// 请求没带 RoundSeq 时，用当前历史里助手消息的条数当起点。sendLocked 会先填 MaxAssistantRound，桌面路径通常不走这个回退。检查点之后历史变短，这里数到的只是剩下的助手消息。
 	if roundSeq <= 0 {
 		for _, m := range req.History {
 			if m.Role == RoleAssistant {
@@ -156,6 +162,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 		}
 	}
+	// 硬循环的 for 在 turn 达到 turnLimit 时退出。上面已经把小于等于 0 的 MaxTurns 写成 24，这里再防一次。软地平线的 for 条件是 SoftHorizon 为真就继续，停轮在循环内部交给 softGuard，不看 turnLimit。
 	turnLimit := loop.MaxTurns
 	if turnLimit <= 0 {
 		turnLimit = 24
@@ -190,6 +197,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
 			}
 		}
+		// 硬循环的工具消息到顶后只追加催促，不在这里停。软地平线不看这条。
 		if !req.SoftHorizon && loop.MaxToolMessages > 0 && toolCount >= loop.MaxToolMessages {
 			nudge := toolBudgetNudge
 			if !loop.PlanMode && PlanOpen(planTextOf(req.Tools)) {
@@ -265,6 +273,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			setStop(&req, reason)
 			return last, stopErr(reason, "", err)
 		}
+		// 这一步最终成功，溢出计数清零。下一次溢出仍从第一次检查点重试开始，不接着上次的次数。
 		overflowFails = 0
 		logModelRound(ctx, roundSeq, msg, nil)
 		if msg.PromptTokens > 0 {
@@ -292,6 +301,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if req.Meter != nil {
 			in, out := messagesTokens(compacted)+toolsJSONTokens(toolsJSON), messageTokens(msg)
+			// 提供商报了 token 就用它记账。没报才用投影加工具 schema 的估算。Check 看到的美元跟这里选定的数走。
 			if msg.PromptTokens > 0 {
 				in = msg.PromptTokens
 			}
@@ -313,6 +323,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		msg, cutNudge := trimTruncatedReply(msg)
 		langNudge := ""
 		// SoftHorizon 下可见语言最多改写 2 次。没有工具调用且没有截断催促时，把语言提示追加进消息并进入下一轮，不把这条回复当成结束。
+		// 可见语言最多改写两次。第三次起不再为语言进入下一轮，当前回复按普通结束候选处理。
 		if req.SoftHorizon && languageRewrites < 2 {
 			if pin := pinVisibleLanguage(&msg, OperatorVoice(req.User, req.History)); pin != "" {
 				languageRewrites++
@@ -446,6 +457,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		if cutNudge != "" {
 			messages = append(messages, Message{Role: RoleUser, Content: cutNudge})
 		}
+		// 计划文本变了，或一次写入真的改了文件，才把停滞轮数清零。只读查看和没改动的重写都不算前进，sinceProgress 加一。softGuard 在第 192 轮用这个数决定复位还是停止。
 		progressed := recordProgress(writeHits, failHits, msg.ToolCalls, results, req.Tools, &lastPlan)
 		if progressed {
 			sinceProgress = 0
@@ -520,6 +532,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			messages = append(messages, Message{Role: RoleUser, Content: inj})
 		}
 	}
+	// for 因硬上限退出才到这里。软地平线在循环内部用 softGuard 停，不会落到这三行。
 	emit(req, trace.TypeError, "runtime", maxTurnsInfo(loop.MaxTurns).Payload())
 	setStop(&req, StopMaxTurns)
 	return last, maxTurnsErr()
@@ -708,6 +721,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		if !readonlyCall(req.Tools, tc.Name) {
 			readonly = false
 		}
+		// 这一批里只要有一个独占工具，整批改成串行。shell、run_skill_script，以及标注了 Exclusive 或 OpenWorld 的工具都算，web_fetch 和 web_search 因此在内。串行不是事务，前面失败后面仍会执行。
 		if exclusiveCall(req.Tools, tc.Name) {
 			exclusive = true
 			parallelOK = false
@@ -748,6 +762,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 				delete(req.Tools.prefetch, jobs[i].tc.ID)
 			}
 			req.Tools.mu.Unlock()
+			// 流式阶段已经跑过的只读调用按 id 取缓存，这里不再执行第二次。
 			if ok {
 				jobs[i].content = pre.content
 				jobs[i].ok = pre.ok
@@ -805,6 +820,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		jobs[i].change = res.FileChange
 		jobs[i].parts = res.Parts
 	}
+	// 整批只读，或每个调用都允许并行，且调用数大于 1，才并发。信号量先取 8；MaxParallel 更小才收紧。默认循环是 4，所以常见上限是 4。
 	if (readonly || parallelOK) && n > 1 {
 		limit := 8
 		if req.Tools != nil && req.Tools.MaxParallel > 0 && req.Tools.MaxParallel < limit {
@@ -847,6 +863,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		}
 	}
 	for i, j := range jobs {
+		// recordTrace 为假是预取。结果先放进 prefetch，正式派发时按调用 id 取走，不写工具轨迹。
 		if !recordTrace {
 			if req.Tools != nil {
 				req.Tools.mu.Lock()
@@ -877,6 +894,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 			emit(req, trace.TypePlan, "agent", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID, "id": j.tc.ID})
 		}
 		payload := map[string]any{
+			// untrusted 标成 true：这是工具带回来的外部字节，不是宿主自己的话。
 			"name": j.tc.Name, "id": j.tc.ID, "content": j.content, "untrusted": true, "round": roundID,
 		}
 		if j.spillID != "" {

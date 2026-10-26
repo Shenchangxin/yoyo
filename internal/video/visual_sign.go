@@ -11,6 +11,11 @@ import (
 )
 
 // signVisual 按地域 cn-north-1、服务 cv 写上内容摘要、日期和 Authorization。请求或 URL 为空则直接返回。
+// req 或其 URL 为 nil 时直接返回；否则读取 Host、EscapedPath、RawQuery，并写 Host 和 Header。
+// body 做 SHA256，摘要写入规范请求和 X-Content-Sha256。
+// ak 写入 Authorization 的 Credential。
+// sk 传给 visualSigningKey。
+// now 转成 UTC 后格式化成时间戳和短日期。
 func signVisual(req *http.Request, body []byte, ak, sk string, now time.Time) {
 	if req == nil || req.URL == nil {
 		return
@@ -45,6 +50,8 @@ func signVisual(req *http.Request, body []byte, ak, sk string, now time.Time) {
 }
 
 // visualSigningKey 用密钥、短日期、地域 cn-north-1、服务 cv 和 request 派生签名密钥。
+// secret 转成字节后作为 hmacSHA256 的密钥。
+// shortDate 转成字节后作为 hmacSHA256 的消息。
 func visualSigningKey(secret, shortDate string) []byte {
 	kDate := hmacSHA256([]byte(secret), []byte(shortDate))
 	kRegion := hmacSHA256(kDate, []byte("cn-north-1"))
@@ -53,6 +60,8 @@ func visualSigningKey(secret, shortDate string) []byte {
 }
 
 // hmacSHA256 用给定密钥对消息做 HMAC-SHA256。
+// key 传给 hmac.New。
+// msg 传给 Write。
 func hmacSHA256(key, msg []byte) []byte {
 	h := hmac.New(sha256.New, key)
 	_, _ = h.Write(msg)

@@ -18,6 +18,8 @@ import (
 )
 
 // submitCanvas 解析通道和适配器并提交生成请求。已完成则落盘，失败返回错误，否则进入 polling。
+// ctx 传给 BuildCreate、doProtocol 和 ParseCreate，适配器不可用时也传给 submitCanvasFallback。
+// j 的 Params 传给 parseParams；创建结果的 TaskID 写入 RemoteID，响应正文写回 Params，成功时传给 materializeProtocolResult，未完成时把 Status 写成 polling。
 func (e *Engine) submitCanvas(ctx context.Context, j *Job) error {
 	p := parseParams(j.Params)
 	ch, err := e.resolveCanvasChannel(p)
@@ -65,6 +67,8 @@ func (e *Engine) submitCanvas(ctx context.Context, j *Job) error {
 }
 
 // pollCanvas 向适配器查询远程任务。成功则落盘，失败或取消返回错误，其余保持 polling。
+// ctx 传给 BuildPoll、doProtocol 和 ParsePoll，适配器不可用时也传给 pollCanvasFallback。
+// j 的 Params 传给 parseParams，Model 和 RemoteID 放进 PollContext；成功时传给 materializeProtocolResult，未结束时把 Status 写成 polling。
 func (e *Engine) pollCanvas(ctx context.Context, j *Job) error {
 	p := parseParams(j.Params)
 	ch, err := e.resolveCanvasChannel(p)
@@ -107,6 +111,10 @@ func (e *Engine) pollCanvas(ctx context.Context, j *Job) error {
 }
 
 // submitCanvasFallback 在没有协议适配器时，按图像或视频改走原有提交。
+// ctx 传给 submitImage 或 submitVideo。
+// j 在模式为 image 或 video 时改写 Type、空的 Provider 和 VaultKey，再传给 submitImage 或 submitVideo。
+// ch 传给 providerVendor，并在 j.VaultKey 为空时用 ch.VaultKey 补上。
+// p 的 Mode 与 j.Type 一起决定走 image 还是 video。
 func (e *Engine) submitCanvasFallback(ctx context.Context, j *Job, ch canvasChannel, p JobParams) error {
 	mode := strings.ToLower(firstNonEmpty(p.Mode, j.Type))
 	switch mode {
@@ -126,6 +134,8 @@ func (e *Engine) submitCanvasFallback(ctx context.Context, j *Job, ch canvasChan
 }
 
 // pollCanvasFallback 在没有协议适配器时，按图像或视频改走原有轮询。
+// ctx 传给 pollImage 或 pollVideo。
+// j 传给 pollImage 或 pollVideo。
 func (e *Engine) pollCanvasFallback(ctx context.Context, j *Job, p JobParams) error {
 	mode := strings.ToLower(firstNonEmpty(p.Mode, j.Type))
 	switch mode {
@@ -139,6 +149,7 @@ func (e *Engine) pollCanvasFallback(ctx context.Context, j *Job, p JobParams) er
 }
 
 // providerVendor 从插件 id 推断供应商标识，匹配不到就用插件 id。
+// ch 的 PluginID 转成小写后查找 gemini、openai、volcengine、seedream、seedance、minimax、hailuo，都没有则返回 PluginID 本身。
 func providerVendor(ch canvasChannel) string {
 	id := strings.ToLower(ch.PluginID)
 	switch {
@@ -156,6 +167,7 @@ func providerVendor(ch canvasChannel) string {
 }
 
 // resolveCanvasChannel 按通道 id、能力或当前活跃供应商解析画布通道。
+// p 的 ChannelID 非空时传给 getCanvasChannel；否则用 Mode 匹配已启用通道，tts 按 audio 比较，再没有就把 Mode 传给 ActiveProvider，audio 先改成 tts。
 func (e *Engine) resolveCanvasChannel(p JobParams) (canvasChannel, error) {
 	if p.ChannelID != "" {
 		if c, err := e.getCanvasChannel(p.ChannelID); err == nil {
@@ -186,6 +198,8 @@ func (e *Engine) resolveCanvasChannel(p JobParams) (canvasChannel, error) {
 }
 
 // resolveCanvasAdapter 按插件 id 或能力从协议注册表取出适配器。
+// ch 的 PluginID 非空时传给 Proto.Resolve。
+// mode 为 image、video、audio 或 tts 时选择对应 Capability，其他值用 CapabilityText；找不到适配器时错误文本带上 mode。
 func (e *Engine) resolveCanvasAdapter(ch canvasChannel, mode string) (protocol.Adapter, error) {
 	if e.Proto == nil {
 		return nil, fmt.Errorf("protocol registry missing")
@@ -221,6 +235,9 @@ func (e *Engine) resolveCanvasAdapter(ch canvasChannel, mode string) (protocol.A
 }
 
 // buildGenerationRequest 把任务、参数和引用素材收成协议生成请求。
+// j 的 Model 和 Prompt 写入请求。
+// p 的 Duration、AspectRatio、Resolution、Size、GenerateAudio、Operation、Mode 写入请求；GenerationSpec 能解析时覆盖提示词和这些选项，引用字节长度小于 6<<20 时附上 data URL，ReferenceImages、ReferenceImageURLs、FirstFrameURL、LastFrameURL 追加为图片引用。
+// ch 的 Model 在 j.Model 为空时写入请求的 Model。
 func (e *Engine) buildGenerationRequest(j Job, p JobParams, ch canvasChannel) (protocol.GenerationRequest, error) {
 	req := protocol.GenerationRequest{
 		Model:         firstNonEmpty(j.Model, ch.Model),
@@ -297,6 +314,10 @@ func (e *Engine) buildGenerationRequest(j Job, p JobParams, ch canvasChannel) (p
 }
 
 // doProtocol 按适配器给出的请求规格发 HTTP，有文件时用 multipart。
+// ctx 传给 NewRequestWithContext。
+// spec 的 Path、OriginPath、Query、Files、Body、ContentType、Method、Headers 用来组请求；Files 非空时改成 multipart。
+// key 非空且请求还没有 Authorization 时写成 Bearer 令牌，并写入 x-goog-api-key。
+// base 在路径不是绝对地址且没有 OriginPath 时传给 joinURL。
 func (e *Engine) doProtocol(ctx context.Context, spec protocol.RequestSpec, key, base string) ([]byte, int, error) {
 	rawURL := spec.Path
 	if spec.OriginPath || strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
@@ -377,6 +398,7 @@ func (e *Engine) doProtocol(ctx context.Context, spec protocol.RequestSpec, key,
 }
 
 // mediaRefBytes 从 data URL、画布资源或远程地址取出引用媒体的字节。
+// ref 的 DataURL 以 data: 开头时传给 decodeDataURL；ID 非空时按画布资源取字节，URL 非空时传给 DownloadURL，都没有则返回 empty media reference。
 func (e *Engine) mediaRefBytes(ref protocol.MediaReference) ([]byte, error) {
 	if strings.HasPrefix(ref.DataURL, "data:") {
 		return decodeDataURL(ref.DataURL)
@@ -393,6 +415,8 @@ func (e *Engine) mediaRefBytes(ref protocol.MediaReference) ([]byte, error) {
 }
 
 // materializeProtocolResult 把协议结果里的视频、图像、音频或文本写回任务。
+// j 在结果是文本时改写 Params、Status 和 CompletedAt，有媒体字节时传给 finishMedia。
+// result 依次取 Videos、Images、Audios 和 Text；Audios 命中且 MIME 为空时写成 audio/mpeg，Text 非空时写入 TextDraft，并把 ResultState 写成 READY。
 func (e *Engine) materializeProtocolResult(j *Job, result *protocol.Result) error {
 	var raw []byte
 	var video bool
@@ -432,6 +456,7 @@ func (e *Engine) materializeProtocolResult(j *Job, result *protocol.Result) erro
 }
 
 // RecoverCanvasMedia 在结果哈希还在时重新登记画布资源。尝试满 3 次或对象缺失则失败，没有哈希则重新排队。
+// id 传给 GetJob。
 func (e *Engine) RecoverCanvasMedia(id string) (Job, error) {
 	j, err := e.GetJob(id)
 	if err != nil {

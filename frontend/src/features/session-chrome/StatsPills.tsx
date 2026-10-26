@@ -31,13 +31,13 @@ function useStatDialog() {
 
   useEffect(() => {
     if (!open) return;
-    /** 点到药丸和面板外面就收起。 */
+    /** 点到药丸和面板外面就收起。e 读取 target。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
-    /** Escape 收起面板。 */
+    /** Escape 收起面板。e 读取 key。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
@@ -52,7 +52,7 @@ function useStatDialog() {
   return { open, setOpen, rootRef, panelRef, pos };
 }
 
-/** 把说明画到药丸旁边。 */
+/** 把说明画到药丸旁边。props 读取 panelRef、title、pos、icon、titleValue、children。 */
 function StatDialog(props: {
   title: string;
   icon: ReactNode;
@@ -83,7 +83,7 @@ function StatDialog(props: {
   );
 }
 
-/** 画说明里的一行标签和值。 */
+/** 画说明里的一行标签和值。label 作为子节点渲染。value 作为子节点渲染。 */
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
@@ -93,7 +93,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** 把两段用间隔点开，第二段空就只留第一段。 */
+/** 把两段用间隔点开，第二段空就只留第一段。first 作为子节点渲染。second 为假时返回 first；作为子节点渲染。 */
 function joined(first: string, second: string | null): ReactNode {
   if (!second) return first;
   return (
@@ -105,7 +105,7 @@ function joined(first: string, second: string | null): ReactNode {
   );
 }
 
-/** 有解码统计就用它，否则用当场的速度。 */
+/** 有解码统计就用它，否则用当场的速度。stats 读取 decodeMs、decodeTokens。liveTps 大于 0，传给 formatTokensPerSecond。copy 读取 composer。 */
 function decodeSpeed(stats: SessionStats, liveTps: number, copy: Copy): string | null {
   if (stats.decodeMs > 0 && stats.decodeTokens > 0) {
     const tps = stats.decodeTokens / (stats.decodeMs / 1_000);
@@ -115,7 +115,7 @@ function decodeSpeed(stats: SessionStats, liveTps: number, copy: Copy): string |
   return null;
 }
 
-/** 用这一轮已用记号和已过时间算出速度。 */
+/** 用这一轮已用记号和已过时间算出速度。ctx 读取 tokens、prefixTokens、schemaTokens，为空时不读。turnStatus 读取 since，为空时不读。 */
 function liveTokensPerSec(ctx: ContextUsage | undefined, turnStatus: TurnStatus | null | undefined): number {
   const tok = ctx?.tokens || 0;
   const elapsed = turnStatus?.since ? Math.max(0, Date.now() - turnStatus.since) : 0;
@@ -124,12 +124,12 @@ function liveTokensPerSec(ctx: ContextUsage | undefined, turnStatus: TurnStatus 
   return (outTokens / elapsed) * 1000;
 }
 
-/** 把记号数收成简短文案。 */
+/** 把记号数收成简短文案。n 传给 formatCompactTokens。copy 读取 composer。 */
 function tokenCount(n: number, copy: Copy): string {
   return copy.composer.tokenCount.replace("{count}", formatCompactTokens(n));
 }
 
-/** 把记号数收成完整文案。 */
+/** 把记号数收成完整文案。n 传给 formatExactTokens。copy 读取 composer。 */
 function exactCount(n: number, copy: Copy): string {
   return copy.composer.tokenCount.replace("{count}", formatExactTokens(n));
 }
@@ -144,7 +144,7 @@ function DatabaseIcon() {
   return <Database size={14} strokeWidth={1} className="shrink-0 opacity-80" />;
 }
 
-/** 画一颗不打开说明的药丸。 */
+/** 画一颗不打开说明的药丸。stat 写到 span 的 data-composer-stat。icon 作为子节点渲染。label 作为子节点渲染。 */
 function PlainPill({ stat, icon, label }: { stat: string; icon: ReactNode; label: ReactNode }) {
   return (
     <span className="sc-pill-anchor" data-composer-stat={stat}>
@@ -156,7 +156,7 @@ function PlainPill({ stat, icon, label }: { stat: string; icon: ReactNode; label
   );
 }
 
-/** StatsPills 投影活动和用量两颗药丸。 */
+/** StatsPills 投影活动和用量两颗药丸。props 读取 stats、copy、ctx、turnStatus、compact。 */
 export const StatsPills = memo(function StatsPills(props: {
   stats?: SessionStats | null;
   ctx?: ContextUsage;
@@ -221,7 +221,7 @@ export const StatsPills = memo(function StatsPills(props: {
   );
 });
 
-/** 画活动药丸，打开后列出轮次和步。 */
+/** 画活动药丸，打开后列出轮次和步。props 读取 stats、counts、speed、dialog、copy。 */
 function ActivityButton(props: {
   counts: string;
   speed: string | null;
@@ -264,7 +264,7 @@ function ActivityButton(props: {
   );
 }
 
-/** 画用量药丸，打开后列出记号和缓存。 */
+/** 画用量药丸，打开后列出记号和缓存。props 读取 stats、totalText、cacheHitText、dialog、copy、total 等。 */
 function UsageButton(props: {
   totalText: string;
   cacheHitText: string | null;

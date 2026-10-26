@@ -19,6 +19,11 @@ Never rewrite a playbook. Never invent held-out task ids. Incremental insights o
 
 // ReflectLLM 先算确定性的 Reflect。客户端或 ctx 为 nil、对话失败、正文为空、带工具调用、截不出对象、解析失败，或洞察和标签都空时，返回那份确定性结果且错误为 nil。
 // 解析成功但 Mechanism 为空时，用确定性结果的机制补上。
+// client 为 nil 时直接返回确定性结果；否则用它 Chat。
+// model 写入 ChatRequest 的 Model。
+// events 和 failed、pb 一起交给 Reflect。
+// failed 放进发给模型的 JSON，键名是 failed。
+// pb 的 Bullets 放进该 JSON 的 playbook，并交给 Reflect。
 func ReflectLLM(ctx context.Context, client runtime.Client, model string, events []trace.Event, failed map[string]string, pb artifact.Playbook) (Reflection, error) {
 	fallback := Reflect(events, failed, pb)
 	if client == nil || ctx == nil {

@@ -23,6 +23,8 @@ const MaxPackageBytes = 512 << 20
 type ProgressFunc func(done, total int64)
 
 // Download 把资源下载到 destDir。文件名取 Filename，空则取 URL 的基名，仍空则用 yoyo-update.bin。resolve 地址失败时再试数据集 API。都失败且没有更早错误时返回 "update: download failed"。空 URL 返回 "update: empty asset url"。
+// ctx 交给 downloadURL。
+// progress 交给 downloadURL。
 func Download(ctx context.Context, asset Asset, destDir string, progress ProgressFunc) (string, error) {
 	if asset.URL == "" {
 		return "", fmt.Errorf("update: empty asset url")
@@ -54,6 +56,7 @@ func Download(ctx context.Context, asset Asset, destDir string, progress Progres
 }
 
 // candidateURLs 先放原地址。能从 resolve 路径推出 API 地址且与原地址不同时再追加。
+// raw 放进结果开头，并交给 APIFileURLFromResolve。
 func candidateURLs(raw string) []string {
 	out := []string{raw}
 	if fallback := APIFileURLFromResolve(raw); fallback != "" && fallback != raw {
@@ -63,6 +66,7 @@ func candidateURLs(raw string) []string {
 }
 
 // APIFileURLFromResolve 把 .../datasets/<repo>/resolve/<rev>/<file> 换成同主机的 /api/v1/datasets/<repo>/repo。没有 /resolve/ 时返回空串。
+// raw 里没有 /resolve/ 时返回空串，否则拆出仓库、修订和文件路径。
 func APIFileURLFromResolve(raw string) string {
 	const marker = "/resolve/"
 	i := strings.Index(raw, marker)
@@ -91,6 +95,9 @@ func APIFileURLFromResolve(raw string) string {
 }
 
 // downloadURL 把响应写到 dest 加 .tmp，已有临时文件时带 Range 续传。ctx 为 nil 时限时 25 分钟。超过 MaxPackageBytes 返回 "update: package larger than ... bytes"。wantSHA 非空且摘要不符返回 "update: sha256 mismatch"。成功后把临时文件改名为 dest。
+// rawURL 和 false、已有临时文件长度一起交给 doGET。
+// expect 在响应没有正的 Content-Length 时当作总字节。
+// progress 传给 progressReader 的回调。
 func downloadURL(ctx context.Context, rawURL, dest, wantSHA string, expect int64, progress ProgressFunc) error {
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -194,6 +201,8 @@ func downloadURL(ctx context.Context, rawURL, dest, wantSHA string, expect int64
 }
 
 // finishDownload 把已经下完的临时文件核对 SHA-256 后改名为 dest。超过 MaxPackageBytes 时删掉临时文件并返回错误。
+// tmp 打开来算 SHA-256，长度超过 MaxPackageBytes 时删掉。
+// wantSHA 非空且摘要不符时删掉 tmp 并返回错误。
 func finishDownload(tmp, dest, wantSHA string) error {
 	f, err := os.Open(tmp)
 	if err != nil {
@@ -234,6 +243,7 @@ type progressReader struct {
 }
 
 // Read 读入字节，累加已完成数量，并调用进度回调。
+// b 交给内部 Reader 的 Read，读到的长度加进已完成数量。
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.n += int64(n)

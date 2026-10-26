@@ -216,6 +216,7 @@ func (p Pack) Info() Info {
 }
 
 // previewSwatch 只复制背景、侧栏、卡片、弱化色、强调色、边框和前景这几个键。
+// m 只在 --background、--sidebar、--card、--muted、--accent、--border、--foreground 的值非空时复制这些键。
 func previewSwatch(m TokenMap) TokenMap {
 	out := TokenMap{}
 	for _, k := range []string{"--background", "--sidebar", "--card", "--muted", "--accent", "--border", "--foreground"} {
@@ -227,6 +228,7 @@ func previewSwatch(m TokenMap) TokenMap {
 }
 
 // HasCap 报告清单的能力列表里有没有这个名字。
+// cap 与 Manifest.Capabilities 的每一项比较。
 func (p Pack) HasCap(cap string) bool {
 	for _, c := range p.Manifest.Capabilities {
 		if c == cap {

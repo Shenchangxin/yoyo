@@ -28,6 +28,7 @@ type Status struct {
 }
 
 // Current 忽略传入的通道，返回 version.Version 和 DefaultChannel。
+// ch 赋给空白标识符，不另作使用。
 func Current(ch Channel) Status {
 	_ = ch
 	return Status{Version: version.Version, Channel: DefaultChannel}

@@ -79,6 +79,7 @@ func ParseDiffHunks(diff string) []DiffHunk {
 }
 
 // gitDiffPath 从 diff --git 行取最后一段，并去掉 b/ 前缀。字段不足四段时返回空串。
+// line 按空白拆开，不足四段时返回空串，否则取最后一段并去掉 b/ 前缀。
 func gitDiffPath(line string) string {
 	// diff --git 行至少四段，最后一段去掉 b/ 前缀就是路径。
 	fields := strings.Fields(line)
@@ -90,6 +91,7 @@ func gitDiffPath(line string) string {
 }
 
 // fileFromPlusMinus 只从 +++ 行取路径。去掉 b/ 和制表符之后的内容。/dev/null 返回空串。--- 行返回空串。
+// line 去掉空白后只认 +++ 开头，再去掉 b/ 和制表符之后的内容。
 func fileFromPlusMinus(line string) string {
 	line = strings.TrimSpace(line)
 	if strings.HasPrefix(line, "+++ ") {
@@ -156,16 +158,22 @@ func PatchFromHunks(diff string, ids []string) (string, error) {
 }
 
 // ApplyHunks 把所选 hunk 打进工作区。先 PatchFromHunks，再用 WithinWorkspace 检查每个路径。执行 git apply：先带 --unidiff-zero 和 --whitespace=nowarn，失败后再只带 --whitespace=nowarn。两次都失败就返回 git apply 错误，不执行 git reset。
+// workspace 传给 applyHunks。
+// ids 传给 applyHunks。
 func ApplyHunks(workspace, diff string, ids []string) error {
 	return applyHunks(workspace, diff, ids, false)
 }
 
 // ReverseApplyHunks 用 applyHunks 的 reverse 路径撤销已应用的选择，git apply 会加上 -R。传入的 diff 仍须包含这些 hunk ID。
+// workspace 传给 applyHunks。
+// ids 传给 applyHunks。
 func ReverseApplyHunks(workspace, diff string, ids []string) error {
 	return applyHunks(workspace, diff, ids, true)
 }
 
 // applyHunks 在 workspace 为空时返回错误。补丁从标准输入送给 git -C workspace apply -。reverse 为真时在参数里追加 -R。成功即返回，失败不 reset。
+// diff 传给 PatchFromHunks。
+// ids 传给 PatchFromHunks。
 func applyHunks(workspace, diff string, ids []string, reverse bool) error {
 	if workspace == "" {
 		return fmt.Errorf("empty workspace")

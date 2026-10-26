@@ -63,6 +63,7 @@ type SessionIndexEntry struct {
 }
 
 // ResolveSessionID 把精确 id 或唯一前缀解析成会话 id。多个前缀命中或找不到则返回错误。
+// query 先 TrimSpace，空串则返回错误；否则按精确 id、磁盘上的 id、子会话或唯一前缀解析。
 func (a *App) ResolveSessionID(query string) (string, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -102,6 +103,7 @@ func (a *App) ResolveSessionID(query string) (string, error) {
 }
 
 // DumpSession 按 id 或唯一前缀读出完整轨迹和产物正文，并写入 sessions/{id}/dump.json。
+// query 传给 ResolveSessionID，并写入导出包的 Query。
 func (a *App) DumpSession(query string) (SessionDump, error) {
 	id, err := a.ResolveSessionID(query)
 	if err != nil {
@@ -169,6 +171,7 @@ func (a *App) ListSessionIndex() []SessionIndexEntry {
 }
 
 // sessionDumpPaths 拼出该会话的轨迹、meta、spill、上下文和 dump.json 路径。
+// id 用来拼 jsonl、spill、dump.json 和 meta 路径，并传给 WorkspaceContextDir。
 func (a *App) sessionDumpPaths(id string, meta SessionMeta) SessionDumpPaths {
 	p := SessionDumpPaths{
 		Home:       a.Home.Root,
@@ -189,6 +192,8 @@ func (a *App) sessionDumpPaths(id string, meta SessionMeta) SessionDumpPaths {
 }
 
 // collectDumpArtifacts 收集 spill 正文和工作区上下文文件。跳过 dump.json 和已由 spill 覆盖的文本。
+// id 传给 BindSpill、SessionSpill 和 WorkspaceContextDir。
+// meta 用来读 Workspace，并传给 WorkspaceSpillDir 和 WorkspaceContextDir。
 func (a *App) collectDumpArtifacts(id string, meta SessionMeta) []SessionArtifactBody {
 	seen := map[string]bool{}
 	var out []SessionArtifactBody
@@ -262,6 +267,9 @@ func (a *App) collectDumpArtifacts(id string, meta SessionMeta) []SessionArtifac
 }
 
 // bytesArtifact 把字节收成产物。合法 UTF-8 用文本，否则用 base64。
+// kind 写入 Kind。
+// id 写入 ID。
+// path 写入 Path。
 func bytesArtifact(kind, id, path string, b []byte) SessionArtifactBody {
 	art := SessionArtifactBody{Kind: kind, ID: id, Path: path, Bytes: len(b)}
 	if utf8.Valid(b) {
@@ -275,6 +283,8 @@ func bytesArtifact(kind, id, path string, b []byte) SessionArtifactBody {
 }
 
 // writeSessionDump 把导出包缩进写成 JSON。路径为空则什么都不做。
+// path 为空则返回，否则建父目录并 Create。
+// dump 经 json.Encoder 写入该文件。
 func writeSessionDump(path string, dump SessionDump) error {
 	if path == "" {
 		return nil

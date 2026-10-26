@@ -7,20 +7,20 @@ import type { Item } from "../../lib/protocol";
 import { toolName } from "../../lib/tool-summary";
 import { parsePageReviewBlob } from "./review";
 
-/** parsePageReview 从一条工具条目里读出审阅编号。 */
+/** parsePageReview 从一条工具条目里读出审阅编号。item 读取 payload、text，为空时不读。 */
 export function parsePageReview(item?: Item): { id: string; hash: string; title: string } | null {
   const nested = typeof item?.payload?.content === "string" ? item.payload.content : "";
   return parsePageReviewBlob(`${item?.text || ""} ${JSON.stringify(item?.payload || {})} ${nested}`);
 }
 
-/** isPageReviewItem 判断这条是不是页面审阅。 */
+/** isPageReviewItem 判断这条是不是页面审阅。item 为假时返回假，其余分支还看别的条件；传给 toolName。 */
 export function isPageReviewItem(item?: Item): boolean {
   if (!item) return false;
   if (toolName(item) === "review_page") return true;
   return /page\.save|review_page|awaiting page review/i.test(`${item.text || ""} ${JSON.stringify(item.payload || {})}`);
 }
 
-/** PageReviewCard 让人通过或退回一次页面保存。 */
+/** PageReviewCard 让人通过或退回一次页面保存。props 读取 result、item，调用 onDone。 */
 export function PageReviewCard(props: { item?: Item; result?: Item; onDone?: () => void }) {
   const copy = useCopy();
   const parsed = parsePageReview(props.result || props.item);

@@ -34,6 +34,8 @@ func NormalizeMix(o MixOpts) MixOpts {
 }
 
 // MixGraph 只构造滤镜，方便不跑 ffmpeg 做测试。输入 0 是画面，1 是可选口播，2 是可选音乐。口播和音乐都在且 Duck 为真时，音乐经 sidechaincompress 压在人声下。只有口播且 ReplaceOrig 为真时不建滤镜，映射到 1:a:0。只有音乐且 ReplaceOrig 为真时音乐作为输入 1。两者都没有时滤镜和映射都空。
+// hasSpeech 与 hasMusic 同为真时口播走输入 1；只有 hasSpeech 且 ReplaceOrig 为真时映射 1:a:0，否则和原声做 sidechaincompress。
+// hasMusic 与 hasSpeech 同为真时 musicChain 的输入号是 2；只有 hasMusic 时输入号是 1。两者都为假时返回空滤镜和 nil。
 func MixGraph(hasSpeech, hasMusic bool, o MixOpts) (filter string, maps []string) {
 	o = NormalizeMix(o)
 	switch {
@@ -63,6 +65,8 @@ func MixGraph(hasSpeech, hasMusic bool, o MixOpts) (filter string, maps []string
 }
 
 // musicChain 是带标签的音乐支路。只有 FadeOut 大于 0 且 Timeline 比淡出长出 0.05 秒以上才加 afade，否则只调音量。
+// input 写进滤镜标签的输入号。
+// o 的 FadeOut 大于 0 且 Timeline 大于 FadeOut 加 0.05 时加 afade，音量用 MusicVol。
 func musicChain(input int, o MixOpts) string {
 	if o.FadeOut > 0 && o.Timeline > o.FadeOut+0.05 {
 		st := o.Timeline - o.FadeOut
@@ -72,6 +76,10 @@ func musicChain(input int, o MixOpts) string {
 }
 
 // Mix 把口播和/或音乐混进画面。两者都空时返回 nothing to mix。画面复制，音频编成 aac、48 kHz，并加上 -shortest。滤镜失败时改走 mixFallback。
+// video 作为第一个 -i。
+// speech 去掉空白后非空才追加为 -i，并参与 MixGraph。
+// music 去掉空白后非空才追加为 -i，并参与 MixGraph。
+// outPath 接在 -shortest 后面；失败时原样传给 mixFallback。
 func (b Bin) Mix(video, speech, music, outPath string, o MixOpts) error {
 	if err := b.ok(); err != nil {
 		return err
@@ -111,6 +119,10 @@ func (b Bin) Mix(video, speech, music, outPath string, o MixOpts) error {
 }
 
 // mixFallback 用音量混合重试，不再做闪避和淡出。画面复制，音频 aac，并加上 -shortest。
+// video 作为第一个 -i。
+// speech 非空才追加为 -i；与 music 同为非空时音量用 SpeechVol，单独非空时映射 1:a:0。
+// music 非空才追加为 -i；单独非空时音量用 MusicVol。
+// outPath 接在 -shortest 后面。
 func (b Bin) mixFallback(video, speech, music, outPath string, o MixOpts) error {
 	args := []string{"-y", "-i", video}
 	if speech != "" {
@@ -135,6 +147,7 @@ func (b Bin) mixFallback(video, speech, music, outPath string, o MixOpts) error 
 }
 
 // EnhanceFilter 返回 denoise、loudnorm、loudness、voice、enhance 的音频滤镜。其他预设用 loudnorm，目标 I=-16、TP=-1.5、LRA=11。
+// preset 去掉空白并转小写后匹配 denoise、loudnorm、loudness、voice、enhance，其余走 default。
 func EnhanceFilter(preset string) string {
 	switch strings.ToLower(strings.TrimSpace(preset)) {
 	case "denoise":
@@ -149,6 +162,8 @@ func EnhanceFilter(preset string) string {
 }
 
 // ExtractAudio 丢掉画面，把音轨抽成 aac、48 kHz、192k。
+// src 作为 -i。
+// outPath 作为输出路径。
 func (b Bin) ExtractAudio(src, outPath string) error {
 	if err := b.ok(); err != nil {
 		return err
@@ -158,6 +173,9 @@ func (b Bin) ExtractAudio(src, outPath string) error {
 }
 
 // EnhanceAudio 对音轨套用 EnhanceFilter 给出的滤镜。
+// src 作为 -i。
+// outPath 作为输出路径。
+// preset 传给 EnhanceFilter。
 func (b Bin) EnhanceAudio(src, outPath, preset string) error {
 	if err := b.ok(); err != nil {
 		return err

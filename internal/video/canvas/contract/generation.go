@@ -17,11 +17,11 @@ import (
 
 const (
 	// GenerationVersion 是当前合同版本，必须为 1。
-	GenerationVersion   = 1
+	GenerationVersion = 1
 	// MaxNodeTitleRunes 是节点标题上限，240 个字符。
-	MaxNodeTitleRunes   = 240
+	MaxNodeTitleRunes = 240
 	// MaxPromptRunes 是提示词上限，16000 个字符。
-	MaxPromptRunes      = 16000
+	MaxPromptRunes = 16000
 	// MaxCanvasOperations 是画布操作条数上限，20。
 	MaxCanvasOperations = 20
 )
@@ -77,8 +77,11 @@ type GenerationSpec struct {
 type FieldError struct{ Path, Message string }
 
 // Error 返回「路径: 消息」。
-func (e *FieldError) Error() string      { return e.Path + ": " + e.Message }
+func (e *FieldError) Error() string { return e.Path + ": " + e.Message }
+
 // invalid 构造一条字段错误。
+// path 写入 FieldError.Path。
+// message 写入 FieldError.Message。
 func invalid(path, message string) error { return &FieldError{Path: path, Message: message} }
 
 // Validate 要求 logical 只填 logicalModelId，channel 只填 channelId 和 modelKey。
@@ -86,13 +89,11 @@ func (s ModelSelection) Validate() error {
 	switch s.Kind {
 	case "logical":
 		if strings.TrimSpace(s.LogicalModelID) == "" || s.ChannelID != "" || s.ModelKey != "" {
-			return invalid("modelSelection", "é»è¾æ¨¡åå¿
-é¡»ä¸åªè½æå® logicalModelId")
+			return invalid("modelSelection", "é»è¾æ¨¡åå¿é¡»ä¸åªè½æå® logicalModelId")
 		}
 	case "channel":
 		if strings.TrimSpace(s.ChannelID) == "" || strings.TrimSpace(s.ModelKey) == "" || s.LogicalModelID != "" {
-			return invalid("modelSelection", "æ¸ éæ¨¡åå¿
-é¡»ä¸åªè½æå® channelId å modelKey")
+			return invalid("modelSelection", "æ¸ éæ¨¡åå¿é¡»ä¸åªè½æå® channelId å modelKey")
 		}
 	default:
 		return invalid("modelSelection.kind", "æªç¥æ¨¡åéæ©ç±»å")
@@ -109,8 +110,7 @@ func (s GenerationSpec) Validate() error {
 		return invalid("generationSpec.mode", "æªç¥çææ¨¡å¼")
 	}
 	if utf8.RuneCountInString(s.Prompt) > MaxPromptRunes {
-		return invalid("generationSpec.prompt", "æç¤ºè¯è¶
-è¿é¿åº¦éå¶")
+		return invalid("generationSpec.prompt", "æç¤ºè¯è¶è¿é¿åº¦éå¶")
 	}
 	if s.ModelSelection != nil {
 		if err := s.ModelSelection.Validate(); err != nil {
@@ -118,8 +118,7 @@ func (s GenerationSpec) Validate() error {
 		}
 	}
 	if s.TextInputMode != "prompt-only" && s.TextInputMode != "append-sources" {
-		return invalid("generationSpec.textInputMode", "æªç¥ææ¬è¾å
-¥æ¨¡å¼")
+		return invalid("generationSpec.textInputMode", "æªç¥ææ¬è¾å¥æ¨¡å¼")
 	}
 	value, typ := reflect.ValueOf(s.Options), reflect.TypeOf(s.Options)
 	for i := 0; i < typ.NumField(); i++ {
@@ -135,24 +134,21 @@ func (s GenerationSpec) Validate() error {
 		return invalid("options.durationSeconds", "æ¶é¿ä¸è½ä¸ºè´æ°")
 	}
 	if s.Options.Count != nil && *s.Options.Count < 1 {
-		return invalid("options.count", "æ°éå¿
-é¡»ä¸ºæ­£æ´æ°")
+		return invalid("options.count", "æ°éå¿é¡»ä¸ºæ­£æ´æ°")
 	}
 	ids := map[string]bool{}
 	orders := map[int]bool{}
 	for i, binding := range s.ReferenceBindings {
 		path := fmt.Sprintf("referenceBindings[%d]", i)
 		if binding.ID == "" || ids[binding.ID] || binding.Order < 0 || orders[binding.Order] {
-			return invalid(path, "å¼ç¨èº«ä»½åé¡ºåºå¿
-é¡»ææä¸å¯ä¸")
+			return invalid(path, "å¼ç¨èº«ä»½åé¡ºåºå¿é¡»ææä¸å¯ä¸")
 		}
 		ids[binding.ID], orders[binding.Order] = true, true
 		if binding.NodeID == "" && binding.ResourceID == "" && binding.TransientID == "" {
 			return invalid(path, "å¼ç¨ç¼ºå°æ¥æº")
 		}
 		if binding.TransientID != "" && (binding.NodeID != "" || binding.ResourceID != "") {
-			return invalid(path, "ä¸´æ¶å¼ç¨ä¸è½æ··ç¨å
-¶ä»æ¥æº")
+			return invalid(path, "ä¸´æ¶å¼ç¨ä¸è½æ··ç¨å¶ä»æ¥æº")
 		}
 		if binding.Resolution != "latest" && binding.Resolution != "snapshot" {
 			return invalid(path+".resolution", "æªç¥å¼ç¨è§£æç­ç¥")
@@ -164,18 +160,17 @@ func (s GenerationSpec) Validate() error {
 			return invalid(path+".role", "æªç¥åèè§è²")
 		}
 		if binding.Role == "source-text" && binding.MediaType != "text" {
-			return invalid(path+".role", "ææ¬æ¥æºå¿
-é¡»å¼ç¨ææ¬")
+			return invalid(path+".role", "ææ¬æ¥æºå¿é¡»å¼ç¨ææ¬")
 		}
 		if (binding.Role == "first-frame" || binding.Role == "last-frame" || binding.Role == "mask") && binding.MediaType != "image" {
-			return invalid(path+".role", "å¸§åé®ç½©å¿
-é¡»å¼ç¨å¾ç")
+			return invalid(path+".role", "å¸§åé®ç½©å¿é¡»å¼ç¨å¾ç")
 		}
 	}
 	return nil
 }
 
 // Decode 用 DisallowUnknownFields 解析单个 JSON 对象，再调用 Validate。
+// data 交给 json.NewDecoder；解出对象后再读一次，不是 EOF 就失败。
 func Decode(data []byte) (GenerationSpec, error) {
 	var spec GenerationSpec
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -185,13 +180,14 @@ func Decode(data []byte) (GenerationSpec, error) {
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return spec, invalid("generationSpec", "å¿
-é¡»æ¯åä¸ªå¯¹è±¡")
+		return spec, invalid("generationSpec", "å¿é¡»æ¯åä¸ªå¯¹è±¡")
 	}
 	return spec, spec.Validate()
 }
 
 // OptionsFromTaskConfig 只复制上面声明过的公开字段。任务配置里多出来的键，包括密钥和供应商路由，不会被收进来。字符串、布尔和整数按字段类型解析。
+// mode 用来判断字段 modes 标签是否包含它，不包含的字段跳过。
+// config 按字段 task 标签取值；键不存在、值为 nil 或空串时跳过，字符串、布尔和整数按字段类型解析。
 func OptionsFromTaskConfig(mode string, config map[string]any) (Options, error) {
 	options := Options{}
 	value, typ := reflect.ValueOf(&options).Elem(), reflect.TypeOf(options)
@@ -209,22 +205,19 @@ func OptionsFromTaskConfig(mode string, config map[string]any) (Options, error) 
 		case reflect.String:
 			text, ok := raw.(string)
 			if !ok {
-				return options, invalid("options."+field.Tag.Get("task"), "å¿
-é¡»æ¯å­ç¬¦ä¸²")
+				return options, invalid("options."+field.Tag.Get("task"), "å¿é¡»æ¯å­ç¬¦ä¸²")
 			}
 			parsed.Elem().SetString(text)
 		case reflect.Bool:
 			boolean, err := strconv.ParseBool(fmt.Sprint(raw))
 			if err != nil {
-				return options, invalid("options."+field.Tag.Get("task"), "å¿
-é¡»æ¯å¸å°å¼")
+				return options, invalid("options."+field.Tag.Get("task"), "å¿é¡»æ¯å¸å°å¼")
 			}
 			parsed.Elem().SetBool(boolean)
 		case reflect.Int:
 			number, err := strconv.Atoi(fmt.Sprint(raw))
 			if err != nil {
-				return options, invalid("options."+field.Tag.Get("task"), "å¿
-é¡»æ¯æ´æ°")
+				return options, invalid("options."+field.Tag.Get("task"), "å¿é¡»æ¯æ´æ°")
 			}
 			parsed.Elem().SetInt(int64(number))
 		}
@@ -282,6 +275,7 @@ func (s GenerationSpec) NodeMetadata() (map[string]any, error) {
 }
 
 // NodeGenerationProjection 抽出生成要读的字段。锁、任务绑定和授权由调用方另外检查。有 generationSpec 时先 Decode。已知的合同字段原样留下。位置、尺寸和选中状态这类展示字段丢掉。其余键放进 extensions，避免新的生成输入绕过校验，也避免移动节点改掉已经准备好的生成。
+// metadata 有 generationSpec 时先 Marshal 再 Decode；已知合同字段原样抄入，isCanvasPresentationMetadataKey 为真的键丢掉，其余放进 extensions。
 func NodeGenerationProjection(metadata map[string]any) (map[string]any, error) {
 	result := map[string]any{}
 	if raw, exists := metadata["generationSpec"]; exists {
@@ -326,6 +320,7 @@ func NodeGenerationProjection(metadata map[string]any) (map[string]any, error) {
 }
 
 // isCanvasPresentationMetadataKey 判断键是不是位置、尺寸、选中、颜色或布局这类展示字段。
+// key 等于 position、x、y、width、height、createdAt、updatedAt、selected、collapsed、zIndex、color、background、displayName、label、ui、presentation、layout、screenPosition、isSelected、dragging 或 resizing 时返回真。
 func isCanvasPresentationMetadataKey(key string) bool {
 	switch key {
 	case "position", "x", "y", "width", "height", "createdAt", "updatedAt", "selected", "collapsed", "zIndex", "color", "background", "displayName", "label", "ui", "presentation", "layout", "screenPosition", "isSelected", "dragging", "resizing":

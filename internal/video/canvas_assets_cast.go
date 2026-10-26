@@ -10,6 +10,8 @@ import (
 )
 
 // seedCastCharacterAssets 先迁移旧卡司文件夹，再导入已下载的静帧。导入失败只记警告，包缺失时导入本身返回 nil。
+// now 传给 migrateCastFolderIntoCharacters 和 importCharacterCast。
+// existing 传给 importCharacterCast。
 func (e *Engine) seedCastCharacterAssets(now string, existing map[string]bool) error {
 	if err := e.migrateCastFolderIntoCharacters(now); err != nil {
 		return err
@@ -22,6 +24,7 @@ func (e *Engine) seedCastCharacterAssets(now string, existing map[string]bool) e
 }
 
 // migrateCastFolderIntoCharacters 把卡司前缀或旧文件夹里的素材改到角色资产，并删除旧文件夹。
+// now 传给 setAssetFolder。
 func (e *Engine) migrateCastFolderIntoCharacters(now string) error {
 	const oldFolder = "studio-folder-cast"
 	const newFolder = "studio-folder-characters"

@@ -97,6 +97,7 @@ func (s *Store) Write(it Item) Item {
 }
 
 // Forget 删掉指定 ID。无论是否找到都会刷盘。找到返回真。
+// id 与每条的 ID 比较，相等的条目删掉。无论是否找到都刷盘。
 func (s *Store) Forget(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -158,6 +159,7 @@ func (s *Store) ProfilePin(budget int) string {
 }
 
 // Promote 把指定 ID 的 Staging 设为假并刷盘，返回真。没有这条时返回假，不刷盘。
+// id 与每条的 ID 比较，相等则把 Staging 设为 false 并刷盘，返回 true。没有这条时返回 false，不刷盘。
 func (s *Store) Promote(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

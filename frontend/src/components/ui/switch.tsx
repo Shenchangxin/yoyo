@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { cn } from "../../lib/utils";
 
-// Switch 在未选中时用 lift，选中时用 accent，拇指跟随 data-state 平移。
+/** Switch 在未选中时用 lift，选中时用 accent，拇指跟随 data-state 平移。className 传给 cn。props 展开到 SwitchPrimitive.Root。 */
 export function Switch({ className, ...props }: ComponentProps<typeof SwitchPrimitive.Root>) {
   return (
     <SwitchPrimitive.Root

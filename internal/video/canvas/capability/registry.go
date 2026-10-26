@@ -18,6 +18,7 @@ const SetVersion = "canvas-capabilities/v4"
 type Registry struct{ descriptors map[string]Descriptor }
 
 // NewRegistry 规范化并检查每条描述。类型、版本、标签和默认尺寸必须有效。生成模式不能重复。投影种类和字段必须同时有或同时无。接受和拒绝的输入不能冲突。能作为来源时必须有输入种类。可更新和补丁字段必须同时声明。类型不能重复。
+// descriptors 逐条做上述检查，不通过或 Type 重复就返回错误，通过的经 cloneDescriptor 按 Type 放进登记表。
 func NewRegistry(descriptors []Descriptor) (*Registry, error) {
 	items := make(map[string]Descriptor, len(descriptors))
 	generationModes := make(map[string]string, len(descriptors))
@@ -106,6 +107,7 @@ func NewRegistry(descriptors []Descriptor) (*Registry, error) {
 }
 
 // Resolve 按小写类型返回一份拷贝。没有或登记表为空时返回假。
+// nodeType 经 normalizeType 后当作 descriptors 的键，命中再经 cloneDescriptor 返回。
 func (r *Registry) Resolve(nodeType string) (Descriptor, bool) {
 	if r == nil {
 		return Descriptor{}, false
@@ -117,6 +119,7 @@ func (r *Registry) Resolve(nodeType string) (Descriptor, bool) {
 	d = cloneDescriptor(d)
 	return d, ok
 }
+
 // List 按类型排序返回每条描述的拷贝。登记表为空时返回 nil。
 func (r *Registry) List() []Descriptor {
 	if r == nil {
@@ -129,6 +132,7 @@ func (r *Registry) List() []Descriptor {
 	sort.Slice(out, func(i, j int) bool { return out[i].Type < out[j].Type })
 	return out
 }
+
 // Types 返回已排序的节点类型。
 func (r *Registry) Types() []string {
 	items := r.List()
@@ -138,6 +142,7 @@ func (r *Registry) Types() []string {
 	}
 	return out
 }
+
 // GenerationModeNames 返回去重并排序的生成模式。
 func (r *Registry) GenerationModeNames() []string {
 	seen := map[string]struct{}{}
@@ -155,12 +160,14 @@ func (r *Registry) GenerationModeNames() []string {
 }
 
 // SupportsGenerationMode 在该模式能解析到一条描述时为真。
+// mode 传给 ResolveGenerationMode，只采用它的布尔结果。
 func (r *Registry) SupportsGenerationMode(mode string) bool {
 	_, ok := r.ResolveGenerationMode(mode)
 	return ok
 }
 
 // ResolveGenerationMode 返回第一个生成模式相同的描述拷贝。模式为空时返回假。
+// mode 经 normalizeType，空串时返回假，否则与每条描述的 GenerationMode 比较，命中则 cloneDescriptor 后返回。
 func (r *Registry) ResolveGenerationMode(mode string) (Descriptor, bool) {
 	mode = normalizeType(mode)
 	if mode == "" || r == nil {
@@ -173,6 +180,7 @@ func (r *Registry) ResolveGenerationMode(mode string) (Descriptor, bool) {
 	}
 	return Descriptor{}, false
 }
+
 // Hash 对排序后的描述做 JSON，再取 SHA256 的十六进制。
 func (r *Registry) Hash() string {
 	data, _ := json.Marshal(registryHashItems(r.List()))
@@ -181,6 +189,7 @@ func (r *Registry) Hash() string {
 }
 
 // normalizeFields 去掉空白和重复，保留第一次出现的顺序。
+// fields 逐项 TrimSpace，空串和已出现过的丢掉，其余按首次出现的顺序返回。
 func normalizeFields(fields []string) []string {
 	seen := make(map[string]struct{}, len(fields))
 	out := make([]string, 0, len(fields))
@@ -199,6 +208,7 @@ func normalizeFields(fields []string) []string {
 }
 
 // cloneDescriptor 拷贝切片和补丁字段，避免调用方改到登记表里的原件。
+// descriptor 的 AcceptedInputKinds、RejectedInputKinds、GoodFor、NotIdealFor、Tradeoffs、Actions、SummaryFields、DetailFields 换成新切片，PatchFields 换成新 map。
 func cloneDescriptor(descriptor Descriptor) Descriptor {
 	descriptor.Connection.AcceptedInputKinds = append([]string(nil), descriptor.Connection.AcceptedInputKinds...)
 	descriptor.Connection.RejectedInputKinds = append([]string(nil), descriptor.Connection.RejectedInputKinds...)
@@ -261,6 +271,7 @@ type hashPatchField struct {
 }
 
 // registryHashItems 把补丁字段按键排序后收成哈希条目。
+// descriptors 逐条把各字段抄进 hashDescriptor，PatchFields 按键排序后收成 hashPatchField。
 func registryHashItems(descriptors []Descriptor) []hashDescriptor {
 	items := make([]hashDescriptor, 0, len(descriptors))
 	for _, descriptor := range descriptors {

@@ -255,6 +255,7 @@ func (e *Engine) ListStudioProjects() []StudioProject {
 }
 
 // GetStudioProject 按编号读取一条短片。没有时返回 studio project not found。
+// id 去掉首尾空白后传给 getDoc。
 func (e *Engine) GetStudioProject(id string) (StudioProject, error) {
 	p, err := getDoc[StudioProject](e, colStudioProjects, strings.TrimSpace(id))
 	if err != nil {
@@ -265,6 +266,7 @@ func (e *Engine) GetStudioProject(id string) (StudioProject, error) {
 
 // CreateStudioProject 新建一条草稿。标题空着就写成「短片」，口播待审，闸门停在口播，修订号从 1 开始。
 // 没指定预设时按画幅挑一个。没指定身份时用默认口播主持。带了选题就把选题标成制作中并记上工程编号。
+// in 的 Title 去掉首尾空白，空串时写成「短片」，再补上编号、状态、闸门和仍为空的预设、语气、身份后传给 putDoc。
 func (e *Engine) CreateStudioProject(in StudioProject) (StudioProject, error) {
 	in.Title = strings.TrimSpace(in.Title)
 	if in.Title == "" {
@@ -317,6 +319,7 @@ func (e *Engine) CreateStudioProject(in StudioProject) (StudioProject, error) {
 
 // UpdateStudioProject 只覆盖传入的非空字段。镜头切片会整表换上，空切片会清空，nil 不动。
 // 已锁定的口播一旦改字就退回待审。画面说明变了且这一镜已有图或视频时，合并时会标成过期。
+// in 用 ID 读取工程，Title、Aspect、Style、PresetID、TemplateID、Platform、Tone、Audience、Gate、Hook、CTA、Voice、VoiceStyle、ResultHash 去掉首尾空白后非空才覆盖，TargetDuration、VoiceSpeed、BGMVolume 大于 0 才覆盖，Script、TopicID、NarrationHash、SubtitleHash、BGMHash 以及分镜的 Size、ImageMotion、Narration、Subtitle、BGM 非空才覆盖，Fit 去掉首尾空白后只接受 cover 或 contain，Identity 在 CharacterID、StyleID 或 Preserve 非空时整份换上，SkipAudio 为真时把 SkipAudio 写成真，Segments 和 Shots 为 nil 时不动，最后把合并结果传给 putDoc。
 func (e *Engine) UpdateStudioProject(in StudioProject) (StudioProject, error) {
 	cur, err := e.GetStudioProject(in.ID)
 	if err != nil {
@@ -440,6 +443,7 @@ func (e *Engine) UpdateStudioProject(in StudioProject) (StudioProject, error) {
 }
 
 // PutStudioProject 按现有编号整份写回。编号空着就拒绝。
+// p 的 ID 去掉首尾空白后为空时返回错误 id required，否则与 p 一起传给 putDoc。
 func (e *Engine) PutStudioProject(p StudioProject) error {
 	if strings.TrimSpace(p.ID) == "" {
 		return fmt.Errorf("id required")
@@ -448,6 +452,7 @@ func (e *Engine) PutStudioProject(p StudioProject) error {
 }
 
 // DeleteStudioProject 删掉工程，并拆掉所有指着它的会话绑定。编号空着就拒绝。
+// id 去掉首尾空白，空串时返回错误 id required，否则从会话绑定里删掉指向它的项，并传给 delDoc。
 func (e *Engine) DeleteStudioProject(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -465,6 +470,8 @@ func (e *Engine) DeleteStudioProject(id string) error {
 
 // BindStudioSession 把会话和短片绑在一起。同一会话或同一条短片上原有的绑定会先拆掉，所以两边都只留一对。
 // 会话或工程编号空着，或工程不存在，就拒绝。
+// sessionID 去掉首尾空白，空串时返回错误 session and project required，否则作为绑定的键。
+// projectID 去掉首尾空白，空串时返回错误 session and project required，否则传给 GetStudioProject，并作为绑定的值。
 func (e *Engine) BindStudioSession(sessionID, projectID string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	projectID = strings.TrimSpace(projectID)
@@ -487,6 +494,7 @@ func (e *Engine) BindStudioSession(sessionID, projectID string) error {
 }
 
 // StudioSessionBind 返回这个会话绑着的短片编号。没绑定时第二个结果是假。
+// sessionID 去掉首尾空白后，作为 loadStudioBinds 所得映射的键。
 func (e *Engine) StudioSessionBind(sessionID string) (string, bool) {
 	m := e.loadStudioBinds()
 	id := strings.TrimSpace(m[strings.TrimSpace(sessionID)])
@@ -494,6 +502,7 @@ func (e *Engine) StudioSessionBind(sessionID string) (string, bool) {
 }
 
 // PublishStudioAsset 把成片放进画布素材库的短片文件夹。还没有成片就拒绝。写入失败时工程里的成片编号仍在。
+// p 的 ResultHash 为空时返回错误 no assembled video，否则把该哈希传给 GetBytes 和 putCanvasResourceFromHash，并把改过的 p 传给 putDoc。
 func (e *Engine) PublishStudioAsset(p StudioProject) (StudioProject, error) {
 	if p.ResultHash == "" {
 		return p, fmt.Errorf("no assembled video")
@@ -523,6 +532,7 @@ func (e *Engine) PublishStudioAsset(p StudioProject) (StudioProject, error) {
 
 // StudioJobShouldSkip 判断延后的开拍不要再拉起助手。
 // 已经绑了会话、口播已锁定、已有成片，或闸门已经走过口播，都返回真。空白草稿返回假。
+// boundSession 去掉首尾空白后非空时返回真。
 func StudioJobShouldSkip(p StudioProject, boundSession string) bool {
 	if strings.TrimSpace(boundSession) != "" {
 		return true
@@ -538,6 +548,8 @@ func StudioJobShouldSkip(p StudioProject, boundSession string) bool {
 }
 
 // StudioFromTopic 按选题打开短片。选题已经挂着工程就复用，画幅不同时只改画幅。否则用选题标题或角度新建，并把标题、角度和备注写进口播。
+// topicID 传给 GetTopic。
+// aspect 去掉首尾空白后非空，且 normalizeAspect 的结果与已有工程不同时写回画幅；没有可复用工程时写入新建工程的 Aspect。
 func (e *Engine) StudioFromTopic(topicID, aspect string) (StudioProject, error) {
 	t, err := e.GetTopic(topicID)
 	if err != nil {

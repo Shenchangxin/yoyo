@@ -12,6 +12,8 @@ import (
 type PromptSensitiveSolver struct{}
 
 // Chat 拼接系统与用户文本。已有对应写入记录则不再写。未武装时回复探索过工作区、没有写文件。其余回复 done。
+// ctx 没有读取，也没有传出。
+// req 的 Messages 按系统、developer 和用户角色拼文本，并交给 toolWrote 判断是否已经写过。
 func (PromptSensitiveSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	var sys, user string
 	for _, m := range req.Messages {

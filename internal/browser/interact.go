@@ -93,6 +93,7 @@ const actionsJS = `(() => {
 })()`
 
 // Click 解析选择器，等到它可点，用真实指针事件按下，并报告可见正文有没有变化。
+// sel 作为 click 的 detail 传给 record，并传给 clickCDP。返回文字里 Ref 非空时改用 ref= 加 Ref，否则用 sel。
 func (h *Host) Click(sel string) (string, error) {
 	h.record("click", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -121,6 +122,8 @@ func (h *Host) Click(sel string) (string, error) {
 }
 
 // Type 在给了选择器时先聚焦，再把每个字符当成真实按键发出，这样文档或 window 上的 keydown 能收到。
+// sel 作为 type 的 detail 传给 record，并和 text 一起传给 typeCDP。去掉空白后为空时，返回文字里写成 the focused element。
+// text 传给 typeCDP。返回文字里的按键数是 text 的 rune 个数。
 func (h *Host) Type(sel, text string) (string, error) {
 	h.record("type", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -145,6 +148,8 @@ func (h *Host) Type(sel, text string) (string, error) {
 }
 
 // Fill 替换字段里的现有内容。先全选并删除，再输入，所以第二次填充不会接在后面。
+// sel 作为 fill 的 detail 传给 record。去掉空白后为空时返回 browser: fill needs a selector or ref。否则传给 waitFor。返回文字里仍用 sel。
+// text 传给 typeCDP，选择器传的是空字符串。返回文字里的个数是 text 的 rune 个数。
 func (h *Host) Fill(sel, text string) (string, error) {
 	h.record("fill", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -174,6 +179,7 @@ func (h *Host) Fill(sel, text string) (string, error) {
 }
 
 // WaitVisible 等到选择器可操作，但不点击。序列可以在目标被挡住之前停下来。
+// sel 作为 wait 的 detail 传给 record，并传给 waitFor。返回文字里带上 sel。
 func (h *Host) WaitVisible(sel string) (string, error) {
 	h.record("wait", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -203,6 +209,7 @@ func (h *Host) Refresh() (snap Snapshot, live bool) {
 }
 
 // clickCDP 在等到目标可点后，依次发送 mouseMoved、mousePressed、mouseReleased。
+// sel 传给 waitFor。得到坐标后发送 mouseMoved、mousePressed 和 mouseReleased。
 func (h *Host) clickCDP(sel string) (probe, error) {
 	p, err := h.waitFor(sel, false)
 	if err != nil {
@@ -222,6 +229,8 @@ func (h *Host) clickCDP(sel string) (probe, error) {
 }
 
 // typeCDP 在选择器非空时先聚焦，再对每个字符调用 keyTap。
+// sel 去掉空白后非空时传给 waitFor，focusOnly 为真。
+// text 的每个 rune 传给 keyTap。
 func (h *Host) typeCDP(sel, text string) error {
 	if strings.TrimSpace(sel) != "" {
 		if _, err := h.waitFor(sel, true); err != nil {
@@ -237,6 +246,8 @@ func (h *Host) typeCDP(sel, text string) error {
 }
 
 // waitFor 轮询到目标可操作或时间用尽。过期的 ref 会按上次快照的 testid、id 或无障碍名再试一次，避免重绘后去猜新的 CSS。
+// sel 传给 probeOn。未成功时传给 matchFallback，得到的选择器不同再传给 probeOn，并把 sel 写进 match 的 detail。仍失败则传给 explainMiss。
+// focusOnly 传给 probeOn。回退匹配时也传给 probeOn。
 func (h *Host) waitFor(sel string, focusOnly bool) (probe, error) {
 	deadline := time.Now().Add(actionWait)
 	var last probe
@@ -265,6 +276,8 @@ func (h *Host) waitFor(sel string, focusOnly bool) (probe, error) {
 }
 
 // probeOn 执行 probeJS 并把 JSON 解成 probe。没有结果时返回错误。
+// sel 传给 probeJS。JSON 解不开时错误文案带上 sel。
+// focusOnly 传给 probeJS。
 func (h *Host) probeOn(sel string, focusOnly bool) (probe, error) {
 	out, err := h.evalJS(probeJS(sel, focusOnly))
 	if err != nil {
@@ -278,6 +291,7 @@ func (h *Host) probeOn(sel string, focusOnly bool) (probe, error) {
 }
 
 // coveredWhy 说明命中测试为什么失败。by 为空或 nothing 时，中心点没有命中元素，是在视口外或被祖先裁切，并不是被一层东西盖住。
+// sel 放进返回字符串的开头。
 func coveredWhy(sel, by string) string {
 	if by == "" || by == "nothing" {
 		return fmt.Sprintf("%s has no hit-test element at its centre (outside the viewport or clipped by an ancestor), so a real click would not reach it", sel)
@@ -286,6 +300,7 @@ func coveredWhy(sel, by string) string {
 }
 
 // explainMiss 把一次失败写成错误，并附上页面上实际有的控件，供下一次选择器用。
+// sel 按 p.Reason 写进错误说明。Reason 是 covered 时传给 coveredWhy。
 func (h *Host) explainMiss(sel string, p probe) error {
 	var why string
 	switch p.Reason {
@@ -392,6 +407,7 @@ func (h *Host) actionsList() ([]Action, error) {
 }
 
 // formatActions 把控件收成多行文字，每行带 ref、选择器、标签和正文。超过 maxActions 的丢掉。禁用的标上 disabled。
+// acts 长度大于 maxActions 时只留前面 maxActions 条。每条写出 Ref、Selector、Tag 和 Text，Disabled 为真时附上 (disabled)。
 func formatActions(acts []Action) string {
 	if len(acts) > maxActions {
 		acts = acts[:maxActions]

@@ -17,7 +17,7 @@ const STEPS = ["script", "voice", "visuals", "compose"] as const;
 
 type Platform = { id: string; label?: string };
 
-/** DeliveryShelf 展示当前成片。可发布之后才显示平台、标题和标签。 */
+/** DeliveryShelf 展示当前成片。可发布之后才显示平台、标题和标签。props 没有 current 就显示空状态并让 onBack 回选题；current、films、catalog 和 mediaSrc 画成片和架，platforms、platform、suggested、caption、tags 画发布，busy 禁用重试、打包和保存，drafts 有内容就放在下面，其余回调挂在对应按钮和输入上。 */
 export function DeliveryShelf(props: {
   films: StudioProject[];
   current: StudioProject | null;
@@ -72,7 +72,7 @@ export function DeliveryShelf(props: {
         <div className="flex flex-col gap-2">
           <p className="text-[12px] text-muted">{s.filmShelf}</p>
           <ul className="flex gap-2 overflow-x-auto pb-1">
-            {props.films.map((film) => {
+            {props.films.map(/** film 画缩略图和标题，id 和当前成片相同就标成选中，点了交给 onSelect。 */ (film) => {
               const on = film.id === cur.id;
               const thumb = film.cover_url || film.poster_url || props.mediaSrc(film.cover_hash || film.poster_hash || film.result_hash);
               const label = phaseText(s, d, film.auto_phase, !!film.result_hash);
@@ -139,7 +139,7 @@ export function DeliveryShelf(props: {
 
         {live && phase !== "queued" ? (
           <ol className="flex flex-wrap gap-x-3 gap-y-1">
-            {STEPS.map((id, i) => {
+            {STEPS.map(/** id 决定阶段名和是否就是当前阶段。i 用来判断是不是已经过去。 */ (id, i) => {
               const on = phase === id;
               const past = stepAt > i;
               const label = id === "script" ? d.phaseScript : id === "voice" ? d.phaseVoice : id === "visuals" ? d.phaseVisuals : d.phaseCompose;
@@ -172,7 +172,7 @@ export function DeliveryShelf(props: {
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-1.5">
-                {props.platforms.map((p) => {
+                {props.platforms.map(/** p 的 id 和当前平台比较，点了交给 onPlatform，label 空着就显示 id。 */ (p) => {
                   const on = props.platform === p.id;
                   return (
                     <button
@@ -192,8 +192,8 @@ export function DeliveryShelf(props: {
                   );
                 })}
               </div>
-              <Input className="h-8" placeholder={s.caption} value={props.caption} onChange={(e) => props.onCaption(e.target.value)} />
-              <Input className="h-8" placeholder={s.tags} value={props.tags} onChange={(e) => props.onTags(e.target.value)} />
+              <Input className="h-8" placeholder={s.caption} value={props.caption} onChange={/** e 取出 target.value 交给 onCaption。 */ (e) => props.onCaption(e.target.value)} />
+              <Input className="h-8" placeholder={s.tags} value={props.tags} onChange={/** e 取出 target.value 交给 onTags。 */ (e) => props.onTags(e.target.value)} />
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="default" className="h-8 text-[12px]" disabled={!!props.busy || !props.platform} title={props.platform ? undefined : s.filmPickPlatform} onClick={props.onSave}>{s.draftPublish}</Button>
                 {!props.platform ? <p className="text-[12px] text-muted">{s.filmPickPlatform}</p> : null}
@@ -216,14 +216,14 @@ export function DeliveryShelf(props: {
   );
 }
 
-/** 用模板名、画幅和目标秒数拼成一行计划。 */
+/** 用模板名、画幅和目标秒数拼成一行计划。p 用 template_id、aspect 和 target_duration 拼计划。catalog 按 template_id 找模板名。seconds 把目标秒数填进 {n}。 */
 function filmPlan(p: StudioProject, catalog: StudioCatalog, seconds: string) {
-  const tpl = catalog.templates?.find((t) => t.id === p.template_id)?.title;
+  const tpl = catalog.templates?.find(/** t 的 id 和 template_id 比对。 */ (t) => t.id === p.template_id)?.title;
   const length = p.target_duration ? seconds.replace("{n}", String(p.target_duration)) : "";
   return [tpl, p.aspect, length].filter(Boolean).join(" · ");
 }
 
-/** 按自动阶段取界面上的阶段名。已有成片且不在进行中就算完成。 */
+/** 按自动阶段取界面上的阶段名。已有成片且不在进行中就算完成。s 在排队时提供 filmQueued。d 按阶段取文案。phase 决定阶段名。hasVideo 在不是失败且不在进行中时返回完成。 */
 function phaseText(s: { filmQueued: string }, d: { phaseScript: string; phaseVoice: string; phaseVisuals: string; phaseCompose: string; phaseDone: string; phaseFailed: string; phaseQueued: string }, phase: string | undefined, hasVideo: boolean) {
   if (hasVideo && phase !== "failed" && !filmInFlight(phase)) return d.phaseDone;
   switch (phase) {

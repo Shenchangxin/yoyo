@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 
-/** useMedia 当前视口是否匹配该查询。没有 window 或 matchMedia 时为假。 */
+/** useMedia 当前视口是否匹配该查询。没有 window 或 matchMedia 时为假。query 传给 window.matchMedia。 */
 export function useMedia(query: string): boolean {
   const [match, setMatch] = useState(() => {
     if (typeof window === "undefined" || !window.matchMedia) return false;

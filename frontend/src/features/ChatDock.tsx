@@ -11,7 +11,7 @@ import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
 import { ChatNotWorking } from "./harness/ChatNotWorking";
 
-// ChatDock 始终用紧凑转录和紧凑输入。没有消息时 perch 为真。改进入口只在传入回调、已有消息且不在跑时出现。
+/** ChatDock 始终用紧凑转录和紧凑输入。没有消息时 perch 为真。改进入口只在传入回调、已有消息且不在跑时出现。props 读取 onOpenAgent、items、showThinking、transcriptView、collapseTiming、approvals 等。 */
 export function ChatDock(props: {
   items: Item[];
   showThinking?: boolean;

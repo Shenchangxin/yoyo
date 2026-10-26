@@ -36,7 +36,7 @@ const ICONS = {
   wrench: Wrench,
 } as const;
 
-/** 按名字取出页签图标。 */
+/** 按名字取出页签图标。key 用作下标。 */
 function iconFor(key: string) {
   return ICONS[key as keyof typeof ICONS] || SlidersHorizontal;
 }
@@ -56,7 +56,7 @@ export function SettingsRailNav() {
   );
 }
 
-/** SettingsSidebar 列出分组和页签。 */
+/** SettingsSidebar 列出分组和页签。props 读取 compact、variant、tab，调用 onTab，调用 onSection。 */
 export function SettingsSidebar(props: {
   tab: SettingsTab;
   onTab: (tab: SettingsTab) => void;
@@ -193,7 +193,7 @@ export function SettingsSidebar(props: {
   );
 }
 
-/** 画一个页签按钮。 */
+/** 画一个页签按钮。props 读取 icon、active、compact、label、onClick。 */
 function TabButton(props: {
   tab: SettingsTab;
   icon: string;

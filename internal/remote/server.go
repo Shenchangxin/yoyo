@@ -33,6 +33,8 @@ type sock struct {
 }
 
 // send 先 Scrub 再编码成文本帧。这次编码失败就不写。Scrub 因解码失败返回原值，而这次编码又能成功时，发出去的值没洗过。
+// ctx 传给连接的 Write。
+// v 传给 Scrub，再交给 json.Marshal。
 func (s *sock) send(ctx context.Context, v any) error {
 	b, err := json.Marshal(Scrub(v))
 	if err != nil {
@@ -146,6 +148,7 @@ func (n *Node) serveWS(w http.ResponseWriter, r *http.Request) {
 }
 
 // pump 把 Hub 的全部事件收成 type 为 live 的帧，把状态订阅收成 type 为 state 的帧。Hub 为空就跳过实时这一路。app 为空就两路都不订。
+// ctx 在两个订阅循环里看 Done，并传给 send。
 func (n *Node) pump(ctx context.Context, s *sock) {
 	if n.app != nil && n.app.Hub != nil {
 		ch, unsub := n.app.Hub.Subscribe("*")
@@ -187,6 +190,9 @@ func (n *Node) pump(ctx context.Context, s *sock) {
 // onRPC 处理配对之后的一帧。解不开就回无法解析，不记审计。
 // 设备已收回、nonce 不合用、验签失败、PhoneDenied，或需要确认却没带 confirm，都记失败审计，不更新 Seen。
 // 参数为空时按 {} 参与摘要。通过这些检查后交给 api.Dispatch，无论业务是否出错都更新 Seen。成功的回复带上当前 epoch。写出前仍走 send 的洗密钥。
+// ctx 传给 send 和 api.Dispatch。
+// dev 的 ID 传给 device、takeNonce、seen 和 audit，Name 传给 audit，pub 参与验签。
+// data 交给 json.Unmarshal。解不开就回无法解析。
 func (n *Node) onRPC(ctx context.Context, s *sock, dev *storedDevice, data []byte) {
 	var frame inbound
 	if json.Unmarshal(data, &frame) != nil {
@@ -240,6 +246,9 @@ func (n *Node) onRPC(ctx context.Context, s *sock, dev *storedDevice, data []byt
 }
 
 // rpcMessage 拼 RPC 的签名原文：signDomain、rpc、id、方法、参数 SHA-256 的十六进制、秒级时间戳、nonce。行序不能换。
+// method 写进签名原文。
+// params 做 SHA-256，十六进制写进签名原文。
+// ts 按十进制写进签名原文。
 func rpcMessage(id, method string, params []byte, ts int64, nonce string) []byte {
 	sum := sha256.Sum256(params)
 	return []byte(fmt.Sprintf("%s\nrpc\n%s\n%s\n%s\n%d\n%s", signDomain, id, method, hex.EncodeToString(sum[:]), ts, nonce))
@@ -247,6 +256,7 @@ func rpcMessage(id, method string, params []byte, ts int64, nonce string) []byte
 
 // serveMedia 只接受私网来源。设备号、时间戳、nonce 和签名都在请求头里。
 // 签名原文是 signDomain、get、/remote/media、查询参数 path 的原文、时间戳、nonce。验签通过后才打开文件。文件正文不洗密钥。
+// w 在来源不是私网、设备无效、验签失败或打开文件失败时写错误。通过后传给 http.ServeContent。
 func (n *Node) serveMedia(w http.ResponseWriter, r *http.Request) {
 	if !privatePeer(r.RemoteAddr) {
 		http.Error(w, "lan only", http.StatusForbidden)
@@ -282,6 +292,7 @@ func (n *Node) serveMedia(w http.ResponseWriter, r *http.Request) {
 
 // openMedia 只打开主目录 video 下的普通文件。相对路径接到这个目录上，绝对路径也必须落在里面。
 // 越界、目录，或没有 home，都拒绝。
+// path 不是绝对路径时接到 video 目录上，是绝对路径时也必须落在该目录里，然后交给 os.Open。
 func (n *Node) openMedia(path string) (*os.File, error) {
 	if n.app == nil || n.app.Home == nil {
 		return nil, errors.New("no home")

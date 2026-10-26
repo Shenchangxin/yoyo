@@ -25,6 +25,7 @@ type FailoverClient struct {
 }
 
 // NewFailoverClient 在没有路由时返回 nil，只有一条时直接返回该客户端，多条时包成 FailoverClient。
+// routes 长度为 0 时返回 nil，只有一条时返回该条的 Client，否则写入 FailoverClient。
 func NewFailoverClient(routes []ChatRoute) Client {
 	switch len(routes) {
 	case 0:
@@ -37,6 +38,7 @@ func NewFailoverClient(routes []ChatRoute) Client {
 }
 
 // PrimaryOpenAI 返回聊天路由链里第一个 OpenAI 兼容客户端，供测试和诊断查看选中的提供者。
+// c 是 *OpenAIClient 时直接返回；是 *FailoverClient 时，该值为 nil 则返回 nil，否则返回路由里第一个 *OpenAIClient。
 func PrimaryOpenAI(c Client) *OpenAIClient {
 	switch t := c.(type) {
 	case *OpenAIClient:
@@ -55,12 +57,17 @@ func PrimaryOpenAI(c Client) *OpenAIClient {
 }
 
 // Chat 走 ChatStream，不向外发出增量。
+// ctx 传给 ChatStream。
+// req 传给 ChatStream。
 func (f *FailoverClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	return f.ChatStream(ctx, req, nil)
 }
 
 // ChatStream 按路由顺序尝试。路由的 Model 非空时覆盖请求里的模型。
 // 已经有 IsToken 增量，或错误不值得转移，就停在当前结果。FailoverSkipProvider 为真时跳过同一 ID 的后续路由。
+// ctx 的 Err 非 nil 时返回该错误，也传给诊断日志。
+// req 先复制，路由 Model 去掉空白后非空时改写 Model，再传给 callChat。
+// emit 非 nil 时包一层，用来记下是否已有 IsToken 增量，再传给 callChat。
 func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if f == nil || len(f.Routes) == 0 {
 		return Message{}, fmt.Errorf("no chat providers")
@@ -115,6 +122,9 @@ func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit f
 }
 
 // callChat 在客户端实现 Streamer 时走 ChatStream，否则走 Chat。
+// ctx 传给 ChatStream 或 Chat。
+// req 传给 ChatStream 或 Chat。
+// emit 在客户端实现 Streamer 时传给 ChatStream。
 func callChat(ctx context.Context, c Client, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if s, ok := c.(Streamer); ok {
 		return s.ChatStream(ctx, req, emit)
@@ -123,6 +133,8 @@ func callChat(ctx context.Context, c Client, req ChatRequest, emit func(StreamCh
 }
 
 // nextLiveRoute 从 from 起找下一条客户端非空、且 ID 未被跳过的路由。
+// routes 从 from 起向后找；from 小于 0 时改从 0。
+// skip 里已有的非空 ID 会跳过。
 func nextLiveRoute(routes []ChatRoute, from int, skip map[string]bool) (ChatRoute, bool) {
 	if from < 0 {
 		from = 0

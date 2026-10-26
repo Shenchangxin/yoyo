@@ -191,6 +191,7 @@ func (h *Host) RecordStatus() string {
 }
 
 // persistRecord 把 manifest.json、events.json、steps.json 和 draft.skill.md 写到目录下的 recordings/<id>，权限 0o600。目录本身是 0o700。
+// sess 的 ID 用来拼 recordings 下的目录。manifest 写入 ID、Started、Stopped 和 StartURL。Events、Steps 分别写成 events.json 和 steps.json。SkillBody 非空时写成 draft.skill.md。
 func (h *Host) persistRecord(sess *RecordSession) (string, error) {
 	dir := filepath.Join(h.dir, "recordings", sess.ID)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -217,6 +218,8 @@ func (h *Host) persistRecord(sess *RecordSession) (string, error) {
 }
 
 // onCDPEvent 在主框架导航时清掉 ref，录制中再记一条打过码的 navigation。Runtime.bindingCalled 交给 noteRecordBinding。
+// method 为 Page.frameNavigated 或 Runtime.bindingCalled 时才处理。
+// params 在 Page.frameNavigated 时传给 isMainFrameNav。主框架且正在录制时再解出 frame.url。为 Runtime.bindingCalled 时传给 noteRecordBinding。
 func (h *Host) onCDPEvent(method string, params json.RawMessage) {
 	switch method {
 	case "Page.frameNavigated":
@@ -242,6 +245,7 @@ func (h *Host) onCDPEvent(method string, params json.RawMessage) {
 }
 
 // isMainFrameNav 在帧没有 parentId 时返回真，用来只记主框架。
+// params 解出 frame.parentId。Unmarshal 失败时返回假。parentId 去掉空白后为空时返回真。
 func isMainFrameNav(params json.RawMessage) bool {
 	var p struct {
 		Frame struct {
@@ -256,6 +260,7 @@ func isMainFrameNav(params json.RawMessage) bool {
 }
 
 // noteRecordBinding 解析 yoyoRecord 的载荷。nonce 对上且仍在录时才收下事件。
+// params 先解出 name 和 payload。Unmarshal 失败或 name 不是 recordBinding 时直接返回。payload 再解出 nonce 和 event。
 func (h *Host) noteRecordBinding(params json.RawMessage) {
 	var p struct {
 		Name    string `json:"name"`
@@ -284,6 +289,7 @@ func (h *Host) noteRecordBinding(params json.RawMessage) {
 }
 
 // noteRecordEvent 打码地址和值后追加一条。距上一条不足 10 毫秒的 scroll，或已经有 2000 条时，只增加 dropped。
+// ev 的 TS 为空时写成当前 UTC 时间。URL 传给 redactRecordURL。Target 和 Value 传给 redactRecordValue。Kind 为 scroll 且距上一条不足 10 毫秒，或 events 已有 2000 条时只增加 dropped，否则追加 ev。
 func (h *Host) noteRecordEvent(ev RecordEvent) {
 	if h == nil || h.rec == nil {
 		return

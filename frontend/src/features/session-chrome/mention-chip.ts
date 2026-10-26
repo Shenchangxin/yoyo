@@ -32,7 +32,7 @@ export const MentionChip = Node.create({
   parseHTML() {
     return [{ tag: "span[data-mention-chip]" }];
   },
-  /** 画成一枚带记号和标签的 span。 */
+  /** 画成一枚带记号和标签的 span。HTMLAttributes 读取 token、kind、label。 */
   renderHTML({ HTMLAttributes }) {
     const token = String(HTMLAttributes.token || "");
     return [
@@ -51,7 +51,7 @@ export const MentionChip = Node.create({
   /** 提供插入芯片并补一个空格的命令。 */
   addCommands() {
     return {
-      /** 在光标处插入芯片，并跟上一个空格。 */
+      /** 在光标处插入芯片，并跟上一个空格。pin 读取 token、label、kind。 */
       insertMentionChip: (pin: MentionPin) => ({ chain }) =>
         chain()
           .insertContent({

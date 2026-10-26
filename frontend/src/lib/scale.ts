@@ -8,7 +8,7 @@ export const UI_SCALE_STEPS = [1, 1.25, 1.5] as const;
 /** UiScale 允许的缩放值，只能是这三个档位之一。 */
 export type UiScale = (typeof UI_SCALE_STEPS)[number];
 
-/** snapUiScale 把任意正数吸到最近档位。非有限或非正数视为 1。 */
+/** snapUiScale 把任意正数吸到最近档位。非有限或非正数视为 1。scale 转成数字后，小于等于 0，减去 step，传给 Number.isFinite。 */
 export function snapUiScale(scale?: number): UiScale {
   const n = Number(scale);
   if (!Number.isFinite(n) || n <= 0) return 1;

@@ -7,6 +7,7 @@ package main
 import "github.com/wailsapp/wails/v3/pkg/application"
 
 // modifyOptionsForIOS 在非 iOS 上什么都不改。
+// opts 没有被读取，也没有被写入。
 func modifyOptionsForIOS(opts *application.Options) {
 	// 非 iOS 不需要改选项。
 }

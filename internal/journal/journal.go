@@ -51,6 +51,10 @@ func Open(dir string) (*Log, error) {
 // hashRecord 用 BLAKE3 计算十六进制摘要。
 // 输入是序号、上一条哈希、类型、该时间的 UTC RFC3339Nano。四段用竖线拼接，末尾再加一条竖线，然后接上载荷原始字节。
 // Committed 不参与哈希。
+// seq 作为第一段写进哈希输入。
+// prev 作为第二段。
+// typ 作为第三段。
+// payload 接在四段竖线文本之后写入哈希。
 func hashRecord(seq uint64, prev, typ string, t time.Time, payload []byte) string {
 	h := blake3.New()
 	fmt.Fprintf(h, "%d|%s|%s|%s|", seq, prev, typ, t.UTC().Format(time.RFC3339Nano))
@@ -76,6 +80,8 @@ func (l *Log) Last() (Record, error) {
 // 在锁内读完整条链：空链的序号是 1、PrevHash 是空字符串；否则序号是最后一条 Seq 加 1，PrevHash 是最后一条的 Hash。
 // 然后以 O_APPEND 把这一行写到末尾，文件权限 0o644。
 // 写盘失败时返回零值 Record，不回滚已经写出的字节。
+// typ 写入记录的 Type，并参与 hashRecord。
+// payload 先 json.Marshal，失败则文件不动；成功的字节写入记录并参与哈希。
 func (l *Log) Append(typ string, payload any) (Record, error) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -181,7 +187,9 @@ func (l *Log) Verify() error {
 }
 
 // write 以追加方式把一条记录写成一行 JSON，权限 0o644。由 Append 在持有 l.mu 时调用，这里不再加锁。
+// rec 编码成一行 JSON，追加写到 Path。
 func (l *Log) write(rec Record) error {
+	// 追加写。短写失败不回滚已经落盘的字节。整链重写在 rewrite，不走这里。
 	f, err := os.OpenFile(l.Path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
@@ -192,6 +200,7 @@ func (l *Log) write(rec Record) error {
 
 // rewrite 把整份链写到 Path 加上 .tmp，再改名替换 Path。这不是追加。
 // 编码或关闭失败时不改名，原文件保留。临时文件可能留在磁盘上，这里不删除它。
+// recs 逐条编码写到 Path 加 .tmp，关闭成功后再改名替换 Path。
 func (l *Log) rewrite(recs []Record) error {
 	tmp := l.Path + ".tmp"
 	f, err := os.Create(tmp)
@@ -208,6 +217,7 @@ func (l *Log) rewrite(recs []Record) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
+	// 临时文件改名成功后，Path 上是整份新内容，文件字节不是只追加。
 	return os.Rename(tmp, l.Path)
 }
 

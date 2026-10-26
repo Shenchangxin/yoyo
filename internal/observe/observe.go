@@ -76,12 +76,16 @@ func SpanFrom(ctx context.Context) Span {
 }
 
 // Start 开始一条没有父级的跨度，会话 id 用 sessionID。
+// name 传给 StartChild。
+// attrs 传给 StartChild。
 func (t *Tracer) Start(name, sessionID string, attrs map[string]any) Span {
 	return t.StartChild(Span{}, name, sessionID, attrs)
 }
 
 // StartContext 以 ctx 里的跨度为父级。会话和回合先取 diaglog.From，父级上的非空值再盖过它们。
 // 返回的新 ctx 带上这条子跨度。回合 id 在 StartChild 之后若仍非空会写上，这样只有日志字段里有回合时也能留下。
+// name 传给 StartChild。
+// attrs 传给 StartChild。
 func (t *Tracer) StartContext(ctx context.Context, name string, attrs map[string]any) (Span, context.Context) {
 	parent := SpanFrom(ctx)
 	sessionID := ""
@@ -108,6 +112,9 @@ func (t *Tracer) StartContext(ctx context.Context, name string, attrs map[string
 
 // StartChild 生成子跨度，不写盘。TraceID 沿用父级，父级没有时用 diaglog.NewTraceID。SpanID 总是新的 diaglog.NewSpanID。
 // ParentSpanID 是父级的 SpanID。属性先经 redactAttrs。sessionID 为空时改用父级的会话。TurnID 先抄父级。
+// parent 的 TraceID 为空时改用 diaglog.NewTraceID，SpanID 写入 ParentSpanID，TurnID 写入子跨度。sessionID 为空时 SessionID 改用 parent 的。
+// name 写入子跨度的 Name。
+// attrs 交给 redactAttrs 后写入 Attrs。
 func (t *Tracer) StartChild(parent Span, name, sessionID string, attrs map[string]any) Span {
 	now := time.Now().UTC()
 	traceID := parent.TraceID
@@ -189,6 +196,7 @@ func (t *Tracer) Path() string {
 }
 
 // redactAttrs 复制属性。键被 diaglog.LooksSecretKey 判为秘密时，值改成 [REDACTED]。字符串值再走 diaglog.Redact。其他类型原样放入。
+// attrs 为 nil 时返回 nil。否则按键复制，LooksSecretKey 命中时值写成 [REDACTED]，字符串再交给 diaglog.Redact。
 func redactAttrs(attrs map[string]any) map[string]any {
 	if attrs == nil {
 		return nil

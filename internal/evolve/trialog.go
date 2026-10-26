@@ -12,6 +12,9 @@ import (
 )
 
 // logTrial 在引擎、TrialRoot 或哈希为空时直接返回。目录名取哈希前 16 个字节，并把斜杠换成连字符。held 里的题号不写 tasks 文件。
+// hash 为空时直接返回；否则目录名取前 16 个字节，斜杠和反斜杠换成连字符。
+// report 的 Metrics 写成 metrics.json；Results 里题号不在 held 中的写成 tasks 下的 json。
+// p 整份写成 proposal.json。
 func (e *Engine) logTrial(hash string, report eval.RunReport, p Proposal, held map[string]bool) {
 	if e == nil || e.TrialRoot == "" || hash == "" {
 		return

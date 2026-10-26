@@ -17,6 +17,7 @@ type ContrastReport struct {
 }
 
 // ContrastOf 只在背景、前景或弱化色能解析成 # 颜色时才比较。前景比小于 4.5 或弱化色比小于 3 则 Pass 为假。解析失败的一项不参与，不会单独把 Pass 改成假。
+// tokens 取出 --background、--foreground 和 --muted，交给 parseRGB。
 func ContrastOf(tokens TokenMap) ContrastReport {
 	bg, okBG := parseRGB(tokens["--background"])
 	fg, okFG := parseRGB(tokens["--foreground"])
@@ -84,6 +85,7 @@ func parseRGB(s string) ([3]float64, bool) {
 }
 
 // WindowRGB 把 --background 收成 0 到 255 的三个整数。解析失败时返回 28, 28, 26。
+// tokens 取出 --background 交给 parseRGB。失败时返回 28、28、26。
 func WindowRGB(tokens TokenMap) []int {
 	rgb, ok := parseRGB(tokens["--background"])
 	if !ok {
@@ -93,6 +95,7 @@ func WindowRGB(tokens TokenMap) []int {
 }
 
 // contrastRatio 按相对亮度计算 (较亮+0.05)/(较暗+0.05)。
+// b 交给 relLum。亮度更大的那个加 0.05 作分子，更小的加 0.05 作分母。
 func contrastRatio(a, b [3]float64) float64 {
 	l1 := relLum(a)
 	l2 := relLum(b)
@@ -103,6 +106,7 @@ func contrastRatio(a, b [3]float64) float64 {
 }
 
 // relLum 用 sRGB 系数计算相对亮度。
+// c 的三个分量在小于等于 0.04045 时除以 12.92，否则按 (分量+0.055)/1.055 的 2.4 次方线性化，再乘 0.2126、0.7152、0.0722。
 func relLum(c [3]float64) float64 {
 	lin := func(v float64) float64 {
 		if v <= 0.04045 {

@@ -69,6 +69,9 @@ func ConductorToolSpecs() []ToolSpec {
 }
 
 // CutTool 按名字调用剪辑或路由。参数里没有工程标识时用会话绑定。cut_mix 在 duck 缺省时为真，字符串 0 或 false 时为假。未知名字返回 unknown cut tool。
+// sessionID 在参数里没有工程标识时传给 CutSessionBind，非空时传给 BindCutSession，并传给 cutOf 和 VideoRoute。
+// name 与 cut_create、cut_get、cut_ingest、cut_analyze、cut_propose、cut_apply、cut_extract、cut_enhance、cut_mix、cut_transcribe、cut_captions、cut_burnin、cut_dub、cut_grade、cut_set_stem、video_route、provider_menu 比较，其他值返回 unknown cut tool。
+// args 为 nil 时换成空 map；cut_mix 在没有 duck 键时为真，该键为字符串 0 或 false 时为假，其余分支读取 id、project_id、title、hash、count、window、duration、preset、text、language、lang、voice、kind、dest、to、intent、capability、cap。
 func (e *Engine) CutTool(sessionID, name string, args map[string]any) (string, error) {
 	if args == nil {
 		args = map[string]any{}

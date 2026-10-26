@@ -279,6 +279,8 @@ type pluginFlagRec struct {
 }
 
 // getDoc 按集合和标识读取文档。文档库为空或标识为空白时返回 ErrNotFound。
+// col 与 id 拼成路径后传给 docs.Get。
+// id 去掉首尾空白后为空，或文档库为 nil 时返回 ErrNotFound。
 func getDoc[T any](e *Engine, col, id string) (T, error) {
 	var v T
 	if e.docs == nil || strings.TrimSpace(id) == "" {
@@ -289,6 +291,9 @@ func getDoc[T any](e *Engine, col, id string) (T, error) {
 }
 
 // putDoc 把文档写入集合。文档库未打开或标识为空时返回 store not open。
+// col 与 id 拼成路径后传给 docs.Put。
+// id 为空或文档库为 nil 时返回 store not open。
+// v 传给 docs.Put。
 func (e *Engine) putDoc(col, id string, v any) error {
 	if e.docs == nil || id == "" {
 		return errors.New("store not open")
@@ -297,6 +302,8 @@ func (e *Engine) putDoc(col, id string, v any) error {
 }
 
 // delDoc 删除集合里的文档。文档库为空时直接返回 nil。
+// col 在文档库非 nil 时与 id 拼成路径传给 docs.Delete。
+// id 在文档库非 nil 时与 col 拼成路径传给 docs.Delete。
 func (e *Engine) delDoc(col, id string) error {
 	if e.docs == nil {
 		return nil
@@ -305,6 +312,8 @@ func (e *Engine) delDoc(col, id string) error {
 }
 
 // loadCol 读出整个集合。文档库为空或读取失败时返回 nil。
+// e 的 docs 为 nil 或读取失败时返回 nil。
+// col 传给 filestore.LoadAll。
 func loadCol[T any](e *Engine, col string) []T {
 	if e.docs == nil {
 		return nil
@@ -317,6 +326,8 @@ func loadCol[T any](e *Engine, col string) []T {
 }
 
 // getJSON 按相对路径读取一份 JSON。文档库为空时返回 ErrNotFound。
+// rel 传给 docs.Get；文档库为 nil 时返回 ErrNotFound。
+// v 传给 docs.Get。
 func (e *Engine) getJSON(rel string, v any) error {
 	if e.docs == nil {
 		return filestore.ErrNotFound
@@ -325,6 +336,8 @@ func (e *Engine) getJSON(rel string, v any) error {
 }
 
 // putJSON 按相对路径写入一份 JSON。文档库为空时返回 store not open。
+// rel 传给 docs.Put；文档库为 nil 时返回 store not open。
+// v 传给 docs.Put。
 func (e *Engine) putJSON(rel string, v any) error {
 	if e.docs == nil {
 		return errors.New("store not open")
@@ -353,6 +366,7 @@ func (e *Engine) loadBinds() map[string]Bind {
 }
 
 // saveBinds 写回短剧会话绑定。
+// m 作为 fileSessionBinds 的文档传给 putJSON。
 func (e *Engine) saveBinds(m map[string]Bind) error {
 	return e.putJSON(fileSessionBinds, m)
 }
@@ -368,6 +382,7 @@ func (e *Engine) loadCanvasBinds() map[string]string {
 }
 
 // saveCanvasBinds 写回画布会话绑定。
+// m 作为 fileCanvasBinds 的文档传给 putJSON。
 func (e *Engine) saveCanvasBinds(m map[string]string) error {
 	return e.putJSON(fileCanvasBinds, m)
 }
@@ -383,6 +398,7 @@ func (e *Engine) loadStudioBinds() map[string]string {
 }
 
 // saveStudioBinds 写回短片会话绑定。
+// m 作为 fileStudioBinds 的文档传给 putJSON。
 func (e *Engine) saveStudioBinds(m map[string]string) error {
 	return e.putJSON(fileStudioBinds, m)
 }
@@ -398,6 +414,7 @@ func (e *Engine) loadSkillFlags() map[string]skillFlagRec {
 }
 
 // saveSkillFlags 写回技能开关。
+// m 作为 fileSkillFlags 的文档传给 putJSON。
 func (e *Engine) saveSkillFlags(m map[string]skillFlagRec) error {
 	return e.putJSON(fileSkillFlags, m)
 }
@@ -413,11 +430,14 @@ func (e *Engine) loadPluginFlags() map[string]pluginFlagRec {
 }
 
 // savePluginFlags 写回插件开关。
+// m 作为 filePluginFlags 的文档传给 putJSON。
 func (e *Engine) savePluginFlags(m map[string]pluginFlagRec) error {
 	return e.putJSON(filePluginFlags, m)
 }
 
 // containsID 报告切片里是否已有这个标识。
+// ids 逐项与 id 比较。
+// id 与 ids 中的每一项比较，相等则返回真。
 func containsID(ids []string, id string) bool {
 	for _, x := range ids {
 		if x == id {
@@ -428,6 +448,8 @@ func containsID(ids []string, id string) bool {
 }
 
 // addID 在标识非空且尚未出现时把它加到切片末尾。
+// ids 在不追加时原样返回。
+// id 去掉首尾空白，空串或已在 ids 里时不追加，否则加到末尾。
 func addID(ids []string, id string) []string {
 	id = strings.TrimSpace(id)
 	if id == "" || containsID(ids, id) {
@@ -437,6 +459,8 @@ func addID(ids []string, id string) []string {
 }
 
 // removeID 去掉切片里等于该标识的项。
+// ids 里不等于 id 的项留在结果中。
+// id 用来判断哪一项要丢掉。
 func removeID(ids []string, id string) []string {
 	var out []string
 	for _, x := range ids {

@@ -13,7 +13,7 @@ const GAZE_EPS = 0.004;
 const FAR_GAZE = 0.28;
 const SHY_MS = 1800;
 
-/** gazeGain 把远处一瞥收成看向宠物，穿过身体时不突然跳变。 */
+/** gazeGain 把远处一瞥收成看向宠物，穿过身体时不突然跳变。dist 减去 outer。size 乘以 0.2，乘以 1.05。 */
 export function gazeGain(dist: number, size: number): number {
   const inner = Math.max(size * 0.2, 16);
   const outer = Math.max(size * 1.05, 72);
@@ -23,7 +23,7 @@ export function gazeGain(dist: number, size: number): number {
   return FAR_GAZE + (1 - FAR_GAZE) * s;
 }
 
-/** gazeFromPoint 把指针相对盒子的位置收成视线。 */
+/** gazeFromPoint 把指针相对盒子的位置收成视线。rect 读取 left、width、top、height。x 减去 cx。y 减去 cy。 */
 export function gazeFromPoint(rect: { left: number; top: number; width: number; height: number }, x: number, y: number): { nx: number; ny: number } {
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
@@ -39,7 +39,14 @@ export function gazeFromPoint(rect: { left: number; top: number; width: number; 
   };
 }
 
-/** gazeFromScreen 用窗口在屏幕上的原点，再走同一套视线。 */
+/**
+ * gazeFromScreen 用窗口在屏幕上的原点，再走同一套视线。
+ * rect 读取 left、top、width、height。
+ * screenX 传给 gazeFromPoint。
+ * screenY 传给 gazeFromPoint。
+ * originX 加上 rect.left。
+ * originY 加上 rect.top。
+ */
 export function gazeFromScreen(
   rect: { left: number; top: number; width: number; height: number },
   screenX: number,
@@ -59,24 +66,24 @@ export function gazeFromScreen(
   );
 }
 
-/** isIdleEmotion 判断这个表情是不是闲置组。 */
+/** isIdleEmotion 判断这个表情是不是闲置组。id 传给 AMBIENT.has。 */
 export function isIdleEmotion(id: string): boolean {
   return AMBIENT.has(id);
 }
 
-/** curiousId 把闲置脸换成好奇，干活的脸不动。 */
+/** curiousId 把闲置脸换成好奇，干活的脸不动。id 作为分支结果，传给 isIdleEmotion。 */
 export function curiousId(id: string): string {
   return isIdleEmotion(id) ? "03" : id;
 }
 
-/** dartId 只在闲置脸碰上很快的指针时换成受惊。 */
+/** dartId 只在闲置脸碰上很快的指针时换成受惊。id 与 00、06 比较是否相等，传给 isIdleEmotion。speed 小于 DART_SPEED。 */
 export function dartId(id: string, speed: number): string {
   if (!isIdleEmotion(id) || speed < DART_SPEED) return id;
   if (id === "00" || id === "06") return "07";
   return "13";
 }
 
-/** lingerId 在闲置脸上停留久了就换成害羞。 */
+/** lingerId 在闲置脸上停留久了就换成害羞。id 传给 isIdleEmotion，传给 curiousId。lingering 为假时走另一支。heldMs 大于等于 4600，大于等于 2800。 */
 export function lingerId(id: string, lingering: boolean, heldMs = SHY_MS): string {
   if (!lingering || !isIdleEmotion(id)) return curiousId(id);
   if (heldMs >= 4600) return "22";
@@ -84,7 +91,7 @@ export function lingerId(id: string, lingering: boolean, heldMs = SHY_MS): strin
   return "14";
 }
 
-/** usePresencePointer 跟着指针改视线和脸。 */
+/** usePresencePointer 跟着指针改视线和脸。opts 读取 emotionId、onActivity、mateRef、reduced、glyph、follow 等。 */
 export function usePresencePointer(opts: {
   mateRef: { current: MoodMate | null };
   hostRef: { current: HTMLElement | null };
@@ -109,7 +116,7 @@ export function usePresencePointer(opts: {
   const onAct = useRef(opts.onActivity);
   onAct.current = opts.onActivity;
 
-  /** 按悬停、速度和停留换表情。 */
+  /** 按悬停、速度和停留换表情。hovering 为真时才继续。speed 传给 dartId。lingering 传给 lingerId。heldMs 传给 lingerId。 */
   const face = (hovering: boolean, speed = 0, lingering = false, heldMs = 0) => {
     const mate = opts.mateRef.current;
     if (!mate || opts.reduced || opts.glyph) return;
@@ -146,7 +153,14 @@ export function usePresencePointer(opts: {
     let pending: { x: number; y: number; screen: boolean; ox?: number; oy?: number } | null = null;
     let lastNear = false;
 
-    /** 按指针位置更新视线和脸。 */
+    /**
+     * 按指针位置更新视线和脸。
+     * x 减去 cx，减去 last.x，传给 gazeFromScreen，传给 gazeFromPoint，写入字段 x。
+     * y 减去 cy，减去 last.y，传给 gazeFromScreen，传给 gazeFromPoint，写入字段 y。
+     * screen 为真时才继续。
+     * ox 为空时改用后备值，作为分支结果，传给 gazeFromScreen。
+     * oy 为空时改用后备值，作为分支结果，传给 gazeFromScreen。
+     */
     const point = (x: number, y: number, screen: boolean, ox?: number, oy?: number) => {
       const mate = opts.mateRef.current;
       const el = host();
@@ -209,13 +223,13 @@ export function usePresencePointer(opts: {
       pending = null;
       if (p) point(p.x, p.y, p.screen, p.ox, p.oy);
     };
-    /** 把指针点留到下一帧。 */
+    /** 把指针点留到下一帧。x 写入字段 x。y 写入字段 y。screen 写入字段 screen。ox 写入字段 ox。oy 写入字段 oy。 */
     const schedule = (x: number, y: number, screen: boolean, ox?: number, oy?: number) => {
       pending = { x, y, screen, ox, oy };
       if (!raf) raf = requestAnimationFrame(flush);
     };
 
-    /** 记下窗口内的指针。 */
+    /** 记下窗口内的指针。e 读取 clientX、clientY。 */
     const onMove = (e: PointerEvent) => schedule(e.clientX, e.clientY, false);
     if (!opts.screenFollow) window.addEventListener("pointermove", onMove, { passive: true });
 
@@ -239,6 +253,7 @@ export function usePresencePointer(opts: {
 
     const prevCursor = (window as unknown as { __yoyoCursor?: (x: number, y: number, wx?: number, wy?: number) => void }).__yoyoCursor;
     if (opts.screenFollow) {
+      /** __yoyoCursor 调用 schedule。x 传给 schedule。y 传给 schedule。wx 传给 schedule。wy 传给 schedule。 */
       (window as unknown as { __yoyoCursor?: (x: number, y: number, wx?: number, wy?: number) => void }).__yoyoCursor = (x, y, wx, wy) => {
         schedule(x, y, true, wx, wy);
       };

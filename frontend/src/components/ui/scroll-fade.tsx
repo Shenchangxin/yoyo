@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { cn } from "../../lib/utils";
 
-// ScrollFade 把子节点放进带 scroll-fade 的视口，并画出纵向拇指。
+/** ScrollFade 把子节点放进带 scroll-fade 的视口，并画出纵向拇指。className 传给 cn。children 作为子节点渲染。props 展开到 ScrollArea.Root。 */
 export function ScrollFade({ className, children, ...props }: ComponentProps<typeof ScrollArea.Root>) {
   return (
     <ScrollArea.Root className={cn("min-h-0 overflow-hidden", className)} {...props}>

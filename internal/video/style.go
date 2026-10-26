@@ -160,6 +160,8 @@ func (e *Engine) StyleByValue(value string) (Style, error) {
 }
 
 // PrefixStyle 把风格提示接在画面提示前面。库里没有就看预设表。都没有，或风格提示是空的，就原样返回画面提示。画面提示是空的就只返回风格提示。
+// value 传给 StyleByValue；失败或 Prompt 为空时，再与 PresetStyles 里的 Value 比较。
+// prompt 在没有风格提示时原样返回；自身为空时只返回风格提示，否则接在风格提示后面。
 func (e *Engine) PrefixStyle(value, prompt string) string {
 	s, err := e.StyleByValue(value)
 	if err != nil || s.Prompt == "" {
@@ -210,6 +212,7 @@ func (e *Engine) UpsertStyle(s Style) (Style, error) {
 }
 
 // DeleteStyle 把风格标成停用，不删文档。
+// id 传给 getDoc 和 putDoc。
 func (e *Engine) DeleteStyle(id string) error {
 	rec, err := getDoc[styleRec](e, colStyles, id)
 	if err != nil {

@@ -10,7 +10,7 @@ export const AlertDialog = AlertDialogPrimitive.Root;
 // AlertDialogTrigger 转发打开按钮。
 export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
 
-// AlertDialogContent 挂上遮罩，面板宽度不超过 420px。
+/** AlertDialogContent 挂上遮罩，面板宽度不超过 420px。className 传给 cn。props 展开到 AlertDialogPrimitive.Content。 */
 export function AlertDialogContent({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Content>) {
   return (
     <AlertDialogPrimitive.Portal>
@@ -31,12 +31,12 @@ export const AlertDialogTitle = AlertDialogPrimitive.Title;
 // AlertDialogDescription 转发说明。
 export const AlertDialogDescription = AlertDialogPrimitive.Description;
 
-// AlertDialogFooter 把动作排进 dialog-actions。
+/** AlertDialogFooter 把动作排进 dialog-actions。children 作为子节点渲染。 */
 export function AlertDialogFooter({ children }: { children: ReactNode }) {
   return <div className="dialog-actions">{children}</div>;
 }
 
-// AlertDialogCancel 用 lift 按钮关闭，不执行确认。
+/** AlertDialogCancel 用 lift 按钮关闭，不执行确认。children 作为子节点渲染。props 展开到 AlertDialogPrimitive.Cancel。 */
 export function AlertDialogCancel({ children, ...props }: ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
   return (
     <AlertDialogPrimitive.Cancel asChild {...props}>
@@ -45,7 +45,7 @@ export function AlertDialogCancel({ children, ...props }: ComponentProps<typeof 
   );
 }
 
-// AlertDialogAction 在 danger 为真时用危险按钮，否则用 default。
+/** AlertDialogAction 在 danger 为真时用危险按钮，否则用 default。children 作为子节点渲染。props 展开到 AlertDialogPrimitive.Action。 */
 export function AlertDialogAction({ children, danger, ...props }: ComponentProps<typeof AlertDialogPrimitive.Action> & { danger?: boolean }) {
   return (
     <AlertDialogPrimitive.Action asChild {...props}>

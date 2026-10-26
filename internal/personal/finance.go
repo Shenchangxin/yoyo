@@ -49,6 +49,7 @@ type SpendPeriod struct {
 }
 
 // analyzeSpending 要求表头含 date、description、amount、category。正文 1 到 5000 行，原文超过 500000 字节则拒绝。正数累加为支出，负数的绝对值累加为收入。
+// csv 长度大于 500000 时返回错误。以 BOM 开头则去掉，然后交给 parseCSV。
 func analyzeSpending(csv string) (SpendReport, error) {
 	var zero SpendReport
 	if len(csv) > 500000 {

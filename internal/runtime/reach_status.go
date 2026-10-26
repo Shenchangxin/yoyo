@@ -91,6 +91,7 @@ func (t *WorkspaceTools) reachStatus() ToolResult {
 }
 
 // formatDoctorJSON 把 doctor 的 JSON 按键名排序写成一行一项。不是对象时原样返回。单条 message 超过 160 个符文则截断。
+// raw 先去掉首尾空白，空串返回空串；解不成对象时原样返回，否则按键名排序逐项写出。
 func formatDoctorJSON(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

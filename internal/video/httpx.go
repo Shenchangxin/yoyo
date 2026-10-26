@@ -32,6 +32,7 @@ func joinURL(base, prefix, suffix string) string {
 }
 
 // httpGet 构造 GET。路径为空或只有斜杠时改成 models。key 非空时同时写上 Authorization Bearer 和 x-goog-api-key。
+// raw 传给 url.Parse；解析出的路径为空或只有斜杠时改成 models。
 func httpGet(raw, key string) (*http.Request, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -52,6 +53,7 @@ func httpGet(raw, key string) (*http.Request, error) {
 }
 
 // doRaw 用 Engine.HTTP 发请求，客户端为空时用 http.DefaultClient。limit 小于等于 0 时按 32 MiB 截断正文。状态码大于等于 400 时返回正文或状态文本作为错误，同时仍带回状态码、Content-Type 和正文。
+// req 交给 HTTP 客户端发送。
 func (e *Engine) doRaw(req *http.Request, limit int64) (int, string, []byte, error) {
 	client := e.HTTP
 	if client == nil {
@@ -80,6 +82,7 @@ func (e *Engine) doRaw(req *http.Request, limit int64) (int, string, []byte, err
 }
 
 // doJSON 读取至多 32 MiB。正文以 { 开头时按对象解析。状态码大于等于 400 时依次取 error 字符串、error.message、message，都没有再用状态文本。成功且没有对象时返回空 map。
+// req 交给 HTTP 客户端发送。
 func (e *Engine) doJSON(req *http.Request) (map[string]any, int, []byte, error) {
 	client := e.HTTP
 	if client == nil {
@@ -123,6 +126,8 @@ func (e *Engine) doJSON(req *http.Request) (map[string]any, int, []byte, error) 
 }
 
 // jsonReq 把 body 编成 JSON。body 为 nil 时没有正文。Content-Type 是 application/json。key 非空时写上 Authorization Bearer。
+// method 传给 NewRequest。
+// url 传给 NewRequest。
 func jsonReq(method, url, key string, body any) (*http.Request, error) {
 	var r io.Reader
 	if body != nil {
@@ -144,6 +149,7 @@ func jsonReq(method, url, key string, body any) (*http.Request, error) {
 }
 
 // strAny 在给定键里找第一个非空字符串。值如果是对象，再从 url、video_url、image_url、message 里找。
+// keys 按顺序作为键查找，值为对象时再查 url、video_url、image_url、message。
 func strAny(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if v, ok := m[k]; ok {

@@ -19,7 +19,13 @@ export type LiveStep =
   | "apply"
   | "pull";
 
-/** classifyLive 按游标、序号、是否本会话、事件是否内联决定这一步。序号不大于游标为过期；跳过下一号则回拉；非本会话只前进；本会话却没有内联事件则回拉。没有序号的通知按普通事件处理。 */
+/**
+ * classifyLive 按游标、序号、是否本会话、事件是否内联决定这一步。序号不大于游标为过期；跳过下一号则回拉；非本会话只前进；本会话却没有内联事件则回拉。没有序号的通知按普通事件处理。
+ * cursor 小于等于 seq，加上 1。
+ * seq 大于 0，小于等于 cursor。
+ * own 为假时返回 advance。
+ * inline 为假时返回 pull。
+ */
 export function classifyLive(cursor: number, seq: number, own: boolean, inline: boolean): LiveStep {
   if (seq > 0 && seq <= cursor) return "stale";
   if (seq > 0 && seq > cursor + 1) return "pull";

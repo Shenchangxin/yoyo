@@ -36,6 +36,8 @@ func ApplyPackBootstrap(t *WorkspaceTools) {
 }
 
 // WrapBootstrap 用 bootstrapMarker 包住说明、正文和 mapping。正文为空时写明该技能已启用但 SKILL.md 为空。ApplyPackBootstrap 不调用本函数。
+// name 只在 body 去掉空白后为空时写进那句空正文说明。
+// body 先去掉首尾空白，非空则写入标记内部。
 func WrapBootstrap(name, body, mapping string) string {
 	body = strings.TrimSpace(body)
 	var b strings.Builder
@@ -91,6 +93,7 @@ func StripPackBootstrap(t *WorkspaceTools) {
 }
 
 // HasMethodologyPack 在任一包的 Methodology 为真时返回真。
+// packs 逐项看 Methodology，有一项为真就返回真。
 func HasMethodologyPack(packs []PackSession) bool {
 	for _, p := range packs {
 		if p.Methodology {
@@ -101,6 +104,7 @@ func HasMethodologyPack(packs []PackSession) bool {
 }
 
 // IsNovelGameSkill 只认 novel-to-game、novel-game-analyze、game-concept、game-world-design、game-art-direction、game-build、game-qa。比较前去掉空白并转成小写。
+// name 去掉空白并转成小写后再和上述名单比较。
 func IsNovelGameSkill(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "novel-to-game", "novel-game-analyze", "game-concept", "game-world-design",
@@ -112,6 +116,7 @@ func IsNovelGameSkill(name string) bool {
 }
 
 // WithoutNovelGamePack 去掉 ID 属于 IsNovelGameSkill 的包。空切片原样返回。
+// packs 长度为 0 时原样返回，否则丢掉 ID 经 IsNovelGameSkill 判定为真的项。
 func WithoutNovelGamePack(packs []PackSession) []PackSession {
 	if len(packs) == 0 {
 		return packs
@@ -127,6 +132,7 @@ func WithoutNovelGamePack(packs []PackSession) []PackSession {
 }
 
 // WithoutNovelGameSkills 去掉属于 IsNovelGameSkill 的名字。空切片原样返回。
+// names 长度为 0 时原样返回，否则丢掉经 IsNovelGameSkill 判定为真的项。
 func WithoutNovelGameSkills(names []string) []string {
 	if len(names) == 0 {
 		return names
@@ -142,6 +148,7 @@ func WithoutNovelGameSkills(names []string) []string {
 }
 
 // DomainOrchestrators 收集既不是方法论、又没有 BootstrapSkill 的包 ID。
+// packs 里 Methodology 为真，或 BootstrapSkill 去掉空白后非空的项跳过；其余 ID 去掉空白后非空才放进表。
 func DomainOrchestrators(packs []PackSession) map[string]bool {
 	out := map[string]bool{}
 	for _, p := range packs {
@@ -156,6 +163,7 @@ func DomainOrchestrators(packs []PackSession) map[string]bool {
 }
 
 // MethodologyPin 为每个有引导技能或 Methodology 的包写一行，让模型在写产品代码前 load_skill。正文不内联。没有可写的行则返回空串。
+// packs 逐项取 BootstrapSkill，空白且 Methodology 为假则跳过；该名字仍空白则改用 ID，两者去掉空白都为空也跳过。
 func MethodologyPin(packs []PackSession) string {
 	var lines []string
 	for _, p := range packs {
@@ -182,6 +190,7 @@ func MethodologyPin(packs []PackSession) string {
 }
 
 // DomainRoutingPin 给已启用的领域包一行缓存稳定的提示。跳过方法论包和带 BootstrapSkill 的包。不预载 SKILL.md，也不写出完整工具映射。
+// packs 里 Methodology 为真或 BootstrapSkill 去掉空白后非空的项跳过，其余 ID 去掉空白后非空才交给 domainRoutingLine。
 func DomainRoutingPin(packs []PackSession) string {
 	var lines []string
 	for _, p := range packs {
@@ -201,6 +210,7 @@ func DomainRoutingPin(packs []PackSession) string {
 }
 
 // domainRoutingLine 对 novel-to-game 写出阶段技能名单。其余 ID 写成按目录描述 load_skill。两句都说明 @skill 是覆盖，不是前提。
+// id 等于 novel-to-game 时返回阶段技能那一行，否则写进按目录描述 load_skill 的那一行。
 func domainRoutingLine(id string) string {
 	switch id {
 	case "novel-to-game":
@@ -219,6 +229,7 @@ type SessionStart struct {
 }
 
 // applySessionStart 在总线为空、Waterfall 出错或结果不是 SessionStart 时返回原 hook。
+// bus 为 nil 时返回原来的 hook，否则连同 HookSessionStart 和 hook 交给 Waterfall。
 func applySessionStart(bus *kernel.EventBus, hook SessionStart) SessionStart {
 	if bus == nil {
 		return hook

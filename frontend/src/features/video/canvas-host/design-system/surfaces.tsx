@@ -9,22 +9,22 @@ import { cn } from "@yingce/lib/utils";
 
 type SurfaceProps = HTMLAttributes<HTMLDivElement> & { children: ReactNode };
 
-/** Island 是一块岛表面。 */
+/** Island 是一块岛表面。className 拼进岛的类名。props 摊到外层 div。 */
 export function Island({ className, ...props }: SurfaceProps) {
   return <div className={cn("sg-island", className)} {...props} />;
 }
 
-/** MenuSurface 是带菜单角色的表面。 */
+/** MenuSurface 是带菜单角色的表面。className 拼进菜单类名。props 摊到外层 div。 */
 export function MenuSurface({ className, ...props }: SurfaceProps) {
   return <div role="menu" className={cn("sg-menu p-1", className)} {...props} />;
 }
 
-/** PopoverSurface 是气泡表面。 */
+/** PopoverSurface 是气泡表面。className 拼进气泡类名。props 摊到外层 div。 */
 export function PopoverSurface({ className, ...props }: SurfaceProps) {
   return <div className={cn("sg-popover p-3", className)} {...props} />;
 }
 
-/** DialogSurface 包一层对话框，默认宽度 480。 */
+/** DialogSurface 包一层对话框，默认宽度 480。open 传给 AppModal 的 open。title 传给 AppModal 的 title。footer 传给 AppModal 的 footer。onClose 传给 AppModal 的 onCancel。width 传给 AppModal 的 width。children 放进对话框。 */
 export function DialogSurface({
   open,
   title,
@@ -56,7 +56,7 @@ export function DialogSurface({
   );
 }
 
-/** WorkbenchSurface 包一层没有页脚的工作台对话框。 */
+/** WorkbenchSurface 包一层没有页脚的工作台对话框。open 传给 AppModal 的 open。title 传给 AppModal 的 title。onClose 传给 AppModal 的 onCancel。children 放进对话框。width 传给 AppModal 的 width。 */
 export function WorkbenchSurface({
   open,
   title,
@@ -87,7 +87,7 @@ export function WorkbenchSurface({
   );
 }
 
-/** AttachedPanel 是贴在触发器旁边的面板。 */
+/** AttachedPanel 是贴在触发器旁边的面板。className 拼进面板类名。style 传给外层 div。children 放进面板。 */
 export function AttachedPanel({ className, style, children }: { className?: string; style?: CSSProperties; children: ReactNode }) {
   return (
     <div className={cn("sg-popover overflow-hidden", className)} style={style}>
@@ -96,7 +96,7 @@ export function AttachedPanel({ className, style, children }: { className?: stri
   );
 }
 
-/** MenuItem 是一行菜单项，可以带图标、快捷键和危险态。 */
+/** MenuItem 是一行菜单项，可以带图标、快捷键和危险态。icon 有内容时放进 16 像素的格子。label 显示成一行，过长截断。shortcut 有内容时显示成快捷键。danger 为真时加上 sg-danger。disabled 传给按钮的 disabled。active 为真时加上 is-active。onClick 传给按钮的 onClick。 */
 export function MenuItem({
   icon,
   label,

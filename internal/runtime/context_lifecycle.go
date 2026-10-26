@@ -54,6 +54,7 @@ func CopyTree(src, dst string) error {
 }
 
 // RemoveSessionContext 删除 homeRoot/sessions/<sessionID>，以及工作区下的 .yoyo/context/<sessionID>。sessionID 为空则不动。
+// workspace 非空时删除其下的 .yoyo/context/<sessionID>。
 func RemoveSessionContext(homeRoot, workspace, sessionID string) {
 	if sessionID == "" {
 		return

@@ -11,11 +11,11 @@ const (
 	// FlowColumnGap 是依赖分层时列与列的间距，120。
 	FlowColumnGap = 120
 	// LaneGap 是泳道之间的间距，96。
-	LaneGap       = 96
+	LaneGap = 96
 	// LaneNodeGap 是泳道内节点的间距，36。
-	LaneNodeGap   = 36
+	LaneNodeGap = 36
 	// GridNodeGap 是网格里节点的间距，32。
-	GridNodeGap   = 32
+	GridNodeGap = 32
 	// PlacementGap 是新增落位时与已有节点的最小空隙，40。
 	PlacementGap = 40
 )
@@ -54,17 +54,17 @@ type Mode string
 // 整理模式的取值。
 const (
 	// ModeAuto 是自动整理 auto。
-	ModeAuto   Mode = "auto"
+	ModeAuto Mode = "auto"
 	// ModeFlow 是按依赖从左到右 flow。
-	ModeFlow   Mode = "flow"
+	ModeFlow Mode = "flow"
 	// ModeByLane 是按媒体类型分泳道 byType。
 	ModeByLane Mode = "byType"
 	// ModeRow 是单行 row。
-	ModeRow    Mode = "row"
+	ModeRow Mode = "row"
 	// ModeColumn 是单列 column。
 	ModeColumn Mode = "column"
 	// ModeGrid 是方阵 grid。
-	ModeGrid   Mode = "grid"
+	ModeGrid Mode = "grid"
 )
 
 // AlignMode 是对齐 / 等距分布模式。
@@ -73,17 +73,17 @@ type AlignMode string
 // 对齐和等距分布的取值。
 const (
 	// AlignLeft 是左对齐 left。
-	AlignLeft        AlignMode = "left"
+	AlignLeft AlignMode = "left"
 	// AlignCenterX 是水平居中 centerX。
-	AlignCenterX     AlignMode = "centerX"
+	AlignCenterX AlignMode = "centerX"
 	// AlignRight 是右对齐 right。
-	AlignRight       AlignMode = "right"
+	AlignRight AlignMode = "right"
 	// AlignTop 是顶对齐 top。
-	AlignTop         AlignMode = "top"
+	AlignTop AlignMode = "top"
 	// AlignCenterY 是垂直居中 centerY。
-	AlignCenterY     AlignMode = "centerY"
+	AlignCenterY AlignMode = "centerY"
 	// AlignBottom 是底对齐 bottom。
-	AlignBottom      AlignMode = "bottom"
+	AlignBottom AlignMode = "bottom"
 	// AlignDistributeX 是水平等距 distributeX。
 	AlignDistributeX AlignMode = "distributeX"
 	// AlignDistributeY 是垂直等距 distributeY。
@@ -107,6 +107,7 @@ func (n Node) height() float64 {
 }
 
 // minX 返回节点里最小的 X。调用时节点不能为空。
+// nodes 取第 0 个的 X，再与后面每个节点的 X 取更小值。
 func minX(nodes []Node) float64 {
 	value := nodes[0].X
 	for _, node := range nodes[1:] {
@@ -118,6 +119,7 @@ func minX(nodes []Node) float64 {
 }
 
 // minY 返回节点里最小的 Y。调用时节点不能为空。
+// nodes 取第 0 个的 Y，再与后面每个节点的 Y 取更小值。
 func minY(nodes []Node) float64 {
 	value := nodes[0].Y
 	for _, node := range nodes[1:] {
@@ -129,6 +131,7 @@ func minY(nodes []Node) float64 {
 }
 
 // maxWidth 返回节点宽度的最大值，空切片返回 0。
+// nodes 逐个比较 width，保留更大的，初值是 0。
 func maxWidth(nodes []Node) float64 {
 	value := 0.0
 	for _, node := range nodes {
@@ -140,6 +143,7 @@ func maxWidth(nodes []Node) float64 {
 }
 
 // maxHeight 返回节点高度的最大值，空切片返回 0。
+// nodes 逐个比较 height，保留更大的，初值是 0。
 func maxHeight(nodes []Node) float64 {
 	value := 0.0
 	for _, node := range nodes {
@@ -151,6 +155,7 @@ func maxHeight(nodes []Node) float64 {
 }
 
 // byPosition 复刻前端的稳定次序：先按 y，再按 x。
+// nodes 先复刻一份，再按 Y 升序、Y 相同则按 X 升序做稳定排序。
 func byPosition(nodes []Node) []Node {
 	sorted := append([]Node(nil), nodes...)
 	sort.SliceStable(sorted, func(i, j int) bool {
@@ -163,6 +168,8 @@ func byPosition(nodes []Node) []Node {
 }
 
 // Auto 复刻 layoutCanvasAuto：节点之间有连线时按依赖分层，否则按媒体类型泳道。
+// nodes 少于 2 个时返回空 map；connected 为真时传给 Flow，否则传给 ByLane。
+// edges 传给 connected，为真时再传给 Flow。
 func Auto(nodes []Node, edges []Edge) map[string]Position {
 	if len(nodes) < 2 {
 		return map[string]Position{}
@@ -174,6 +181,8 @@ func Auto(nodes []Node, edges []Edge) map[string]Position {
 }
 
 // connected 在两端都落在这批节点里的连线至少有一条时为真。
+// nodes 的 ID 收成集合。
+// edges 里 From 和 To 都在该集合中时返回真。
 func connected(nodes []Node, edges []Edge) bool {
 	ids := make(map[string]bool, len(nodes))
 	for _, node := range nodes {
@@ -189,6 +198,8 @@ func connected(nodes []Node, edges []Edge) bool {
 
 // Flow 复刻 layoutCanvasFlow：Kahn 拓扑分层从左到右，层内按泳道竖排。
 // 环上的节点留在第 0 层，避免布局死循环。
+// nodes 为空时返回空 map；否则按 ID 建入度，入度为 0 的放进第 0 层，循环结束仍没有层号的也写成 0。
+// edges 只保留两端 ID 都在 nodes 索引里的，用来计入度和出边。
 func Flow(nodes []Node, edges []Edge) map[string]Position {
 	result := map[string]Position{}
 	if len(nodes) == 0 {
@@ -302,6 +313,7 @@ func Flow(nodes []Node, edges []Edge) map[string]Position {
 }
 
 // nodesInLayer 取出分层号等于 value 的节点。
+// layer 用节点 ID 取层号，只保留等于 value 的节点。
 func nodesInLayer(nodes []Node, layer map[string]int, value int) []Node {
 	subset := make([]Node, 0, len(nodes))
 	for _, node := range nodes {
@@ -313,6 +325,7 @@ func nodesInLayer(nodes []Node, layer map[string]int, value int) []Node {
 }
 
 // laneNodes 取出泳道等于 lane 的节点。
+// nodes 只保留 Lane 等于 lane 的。
 func laneNodes(nodes []Node, lane string) []Node {
 	subset := make([]Node, 0, len(nodes))
 	for _, node := range nodes {
@@ -324,6 +337,7 @@ func laneNodes(nodes []Node, lane string) []Node {
 }
 
 // ByLane 复刻 layoutCanvasNodesByMediaType：每个泳道内部按网格排布（最多 4 列）。
+// nodes 为空时返回空 map；否则按 LaneOrder 分组，组内先 byPosition，列数取 4 和 ceilSqrt 结果的较小值。
 func ByLane(nodes []Node) map[string]Position {
 	result := map[string]Position{}
 	if len(nodes) == 0 {
@@ -352,6 +366,8 @@ func ByLane(nodes []Node) map[string]Position {
 }
 
 // Linear 复刻 layoutCanvasNodes：单行 / 单列 / 方阵。
+// nodes 为空时返回空 map；否则先 byPosition，起点用 minX 和 minY。
+// mode 为 ModeRow 时横排，为 ModeColumn 时竖排，其余按方阵，列数用 ceilSqrt。
 func Linear(nodes []Node, mode Mode) map[string]Position {
 	result := map[string]Position{}
 	if len(nodes) == 0 {
@@ -387,6 +403,8 @@ func Linear(nodes []Node, mode Mode) map[string]Position {
 }
 
 // Align 复刻 alignCanvasNodes：对齐与等距分布。
+// nodes 少于 2 个时返回空 map；否则用 minX、minY 和各节点右下角算包围盒。
+// mode 为 AlignDistributeX 或 AlignDistributeY 时按该轴排序后均分间隙；为 AlignLeft、AlignCenterX、AlignRight、AlignTop、AlignCenterY、AlignBottom 时改对应坐标。
 func Align(nodes []Node, mode AlignMode) map[string]Position {
 	result := map[string]Position{}
 	if len(nodes) < 2 {
@@ -465,6 +483,7 @@ type Band struct {
 
 // Bands 把分组排成横向带：每组占一条带，带内按各自模式排布，带间留 gap（默认 LaneGap）。
 // 这是"只做位置分带"的实现：不改变节点层级，也不创建容器节点。
+// bands 为空，或各组 Nodes 合起来为空时返回空 map。Mode 为空或 ModeAuto 时改用 ModeByLane；ModeFlow 交给 Flow，ModeByLane 交给 ByLane，其余交给 Linear，再平移到统一左缘和当前带顶。
 func Bands(bands []Band, gap float64) map[string]Position {
 	result := map[string]Position{}
 	if len(bands) == 0 {
@@ -528,6 +547,8 @@ func Bands(bands []Band, gap float64) map[string]Position {
 }
 
 // findNode 按标识找节点。没有时返回空节点。
+// nodes 逐个比较 ID。
+// id 与节点 ID 相等时返回该节点，否则返回空 Node。
 func findNode(nodes []Node, id string) Node {
 	for _, node := range nodes {
 		if node.ID == id {
@@ -538,6 +559,7 @@ func findNode(nodes []Node, id string) Node {
 }
 
 // Bounds 计算一组节点的包围盒（含尺寸）。
+// nodes 长度为 0 时返回 0 和 false；否则左上用 minX、minY，右下取 X+width、Y+height 的最大值。
 func Bounds(nodes []Node) (left, top, right, bottom float64, ok bool) {
 	if len(nodes) == 0 {
 		return 0, 0, 0, 0, false
@@ -555,6 +577,9 @@ func Bounds(nodes []Node) (left, top, right, bottom float64, ok bool) {
 }
 
 // overlaps 判断两个节点（含额外空隙）是否相交。
+// first 的 X、Y 分别与 second 的 X+width+gap、Y+height+gap 比较。
+// second 的 X、Y 分别与 first 的 X+width+gap、Y+height+gap 比较。
+// gap 加在双方宽高上再比坐标。
 func overlaps(first, second Node, gap float64) bool {
 	return first.X < second.X+second.width()+gap &&
 		second.X < first.X+first.width()+gap &&
@@ -563,6 +588,7 @@ func overlaps(first, second Node, gap float64) bool {
 }
 
 // Overlaps 返回相互重叠（含 gap 余量）的节点对，用于回执里的自查提示。
+// nodes 两两传给 overlaps。
 func Overlaps(nodes []Node, gap float64) [][2]string {
 	pairs := make([][2]string, 0)
 	for index := 0; index < len(nodes); index++ {
@@ -579,6 +605,10 @@ func Overlaps(nodes []Node, gap float64) [][2]string {
 //
 // 策略：先按泳道在同类节点右侧找空位；冲突则沿该泳道向右、再向下扫描（步长为节点尺寸 + 空隙）。
 // occupied 是画布现有节点（含本批已落位的新节点）；preferred 非空时优先尝试该坐标（依赖落位）。
+// width 小于等于 0 时改用 340，并作为候选宽度和横向步长。
+// height 小于等于 0 时改用 240，并作为候选高度和纵向步长。
+// lane 传给 laneNodes，用来算同类节点的起点。
+// gap 小于等于 0 时改用 PlacementGap，并传给 overlaps，也加进右缘和步长。
 func FreeSlot(width, height float64, lane string, occupied []Node, preferred *Position, gap float64) Position {
 	if width <= 0 {
 		width = 340
@@ -636,6 +666,7 @@ func FreeSlot(width, height float64, lane string, occupied []Node, preferred *Po
 }
 
 // ceilSqrt 返回不小于平方根的整数。小于等于 0 时返回 0。
+// value 小于等于 0 时返回 0，否则从 1 递增到平方不小于 value。
 func ceilSqrt(value int) int {
 	if value <= 0 {
 		return 0
@@ -648,6 +679,8 @@ func ceilSqrt(value int) int {
 }
 
 // ceilDiv 做向上取整的整数除法。除数小于等于 0 时返回 0。
+// value 加上 divisor 减 1 再除以 divisor。
+// divisor 小于等于 0 时返回 0。
 func ceilDiv(value, divisor int) int {
 	if divisor <= 0 {
 		return 0

@@ -30,6 +30,8 @@ func (l *Logger) WriteCrash(msg string, rec any) string {
 }
 
 // WriteCrash 用默认日志写崩溃文件。还没有默认日志时返回空字符串。
+// msg 在 Default 非空时传给 Logger.WriteCrash。
+// rec 在 Default 非空时传给 Logger.WriteCrash。
 func WriteCrash(msg string, rec any) string {
 	if l := Default(); l != nil {
 		return l.WriteCrash(msg, rec)

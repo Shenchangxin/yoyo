@@ -33,20 +33,20 @@ type Episode = { id: string; drama_id: string; title: string; episode_number?: n
 export default function DramaAgentPage() {
   const { message } = App.useApp();
   const copy = useCopy();
-  const sessionId = useCanvasHost((s) => s.sessionId);
-  const videoBoard = useUI((s) => s.videoBoard);
-  const setVideoBoard = useUI((s) => s.setVideoBoard);
-  const openSettings = useUI((s) => s.openSettings);
+  const sessionId = useCanvasHost(/** s 取出 sessionId。 */ (s) => s.sessionId);
+  const videoBoard = useUI(/** s 取出 videoBoard。 */ (s) => s.videoBoard);
+  const setVideoBoard = useUI(/** s 取出 setVideoBoard。 */ (s) => s.setVideoBoard);
+  const openSettings = useUI(/** s 取出 openSettings。 */ (s) => s.openSettings);
   const config = useEffectiveConfig();
-  const updateConfig = useConfigStore((s) => s.updateConfig);
+  const updateConfig = useConfigStore(/** s 取出 updateConfig。 */ (s) => s.updateConfig);
   const textModels = useMemo(() => selectableModelsByCapability(config, "text"), [config]);
   const selectedTextModel = textModels.includes(config.textModel) ? config.textModel : (textModels[0] || "");
-  const dramaId = useDramaSelection((s) => s.dramaId);
-  const episodeId = useDramaSelection((s) => s.episodeId);
-  const dramaStyle = useDramaSelection((s) => s.dramaStyle);
-  const setDramaId = useDramaSelection((s) => s.setDramaId);
-  const setEpisodeId = useDramaSelection((s) => s.setEpisodeId);
-  const setDramaStyle = useDramaSelection((s) => s.setDramaStyle);
+  const dramaId = useDramaSelection(/** s 取出 dramaId。 */ (s) => s.dramaId);
+  const episodeId = useDramaSelection(/** s 取出 episodeId。 */ (s) => s.episodeId);
+  const dramaStyle = useDramaSelection(/** s 取出 dramaStyle。 */ (s) => s.dramaStyle);
+  const setDramaId = useDramaSelection(/** s 取出 setDramaId。 */ (s) => s.setDramaId);
+  const setEpisodeId = useDramaSelection(/** s 取出 setEpisodeId。 */ (s) => s.setEpisodeId);
+  const setDramaStyle = useDramaSelection(/** s 取出 setDramaStyle。 */ (s) => s.setDramaStyle);
   const threadScrollRef = useRef<HTMLElement>(null);
   const itemsRef = useRef<Item[]>([]);
   const [busy, setBusy] = useState(false);
@@ -54,7 +54,7 @@ export default function DramaAgentPage() {
   const [threadOpen, setThreadOpen] = useState(false);
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [styles, setStyles] = useState<StyleOpt[]>(PRESET_STYLES.map((s) => ({ value: s.value, name: s.name })));
+  const [styles, setStyles] = useState<StyleOpt[]>(PRESET_STYLES.map(/** s 留下 value 和 name。 */ (s) => ({ value: s.value, name: s.name })));
 
   const isEmpty = !threadOpen;
   const draftKey = "drama:home";
@@ -66,17 +66,17 @@ export default function DramaAgentPage() {
   }, []);
 
   useEffect(() => {
-    void loadDramas().catch((err) => message.error(api.errMessage(err)));
+    void loadDramas().catch(/** err 交给 errMessage 后弹出。 */ (err) => message.error(api.errMessage(err)));
   }, [loadDramas, message]);
 
   useEffect(() => {
-    void api.video.styles().then((list) => {
+    void api.video.styles().then(/** list 是数组才交给 mergeDramaStyles，否则交给空数组。 */ (list) => {
       setStyles(mergeDramaStyles(Array.isArray(list) ? list : []));
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    const hit = dramas.find((d) => d.id === dramaId);
+    const hit = dramas.find(/** d 用 id 和 dramaId 比对。 */ (d) => d.id === dramaId);
     if (hit?.style) setDramaStyle(hit.style);
   }, [dramaId, dramas, setDramaStyle]);
 
@@ -90,7 +90,7 @@ export default function DramaAgentPage() {
       return;
     }
     let cancelled = false;
-    void api.video.episodes(dramaId).then((list) => {
+    void api.video.episodes(dramaId).then(/** list 是数组才当成集；还没有选集时记下第一条的 id。 */ (list) => {
       if (cancelled) return;
       const eps = Array.isArray(list) ? list : [];
       setEpisodes(eps);
@@ -109,11 +109,13 @@ export default function DramaAgentPage() {
     setItems([]);
     return subscribeSession(
       sessionId,
+      /** item 合并进记录；类型是 turn_end 或 error 时清掉忙碌。 */
       (item) => {
         itemsRef.current = mergeItem(itemsRef.current, item);
         setItems(itemsRef.current.slice());
         if (item.type === "turn_end" || item.type === "error") setBusy(false);
       },
+      /** seed 换成当前记录，并刷新一份副本。 */
       (seed) => {
         itemsRef.current = seed;
         setItems(seed.slice());
@@ -135,7 +137,7 @@ export default function DramaAgentPage() {
     return useCanvasHost.getState().ensureSession();
   }
 
-  /** 保证有一集，比例是 9:16，并刷新系列列表。 */
+  /** 保证有一集，比例是 9:16，并刷新系列列表。 content 作为新集正文交给 ensureDramaEpisode。 */
   async function ensureCurrent(content = "") {
     const id = await ensureDramaEpisode({
       title: "",
@@ -147,7 +149,7 @@ export default function DramaAgentPage() {
     return id;
   }
 
-  /** 记下风格；已有系列就写回。 */
+  /** 记下风格；已有系列就写回。 value 记成风格，有系列时作为 style 写回。 */
   async function pickStyle(value: string) {
     setDramaStyle(value);
     if (!dramaId) return;
@@ -159,7 +161,7 @@ export default function DramaAgentPage() {
     }
   }
 
-  /** 像系列的正文走导入和大纲阶段，否则写入当前集并发送到会话。 */
+  /** 像系列的正文走导入和大纲阶段，否则写入当前集并发送到会话。 text 去掉空白，空着就返回；像系列就拿这段导入，否则写入当前集并发送。 */
   async function send(text = "") {
     const next = text.trim();
     if (!next) return;
@@ -205,7 +207,7 @@ export default function DramaAgentPage() {
   async function importNovel() {
     if (busy) return;
     const paths = await api.pickFiles();
-    const path = (paths || []).find((p) => /\.(txt|md|markdown|docx|pdf)$/i.test(p)) || (paths || [])[0];
+    const path = (paths || []).find(/** p 用后缀判断是不是文本文件。 */ (p) => /\.(txt|md|markdown|docx|pdf)$/i.test(p)) || (paths || [])[0];
     if (!path) return;
     const session = await sid();
     if (!session) {
@@ -240,7 +242,7 @@ export default function DramaAgentPage() {
         search={copy.video.styleSearch}
         empty={copy.video.styleEmpty}
         groups={copy.video.styleGroups}
-        onChange={(value) => void pickStyle(value)}
+        onChange={/** value 交给 pickStyle。 */ (value) => void pickStyle(value)}
       />
       {!isEmpty && !videoBoard ? (
         <>
@@ -255,13 +257,13 @@ export default function DramaAgentPage() {
             value={dramaId || undefined}
             placeholder={copy.video.pickSeries}
             aria-label={copy.video.pickSeries}
-            onChange={(id) => {
+            onChange={/** id 写成当前系列并清掉集；找到系列且有 style 就记下。 */ (id) => {
               setDramaId(id);
               setEpisodeId("");
-              const hit = dramas.find((d) => d.id === id);
+              const hit = dramas.find(/** d 用 id 和刚选的系列比对。 */ (d) => d.id === id);
               if (hit?.style) setDramaStyle(hit.style);
             }}
-            options={dramas.map((d) => ({ value: d.id, label: shownSeriesTitle(d.title, copy.video.untitled) }))}
+            options={dramas.map(/** d 用 id 当值，用标题当标签。 */ (d) => ({ value: d.id, label: shownSeriesTitle(d.title, copy.video.untitled) }))}
           />
           <Select
             size="small"
@@ -276,7 +278,7 @@ export default function DramaAgentPage() {
             aria-label={copy.video.pickEpisode}
             disabled={!dramaId}
             onChange={setEpisodeId}
-            options={episodes.map((e) => ({ value: e.id, label: shownEpisodeTitle(e.title, e.episode_number, copy.video.episodeN) }))}
+            options={episodes.map(/** e 用 id 当值，用集标题当标签。 */ (e) => ({ value: e.id, label: shownEpisodeTitle(e.title, e.episode_number, copy.video.episodeN) }))}
           />
         </>
       ) : null}
@@ -293,7 +295,7 @@ export default function DramaAgentPage() {
     <ModelPicker
       config={config}
       value={selectedTextModel}
-      onChange={(model) => {
+      onChange={/** model 写进 textModel，有会话时换成选项名交给 setSessionModel。 */ (model) => {
         updateConfig("textModel", model);
         const session = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
         if (session) void api.setSessionModel(session, modelOptionName(model)).catch(() => {});
@@ -318,7 +320,7 @@ export default function DramaAgentPage() {
       draftKey={draftKey}
       running={busy}
       disabled={false}
-      onSend={(opts) => { void send(opts?.text || ""); }}
+      onSend={/** opts 有 text 就交给 send，否则交给空字符串。 */ (opts) => { void send(opts?.text || ""); }}
       onStop={() => {
         setBusy(false);
         if (sessionId) void api.interrupt(sessionId).catch(() => {});
@@ -366,7 +368,7 @@ export default function DramaAgentPage() {
               <div className="creation-empty-composer">{composer}</div>
             </div>
             <ol className="drama-path" data-testid="drama-path" aria-label={copy.video.pathLabel}>
-              {path.map((step) => (
+              {path.map(/** step 用 n 当序号和 key，并显示 title 和 hint。 */ (step) => (
                 <li key={step.n} className="drama-path-step">
                   <span className="drama-path-n" aria-hidden>{step.n}</span>
                   <span className="drama-path-copy">
@@ -380,7 +382,7 @@ export default function DramaAgentPage() {
               <div className="drama-existing" data-testid="drama-existing">
                 <p>{copy.video.continueSeries}</p>
                 <div className="drama-existing-list">
-                  {dramas.slice(0, 6).map((d) => (
+                  {dramas.slice(0, 6).map(/** d 用 id 选中系列并清空集，有 style 就记成风格，并显示标题。 */ (d) => (
                     <button
                       key={d.id}
                       type="button"
@@ -426,9 +428,9 @@ export default function DramaAgentPage() {
               compact
               flush
               onResolve={() => {}}
-              onPrompt={(text) => useUI.getState().setDraft(draftKey, text)}
+              onPrompt={/** text 写进这个草稿键。 */ (text) => useUI.getState().setDraft(draftKey, text)}
               onRetry={() => {
-                const last = [...items].reverse().find((it) => it.type === "user");
+                const last = [...items].reverse().find(/** it 看 type 是不是 user。 */ (it) => it.type === "user");
                 if (last?.text) useUI.getState().setDraft(draftKey, last.text);
               }}
             />

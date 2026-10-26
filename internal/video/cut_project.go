@@ -45,6 +45,7 @@ func (e *Engine) ListCutProjects() []CutProject {
 }
 
 // GetCutProject 按标识读取工程。没有时返回 cut project not found。
+// id 去掉空白后传给 getDoc，从 colCutProjects 取值。
 func (e *Engine) GetCutProject(id string) (CutProject, error) {
 	p, err := getDoc[CutProject](e, colCutProjects, strings.TrimSpace(id))
 	if err != nil {
@@ -78,6 +79,7 @@ func parseCanvasResourceID(s string) string {
 }
 
 // OpenCut 用哈希或画布资源的 CAS 哈希建工程并摄入。标题空着时用「成片」。同一会话已绑着同一源片时，先放开短片、短剧和画布绑定，再绑回这条剪辑。
+// in 的 Hash 去掉空白后为空时改用 ResourceID 解析出的画布资源 CAS 哈希；Title 去掉空白后为空时写成成片；SessionID 去掉空白后非空时查已有绑定。
 func (e *Engine) OpenCut(in CutOpen) (CutProject, error) {
 	hash := strings.TrimSpace(in.Hash)
 	if hash == "" {
@@ -128,6 +130,7 @@ func (e *Engine) OpenCut(in CutOpen) (CutProject, error) {
 }
 
 // CreateCutProject 新建工程。标题空着时用「胶片」，并通知 cut_state。
+// in 的 ID 换成 NewID，Title 去掉空白后为空时写成胶片，再整份传给 putDoc 和 emitCut。
 func (e *Engine) CreateCutProject(in CutProject) (CutProject, error) {
 	now := Now()
 	in.ID = NewID()
@@ -145,6 +148,7 @@ func (e *Engine) CreateCutProject(in CutProject) (CutProject, error) {
 }
 
 // saveCut 更新时间后写回工程，并通知 cut_state。
+// p 写上 UpdatedAt 后，用 p.ID 调用 putDoc，并传给 emitCut。
 func (e *Engine) saveCut(p CutProject) (CutProject, error) {
 	p.UpdatedAt = Now()
 	if err := e.putDoc(colCutProjects, p.ID, p); err != nil {
@@ -155,6 +159,7 @@ func (e *Engine) saveCut(p CutProject) (CutProject, error) {
 }
 
 // DeleteCutProject 删掉指向该工程的会话绑定，再删除工程文档。
+// id 去掉空白后，从绑定表里删掉值等于它的项，并传给 delDoc。
 func (e *Engine) DeleteCutProject(id string) error {
 	id = strings.TrimSpace(id)
 	m := e.loadCutBinds()
@@ -168,6 +173,8 @@ func (e *Engine) DeleteCutProject(id string) error {
 }
 
 // BindCutSession 把会话绑到工程，并去掉这份绑定表里同一会话或同一工程的旧行。会话或工程为空时失败。
+// sessionID 去掉空白后为空，或 projectID 去掉空白后为空，则返回 session and project required。
+// projectID 去掉空白后传给 GetCutProject，并作为绑定值；与旧行的工程标识相等的绑定会被丢掉。
 func (e *Engine) BindCutSession(sessionID, projectID string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	projectID = strings.TrimSpace(projectID)
@@ -197,6 +204,7 @@ func (e *Engine) BindCutSession(sessionID, projectID string) error {
 }
 
 // ReleaseCutBind 去掉该会话的剪辑绑定。
+// sessionID 去掉空白后为空则返回，否则从绑定表删除该键。
 func (e *Engine) ReleaseCutBind(sessionID string) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -211,6 +219,7 @@ func (e *Engine) ReleaseCutBind(sessionID string) {
 }
 
 // LatestCutSession 返回绑定表里第一个指向该工程的会话。
+// projectID 去掉空白后为空，或引擎为 nil 时返回空串，否则用来匹配绑定值。
 func (e *Engine) LatestCutSession(projectID string) string {
 	projectID = strings.TrimSpace(projectID)
 	if e == nil || projectID == "" {
@@ -225,6 +234,7 @@ func (e *Engine) LatestCutSession(projectID string) string {
 }
 
 // CutSessionBind 返回会话绑着的工程标识。
+// sessionID 去掉空白后作为绑定表的键。
 func (e *Engine) CutSessionBind(sessionID string) (string, bool) {
 	m := e.loadCutBinds()
 	id := strings.TrimSpace(m[strings.TrimSpace(sessionID)])
@@ -232,6 +242,8 @@ func (e *Engine) CutSessionBind(sessionID string) (string, bool) {
 }
 
 // cutOf 标识为空时改用会话绑定。仍没有时返回 no cut project bound。
+// sessionID 在 id 为空时传给 CutSessionBind。
+// id 为空时改用会话绑定，仍为空则返回 no cut project bound，否则传给 GetCutProject。
 func (e *Engine) cutOf(sessionID, id string) (CutProject, error) {
 	if id == "" {
 		id, _ = e.CutSessionBind(sessionID)
@@ -243,6 +255,7 @@ func (e *Engine) cutOf(sessionID, id string) (CutProject, error) {
 }
 
 // emitCut 在 OnHub 非空时送出 cut_state，带上标识、标题、哈希、时长和片段数。
+// p 的 ID、Title、SourceHash、ResultHash、Duration、拆解片段数和剪辑条数放进 cut_state。
 func (e *Engine) emitCut(p CutProject) {
 	if e.OnHub == nil {
 		return
@@ -265,6 +278,7 @@ func (e *Engine) loadCutBinds() map[string]string {
 }
 
 // saveCutBinds 写回剪辑会话绑定。
+// m 传给 putJSON，键是 fileCutBinds。
 func (e *Engine) saveCutBinds(m map[string]string) error {
 	return e.putJSON(fileCutBinds, m)
 }

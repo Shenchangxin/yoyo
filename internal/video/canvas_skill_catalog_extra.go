@@ -3,6 +3,7 @@
 package video
 
 // extraCanvasSkills 返回补充的内置技能定义，封面下标由调用方提供。
+// cover 的返回值写入每条技能的 Cover，调用实参是 0 到 18。
 func extraCanvasSkills(cover func(int) string) []canvasSkillDef {
 	return []canvasSkillDef{
 		{ID: "drama-cold-open", Name: "冷开场三镜", Tag: "drama", Cover: cover(3), Likes: 540, Added: 980,

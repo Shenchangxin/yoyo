@@ -20,7 +20,7 @@ import {
 } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
-/** 画一行输入。 */
+/** 画一行输入。label 用作标签，作为子节点渲染。value 写到 Input 的 value。onChange 被调用，并传入 e.target.value。 */
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
@@ -30,7 +30,7 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   );
 }
 
-/** ExtensionsSettings 把 MCP、插件和连接器拼在一起。 */
+/** ExtensionsSettings 把 MCP、插件和连接器拼在一起。host 写到 McpSection 的 host。 */
 export function ExtensionsSettings({ host }: { host: SettingsHost }) {
   return (
     <>
@@ -41,7 +41,7 @@ export function ExtensionsSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** 编辑 MCP 服务，并能启动、停止和替换。 */
+/** 编辑 MCP 服务，并能启动、停止和替换。host 读取 plugins，调用 onReplaceMcp，调用 onStopMcp，调用 onStartMcpHttp，调用 onStartMcp。 */
 function McpSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const servers = asArray(host.plugins?.mcp || host.plugins?.servers);
@@ -185,7 +185,7 @@ function McpSection({ host }: { host: SettingsHost }) {
   );
 }
 
-/** 列出插件，并能卸载。 */
+/** 列出插件，并能卸载。host 读取 plugins，调用 onUnload。 */
 function FiberSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const fibers = asArray(host.plugins?.fibers || host.plugins?.Fibers);

@@ -7,14 +7,14 @@ import type { TokenMap } from "./schema.ts";
  * 不拥有：纱和令牌的上屏，以及对比度门槛本身。
  */
 
-/** wallpaperVeil 壁纸的平均相对亮度，加上能让调色板文字盖在上面仍可读的纱。暗色和亮色用各自的背景、前景和次要文字亮度。 */
+/** wallpaperVeil 壁纸的平均相对亮度，加上能让调色板文字盖在上面仍可读的纱。暗色和亮色用各自的背景、前景和次要文字亮度。file 传给 wallpaperLuminance。mode 与 dark 比较是否相等。 */
 export async function wallpaperVeil(file: Blob, mode: "dark" | "light"): Promise<number> {
   const lum = await wallpaperLuminance(file);
   if (mode === "dark") return veilForReadability(lum, relativeLuminance(28, 28, 26), relativeLuminance(244, 244, 240), relativeLuminance(140, 139, 133));
   return veilForReadability(lum, relativeLuminance(251, 251, 250), relativeLuminance(28, 28, 26), relativeLuminance(111, 110, 104));
 }
 
-/** wallpaperLuminance 把图片缩采样后的不透明像素平均成相对亮度。没有画布或没有可计像素时返回 0.5。 */
+/** wallpaperLuminance 把图片缩采样后的不透明像素平均成相对亮度。没有画布或没有可计像素时返回 0.5。file 传给 createImageBitmap。 */
 export async function wallpaperLuminance(file: Blob): Promise<number> {
   const bmp = await createImageBitmap(file);
   const size = 48;
@@ -35,7 +35,7 @@ export async function wallpaperLuminance(file: Blob): Promise<number> {
   return n ? sum / n : 0.5;
 }
 
-/** tokensFromImage 按壁纸色相生成暗色和亮色令牌。未要求重着色时，证据色和反馈色留在内置的 ink 与 neutral 上。 */
+/** tokensFromImage 按壁纸色相生成暗色和亮色令牌。未要求重着色时，证据色和反馈色留在内置的 ink 与 neutral 上。file 传给 createImageBitmap。opts 读取 recolorEvidence，为空时不读。 */
 export async function tokensFromImage(file: Blob, opts?: { recolorEvidence?: boolean }): Promise<{ dark: TokenMap; light: TokenMap; seed: string }> {
   const bmp = await createImageBitmap(file);
   const size = 48;
@@ -73,10 +73,11 @@ export async function tokensFromImage(file: Blob, opts?: { recolorEvidence?: boo
   return { dark, light, seed: `hsl(${Math.round(h)} ${Math.round(s * 100)}% 50%)` };
 }
 
-/** 用色相和饱和度铺一套暗色或亮色令牌。 */
+/** 用色相和饱和度铺一套暗色或亮色令牌。mode 与 dark 比较是否相等。h 四舍五入后，传给 hslToHex。s 乘以 100。 */
 function tonal(mode: "dark" | "light", h: number, s: number): TokenMap {
   const hue = Math.round(h);
   const sat = Math.round(s * 100);
+  /** hsl 调用 hslToHex。ss 传给 hslToHex。l 传给 hslToHex。 */
   const hsl = (ss: number, l: number) => hslToHex(hue, ss, l);
   if (mode === "dark") {
     const bg = hsl(Math.max(6, sat - 4), 11);
@@ -166,7 +167,7 @@ function tonal(mode: "dark" | "light", h: number, s: number): TokenMap {
   };
 }
 
-/** 把 0 到 255 的 RGB 收成色相、饱和度和亮度。 */
+/** 把 0 到 255 的 RGB 收成色相、饱和度和亮度。r 减去 b，减去 g，传给 Math.max，传给 Math.min。g 减去 b，小于 b，传给 Math.max，传给 Math.min。b 减去 g，小于 g，传给 Math.max，传给 Math.min。 */
 function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
   r /= 255;
   g /= 255;

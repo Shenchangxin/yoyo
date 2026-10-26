@@ -5,7 +5,10 @@ import { createPortal } from "react-dom";
 import { Button } from "../components/ui/button";
 import { useCopy } from "../lib/i18n";
 
-// ConfirmDialog 没打开或没有 document 时不渲染，打开后挂到 document.body。220 毫秒后才允许点遮罩取消。Escape 在忙时不取消。
+/**
+ * ConfirmDialog 没打开或没有 document 时不渲染，打开后挂到 document.body。220 毫秒后才允许点遮罩取消。Escape 在忙时不取消。
+ * props 读取 open、onCancel、title、body、danger、confirmLabel，调用 onCancel，调用 onConfirm。
+ */
 export function ConfirmDialog(props: {
   open: boolean;
   title: string;
@@ -33,6 +36,7 @@ export function ConfirmDialog(props: {
 
   useEffect(() => {
     if (!props.open) return;
+    /** onKey 调用 onCancel。e 读取 key。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) props.onCancel();
     };

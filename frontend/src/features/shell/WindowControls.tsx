@@ -25,7 +25,7 @@ export function WindowControls() {
   );
 }
 
-// danger 为真时悬停用危险色。type 固定为 button。
+/** Cap danger 为真时悬停用危险色。type 固定为 button。children 作为子节点渲染。props 展开到 button。 */
 function Cap({
   children,
   danger,

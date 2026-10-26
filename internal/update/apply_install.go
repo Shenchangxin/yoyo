@@ -22,6 +22,7 @@ type nsisApplySpec struct {
 }
 
 // applyNSIS 只在 Windows 上把安装参数写成 installer 旁边的 .apply.json，再以 runas 拉起当前可执行文件并带上 --yoyo-nsis-apply。路径里有双引号时返回 "update: installer path contains quotes"。非 Windows 返回 "update: nsis apply is windows-only"。
+// destDir 去掉末尾斜杠，含双引号则返回错误，否则写入 spec 的 DestDir。
 func applyNSIS(installer, destDir string) error {
 	if runtime.GOOS != "windows" {
 		return fmt.Errorf("update: nsis apply is windows-only")
@@ -51,6 +52,7 @@ func applyNSIS(installer, destDir string) error {
 }
 
 // nsisCmdLine 拼出静默安装命令：安装器路径加引号，再加 /S。destDir 非空时再加 /D=，目录本身不加引号。
+// installer 两边加上双引号，再接 /S。
 func nsisCmdLine(installer, destDir string) string {
 	s := `"` + installer + `" /S`
 	if destDir != "" {
@@ -72,6 +74,7 @@ func HandleNSISHelper() bool {
 }
 
 // runNSISHelper 读 .apply.json，最多等原进程 90 秒，再跑安装器。缺少 installer 字段时返回 "update: apply spec missing installer"。
+// specPath 交给 appendHelperLog，并读成 nsisApplySpec。
 func runNSISHelper(specPath string) error {
 	appendHelperLog(specPath, "helper start spec=%s pid=%d", specPath, os.Getpid())
 	b, err := os.ReadFile(specPath)
@@ -98,6 +101,8 @@ func runNSISHelper(specPath string) error {
 }
 
 // appendHelperLog 把一行时间戳日志追加到 specPath 加 .log。文件打不开就放弃。
+// format 和 args 一起交给 fmt.Sprintf，再写进日志。
+// args 和 format 一起交给 fmt.Sprintf。
 func appendHelperLog(specPath, format string, args ...any) {
 	f, err := os.OpenFile(specPath+".log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -108,6 +113,7 @@ func appendHelperLog(specPath, format string, args ...any) {
 }
 
 // openPath 在 darwin 上执行 open，在 windows 上执行 cmd.exe /C start，其余执行 xdg-open。
+// path 取绝对路径后，按系统交给 open、cmd.exe 或 xdg-open。
 func openPath(path string) error {
 	path, err := filepath.Abs(path)
 	if err != nil {
@@ -127,6 +133,7 @@ func openPath(path string) error {
 }
 
 // applyAppImage 在 APPIMAGE 为空时打开下载文件所在目录并返回 ErrOpenedPackage。否则把下载件拷到目标加 .new，把正在运行的目标改名为 .old，再把 .new 改成目标名。改名失败时把 .old 改回去。成功后启动新的目标文件。
+// downloaded 在 APPIMAGE 为空时取其目录交给 openPath；否则取绝对路径后拷到目标加 .new。
 func applyAppImage(downloaded, _ string) error {
 	target := os.Getenv("APPIMAGE")
 	if target == "" {

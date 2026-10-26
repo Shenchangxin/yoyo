@@ -12,6 +12,7 @@ import (
 )
 
 // SanitizeProfileName 接受空名（当成 default）、字母、数字、下划线和减号。长于 40 个字符，或名字是 attached（不区分大小写），返回错误。
+// name 先去掉空白。空则返回 default。长度大于 40、与 attached 不区分大小写相等，或含有字母、数字、下划线和减号以外的字符时返回错误。
 func SanitizeProfileName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -46,6 +47,7 @@ func (h *Host) ProfileName() string {
 }
 
 // UseProfile 停掉当前 Chrome，换成另一份用户目录。名字相同且 Chrome 还活着时什么也不做。
+// name 传给 SanitizeProfileName。与当前配置名相同且 chromeAlive 为真时直接返回。否则写入 profileName，并作为 profile 的 detail 传给 record。
 func (h *Host) UseProfile(name string) error {
 	name, err := SanitizeProfileName(name)
 	if err != nil {
@@ -68,6 +70,7 @@ func (h *Host) UseProfile(name string) error {
 }
 
 // profileDirLocked 按配置名和是否有头返回用户目录。调用方须已持有 mu。
+// headed 为真且配置名是空或 default 时返回 dir 下的 profile-headed，为假时返回 profile。其他名字为真时返回 profiles 下该名字加 -headed，为假时返回 profiles 下该名字。
 func (h *Host) profileDirLocked(headed bool) string {
 	name := h.profileName
 	if name == "" || name == "default" {

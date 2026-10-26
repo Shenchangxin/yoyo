@@ -77,7 +77,7 @@ const empty: Form = {
 
 const fieldClass = "mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]";
 
-/** 把已存的设置收成表单。 */
+/** 把已存的设置收成表单。v 读取 user、chat_base_url、chat_model、judge_model、speech_provider、speech_base_url 等，为空时不读。 */
 function fromRaw(v: any): Form {
   const u = v?.user || {};
   return {
@@ -110,7 +110,7 @@ function fromRaw(v: any): Form {
   };
 }
 
-/** 取出没选服务商时用来垫的预设。 */
+/** 取出没选服务商时用来垫的预设。v 读取 fallback，为空时不读。 */
 function fallbackOf(v: any): Fallback {
   const f = v?.fallback || {};
   return {
@@ -126,14 +126,19 @@ function fallbackOf(v: any): Fallback {
   };
 }
 
-/** 有预设就用预设，否则有地址就当自定义。 */
+/** 有预设就用预设，否则有地址就当自定义。provider 传给 presetByID。base 去掉首尾空白，为真时才继续。presets 传给 presetByID。kind 传给 presetByID。 */
 function choice(provider: string, base: string, presets: ServicePreset[], kind: string): string {
   if (presetByID(presets, provider, kind)) return provider;
   if (base.trim()) return customProvider;
   return "";
 }
 
-/** 把模型和声线夹进当前预设里有的那些。 */
+/**
+ * 把模型和声线夹进当前预设里有的那些。
+ * form 读取 speech_provider、asr_provider、image_provider、speech_model、speech_voice、asr_model 等。
+ * presets 传给 presetByID。
+ * kind 与 speech、asr 比较是否相等，传给 presetByID。
+ */
 function clampKind(form: Form, presets: ServicePreset[], kind: "speech" | "asr" | "image") {
   const id = kind === "speech" ? form.speech_provider : kind === "asr" ? form.asr_provider : form.image_provider;
   const preset = presetByID(presets, id, kind);
@@ -151,7 +156,12 @@ function clampKind(form: Form, presets: ServicePreset[], kind: "speech" | "asr" 
   if (!preset.models.includes(form.image_model)) form.image_model = preset.models[0];
 }
 
-/** 按预设把三类服务对齐，空着的语音可以垫一条声线。 */
+/**
+ * 按预设把三类服务对齐，空着的语音可以垫一条声线。
+ * form 读取 speech_provider、speech_base_url、asr_provider、asr_base_url、image_provider、image_base_url，展开传递。
+ * presets 传给 choice，传给 clampKind，传给 presetByID。
+ * fallback 读取 speech_preset、speech_model。
+ */
 function align(form: Form, presets: ServicePreset[], fallback: Fallback): Form {
   const next: Form = {
     ...form,
@@ -170,7 +180,7 @@ function align(form: Form, presets: ServicePreset[], fallback: Fallback): Form {
   return next;
 }
 
-/** 对话模型仍在目录里就留住它带上的服务商。 */
+/** 对话模型仍在目录里就留住它带上的服务商。providers 传给 composerModelGroups。raw 去掉首尾空白后，为假时走另一支，传给 decodeChatModel。 */
 function keepChat(providers: ChatProvider[], raw: string): string {
   const value = raw.trim();
   if (!value) return "";
@@ -185,18 +195,18 @@ function keepChat(providers: ChatProvider[], raw: string): string {
   return value;
 }
 
-/** 自定义和空选择存成空的服务商编号。 */
+/** 自定义和空选择存成空的服务商编号。id 与 customProvider 比较是否相等，为假时走另一支，作为分支结果。 */
 function storedProvider(id: string): string {
   return !id || id === customProvider ? "" : id;
 }
 
-/** 自定义存地址，预设存它的端点。 */
+/** 自定义存地址，预设存它的端点。id 与 customProvider 比较是否相等，为假时走另一支，传给 presetByID。base 去掉首尾空白，作为分支结果，作为后备值。presets 传给 presetByID。kind 传给 presetByID。 */
 function storedBase(id: string, base: string, presets: ServicePreset[], kind: string): string {
   if (!id || id === customProvider) return id === customProvider ? base.trim() : "";
   return presetByID(presets, id, kind)?.endpoint || base.trim();
 }
 
-/** 自定义或已选预设时存模型，空选择存空。 */
+/** 自定义或已选预设时存模型，空选择存空。id 与 customProvider 比较是否相等，为假时走另一支。model 去掉首尾空白，作为分支结果。 */
 function storedModel(id: string, model: string): string {
   if (!id || id === customProvider) return id === customProvider ? model.trim() : "";
   return model.trim();
@@ -244,10 +254,10 @@ export function IdolSettings() {
     return () => { stop = true; };
   }, []);
 
-  /** 把改动写回表单。 */
+  /** 把改动写回表单。patch 展开传递。 */
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
 
-  /** 换某一类的服务商，并把模型和地址夹到预设上。 */
+  /** 换某一类的服务商，并把模型和地址夹到预设上。kind 与 speech、asr 比较是否相等。id 与 customProvider 比较是否相等，赋给 next.speech_provider，传给 presetByID。 */
   function setProvider(kind: "speech" | "asr" | "image", id: string) {
     setForm((f) => {
       const next = { ...f };
@@ -299,7 +309,7 @@ export function IdolSettings() {
     });
   }
 
-  /** 换语音模型，声线不在列表里就换一条。 */
+  /** 换语音模型，声线不在列表里就换一条。model 传给 voicesFor，写入字段 speech_model。 */
   function setSpeechModel(model: string) {
     setForm((f) => {
       const p = presetByID(presets, f.speech_provider, "speech");
@@ -353,7 +363,7 @@ export function IdolSettings() {
     }
   }
 
-  /** 探测某一类连接。 */
+  /** 探测某一类连接。kind 写入字段 kind。 */
   async function ping(kind: string) {
     try {
       await api.idolCall("ping", { kind });
@@ -483,7 +493,7 @@ export function IdolSettings() {
   );
 }
 
-/** 画某一类媒体服务的地址、模型和密钥。 */
+/** 画某一类媒体服务的地址、模型和密钥。props 读取 presets、kind、provider、fallbackPreset、model、fallbackModel 等，调用 onProvider，调用 onModel，调用 onVoice。 */
 function MediaFields(props: {
   title: string;
   kind: "speech" | "asr" | "image";
@@ -552,7 +562,7 @@ function MediaFields(props: {
   );
 }
 
-/** 从可用声线里选一条。 */
+/** 从可用声线里选一条。props 读取 value、voices，调用 onChange。 */
 function VoiceSelect(props: { voices: ServiceVoice[]; value: string; onChange: (voice: string) => void }) {
   const label = useCopy().idol.mediaVoice;
   const extra = props.value && !props.voices.some((v) => v.id === props.value);
@@ -567,7 +577,7 @@ function VoiceSelect(props: { voices: ServiceVoice[]; value: string; onChange: (
   );
 }
 
-/** 画一行输入，密钥可以遮住。 */
+/** 画一行输入，密钥可以遮住。props 读取 label、secret、value、placeholder，调用 onChange。 */
 function Field(props: { label: string; value: string; placeholder?: string; secret?: boolean; onChange: (v: string) => void }) {
   return (
     <label className="block text-[12px] text-muted">

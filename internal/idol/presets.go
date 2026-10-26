@@ -24,6 +24,8 @@ type ServicePreset struct {
 }
 
 // voice 组装一条音色。后面的模型 id 写入 Models。
+// label 写入 Label。
+// models 写入 Models。
 func voice(id, label string, models ...string) ServiceVoice {
 	return ServiceVoice{ID: id, Label: label, Models: models}
 }
@@ -143,6 +145,7 @@ func Preset(id string) (ServicePreset, bool) {
 }
 
 // VoicesFor 列出属于该模型的音色。model 为空时返回这套预设的全部音色。
+// p 的 Voices 逐项检查。Models 长度为 0、model 为空，或 Models 含有 model 时留下。
 func VoicesFor(p ServicePreset, model string) []ServiceVoice {
 	model = strings.TrimSpace(model)
 	out := make([]ServiceVoice, 0, len(p.Voices))
@@ -155,6 +158,9 @@ func VoicesFor(p ServicePreset, model string) []ServiceVoice {
 }
 
 // MatchPreset 为一条已有的生成连接找目录 id。同一 Kind 里端点对上优先，对不上再用供应商名。
+// kind 去掉空白后与目录的 Kind 比较。
+// vendor 去掉空白。非空时，在端点没对上的情况下与目录 Vendor 不区分大小写比较。
+// endpoint 去掉空白。非空时先用 SameEndpoint 和目录端点比较。
 func MatchPreset(kind, vendor, endpoint string) string {
 	kind = strings.TrimSpace(kind)
 	endpoint = strings.TrimSpace(endpoint)
@@ -177,6 +183,7 @@ func MatchPreset(kind, vendor, endpoint string) string {
 }
 
 // InferProviders 在供应商 id 为空、端点对上目录、且已存的模型和音色都属于该目录时，填上目录 id。已知主机上的私有模型或克隆音色保持为自定义端点，id 留空。
+// svc 的 Speech、ASR、Image 三组 Provider、BaseURL、Model，以及 SpeechVoice，分别传给 inferOne 后写回。
 func InferProviders(svc Services) Services {
 	svc.SpeechProvider = inferOne(svc.SpeechProvider, svc.SpeechBaseURL, svc.SpeechModel, svc.SpeechVoice, "speech")
 	svc.ASRProvider = inferOne(svc.ASRProvider, svc.ASRBaseURL, svc.ASRModel, "", "asr")
@@ -185,6 +192,10 @@ func InferProviders(svc Services) Services {
 }
 
 // inferOne 解析一个通道的供应商 id。id 已经是同种类的目录就用它。端点对上但模型或音色不在目录里时返回空字符串。
+// base 去掉空白，为空时返回空字符串，否则和目录端点做 SameEndpoint。
+// model 去掉空白。非空且不在目录 Models 里时返回空字符串。
+// voiceID 去掉空白。非空、目录有 Voices，且 voiceKnown 为假时返回空字符串。
+// kind 与 Preset 的 Kind、目录的 Kind 比较。
 func inferOne(id, base, model, voiceID, kind string) string {
 	id = strings.TrimSpace(id)
 	if p, ok := Preset(id); ok && p.Kind == kind {
@@ -212,6 +223,8 @@ func inferOne(id, base, model, voiceID, kind string) string {
 }
 
 // voiceKnown 看这个音色 id 是否出现在该模型的 VoicesFor 结果里。
+// p 传给 VoicesFor。
+// model 传给 VoicesFor。
 func voiceKnown(p ServicePreset, model, id string) bool {
 	for _, v := range VoicesFor(p, model) {
 		if v.ID == id {
@@ -222,6 +235,7 @@ func voiceKnown(p ServicePreset, model, id string) bool {
 }
 
 // ApplyServicePresets 把已命名供应商的端点换成目录里的地址，并把模型和音色收进该供应商的列表。未知的供应商 id 清掉；没有目录 id 的自定义端点保持原样。
+// svc 的 ChatBaseURL、ChatModel、JudgeModel 去掉空白。Speech、ASR、Image 的 Provider、BaseURL、Model，以及 SpeechVoice，传给 applyKind。
 func ApplyServicePresets(svc Services) Services {
 	svc.ChatBaseURL = strings.TrimSpace(svc.ChatBaseURL)
 	svc.ChatModel = strings.TrimSpace(svc.ChatModel)
@@ -233,11 +247,16 @@ func ApplyServicePresets(svc Services) Services {
 }
 
 // NormalizeServices 先按已知端点推断预设，再把模型和音色收进该预设。
+// svc 先传给 InferProviders，再传给 ApplyServicePresets。
 func NormalizeServices(svc Services) Services {
 	return ApplyServicePresets(InferProviders(svc))
 }
 
 // applyKind 按供应商 id 改写一个通道。id 不是该种类的目录时，非空 id 被清掉，端点、模型和音色只做 TrimSpace。对上目录时端点换成目录地址，模型用 pickListed，音色用 pickVoice。
+// base 在对不上该种类时去掉空白，对上时改成目录的 Endpoint。
+// model 在对不上时去掉空白，对上时传给 pickListed。
+// voiceID 非 nil 时，对不上则去掉空白，对上则传给 pickVoice。
+// kind 与目录 Kind 比较。Preset 失败或 Kind 不相等时走清空分支。
 func applyKind(id, base, model, voiceID *string, kind string) {
 	p, ok := Preset(*id)
 	if !ok || p.Kind != kind {
@@ -272,6 +291,7 @@ func pickListed(current string, options []string) string {
 }
 
 // pickVoice 在该模型的音色里能找到 current 就留下它，否则用第一项。没有音色时留下 current。
+// model 和 p 传给 VoicesFor。
 func pickVoice(current, model string, p ServicePreset) string {
 	voices := VoicesFor(p, model)
 	current = strings.TrimSpace(current)
@@ -297,12 +317,14 @@ func contains(list []string, want string) bool {
 }
 
 // SameEndpoint 判断两个 API 根是不是同一主机和路径。末尾的 /v1 忽略，所以 https://api.openai.com 对得上存成 https://api.openai.com/v1 的预设。/v4 这类其他版本留在路径里。
+// b 交给 endpointKey。与 a 的键都非空且相等时返回 true。
 func SameEndpoint(a, b string) bool {
 	ka, kb := endpointKey(a), endpointKey(b)
 	return ka != "" && ka == kb
 }
 
 // endpointKey 去掉协议、大小写和末尾斜杠，并剥掉结尾的 /v1，得到用来比较的键。空字符串表示对不上。
+// raw 去掉空白并转成小写，去掉 https:// 或 http:// 前缀和末尾斜杠，再去掉结尾的 /v1。
 func endpointKey(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	s = strings.TrimPrefix(s, "https://")
@@ -315,6 +337,8 @@ func endpointKey(raw string) string {
 }
 
 // MediaURL 把 API 根和一段 OpenAI 风格路径接起来。根上已经有版本（…/v1 或 …/v4）时不再加第二个 /v1。后缀已经在根末尾时直接返回根。
+// endpoint 去掉空白和末尾斜杠。它为空，或 suffix 清理后为空时，返回这个结果。
+// suffix 去掉空白和两端斜杠。已出现在 endpoint 末尾时不再拼接。有版本时直接接上，否则先接 /v1/。
 func MediaURL(endpoint, suffix string) string {
 	u := strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	suffix = strings.Trim(strings.TrimSpace(suffix), "/")
@@ -331,6 +355,7 @@ func MediaURL(endpoint, suffix string) string {
 }
 
 // hasAPIVersion 看地址里有没有 /v1 到 /v5，在末尾或后面还跟着路径。
+// u 的末尾是 /v1、/v2、/v3、/v4 或 /v5，或包含这些标记再加斜杠时返回 true。
 func hasAPIVersion(u string) bool {
 	for _, marker := range []string{"/v1", "/v2", "/v3", "/v4", "/v5"} {
 		if strings.HasSuffix(u, marker) || strings.Contains(u, marker+"/") {

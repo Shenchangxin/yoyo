@@ -10,6 +10,7 @@ import { useUI } from "./store";
 /**
  * adoptPendingAuthMode 取出暂存的权限模式并写到这段对话上。
  * 没有暂存，或会话已经是该模式时，原样返回。写入失败时也返回原会话，调用方应显示会话上的真实模式。
+ * t 读取 authMode、id，有的分支原样返回。
  */
 export async function adoptPendingAuthMode(t: Thread): Promise<Thread> {
   const mode = useUI.getState().pendingAuthMode;

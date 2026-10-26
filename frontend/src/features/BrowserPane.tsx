@@ -11,12 +11,12 @@ import { looksLikeHTMLFile } from "../lib/html-preview";
 import { joinWorkspace } from "../lib/workspace";
 import { WorkspaceFileView } from "./transcript/FilePreview";
 
-// http、https 或 file 开头算外部地址。
+/** isExternalURL http、https 或 file 开头算外部地址。raw 为假时用空字符串，去掉首尾空白，传给 test。 */
 function isExternalURL(raw: string): boolean {
   return /^(https?:|file:)/i.test((raw || "").trim());
 }
 
-// blob: 原样用。data: 转成对象 URL，卸下时撤销。其余地址直接用。转换失败就退回原地址。空地址清掉。
+/** useRevocableURL blob: 原样用。data: 转成对象 URL，卸下时撤销。其余地址直接用。转换失败就退回原地址。空地址清掉。src 看开头，为假时走另一支，传给 setUrl，传给 fetch。 */
 function useRevocableURL(src?: string): string {
   const [url, setUrl] = useState("");
   useEffect(() => {
@@ -52,7 +52,7 @@ function useRevocableURL(src?: string): string {
   return url;
 }
 
-// BrowserPane 既没有活动页也没有工作区 HTML 时显示空闲。工作区 HTML 是给操作者看的页面。残留的隔离页不能盖住代理打开的这一页：source 且远程仍在时才改看截图。
+/** BrowserPane 既没有活动页也没有工作区 HTML 时显示空闲。工作区 HTML 是给操作者看的页面。残留的隔离页不能盖住代理打开的这一页：source 且远程仍在时才改看截图。props 读取 previewPath、running、workspace。 */
 export function BrowserPane(props: {
   workspace?: string;
   previewPath?: string;

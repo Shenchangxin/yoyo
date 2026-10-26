@@ -9,6 +9,7 @@ import (
 )
 
 // isPrivate 判断地址是不是回环、链路本地单播，或 net.IP.IsPrivate。nil 返回假。
+// ip 为 nil 时返回假。否则看 IsLoopback、IsLinkLocalUnicast 或 IsPrivate。
 func isPrivate(ip net.IP) bool {
 	if ip == nil {
 		return false
@@ -21,6 +22,7 @@ func isPrivate(ip net.IP) bool {
 
 // privatePeer 从来源地址取出主机并交给 isPrivate。SplitHostPort 失败时把整串当主机。
 // 这只区分地址类别。浏览器门即使放行，走的仍是明文 HTTP。
+// remoteAddr 交给 net.SplitHostPort。失败时整串当主机，再交给 net.ParseIP 和 isPrivate。
 func privatePeer(remoteAddr string) bool {
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
@@ -30,6 +32,7 @@ func privatePeer(remoteAddr string) bool {
 }
 
 // skipIface 按名字判断虚拟网卡或回环。转成小写后，只要包含 vethernet、hyper-v、virtualbox、docker、vmware、bluetooth、loopback、wsl、npcap、tailscale 之一就跳过。
+// name 转成小写后，看是否包含 vethernet、hyper-v、virtualbox、docker、vmware、bluetooth、loopback、wsl、npcap、tailscale 之一。
 func skipIface(name string) bool {
 	n := strings.ToLower(name)
 	for _, part := range []string{"vethernet", "hyper-v", "virtualbox", "docker", "vmware", "bluetooth", "loopback", "wsl", "npcap", "tailscale"} {

@@ -50,6 +50,8 @@ func (r *repeatTracker) reset() {
 }
 
 // observe 按本批调用推进链条，返回本批刚好跨过的那条提醒。同一批里后面的调用会换掉前面的提醒。接收者为 nil，或本批没有跨过 3、5、8，就返回空串。
+// req 在计数落到 repeatGentleHits、repeatDetailA 或 repeatDetailB 时交给 voiceNudge。
+// calls 按顺序取名字和参数；repeatTransparent 为真的名字跳过，其余用来推进当前链。
 func (r *repeatTracker) observe(req RunRequest, calls []ToolCall) string {
 	if r == nil {
 		return ""
@@ -81,6 +83,7 @@ func (r *repeatTracker) observe(req RunRequest, calls []ToolCall) string {
 }
 
 // repeatTransparent 对 read_file、list_dir、grep、glob、search_files、read_artifact、update_plan 返回 true。这些调用跳过，计数和当前键都不变。
+// name 是 read_file、list_dir、grep、glob、search_files、read_artifact 或 update_plan 时返回 true。
 func repeatTransparent(name string) bool {
 	switch name {
 	case "read_file", "list_dir", "grep", "glob", "search_files", "read_artifact", "update_plan":
@@ -91,6 +94,7 @@ func repeatTransparent(name string) bool {
 }
 
 // canonicalArgs 得到比较用的参数。去掉空白后为空则返回 {}。合法 JSON 重新编码，键顺序不影响结果；解析失败时返回去掉空白后的原文。
+// raw 去掉首尾空白后为空则返回 {}；能按 JSON 解码就重新编码，失败则返回去掉空白后的原文。
 func canonicalArgs(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -108,6 +112,7 @@ func canonicalArgs(raw string) string {
 }
 
 // previewArgs 在 cap 小于 1 或 rune 数不超过 cap 时返回全文。否则保留前 cap 个 rune，并标出剩下的 rune 数。
+// canon 的 rune 数不超过 cap 时整段返回，否则只保留前 cap 个 rune，并写上剩余个数。
 func previewArgs(canon string, cap int) string {
 	if cap < 1 || utf8.RuneCountInString(canon) <= cap {
 		return canon

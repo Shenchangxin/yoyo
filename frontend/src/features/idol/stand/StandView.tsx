@@ -19,7 +19,7 @@ export function standURL(id: string): string | null {
 
 const warming = new Set<string>();
 
-/** warmStand 通话前拉取服装和 Spine 运行时，让身体不必先等头像。同一目录只预热一次，某个文件失败则允许再试。 */
+/** warmStand 通话前拉取服装和 Spine 运行时，让身体不必先等头像。同一目录只预热一次，某个文件失败则允许再试。id 传给 standURL。 */
 export function warmStand(id: string) {
   const base = standURL(id);
   if (!base || warming.has(base)) return;
@@ -32,7 +32,7 @@ export function warmStand(id: string) {
   }
 }
 
-/** StandView 把指定立绘画到画布上。加载失败或地址无效时不渲染。阶段通过 onPhase 报出。 */
+/** StandView 把指定立绘画到画布上。加载失败或地址无效时不渲染。阶段通过 onPhase 报出。props 读取 stand、onPhase、framing、direction、reduced。 */
 export function StandView(props: {
   stand: string;
   framing: Framing;

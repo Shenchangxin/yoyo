@@ -89,6 +89,8 @@ type ctxHandler struct {
 // Enabled 判断这条记录要不要进入 Handle。级别大于等于 INFO 时交给下一层。
 // 更低的级别在 debugOK 命中当前分类时直接启用。分类表非空时也先启用，真正丢掉发生在 Handle。
 // 都不是时仍交给下一层。
+// ctx 在 level 大于等于 slog.LevelInfo 时传给 next.Enabled，更低时交给 From 取分类，最后仍可能传给 next.Enabled。
+// level 大于等于 slog.LevelInfo 时交给 next.Enabled，否则看 debugOK 和分类表。
 func (h *ctxHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	if level >= slog.LevelInfo {
 		return h.next.Enabled(ctx, level)
@@ -106,6 +108,7 @@ func (h *ctxHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 // Handle 把 ctx 里的字段补进记录，已有同名属性则不覆盖。记录自带的 cat 字符串会改写用于过滤的分类。
 // 级别低于 INFO 且 debugOK 为假时直接返回 nil，不写下一层。
+// r 先遍历属性记下已有键，字符串 cat 会改写分类。Level 低于 slog.LevelInfo 且 debugOK 为假时返回 nil，否则补上未见过的字段后传给 next.Handle。
 func (h *ctxHandler) Handle(ctx context.Context, r slog.Record) error {
 	f := From(ctx)
 	cat := f.Cat
@@ -141,11 +144,13 @@ func (h *ctxHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 // WithAttrs 返回带上这些属性的新处理器，仍使用同一个 Logger。
+// attrs 传给 next.WithAttrs。
 func (h *ctxHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &ctxHandler{next: h.next.WithAttrs(attrs), log: h.log}
 }
 
 // WithGroup 返回带上分组名的新处理器，仍使用同一个 Logger。
+// name 传给 next.WithGroup。
 func (h *ctxHandler) WithGroup(name string) slog.Handler {
 	return &ctxHandler{next: h.next.WithGroup(name), log: h.log}
 }

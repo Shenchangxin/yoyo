@@ -13,6 +13,7 @@ import (
 
 // parseShellRead 把 cat、sed、head、type 或 Get-Content 映到相对路径、起始行和行数。
 // 管道留在真正的 shell。单独的 `cd 目录 && <读取>` 会改写路径，避免聊天经 bash 倾倒源码。
+// command 先去掉首尾空白，空串则失败；否则先试 splitCdAnd，再交给 SplitShellArgv。
 func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
@@ -74,6 +75,7 @@ func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 }
 
 // splitCdAnd 只接受恰好一个 &&，且左边是 cd。两边再出现管道或重定向则不拆。/d 和 -d 不当成目录。
+// cmd 里 && 不是恰好一个就失败；左边程序名是 cd 时才拆出目录和右边剩余命令。
 func splitCdAnd(cmd string) (dir, rest string, ok bool) {
 	if strings.Count(cmd, "&&") != 1 {
 		return "", "", false
@@ -103,6 +105,8 @@ func splitCdAnd(cmd string) (dir, rest string, ok bool) {
 }
 
 // joinReadPath 把目录和相对路径拼起来。绝对路径和已能译成盘符的 MSYS 路径不再拼接。不调用 WorkspaceTools.resolve。
+// dir 去掉空白后交给 CanonicalizeToolPath；为空，或 rel 已是绝对路径、或以 / 开头且 msysDriveRel 为假时，不参与拼接。
+// rel 先去掉空白，空串则原样返回；经 CanonicalizeToolPath 后已是绝对路径也直接返回。
 func joinReadPath(dir, rel string) string {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
@@ -122,12 +126,14 @@ func joinReadPath(dir, rel string) string {
 }
 
 // msysDriveRel 判断路径能否被 MSYSToWindowsPath 译成盘符路径。
+// p 交给 capability.MSYSToWindowsPath，能译出路径就返回真。
 func msysDriveRel(p string) bool {
 	_, ok := capability.MSYSToWindowsPath(p)
 	return ok
 }
 
 // lastNonFlag 返回参数里最后一个非开关文件。
+// argv 交给 nonFlagFiles，有结果时返回最后一项。
 func lastNonFlag(argv []string) string {
 	files := nonFlagFiles(argv)
 	if len(files) == 0 {
@@ -137,6 +143,7 @@ func lastNonFlag(argv []string) string {
 }
 
 // nonFlagFiles 丢掉空串和以 - 开头的参数。
+// argv 逐项去掉空白，空串或以 - 开头的丢掉。
 func nonFlagFiles(argv []string) []string {
 	var out []string
 	for _, a := range argv {
@@ -150,6 +157,7 @@ func nonFlagFiles(argv []string) []string {
 }
 
 // parseDashN 解析 head 的 -n N、-nN 或 -N。非正数返回 0。
+// argv 长度为 0 时返回 0 和 0；否则只看第一项是不是 -n、以 -n 开头，或是单独的减号加数字。
 func parseDashN(argv []string) (n int, consumed int) {
 	if len(argv) == 0 {
 		return 0, 0
@@ -179,6 +187,7 @@ func parseDashN(argv []string) (n int, consumed int) {
 }
 
 // parseSedPrint 只接受带 -n 的 `起,止p`。起始必须为正，结束不小于起始。
+// argv 从前向后跳过 -n、-E、-r；没有见过 -n，或后面没有表达式时失败。
 func parseSedPrint(argv []string) (start, end int, rest []string, ok bool) {
 	quiet := false
 	i := 0

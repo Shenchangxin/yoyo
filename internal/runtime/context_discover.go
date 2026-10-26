@@ -32,6 +32,8 @@ func WorkspaceMCPDir(workspace string) string {
 
 // WriteDiscoverIndex 在工作区监狱里写下 INDEX.md 和 notes.md，并列出 spill id。
 // 索引正文让模型用 recall_context 的 offset 和 limit 取回，或直接 grep、read_file，而不是把 spill 再倒进提示词。终端输出在 terminals/ 下。
+// workspace 传给 WorkspaceContextDir。
+// sessionID 传给 WorkspaceContextDir。
 func WriteDiscoverIndex(workspace, sessionID string, spill *Spill) {
 	dir := WorkspaceContextDir(workspace, sessionID)
 	if dir == "" {
@@ -57,6 +59,8 @@ func WriteDiscoverIndex(workspace, sessionID string, spill *Spill) {
 }
 
 // WriteMCPCatalog 把额外工具的 schema 按服务器写成 JSON。文件里的说明写明要先 tool_search，schema 到下一次检查点才进入 tools 数组。本函数只写文件。
+// workspace 传给 WorkspaceMCPDir。
+// extras 长度为 0 时返回，否则按名字分组写 schema。
 func WriteMCPCatalog(workspace string, extras map[string]ExtraTool) {
 	dir := WorkspaceMCPDir(workspace)
 	if dir == "" || len(extras) == 0 {
@@ -100,6 +104,8 @@ func WriteMCPCatalog(workspace string, extras map[string]ExtraTool) {
 }
 
 // WriteHostToolIndex 把延后工具的名字和一句话说明写到 .yoyo/tools/INDEX.md。同一组名字写出的文本稳定。名字不写进 tool_search 的描述。
+// workspace 为空时返回，否则作为 .yoyo/tools 的根。
+// names 长度为 0 时返回，否则排序后逐个写入，空串跳过。
 func WriteHostToolIndex(workspace string, names []string) {
 	if workspace == "" || len(names) == 0 {
 		return
@@ -147,6 +153,7 @@ func firstSentence(s string) string {
 }
 
 // mcpServerOf 从 mcp__服务器__工具 取出服务器名。格式不符时返回 extra。
+// name 按 __ 拆开，至少三段且第一段为 mcp 时返回第二段，否则返回 extra。
 func mcpServerOf(name string) string {
 	parts := strings.Split(name, "__")
 	if len(parts) >= 3 && parts[0] == "mcp" {

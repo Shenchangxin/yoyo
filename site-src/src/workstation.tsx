@@ -30,7 +30,7 @@ type Props = {
 
 const GATES: GateKind[] = ["once", "session", "always", "deny"];
 
-/** Workstation 按 scene 换中间那一栏，标题栏上的模块名跟着文案走。 */
+/** Workstation 按 scene 换中间那一栏，标题栏上的模块名跟着文案走。props 读取 embed、gate、onGate、hunks、onHunk、episode 等，解开 t、scene、onScene。 */
 export function Workstation(props: Props) {
   const { t, scene, onScene } = props;
   const phase = 3;
@@ -98,7 +98,7 @@ export function Workstation(props: Props) {
   );
 }
 
-/** Ask 演示一次提问和审批。phase 在 0 和 3 之间时发送钮画成停止。 */
+/** Ask 演示一次提问和审批。phase 在 0 和 3 之间时发送钮画成停止。t 读取 gate、demo。gate 与 kind 比较是否相等，用作下标。onGate 被调用，并传入 kind。 */
 function Ask({ t, phase, gate, onGate }: { t: Copy; phase: number; gate: GateKind; onGate: (k: GateKind) => void }) {
   const hint = {
     once: t.gate.onceHint,
@@ -168,7 +168,7 @@ function Ask({ t, phase, gate, onGate }: { t: Copy; phase: number; gate: GateKin
   );
 }
 
-/** Diff 演示勾选两段差异。没有选中或已经点过应用时，按钮不可用。hunks 变化会把已应用状态清掉。 */
+/** Diff 演示勾选两段差异。没有选中或已经点过应用时，按钮不可用。hunks 变化会把已应用状态清掉。t 读取 demo。onHunk 被调用，并传入 0。 */
 function Diff({ t, hunks, onHunk }: { t: Copy; hunks: [boolean, boolean]; onHunk: (index: 0 | 1) => void }) {
   const [kept, setKept] = useState(false);
   const n = hunks.filter(Boolean).length;
@@ -199,7 +199,7 @@ function Diff({ t, hunks, onHunk }: { t: Copy; hunks: [boolean, boolean]; onHunk
   );
 }
 
-/** Hunk 是一段可勾选的删除行和新增行。 */
+/** Hunk 是一段可勾选的删除行和新增行。on 为真时才继续，写到 button 的 aria-pressed。onToggle 写到 button 的 onClick。del 作为子节点渲染。add 作为子节点渲染。 */
 function Hunk({ on, onToggle, del, add }: { on: boolean; onToggle: () => void; del: string; add: string }) {
   return (
     <button type="button" className={on ? "hunk is-on" : "hunk"} aria-pressed={on} onClick={onToggle}>
@@ -210,7 +210,7 @@ function Hunk({ on, onToggle, del, add }: { on: boolean; onToggle: () => void; d
   );
 }
 
-/** Drama 在创作、成片和画布三个页签之间切换，并列出示例分集。 */
+/** Drama 在创作、成片和画布三个页签之间切换，并列出示例分集。t 读取 demo。episode 与 id、02 比较是否相等。onEpisode 被调用，并传入 id。tabProp 为空时用 localTab，判断是否为空。onTab 被调用，并传入 next。 */
 function Drama({
   t,
   episode,
@@ -226,6 +226,7 @@ function Drama({
 }) {
   const [localTab, setLocalTab] = useState<VideoTab>("video");
   const tab = tabProp ?? localTab;
+  /** setTab 调用 onTab。next 传给 onTab，传给 setLocalTab。 */
   const setTab = (next: VideoTab) => {
     onTab?.(next);
     if (tabProp === undefined) setLocalTab(next);
@@ -298,7 +299,13 @@ function Drama({
   );
 }
 
-/** TrustPane 演示 staging、canary 和 active 三个名字。只有 promoted 且当前是 active 时显示完成说明。点 checkout 由外层把指针改成 active。 */
+/**
+ * TrustPane 演示 staging、canary 和 active 三个名字。只有 promoted 且当前是 active 时显示完成说明。点 checkout 由外层把指针改成 active。
+ * t 读取 trust、nav。
+ * onCheckout 写到 button 的 onClick。
+ * refKey 与 active、staging、canary、id 比较是否相等，与 canary 比较是否不等。
+ * onRef 被调用，并传入 id。
+ */
 function TrustPane({
   t,
   promoted,

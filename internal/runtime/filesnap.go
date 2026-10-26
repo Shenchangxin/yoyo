@@ -14,6 +14,8 @@ import (
 const createdSnapSuffix = ".yoyo-created"
 
 // snapshotBeforeWrite 在 Spill 可用时保存写入前的字节。文件不存在则写入空正文加 createdSnapSuffix。读失败且不是不存在则不记。
+// rel 去掉前导斜杠后转成斜杠，为空时改用 abs 的文件名。
+// abs 为空时返回，否则读取写入前的字节。
 func (t *WorkspaceTools) snapshotBeforeWrite(rel, abs string) {
 	if t == nil || t.Spill == nil || t.Spill.Dir == "" || abs == "" {
 		return
@@ -34,6 +36,8 @@ func (t *WorkspaceTools) snapshotBeforeWrite(rel, abs string) {
 }
 
 // writeSnapFile 把正文写到 spillDir/files/stamp 下，先写 .tmp 再改名。mirror 非空时再写一份到镜像目录，镜像写入失败被忽略。
+// rel 转成系统路径后接在时间戳目录下。
+// body 写入临时文件，再随改名落到目标。
 func writeSnapFile(spillDir, mirror, stamp, rel string, body []byte) {
 	dest := filepath.Join(spillDir, "files", stamp, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
@@ -53,11 +57,15 @@ func writeSnapFile(spillDir, mirror, stamp, rel string, body []byte) {
 }
 
 // RestoreFileSnapshots 调用 RestoreFileSnapshotsAfter，after 为零值，因此不按时间跳过。
+// spillDir 传给 RestoreFileSnapshotsAfter。
+// workspace 传给 RestoreFileSnapshotsAfter。
 func RestoreFileSnapshots(spillDir, workspace string) (int, error) {
 	return RestoreFileSnapshotsAfter(spillDir, workspace, time.Time{})
 }
 
 // RestoreFileSnapshotsAfter 按时间戳目录名从早到晚走。after 非零时，解析失败或早于 after 的目录跳过。同一相对路径只处理第一次遇到的快照。带 createdSnapSuffix 的项会删除工作区里的对应文件，其余项覆盖写回。
+// spillDir 与 files 拼成时间戳目录的根。
+// workspace 与相对路径拼成恢复目标。
 func RestoreFileSnapshotsAfter(spillDir, workspace string, after time.Time) (int, error) {
 	root := filepath.Join(spillDir, "files")
 	stamps, err := os.ReadDir(root)
@@ -121,6 +129,7 @@ func RestoreFileSnapshotsAfter(spillDir, workspace string, after time.Time) (int
 }
 
 // ParseStampTime 按带纳秒的紧凑时间、不带小数的紧凑时间、RFC3339Nano、RFC3339 依次解析，成功则返回 UTC。
+// name 去掉空白后按这四种布局解析。
 func ParseStampTime(name string) (time.Time, bool) {
 	name = strings.TrimSpace(name)
 	for _, layout := range []string{"20060102T150405.000000000", "20060102T150405", time.RFC3339Nano, time.RFC3339} {
@@ -132,6 +141,7 @@ func ParseStampTime(name string) (time.Time, bool) {
 }
 
 // sortStampDirs 按目录名升序排序，较早的时间戳在前。
+// stamps 按 Name 升序就地排序。
 func sortStampDirs(stamps []os.DirEntry) {
 	for i := 0; i < len(stamps); i++ {
 		for j := i + 1; j < len(stamps); j++ {
@@ -143,6 +153,9 @@ func sortStampDirs(stamps []os.DirEntry) {
 }
 
 // copyFileSnap 按给定模式覆盖写入目标文件。
+// src 打开来读。
+// dest 按 mode 创建并覆盖写入。
+// mode 传给 OpenFile。
 func copyFileSnap(src, dest string, mode os.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {

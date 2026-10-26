@@ -31,6 +31,8 @@ import (
 )
 
 // mountFiber 用内核插件挂上一个可撤销的效果。
+// name 传给 Kernel.Plugin。
+// setup 传给 Effect。
 func (a *App) mountFiber(name string, setup func() (func() error, error)) error {
 	_, err := a.Kernel.Plugin(name, func(c *kernel.Context) error {
 		return c.Effect(setup)
@@ -179,6 +181,7 @@ func (a *App) openPersonal() error {
 }
 
 // attachPersonal 把记忆、日程、项目、连接器、个人引擎、浏览器、电脑使用、收件箱和页面挂到工具上，并打开 ChatOverlay。档案的 AllowTools 非空时，用宿主工具名加已广告名滤出 AllowedTools 并置上 ToolJail。
+// tools 为 nil 则返回，否则挂上记忆、日程、项目、连接器、个人引擎、浏览器、电脑使用、收件箱、页面和 SearchAPI，并打开 ChatOverlay。
 func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
@@ -215,6 +218,7 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 }
 
 // searchAPI 优先用视频连接里 capability 为 search 的活动连接，否则用 Config.SearchURL。密钥名默认 search。超时 20 秒。两端都空则返回 no search_url。
+// query 传给 connection.QuerySearch。
 func (a *App) searchAPI(query string) (string, error) {
 	endpoint := strings.TrimSpace(a.Config.SearchURL)
 	keyName := a.Config.SearchKey
@@ -293,6 +297,7 @@ func (a *App) ProjectsList() []project.Project {
 }
 
 // ProjectCreate 创建项目。项目库为空时返回入参本身。
+// p 在项目库为空时原样返回，否则传给 Projects.Create。
 func (a *App) ProjectCreate(p project.Project) project.Project {
 	if a.Projects == nil {
 		return p
@@ -301,6 +306,8 @@ func (a *App) ProjectCreate(p project.Project) project.Project {
 }
 
 // MemoryList 按查询和种类搜索记忆，最多 50 条。记忆库为空时返回 nil。
+// q 传给 Memory.Search。
+// kind 转成 memory.Kind 后传给 Memory.Search。
 func (a *App) MemoryList(q, kind string) []memory.Item {
 	if a.Memory == nil {
 		return nil
@@ -325,6 +332,7 @@ func (a *App) ScheduleList() []schedule.Job {
 }
 
 // ScheduleCreate 创建日程，并往收件箱推一条 KindSchedule。日程为空时返回入参。
+// j 在日程为空时原样返回，否则传给 Schedule.Create。
 func (a *App) ScheduleCreate(j schedule.Job) schedule.Job {
 	if a.Schedule == nil {
 		return j
@@ -337,6 +345,7 @@ func (a *App) ScheduleCreate(j schedule.Job) schedule.Job {
 }
 
 // ScheduleCancel 取消一条日程。日程为空返回 false。
+// id 传给 Schedule.Cancel。
 func (a *App) ScheduleCancel(id string) bool {
 	if a.Schedule == nil {
 		return false
@@ -353,6 +362,7 @@ func (a *App) ConnectorsList() []connector.Account {
 }
 
 // ConnectorConnect 连接一个账号。连接器为空时返回入参。
+// acct 在连接器为空时原样返回，否则传给 Connectors.Connect。
 func (a *App) ConnectorConnect(acct connector.Account) connector.Account {
 	if a.Connectors == nil {
 		return acct
@@ -373,6 +383,7 @@ func (a *App) ConnectorDisconnect(id string) bool {
 }
 
 // ComputerAllow 把应用名交给电脑使用的 Allow。电脑使用为空则返回。
+// appName 在电脑使用非空时传给 Computer.Allow。
 func (a *App) ComputerAllow(appName string) {
 	if a.Computer != nil {
 		a.Computer.Allow(appName)
@@ -388,6 +399,9 @@ func (a *App) ComputerRecording() []computeruse.Event {
 }
 
 // DistillSkill 把名称、描述和正文交给 expert.Distill。
+// name 传给 expert.Distill。
+// description 传给 expert.Distill。
+// body 传给 expert.Distill。
 func (a *App) DistillSkill(name, description, body string) string {
 	return expert.Distill(name, description, body)
 }
@@ -459,6 +473,8 @@ func (a *App) scheduleLoop() {
 }
 
 // StartMCPHTTP 按名字和端点启动 HTTP MCP，成功后 persistMCP。失败时记下诊断并返回错误。
+// name 传给 MCP.StartHTTP。
+// endpoint 传给 MCP.StartHTTP。
 func (a *App) StartMCPHTTP(name, endpoint string) error {
 	if err := a.MCP.StartHTTP(name, endpoint); err != nil {
 		diaglog.Error("mcp start http failed", "component", "mcp", "name", name, "err", err)

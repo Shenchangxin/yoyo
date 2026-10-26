@@ -33,6 +33,8 @@ func (t *WorkspaceTools) skillDirRoots() []string {
 }
 
 // decorateSkillBody 用该技能的 SkillDirs 目录调用 DecorateSkillBody。
+// name 用来从 SkillDirs 取目录，并连同 body 和该目录交给 DecorateSkillBody。
+// body 连同 name 和取到的目录交给 DecorateSkillBody。
 func (t *WorkspaceTools) decorateSkillBody(name, body string) string {
 	dir := ""
 	if t != nil && t.SkillDirs != nil {
@@ -42,6 +44,7 @@ func (t *WorkspaceTools) decorateSkillBody(name, body string) string {
 }
 
 // skillLoadHint 只给 novel-game-analyze 追加一句：长原文要用 task profile=explore 分章，不要凭 @file 摘录重写小说。其他名字返回空串。
+// name 去掉空白后等于 novel-game-analyze 时返回那句长原文提示，其他名字返回空串。
 func skillLoadHint(name string) string {
 	switch strings.TrimSpace(name) {
 	case "novel-game-analyze":
@@ -52,6 +55,9 @@ func skillLoadHint(name string) string {
 }
 
 // DecorateSkillBody 在有目录时把包路径、文件清单，以及 run_skill_script 和 read_skill_file 的用法写在正文前面，这样 @ 注入和 load_skill 在正文被截断前都能看到。有 references/yoyo-tools.md 时点名先读它。Windows 上没有可用 POSIX shell 时说明不要跑 .sh。目录为空时只在正文后加 skillLoadHint。
+// name 写进 run_skill_script 和 read_skill_file 的用法，并交给 skillLoadHint。
+// body 在 dir 去掉空白后为空时直接接在 skillLoadHint 后面；否则写在包路径说明之后。
+// dir 去掉空白后为空时不写包路径；非空时交给 SkillPackFiles，并写进开头的目录说明。
 func DecorateSkillBody(name, body, dir string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -92,6 +98,7 @@ func DecorateSkillBody(name, body, dir string) string {
 }
 
 // packHasRel 按小写斜杠路径判断清单里是否有 want。
+// files 逐项把反斜杠换成斜杠并转成小写，再和同样处理过的 want 比较。
 func packHasRel(files []string, want string) bool {
 	want = strings.ToLower(strings.ReplaceAll(want, "\\", "/"))
 	for _, f := range files {
@@ -103,6 +110,7 @@ func packHasRel(files []string, want string) bool {
 }
 
 // expandSkillScripts 把命令参数里的 scripts/ 相对路径换成包内绝对路径。工作区里已经存在该相对路径时不改。改写后若脚本需要解释器，把解释器插到参数前面。
+// command 在接收者为 nil 或去掉空白后为空时原样返回；否则交给 SplitShellArgv，再逐项交给 resolveSkillScriptArg。
 func (t *WorkspaceTools) expandSkillScripts(command string) string {
 	if t == nil || strings.TrimSpace(command) == "" {
 		return command
@@ -130,6 +138,7 @@ func (t *WorkspaceTools) expandSkillScripts(command string) string {
 }
 
 // resolveSkillScriptArg 只处理 scripts/ 开头的参数。工作区里 Stat 成功则返回假，避免盖住工作区文件。否则 lookupSkillScript。
+// arg 去掉空白和引号，空串则返回假；反斜杠换成斜杠并去掉 ./ 后，不以 scripts/ 开头也返回假。
 func (t *WorkspaceTools) resolveSkillScriptArg(arg string) (string, bool) {
 	arg = strings.TrimSpace(strings.Trim(arg, `"'`))
 	if arg == "" {
@@ -154,6 +163,7 @@ func (t *WorkspaceTools) resolveSkillScriptArg(arg string) (string, bool) {
 }
 
 // lookupSkillScript 在已加载技能里找，没有已加载名单则扫全部 SkillDirs。路径必须在该技能目录内。恰好一个文件存在才返回真。
+// rel 接到每个候选技能目录下，路径必须在该目录内，并且 Stat 成功才算命中。
 func (t *WorkspaceTools) lookupSkillScript(rel string) (string, bool) {
 	if t == nil || t.SkillDirs == nil {
 		return "", false
@@ -199,6 +209,7 @@ func normalizeSkillScript(script string) (string, error) {
 }
 
 // requireScriptInterpreter 对 .sh 和无扩展名要求 posix 解释器，对 .py 要求 Python。Windows 上没有可用 shell 时说明 WSL 的 bash.exe 不能用。其他扩展名不检查。
+// path 取扩展名；.sh、无扩展名和 .py 在 scriptInterpreter 返回空串时返回错误。
 func requireScriptInterpreter(path string) error {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
@@ -232,6 +243,7 @@ func posixShellBin() string {
 }
 
 // scriptInterpreter 按扩展名选择解释器。无扩展名和 .sh 用 posixShellBin。Windows 上 .py 优先 py，再 python3、python。.js 和 .mjs 用 node。.ps1 用 pwsh.Look，Windows 上再退回 pwsh.Fallback。
+// path 取小写扩展名，再按无扩展名、.sh、.py、.js、.mjs、.ps1 选择解释器。
 func scriptInterpreter(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == "" {
@@ -273,6 +285,7 @@ func scriptInterpreter(path string) string {
 }
 
 // lookPath 把 exec.LookPath 的失败收成空串。
+// name 交给 exec.LookPath，失败时返回空串。
 func lookPath(name string) string {
 	p, err := exec.LookPath(name)
 	if err != nil {
@@ -282,6 +295,7 @@ func lookPath(name string) string {
 }
 
 // joinShellArgv 给每个参数加引号后用空格连接。
+// argv 每一项交给 quoteShellArg，再用空格连起来。
 func joinShellArgv(argv []string) string {
 	parts := make([]string, 0, len(argv))
 	for _, a := range argv {
@@ -291,6 +305,7 @@ func joinShellArgv(argv []string) string {
 }
 
 // quoteShellArg 在空串或含空白、引号、反斜杠时加双引号，并把内部双引号转义。
+// s 为空时返回一对双引号；含空白、引号或反斜杠时加双引号并把内部双引号转义。
 func quoteShellArg(s string) string {
 	if s == "" {
 		return `""`

@@ -15,6 +15,7 @@ func hideConsole(cmd *exec.Cmd) {
 }
 
 // gitCmd 用 git 和给定参数构造命令，并隐藏控制台。
+// args 展开后传给 exec.Command，程序名是 git。
 func gitCmd(args ...string) *exec.Cmd {
 	cmd := exec.Command("git", args...)
 	hideConsole(cmd)

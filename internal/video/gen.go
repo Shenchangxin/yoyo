@@ -14,6 +14,8 @@ import (
 )
 
 // submitImage 按任务的图像供应商提交。openai、gemini、volcengine 各走自己的请求，其他供应商返回 unsupported image provider。
+// ctx 传给 openaiImage、geminiImage 或 seedreamImage。
+// j 传给 providerForJob，Params 传给 parseParams，再按供应商把 j 传下去。
 func (e *Engine) submitImage(ctx context.Context, j *Job) error {
 	p, err := e.providerForJob(*j, "image")
 	if err != nil {
@@ -37,6 +39,8 @@ func (e *Engine) submitImage(ctx context.Context, j *Job) error {
 }
 
 // pollImage 用 GET /api/v3/images/generations/<远程标识> 查询。succeeded、completed、success 时下载地址并收成图片。failed 或 error 返回错误文本。其余把状态留在 polling。
+// ctx 传给请求的 WithContext。
+// j 传给 providerForJob，RemoteID 拼进查询地址；succeeded、completed 或 success 时传给 finishMedia，否则把 Status 写成 polling。
 func (e *Engine) pollImage(ctx context.Context, j *Job) error {
 	p, err := e.providerForJob(*j, "image")
 	if err != nil {
@@ -78,6 +82,8 @@ func (e *Engine) pollImage(ctx context.Context, j *Job) error {
 }
 
 // submitVideo 按视频供应商提交。volcengine 走 seedance，minimax 走 MiniMax，aliyun 走万相。其他供应商返回 unsupported video provider。
+// ctx 传给 seedanceSubmit、minimaxSubmit 或 wanSubmit。
+// j 传给 providerForJob，Params 传给 parseParams，再按供应商把 j 传下去。
 func (e *Engine) submitVideo(ctx context.Context, j *Job) error {
 	p, err := e.providerForJob(*j, "video")
 	if err != nil {
@@ -101,6 +107,8 @@ func (e *Engine) submitVideo(ctx context.Context, j *Job) error {
 }
 
 // pollVideo 按同一组视频供应商查询远程任务。
+// ctx 传给 seedancePoll、minimaxPoll 或 wanPoll。
+// j 传给 providerForJob，再按供应商传给对应的查询函数。
 func (e *Engine) pollVideo(ctx context.Context, j *Job) error {
 	p, err := e.providerForJob(*j, "video")
 	if err != nil {
@@ -123,6 +131,8 @@ func (e *Engine) pollVideo(ctx context.Context, j *Job) error {
 }
 
 // providerForJob 先按金库键找启用的供应商，再按供应商名找。都没有时用该种类的当前供应商。
+// j 的 VaultKey 非空时先按它匹配启用的供应商；没匹配到或 VaultKey 为空时再按 Provider 匹配。
+// kind 传给 ListProviders，都没匹配到时再传给 ActiveProvider。
 func (e *Engine) providerForJob(j Job, kind string) (Provider, error) {
 	list, err := e.ListProviders(kind)
 	if err != nil {
@@ -144,6 +154,10 @@ func (e *Engine) providerForJob(j Job, kind string) (Provider, error) {
 }
 
 // openaiImage 有参考图时改走编辑。否则 POST /v1/images/generations，尺寸默认 1024x1024，张数为 1。
+// ctx 传给 openaiEdit 或 doJSON。
+// key 传给 jsonReq 或 openaiEdit。
+// j 的 Model 和 Prompt 写入请求，结果传给 takeImageResult。
+// params 的 ReferenceImages 非空时整份传给 openaiEdit，否则 Size 与 1024x1024 传给 first。
 func (e *Engine) openaiImage(ctx context.Context, p Provider, key string, j *Job, params JobParams) error {
 	model := first(j.Model, p.Model)
 	if len(params.ReferenceImages) > 0 {
@@ -162,6 +176,11 @@ func (e *Engine) openaiImage(ctx context.Context, p Provider, key string, j *Job
 }
 
 // openaiEdit 用 multipart 把提示、尺寸和参考图 POST 到 /v1/images/edits。读不到的参考图跳过。
+// ctx 传给 NewRequestWithContext。
+// key 写成 Authorization Bearer。
+// j 的 Prompt 写入表单，结果传给 takeImageResult。
+// params 的 Size 与 1024x1024 传给 first，ReferenceImages 逐个作为 image[]。
+// model 写入表单字段 model。
 func (e *Engine) openaiEdit(ctx context.Context, p Provider, key string, j *Job, params JobParams, model string) error {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -194,6 +213,8 @@ func (e *Engine) openaiEdit(ctx context.Context, p Provider, key string, j *Job,
 }
 
 // geminiImage 在官方域名且模型名同时含 image 和 gemini-3 时走 /v1beta/interactions。否则把参考图当成 jpeg 的 inline_data，POST generateContent，并设置 x-goog-api-key。
+// ctx 传给 doJSON。
+// params 在官方域名且模型名同时含 image 和 gemini-3 时，Size 和 AspectRatio 传给 GeminiAspectFromSize；否则 ReferenceImages 读成 jpeg 放进 inline_data。
 func (e *Engine) geminiImage(ctx context.Context, p Provider, key string, j *Job, params JobParams) error {
 	model := first(j.Model, p.Model)
 	official := strings.Contains(p.BaseURL, "generativelanguage.googleapis.com")
@@ -243,6 +264,10 @@ func (e *Engine) geminiImage(ctx context.Context, p Provider, key string, j *Job
 }
 
 // seedreamImage POST /api/v3/images/generations。尺寸能拆成宽高就写上。有任务标识且还没有图片地址时把任务标成 polling。
+// ctx 传给 doJSON。
+// key 传给 jsonReq。
+// j 的 Model 和 Prompt 写入请求；返回任务标识且没有图片地址时写入 RemoteID 并把 Status 设为 polling，否则传给 takeImageResult。
+// params 的 Size 能拆开时写入 width 和 height。
 func (e *Engine) seedreamImage(ctx context.Context, p Provider, key string, j *Job, params JobParams) error {
 	body := map[string]any{"model": first(j.Model, p.Model), "prompt": j.Prompt}
 	if w, h, ok := splitSize(params.Size); ok {
@@ -295,6 +320,7 @@ func (e *Engine) takeImageResult(j *Job, m map[string]any) error {
 }
 
 // takeGeminiImage 在 JSON 文本里找第一段 "data":"..." 的 base64。解开后超过 32 字节才收成图片。
+// j 在解开的数据超过 32 字节时传给 finishMedia。
 func (e *Engine) takeGeminiImage(j *Job, m map[string]any) error {
 	rawJSON, _ := json.Marshal(m)
 	s := string(rawJSON)
@@ -312,6 +338,10 @@ func (e *Engine) takeGeminiImage(j *Job, m map[string]any) error {
 }
 
 // seedanceSubmit 在模型不是 doubao-seedance-2-0 开头时改用 doubao-seedance-2-0-mini-260615。参考图角色是 reference_image。POST /api/v3/contents/generations/tasks。有 id 时进入 polling。
+// ctx 传给 doJSON。
+// key 传给 jsonReq。
+// j 的 Model 和 Prompt 写入请求；返回 id 时写入 RemoteID 并把 Status 设为 polling，否则传给 takeVideoURL。
+// params 的 ReferenceImageURLs、GenerateAudio、AspectRatio、Duration、Resolution 写入请求体。
 func (e *Engine) seedanceSubmit(ctx context.Context, p Provider, key string, j *Job, params JobParams) error {
 	model := first(j.Model, p.Model)
 	if !strings.HasPrefix(strings.ToLower(model), "doubao-seedance-2-0") {
@@ -348,6 +378,9 @@ func (e *Engine) seedanceSubmit(ctx context.Context, p Provider, key string, j *
 }
 
 // seedancePoll 查询 contents/generations/tasks。succeeded 收视频地址，failed 返回 videoErr，其余保持 polling。
+// ctx 传给 doJSON。
+// key 传给 jsonReq。
+// j 的 RemoteID 拼进查询地址；succeeded 时传给 takeVideoURL，否则把 Status 写成 polling。
 func (e *Engine) seedancePoll(ctx context.Context, p Provider, key string, j *Job) error {
 	req, err := jsonReq(http.MethodGet, joinURL(p.BaseURL, "/api/v3", "/contents/generations/tasks/"+j.RemoteID), key, nil)
 	if err != nil {
@@ -369,6 +402,10 @@ func (e *Engine) seedancePoll(ctx context.Context, p Provider, key string, j *Jo
 }
 
 // minimaxSubmit 在模型名不含 minimax-h3 时改用 MiniMax-H3。没有首帧时写入比例，adaptive 收成 16:9。POST /v2/video_generation。有 task_id 时进入 polling。
+// ctx 传给 doJSON。
+// key 传给 jsonReq。
+// j 的 Model 和 Prompt 写入请求；有 task_id 时写入 RemoteID 并把 Status 设为 polling，否则传给 takeVideoURL。
+// params 的 ReferenceImageURLs、Duration、Resolution、GenerateAudio 写入请求；FirstFrameURL 为空时再写 ratio，adaptive 收成 16:9。
 func (e *Engine) minimaxSubmit(ctx context.Context, p Provider, key string, j *Job, params JobParams) error {
 	model := first(j.Model, p.Model)
 	if !strings.Contains(strings.ToLower(model), "minimax-h3") {
@@ -408,6 +445,10 @@ func (e *Engine) minimaxSubmit(ctx context.Context, p Provider, key string, j *J
 }
 
 // minimaxPoll 查询 /v2/query/video_generation。优先读 task 对象。success 或 succeeded 收地址，failed 或 fail 返回错误。
+// ctx 传给 doJSON。
+// p 的 BaseURL 用来拼接查询地址。
+// key 传给 jsonReq。
+// j 的 RemoteID 拼进查询地址；success 或 succeeded 时传给 takeVideoURL，否则把 Status 写成 polling。
 func (e *Engine) minimaxPoll(ctx context.Context, p Provider, key string, j *Job) error {
 	req, err := jsonReq(http.MethodGet, joinURL(p.BaseURL, "", "/v2/query/video_generation/"+j.RemoteID), key, nil)
 	if err != nil {
@@ -433,6 +474,10 @@ func (e *Engine) minimaxPoll(ctx context.Context, p Provider, key string, j *Job
 }
 
 // wanSubmit 只接受 wan3.0-video 和 wan3.0-video-prime，其他模型名改成 wan3.0-video。提示里的 @图片 换成「图」。请求带上 X-DashScope-Async: enable。
+// ctx 传给 doJSON。
+// key 传给 jsonReq。
+// j 的 Model 和 Prompt 写入请求，Prompt 里的 @图片 换成图；有 task_id 时写入 RemoteID 并把 Status 设为 polling，否则传给 takeVideoURL。
+// params 的 ReferenceImageURLs、Duration、Resolution、AspectRatio、GenerateAudio 写入请求。
 func (e *Engine) wanSubmit(ctx context.Context, p Provider, key string, j *Job, params JobParams) error {
 	model := first(j.Model, p.Model)
 	if model != "wan3.0-video" && model != "wan3.0-video-prime" {
@@ -476,6 +521,9 @@ func (e *Engine) wanSubmit(ctx context.Context, p Provider, key string, j *Job, 
 }
 
 // wanPoll 查询 /api/v1/tasks。succeeded 或 success 收地址，failed 返回错误。
+// ctx 传给 doJSON。
+// key 传给 jsonReq。
+// j 的 RemoteID 拼进查询地址；succeeded 或 success 时传给 takeVideoURL，否则把 Status 写成 polling。
 func (e *Engine) wanPoll(ctx context.Context, p Provider, key string, j *Job) error {
 	req, err := jsonReq(http.MethodGet, joinURL(p.BaseURL, "/api/v1", "/tasks/"+j.RemoteID), key, nil)
 	if err != nil {
@@ -498,6 +546,7 @@ func (e *Engine) wanPoll(ctx context.Context, p Provider, key string, j *Job) er
 }
 
 // takeVideoURL 从 data、content 或 data 列表里找视频地址并下载，收成视频。没有地址时返回 video completed without url。
+// j 在下载到地址后传给 finishMedia。
 func (e *Engine) takeVideoURL(j *Job, m map[string]any) error {
 	u := strAny(pickData(m), "video_url", "url")
 	if u == "" {

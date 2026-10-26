@@ -8,12 +8,12 @@ import type { Page } from "@playwright/test";
 /** 一份最短的合法 PDF，让 Chromium 能在审查窗的 iframe 里打开。 */
 const MINI_PDF_B64 = "JVBERi0xLjEKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PmVuZG9iagoyIDAgb2JqCjw8L1R5cGUvUGFnZXMvS2lkc1szIDAgUl0vQ291bnQgMT4+ZW5kb2JqCjMgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzIDNdPj5lbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTIgMDAwMDAgbiAKMDAwMDAwMDEwMSAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNC9Sb290IDEgMCBSPj4Kc3RhcnR4cmVmCjE0NwolJUVPRg==";
 
-/** sid 读取 id，没有就读 ID。 */
+/** sid 读取 id，没有就读 ID。s 读取 id、ID。 */
 function sid(s: any) {
   return String(s.id || s.ID);
 }
 
-/** mockApi 拦截页面上的 /api，按路径返回夹具。workspace 写入配置里的工作区。 */
+/** mockApi 拦截页面上的 /api，按路径返回夹具。workspace 写入配置里的工作区。page 调用 route。extra 读取 sessions、studios、config、harness、overlayAdopt、trajectories 等，为空时不读，传给 mockTrace。 */
 export async function mockApi(
   page: Page,
   workspace = "",
@@ -60,6 +60,7 @@ export async function mockApi(
       const b = body();
       const rpcMethod = String(b.method || "");
       const params = b.params || {};
+      /** ok 调用 fulfill。result 写入字段 result。 */
       const ok = (result: any) => route.fulfill({ json: { jsonrpc: "2.0", id: b.id ?? 1, result } });
       if (rpcMethod === "canvas.http") {
         const p = String(params.path || "").replace(/^\/api\/?/, "").replace(/^\//, "");
@@ -791,7 +792,7 @@ export async function mockApi(
   });
 }
 
-/** mockTrace 把事件收成追踪摘要。带 delta 的事件只计数，不进入投影。摘要截到 120 字，详情截到 4000 字。 */
+/** mockTrace 把事件收成追踪摘要。带 delta 的事件只计数，不进入投影。摘要截到 120 字，详情截到 4000 字。id 作为后备值，写入字段 session_id。extra 读取 events、sessions、context、artifacts，为空时不读。 */
 function mockTrace(id: string, extra?: { sessions?: any[]; events?: any[]; artifacts?: any[]; context?: any }) {
   const events = extra?.events || [];
   const projected: any[] = [];

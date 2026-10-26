@@ -27,7 +27,7 @@ const STEP_MARKED = /^\s*\d+\.\s*\[([^\]]+)\]\s+(.+?)\s*$/;
 /** 只有编号、没有状态的行。 */
 const STEP_NUMBERED = /^\s*\d+\.\s+(.+?)\s*$/;
 
-/** normalizePlanStatus 把完成、进行中的各种写法收成三种状态，其余视为未开始。 */
+/** normalizePlanStatus 把完成、进行中的各种写法收成三种状态，其余视为未开始。raw 去掉首尾空白，转成小写，做替换。 */
 export function normalizePlanStatus(raw: string): PlanStatus {
   const s = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (s === "complete" || s === "completed" || s === "done" || s === "finished") return "complete";
@@ -35,7 +35,7 @@ export function normalizePlanStatus(raw: string): PlanStatus {
   return "pending";
 }
 
-/** parsePlanArgs 从结构化的 plan 参数里读出步骤。没有有效步骤时返回空。 */
+/** parsePlanArgs 从结构化的 plan 参数里读出步骤。没有有效步骤时返回空。args 读取 plan、explanation。 */
 export function parsePlanArgs(args: Record<string, unknown>): TaskPlan | null {
   const rows = args.plan;
   if (!Array.isArray(rows) || rows.length === 0) return null;
@@ -51,7 +51,7 @@ export function parsePlanArgs(args: Record<string, unknown>): TaskPlan | null {
   return { id: "", explanation: String(args.explanation || "").trim(), steps };
 }
 
-/** parsePlanText 从带编号的正文里读出步骤。带状态的行优先于纯编号行，步骤之前的文字当作说明。 */
+/** parsePlanText 从带编号的正文里读出步骤。带状态的行优先于纯编号行，步骤之前的文字当作说明。text 去掉首尾空白后，切开，为假时走另一支。 */
 export function parsePlanText(text: string): TaskPlan | null {
   const raw = text.trim();
   if (!raw) return null;
@@ -78,24 +78,24 @@ export function parsePlanText(text: string): TaskPlan | null {
   return { id: "", explanation, steps };
 }
 
-/** planDoneCount 统计已完成的步骤数。 */
+/** planDoneCount 统计已完成的步骤数。plan 读取 steps。 */
 export function planDoneCount(plan: TaskPlan): number {
   return plan.steps.filter((s) => s.status === "complete").length;
 }
 
-/** planFocus 操作者该看的一步：优先进行中，否则下一个未开始。 */
+/** planFocus 操作者该看的一步：优先进行中，否则下一个未开始。plan 读取 steps。 */
 export function planFocus(plan: TaskPlan): PlanStep | undefined {
   return plan.steps.find((s) => s.status === "in_progress") || plan.steps.find((s) => s.status === "pending");
 }
 
-/** 取出计划事件或工具结果里的正文。 */
+/** 取出计划事件或工具结果里的正文。it 读取 type、text、payload，传给 toolResultBody。 */
 function planTextOf(it: Item): string {
   if (it.type === "plan") return (it.text || String(it.payload?.text || "")).trim();
   if (it.type === "tool_result") return toolResultBody(it).trim();
   return "";
 }
 
-/** 判断条目是计划事件，或名为计划工具的调用与结果。 */
+/** 判断条目是计划事件，或名为计划工具的调用与结果。it 读取 type，传给 toolName。 */
 function isPlanEvent(it: Item): boolean {
   return it.type === "plan" || (isPlanTool(toolName(it)) && (it.type === "tool_call" || it.type === "tool_result"));
 }
@@ -103,6 +103,7 @@ function isPlanEvent(it: Item): boolean {
 /**
  * latestTaskPlan 取转录里最后一次成功的计划。
  * 后到的操作者消息仍保留它，只有更新的计划会替换。引导备注不开新回合。优先用结构化参数。
+ * items 读取 length，按下标读取。
  */
 export function latestTaskPlan(items: Item[]): TaskPlan | null {
   const failed = new Set<string>();

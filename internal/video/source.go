@@ -44,6 +44,7 @@ const (
 var chapterRe = regexp.MustCompile(`(?mi)(?:^|\n)[ \t]*((第[0-9一二三四五六七八九十百千零两]+[章节回部卷])|(Chapter\s+\d+))`)
 
 // LooksLikeSeries 在去掉空白后不少于 2000 字，或至少两个章节标题且不少于 400 字时返回真。
+// text 去掉首尾空白后计 rune 数，并传给 chapterStarts。
 func LooksLikeSeries(text string) bool {
 	n := utf8.RuneCountInString(strings.TrimSpace(text))
 	if n >= seriesRuneMin {
@@ -53,6 +54,9 @@ func LooksLikeSeries(text string) bool {
 }
 
 // IngestSource 写入原文。剧不存在、文本为空，或方案已经是 committed 时失败。同一剧已有原文时沿用原标识。
+// dramaID 传给 GetDrama、GetPlan 和 GetSource，并写入 DramaID。
+// text 先去掉首尾空白，再把 \r\n 和 \r 换成 \n，空串时返回错误 source text is empty，否则传给 putSourceText、utf8.RuneCountInString 和 buildSlices。
+// title 去掉首尾空白后写入 Title。
 func (e *Engine) IngestSource(dramaID, text, title string) (Source, error) {
 	if _, err := e.GetDrama(dramaID); err != nil {
 		return Source{}, err
@@ -84,6 +88,8 @@ func (e *Engine) IngestSource(dramaID, text, title string) (Source, error) {
 }
 
 // IngestSourceFile 读取 txt、md 原文，或用 office.Query 抽出 docx、pdf、pptx、xlsx。其他扩展名在前 800 字节里空字节超过二十分之一时拒绝。标题取文件名去掉扩展名。
+// dramaID 传给 IngestSource。
+// path 传给 os.ReadFile 和 filepath.Ext；扩展名是 docx、pdf、pptx 或 xlsx 时再传给 queryOfficeText，文件名去掉扩展名后作为标题传给 IngestSource。
 func (e *Engine) IngestSourceFile(dramaID, path string) (Source, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -110,6 +116,7 @@ func (e *Engine) IngestSourceFile(dramaID, path string) (Source, error) {
 }
 
 // GetSource 按剧标识找出原文。没有时返回 source not found。
+// dramaID 与每条原文的 DramaID 比较，相等就返回该条。
 func (e *Engine) GetSource(dramaID string) (Source, error) {
 	for _, s := range loadCol[Source](e, colSources) {
 		if s.DramaID == dramaID {
@@ -120,6 +127,7 @@ func (e *Engine) GetSource(dramaID string) (Source, error) {
 }
 
 // SourceText 先读 sources 目录里的文本，没有再按哈希从内容寻址取出。
+// src 用 ID 拼 sources 目录下的 txt；读到的字节长度大于 0 就返回。否则在 CAS 非 nil 且 Hash 非空时把 Hash 传给 CAS.GetRaw。
 func (e *Engine) SourceText(src Source) (string, error) {
 	p := filepath.Join(e.Dir, "sources", src.ID+".txt")
 	if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
@@ -135,6 +143,11 @@ func (e *Engine) SourceText(src Source) (string, error) {
 }
 
 // ReadSource 按偏移、切片序号或查询读一段原文。切片序号从 1 计。长度空着时用 1800，超过 2400 时截断。不是整篇时 truncated 为真。
+// dramaID 传给 GetSource，并写入返回结果的 drama_id。
+// offset 可能被切片起点或查询命中处替换，小于 0 时写成 0，大于原文 rune 数时写成该数。
+// length 小于等于 0 时，命中切片则用切片长度，命中查询或仍小于等于 0 则用 sliceWindow；大于 maxReadWindow 时写成 maxReadWindow。
+// sliceIndex 大于 0 且不超过切片个数时，用对应切片改写 offset，并在 length 小于等于 0 时改写 length。
+// query 去掉首尾空白后非空时，在原文及其小写形式里查找，找到就把 offset 设为命中前的 rune 数。
 func (e *Engine) ReadSource(dramaID string, offset, length, sliceIndex int, query string) (map[string]any, error) {
 	src, err := e.GetSource(dramaID)
 	if err != nil {
@@ -194,6 +207,7 @@ func (e *Engine) ReadSource(dramaID string, offset, length, sliceIndex int, quer
 }
 
 // putSourceText 把原文写到 sources/<id>.txt。有内容寻址时再放入并返回哈希，没有时返回空哈希。
+// text 写成 txt 字节；CAS 非 nil 时再传给 CAS.PutRaw。
 func (e *Engine) putSourceText(id, text string) (string, error) {
 	dir := filepath.Join(e.Dir, "sources")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -209,6 +223,7 @@ func (e *Engine) putSourceText(id, text string) (string, error) {
 }
 
 // buildSlices 按 1800 字开窗、200 字重叠切开，并带上章节标题和 180 字预览。
+// text 转成 rune，长度为 0 时返回 nil，否则按 sliceWindow 和 sliceOverlap 切。
 func buildSlices(text string) []SourceSlice {
 	runes := []rune(text)
 	n := len(runes)
@@ -241,6 +256,8 @@ func buildSlices(text string) []SourceSlice {
 }
 
 // headingAt 在起点之后 80 字的第一行匹配章节标题时返回该行。
+// runes 从 start 起到 start 加 80 与长度的较小值，取第一行。
+// start 小于 0 或大于等于 len(runes) 时返回空串。
 func headingAt(runes []rune, start int) string {
 	if start < 0 || start >= len(runes) {
 		return ""
@@ -257,6 +274,7 @@ func headingAt(runes []rune, start int) string {
 }
 
 // CandidateSeams 收集 0、文末、章节标题、空行，以及每隔 1600 字的位置。正则吃到的行首换行会再记下一字。
+// text 转成 rune，并传给 chapterRe.FindAllStringIndex，匹配处还用来判断是不是换行。
 func CandidateSeams(text string) []int {
 	runes := []rune(text)
 	n := len(runes)
@@ -298,6 +316,7 @@ func CandidateSeams(text string) []int {
 }
 
 // chapterStarts 返回去重并排序后的章节起点。行首换行不计入起点。
+// text 传给 chapterRe.FindAllStringIndex，匹配下标再交给 utf8.RuneCountInString。
 func chapterStarts(text string) []int {
 	var out []int
 	seen := map[int]bool{}
@@ -317,6 +336,8 @@ func chapterStarts(text string) []int {
 }
 
 // snapToSeam 返回离目标最近的接缝。接缝为空时返回原位置。
+// seams 长度为 0 时返回 pos，否则逐项与 pos 比距离。
+// pos 与每条接缝做差并取绝对值，用来选最近的一条。
 func snapToSeam(seams []int, pos int) int {
 	if len(seams) == 0 {
 		return pos
@@ -332,6 +353,9 @@ func snapToSeam(seams []int, pos int) int {
 }
 
 // runeSlice 按字符下标截取，越界时夹到文本两端。
+// text 转成 rune 后按 start 和 end 截取。
+// start 小于 0 时写成 0，夹完后大于等于 end 时返回空串。
+// end 大于 rune 长度时写成该长度。
 func runeSlice(text string, start, end int) string {
 	runes := []rune(text)
 	n := len(runes)
@@ -348,6 +372,7 @@ func runeSlice(text string, start, end int) string {
 }
 
 // filmTarget 按每分钟 500 字再除以 6 估算成片秒数。不足 400 字时返回 30。400 字及以上夹在 45 到 90 秒。空文本返回 45。
+// sourceRunes 小于 1 时返回 minFilmSeconds；否则用 sourceRunes*60/(CharsPerMinute*6)，小于 400 时改为 30，大于等于 400 且结果小于 minFilmSeconds 时改为 minFilmSeconds，大于 maxFilmSeconds 时改为 maxFilmSeconds。
 func filmTarget(sourceRunes int) int {
 	if sourceRunes < 1 {
 		return minFilmSeconds
@@ -366,6 +391,8 @@ func filmTarget(sourceRunes int) int {
 }
 
 // minInt 返回两个整数里较小的一个。
+// a 小于 b 时返回。
+// b 在 a 不小于它时返回。
 func minInt(a, b int) int {
 	if a < b {
 		return a
@@ -374,6 +401,7 @@ func minInt(a, b int) int {
 }
 
 // maxInt 返回两个整数里较大的一个。
+// b 在 a 大于它时不返回，否则返回。
 func maxInt(a, b int) int {
 	if a > b {
 		return a
@@ -390,6 +418,7 @@ func absInt(n int) int {
 }
 
 // looksBinary 查看前 800 字节，空字节超过二十分之一时当成二进制。
+// b 只统计前 800 字节里值为 0 的个数，大于这段长度除以 20 时返回真。
 func looksBinary(b []byte) bool {
 	n := len(b)
 	if n > 800 {
@@ -405,6 +434,7 @@ func looksBinary(b []byte) bool {
 }
 
 // queryOfficeText 调用 office.Query 抽出办公文档里的文本。
+// path 传给 office.Query。
 func queryOfficeText(path string) (string, error) {
 	return office.Query(path)
 }

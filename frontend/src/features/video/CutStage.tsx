@@ -12,12 +12,12 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { cutClips, cutCues, useCutDesk, useCutReadiness, type CutClip, type CutProject } from "./cut-desk";
 import { playbackSrc } from "./playback-src";
 
-/** 把秒数收成一位小数的字符串。 */
+/** 把秒数收成一位小数的字符串。n 收成秒并保留一位小数，空的当 0。 */
 function span(n?: number) {
   return Number(n || 0).toFixed(1);
 }
 
-/** 不足 60 秒显示秒，否则显示分和秒。无效时长返回空。 */
+/** 不足 60 秒显示秒，否则显示分和秒。无效时长返回空。n 转成秒，无效就返回空。 */
 function formatDuration(n: number | undefined) {
   const s = Number(n || 0);
   if (!(s > 0) || !Number.isFinite(s)) return "";
@@ -27,13 +27,13 @@ function formatDuration(n: number | undefined) {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
-/** CutStage 先出预览。没有保留片段时找 3 段、每段 15-30 秒；有了才做出片。 */
+/** CutStage 先出预览。没有保留片段时找 3 段、每段 15-30 秒；有了才做出片。props 的 onLeave 在点返回时调用。 */
 export function CutStage(props: { onLeave?: () => void }) {
   const copy = useCopy();
   const c = copy.video.conductor;
-  const project = useCutDesk((s) => s.project);
-  const sessionId = useCutDesk((s) => s.sessionId);
-  const setProject = useCutDesk((s) => s.setProject);
+  const project = useCutDesk(/** s 取出 project。 */ (s) => s.project);
+  const sessionId = useCutDesk(/** s 取出 sessionId。 */ (s) => s.sessionId);
+  const setProject = useCutDesk(/** s 取出 setProject。 */ (s) => s.setProject);
   const ready = useCutReadiness();
   const [busy, setBusy] = useState("");
   const [dubText, setDubText] = useState("");
@@ -60,7 +60,7 @@ export function CutStage(props: { onLeave?: () => void }) {
     setArmed(false);
   }, [preview]);
 
-  /** 跑一次剪辑请求，返回了工程就写回桌子。 */
+  /** 跑一次剪辑请求，返回了工程就写回桌子。label 写成忙碌标记。fn 执行，返回带 id 的工程就写回桌子。 */
   async function run(label: string, fn: () => Promise<CutProject | void>) {
     if (!project?.id) return;
     setBusy(label);
@@ -78,7 +78,7 @@ export function CutStage(props: { onLeave?: () => void }) {
   const id = project.id;
   const clips = cutClips(project);
   const cues = cutCues(project);
-  const kept = new Set((project.edit_list?.cuts || []).map((clip) => clip.id).filter(Boolean) as string[]);
+  const kept = new Set((project.edit_list?.cuts || []).map(/** clip 取出 id。 */ (clip) => clip.id).filter(Boolean) as string[]);
   const ffmpegReason = ready.loaded && !ready.ffmpeg ? c.needFfmpeg : "";
   const speechReason = ready.loaded && !ready.speech ? c.needSpeech : "";
   const whisperReason = ready.loaded && !ready.whisper ? c.needWhisper : "";
@@ -86,14 +86,14 @@ export function CutStage(props: { onLeave?: () => void }) {
   const lengthLabel = formatDuration(length);
   const status = project.result_hash ? c.statusFilm : clips.length ? c.statusCut : c.statusIn;
 
-  /** 从视频元素记下有限且大于 0 的时长。 */
+  /** 从视频元素记下有限且大于 0 的时长。node 的 duration 有限且大于 0 时记下，并标成画面已就绪。 */
   function noteDuration(node: HTMLVideoElement) {
     const d = node.duration;
     if (Number.isFinite(d) && d > 0) setMediaDuration(d);
     setPictureReady(true);
   }
 
-  /** 勾上或取消这个片段的保留。 */
+  /** 勾上或取消这个片段的保留。clip 没有 id 就返回，否则在保留集合里加上或去掉。 */
   function toggleClip(clip: CutClip) {
     if (!clip.id) return;
     const next = new Set(kept);
@@ -130,8 +130,8 @@ export function CutStage(props: { onLeave?: () => void }) {
               playsInline
               autoPlay
               preload="none"
-              onLoadedMetadata={(ev) => noteDuration(ev.currentTarget)}
-              onDurationChange={(ev) => noteDuration(ev.currentTarget)}
+              onLoadedMetadata={/** ev 的 currentTarget 交给 noteDuration。 */ (ev) => noteDuration(ev.currentTarget)}
+              onDurationChange={/** ev 的 currentTarget 交给 noteDuration。 */ (ev) => noteDuration(ev.currentTarget)}
               onPlaying={() => setPictureReady(true)}
               onError={() => setPreviewError(true)}
             />
@@ -160,7 +160,7 @@ export function CutStage(props: { onLeave?: () => void }) {
       {project.stale ? <p className="cut-warn">{c.stale}</p> : null}
       {clips.length ? (
         <ul className="cut-list">
-          {clips.map((clip, i) => (
+          {clips.map(/** clip 画勾选和起止。i 在没有标题时当序号。 */ (clip, i) => (
             <li key={clip.id || i}>
               <label>
                 <input
@@ -191,7 +191,7 @@ export function CutStage(props: { onLeave?: () => void }) {
         </div>
         {cues.length === 0 ? <p className="cut-block-hint">{c.noCues}</p> : (
           <ul className="cut-cues">
-            {cues.map((cue, i) => (
+            {cues.map(/** cue 显示 text 和是否略过。i 交给 cutOmit。 */ (cue, i) => (
               <li key={`${cue.start}-${i}`} data-omit={cue.omit ? "true" : "false"}>
                 <button
                   type="button"
@@ -209,7 +209,7 @@ export function CutStage(props: { onLeave?: () => void }) {
           className="cut-text"
           value={dubText}
           placeholder={c.dubText}
-          onChange={(e) => setDubText(e.target.value)}
+          onChange={/** e 取出 target.value 写进配音文本。 */ (e) => setDubText(e.target.value)}
         />
         <div className="cut-actions">
           <Button size="sm" variant="ghost" disabled={!!busy || !!speechReason || !dubText.trim()} title={speechReason} onClick={() => void run("dub", async () => {

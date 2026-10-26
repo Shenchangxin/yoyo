@@ -19,6 +19,9 @@ func PlanFilePath(workspace, sessionID string) string {
 }
 
 // WritePlanFile 创建目录并把去掉首尾空白的正文加换行写进计划文件。路径为空或写入失败时直接返回。
+// workspace 交给 PlanFilePath。
+// sessionID 交给 PlanFilePath。
+// text 去掉首尾空白后加一个换行写入该路径。
 func WritePlanFile(workspace, sessionID, text string) {
 	path := PlanFilePath(workspace, sessionID)
 	if path == "" {
@@ -29,6 +32,8 @@ func WritePlanFile(workspace, sessionID, text string) {
 }
 
 // LoadPlanFile 读出计划并去掉首尾空白。路径为空或读失败时返回空串。
+// workspace 交给 PlanFilePath。
+// sessionID 交给 PlanFilePath。
 func LoadPlanFile(workspace, sessionID string) string {
 	path := PlanFilePath(workspace, sessionID)
 	if path == "" {

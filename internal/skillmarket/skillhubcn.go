@@ -14,6 +14,8 @@ import (
 var SkillHubCNBase = "https://api.skillhub.cn"
 
 // listSkillHubCN 从第 1 页起拉，后续页最多再要 39 页，并发数是 4。无查询时前 8 条标成 Featured。total 大于实际条数时 Truncated 为真。
+// query 先交给 catalogLimit，并传给 fetchSkillHubCNPage；为空串时把前 8 条标成 Featured。
+// limit 先交给 catalogLimit；收集条数达到它就停。
 func listSkillHubCN(query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	pageSize := hubPageSize
@@ -103,6 +105,7 @@ type skillHubCNList struct {
 }
 
 // fetchSkillHubCNPage 请求 /api/skills。page 小于 1 时按 1。pageSize 非法时用 100。有关键词时 sortBy=score，否则按 downloads 降序。code 不是 0 时返回 "skillhub.cn: " 加 message。
+// query 去掉两端空白后非空时写入 keyword，并把 sortBy 改成 score。
 func fetchSkillHubCNPage(query string, page, pageSize int) ([]skillHubCNRow, int, error) {
 	if page < 1 {
 		page = 1
@@ -151,6 +154,7 @@ type skillHubCNRow struct {
 }
 
 // itemFromSkillHubCN 优先用中文描述。slug 净化失败返回 false。分类空时用 "SkillHub 中国"。
+// row 的 Slug 或 namespace 的 PublicSlug 交给 SanitizeSlug，都空则返回 false；描述优先用 DescriptionZh，再交给 clip，第二个实参是 240。
 func itemFromSkillHubCN(row skillHubCNRow) (Item, bool) {
 	slug := SanitizeSlug(row.Slug)
 	if slug == "" {
@@ -197,6 +201,7 @@ func itemFromSkillHubCN(row skillHubCNRow) (Item, bool) {
 }
 
 // fetchSkillHubCN 用 slug 调 /api/v1/skills/<slug>。keen 状态为 malicious、virus 或 trojan 时拒绝。再按版本列出文件并下载。没有 SKILL.md 返回 "pack missing SKILL.md"。
+// remote 交给 InstallSlug，空则返回错误，否则经 PathEscape 放进 /api/v1/skills/。
 func fetchSkillHubCN(remote string) (PackResult, error) {
 	slug := InstallSlug(remote)
 	if slug == "" {

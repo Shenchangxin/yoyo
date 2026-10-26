@@ -22,7 +22,10 @@ import { formatPageWhen, pageMeasure } from "./when";
 /** SaveState 是已存、正在存、已改、冲突或出错。 */
 export type SaveState = "saved" | "saving" | "dirty" | "conflict" | "error";
 
-/** PageEditor 编辑标题和正文，保存与删除交给外面。 */
+/**
+ * PageEditor 编辑标题和正文，保存与删除交给外面。
+ * props 读取 title、content、onSave、state、updatedAt、bound 等，调用 onContent，调用 onSave，调用 onNewChild，调用 onMoveTop，调用 onReload，调用 onDelete，调用 onTitle。
+ */
 export function PageEditor(props: {
   title: string;
   content: string;
@@ -53,7 +56,7 @@ export function PageEditor(props: {
     ],
     content: mdToHtml(props.content),
     editorProps: { attributes: { class: "page-editor min-h-[52vh] w-full max-w-3xl px-1 py-1 text-[16px] leading-7 focus:outline-none" } },
-    /** 不是内部回写时，把 HTML 收成 Markdown 交给外面。 */
+    /** 不是内部回写时，把 HTML 收成 Markdown 交给外面。ed 调用 getHTML。 */
     onUpdate: ({ editor: ed }) => {
       if (skip.current) return;
       props.onContent(htmlToMd(ed.getHTML()));
@@ -72,7 +75,7 @@ export function PageEditor(props: {
   }, [editor]);
 
   useEffect(() => {
-    /** 用保存快捷键触发外面的保存。 */
+    /** 用保存快捷键触发外面的保存。e 读取 metaKey、ctrlKey、key，调用 preventDefault。 */
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
@@ -85,7 +88,7 @@ export function PageEditor(props: {
 
   useEffect(() => {
     const dirty = props.state === "dirty" || props.state === "saving";
-    /** 还有未保存的改动时，离开前提醒。 */
+    /** 还有未保存的改动时，离开前提醒。e 读取 returnValue，调用 preventDefault。 */
     const leave = (e: BeforeUnloadEvent) => {
       if (!dirty) return;
       e.preventDefault();
@@ -201,7 +204,7 @@ export function PageEditor(props: {
   );
 }
 
-/** 画一个带提示的格式按钮。 */
+/** 画一个带提示的格式按钮。props 读取 label、active、children，调用 onClick。 */
 function MarkBtn(props: {
   editor: Editor | null;
   label: string;

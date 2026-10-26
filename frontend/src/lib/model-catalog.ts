@@ -20,7 +20,7 @@ export const useModelCatalog = create<ModelCatalogState>((set, get) => ({
   catalog: MODELS_DEV_SNAPSHOT,
   loading: false,
   error: "",
-  /** 正在加载且不是强制刷新时跳过。成功则用水合结果替换目录。失败时留下错误文案，目录保持原样。 */
+  /** 正在加载且不是强制刷新时跳过。成功则用水合结果替换目录。失败时留下错误文案，目录保持原样。refresh 为假时走另一支，传给 modelsCatalog。 */
   load: async (refresh = false) => {
     if (get().loading && !refresh) return;
     set({ loading: true, error: "" });

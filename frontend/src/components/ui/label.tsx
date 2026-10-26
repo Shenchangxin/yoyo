@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 import * as LabelPrimitive from "@radix-ui/react-label";
 import { cn } from "../../lib/utils";
 
-// Label 转发 Radix 标签，并加上小号弱色。
+/** Label 转发 Radix 标签，并加上小号弱色。className 传给 cn。props 展开到 LabelPrimitive.Root。 */
 export function Label({ className, ...props }: ComponentProps<typeof LabelPrimitive.Root>) {
   return (
     <LabelPrimitive.Root

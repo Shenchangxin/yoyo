@@ -103,12 +103,12 @@ const VENDOR_LABEL: Record<string, string> = {
   metaso: "Metaso",
 };
 
-/** 这种服务要不要填模型列表。 */
+/** 这种服务要不要填模型列表。kind 是 image、video、tts、music、matting 或 asr 时返回真。 */
 function usesModels(kind: Kind): boolean {
   return kind === "image" || kind === "video" || kind === "tts" || kind === "music" || kind === "matting" || kind === "asr";
 }
 
-/** 把服务种类收成面板用的名字。 */
+/** 把服务种类收成面板用的名字。p 读取 service_type、serviceType，用 typeof 看类型，作为分支结果。 */
 function serviceKind(p: { service_type?: string; serviceType?: string } | string): string {
   const raw = typeof p === "string" ? p : String(p.service_type || p.serviceType || "");
   const s = raw.toLowerCase().trim();
@@ -121,7 +121,7 @@ function serviceKind(p: { service_type?: string; serviceType?: string } | string
   return s;
 }
 
-/** 把设置字符串收成对象，失败就当空。 */
+/** 把设置字符串收成对象，失败就当空。raw 为假时走另一支，传给 JSON.parse。 */
 function parseSettings(raw?: string): Record<string, any> {
   if (!raw) return {};
   try {
@@ -132,7 +132,7 @@ function parseSettings(raw?: string): Record<string, any> {
   }
 }
 
-/** 把草稿里的存储字段收成要保存的字符串。 */
+/** 把草稿里的存储字段收成要保存的字符串。d 读取 bucket、region、cdn_base_url、service_type、path_style。 */
 function settingsJSON(d: Draft): string {
   const st: Record<string, unknown> = {};
   if (d.bucket) st.bucket = d.bucket;
@@ -142,7 +142,7 @@ function settingsJSON(d: Draft): string {
   return JSON.stringify(st);
 }
 
-/** 把模型字符串收成列表。 */
+/** 把模型字符串收成列表。raw 为假时用空字符串，去掉首尾空白后，按 , 切开，看开头，做映射，为假时走另一支，传给 JSON.parse。 */
 function parseModels(raw: string): string[] {
   const s = (raw || "").trim();
   if (!s) return [];
@@ -157,7 +157,7 @@ function parseModels(raw: string): string[] {
   return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
-/** 取出地址里的主机。 */
+/** 取出地址里的主机。url 为假时用空字符串，去掉首尾空白后，看是否包含，做替换，为假时走另一支，作为分支结果，作为后备值，拼进字符串。 */
 function hostOf(url: string): string {
   const raw = (url || "").trim();
   if (!raw) return "";
@@ -168,7 +168,7 @@ function hostOf(url: string): string {
   }
 }
 
-/** 取出主机，路径不是根时再带上路径。 */
+/** 取出主机，路径不是根时再带上路径。url 为假时用空字符串，去掉首尾空白后，看是否包含，为假时走另一支，作为分支结果，拼进字符串，传给 hostOf。 */
 function hostPath(url: string): string {
   const raw = (url || "").trim();
   if (!raw) return "";
@@ -181,12 +181,12 @@ function hostPath(url: string): string {
   }
 }
 
-/** 给一条模板一个稳定的键。 */
+/** 给一条模板一个稳定的键。t 读取 provider、service_type、name、base_url、model。 */
 function templateKey(t: MediaProvider): string {
   return [t.provider, t.service_type, t.name, t.base_url, t.model].join(":");
 }
 
-/** 按服务种类取出地址提示。 */
+/** 按服务种类取出地址提示。kind 与 music、matting、stock、asr 比较是否相等。v 读取 musicUrlHint、mattingUrlHint、stockUrlHint、asrUrlHint、adapterUrlHint。 */
 function adapterUrlHint(kind: Kind, v: ReturnType<typeof useCopy>["video"]): string | undefined {
   if (kind === "music") return v.musicUrlHint;
   if (kind === "matting") return v.mattingUrlHint;
@@ -195,12 +195,12 @@ function adapterUrlHint(kind: Kind, v: ReturnType<typeof useCopy>["video"]): str
   return v.adapterUrlHint;
 }
 
-/** 把厂商编号换成显示名，没有就留编号。 */
+/** 把厂商编号换成显示名，没有就留编号。id 用作下标，作为后备值。 */
 function vendorLabel(id: string): string {
   return VENDOR_LABEL[id] || id || "Custom";
 }
 
-/** 造一份这种服务的空草稿。 */
+/** 造一份这种服务的空草稿。kind 写入字段 service_type。 */
 function emptyDraft(kind: Kind): Draft {
   return {
     service_type: kind,
@@ -215,7 +215,7 @@ function emptyDraft(kind: Kind): Draft {
   };
 }
 
-/** 把已保存的服务商收成草稿。 */
+/** 把已保存的服务商收成草稿。p 读取 settings、id、service_type、provider、name、base_url 等。 */
 function fromRow(p: MediaProvider): Draft {
   const st = parseSettings(p.settings);
   return {
@@ -237,7 +237,7 @@ function fromRow(p: MediaProvider): Draft {
   };
 }
 
-/** 把一条模板收成草稿。 */
+/** 把一条模板收成草稿。kind 传给 emptyDraft。t 读取 settings、provider、name、base_url、model、models。 */
 function fromTemplate(kind: Kind, t: MediaProvider): Draft {
   const st = parseSettings(t.settings);
   return {
@@ -254,7 +254,7 @@ function fromTemplate(kind: Kind, t: MediaProvider): Draft {
   };
 }
 
-/** 画一带说明的字段。 */
+/** 画一带说明的字段。label 用作标签，作为子节点渲染。hint 为真时才继续，作为子节点渲染。children 作为子节点渲染。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="flex w-full flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
@@ -267,7 +267,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-/** 画成功、进行或失败的状态。 */
+/** 画成功、进行或失败的状态。ok 为真时才继续。busy 为真时才继续。label 作为子节点渲染。 */
 function StatusPill({ ok, busy, label }: { ok: boolean; busy?: boolean; label: string }) {
   return (
     <span
@@ -282,12 +282,12 @@ function StatusPill({ ok, busy, label }: { ok: boolean; busy?: boolean; label: s
   );
 }
 
-/** 安装还在解析、下载、解压或校验时为真。 */
+/** 安装还在解析、下载、解压或校验时为真。phase 是 resolving、downloading、extracting 或 verifying 时返回真。 */
 function ffmpegBusy(phase?: string) {
   return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
 }
 
-/** 安装还在准备、安装或校验时为真。 */
+/** 安装还在准备、安装或校验时为真。phase 是 preparing、installing 或 verifying 时返回真。 */
 function remotionBusyPhase(phase?: string) {
   return phase === "preparing" || phase === "installing" || phase === "verifying";
 }
@@ -332,7 +332,7 @@ export function GenerationSettings() {
     setTick((n) => n + 1);
   }
 
-  /** 把本机工具的状态写进界面。 */
+  /** 把本机工具的状态写进界面。s 读取 ffmpeg、ffmpeg_install、whisper、ytdlp、stamp、region 等，为空时不读。 */
   function applyFFmpegStatus(s: any) {
     setFfmpeg(!!s?.ffmpeg);
     setFfmpegInstall(s?.ffmpeg_install && typeof s.ffmpeg_install === "object" ? s.ffmpeg_install : {});
@@ -398,7 +398,7 @@ export function GenerationSettings() {
 
   const langChoice = lang === "zh" || lang === "zh-CN" ? "zh" : lang === "en" || lang === "en-US" ? "en" : "other";
 
-  /** 保存内容语言。 */
+  /** 保存内容语言。next 传给 setLang，传给 api.video.setSetting。 */
   async function setLanguage(next: string) {
     setLang(next);
     try {
@@ -408,7 +408,7 @@ export function GenerationSettings() {
     }
   }
 
-  /** 保存一项工作室设置。 */
+  /** 保存一项工作室设置。key 传给 api.video.setSetting。value 传给 api.video.setSetting。 */
   async function patchStudioSetting(key: string, value: string) {
     try {
       await api.video.setSetting(key, value);
@@ -721,7 +721,7 @@ export function GenerationSettings() {
   );
 }
 
-/** 编辑某一种服务的适配器列表。 */
+/** 编辑某一种服务的适配器列表。props 读取 copy、rows、kind、templates、id、title 等，调用 onChanged。 */
 function AdapterSection(props: {
   id: string;
   title: string;
@@ -748,7 +748,7 @@ function AdapterSection(props: {
   const [busy, setBusy] = useState("");
   const [pending, setPending] = useState<MediaProvider | null>(null);
 
-  /** 保存一条服务商。 */
+  /** 保存一条服务商。d 读取 models、id、service_type、provider、name、base_url 等，传给 settingsJSON。 */
   async function save(d: Draft) {
     setBusy("save");
     try {
@@ -779,7 +779,7 @@ function AdapterSection(props: {
     }
   }
 
-  /** 改一条服务商的启用、默认或模型。 */
+  /** 改一条服务商的启用、默认或模型。p 读取 model、models、id、service_type、provider、name 等。extra 读取 model、is_default、is_active。 */
   async function patchRow(p: MediaProvider, extra: { is_active?: boolean; is_default?: boolean; model?: string }) {
     try {
       const model = extra.model ?? p.model;
@@ -806,7 +806,7 @@ function AdapterSection(props: {
     }
   }
 
-  /** 探测一条服务商。 */
+  /** 探测一条服务商。id 加上 test:，传给 api.video.testProvider。 */
   async function test(id: string) {
     setBusy("test:" + id);
     try {
@@ -990,7 +990,15 @@ function AdapterSection(props: {
   );
 }
 
-/** 画一行可选的适配器。 */
+/**
+ * 画一行可选的适配器。
+ * mark 写到 ProviderMark 的 id。
+ * title 作为子节点渲染。
+ * subtitle 为真时才继续，作为子节点渲染。
+ * onClick 写到 button 的 onClick。
+ * testId 写到 button 的 data-testid。
+ * trailing 为真时才继续，作为子节点渲染。
+ */
 function AdapterPickRow({
   mark,
   title,
@@ -1025,7 +1033,16 @@ function AdapterPickRow({
   );
 }
 
-/** 画适配器的表单和保存。 */
+/**
+ * 画适配器的表单和保存。
+ * draft 读取 models、name、provider、base_url、service_type、model 等，展开传递。
+ * setDraft 被调用，并传入 { ...draft, ...p }。
+ * copy 读取 video、settings。
+ * busy 为假时走另一支。
+ * onSave 写到 Button 的 onClick。
+ * onTest 为真时才继续，写到 Button 的 onClick。
+ * onDelete 为真时才继续，写到 Button 的 onClick。
+ */
 function AdapterForm({
   draft,
   setDraft,
@@ -1046,7 +1063,7 @@ function AdapterForm({
   const v = copy.video;
   const models = parseModels(draft.models);
   /** 把局部字段写回当前草稿。 */
-  /** patch 把局部字段写进当前草稿。 */
+  /** patch 把局部字段写进当前草稿。p 展开传递。 */
   const patch = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
   const canSave = !!draft.name.trim() && (draft.provider === "cas" || !!draft.base_url.trim());
   return (
@@ -1133,12 +1150,12 @@ function AdapterForm({
   );
 }
 
-/** 取出响应里的 data，没有就用响应本身。 */
+/** 取出响应里的 data，没有就用响应本身。env 读取 data，为空时不读，作为后备值。 */
 function envelopeData(env: any) {
   return env?.data ?? env ?? {};
 }
 
-/** 编辑画布通道。 */
+/** 编辑画布通道。props 读取 copy。 */
 function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
   const copy = props.copy;
   const [channels, setChannels] = useState<any[]>([]);
@@ -1198,7 +1215,7 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
     }
   }
 
-  /** 探测一条画布通道。 */
+  /** 探测一条画布通道。id 拼进字符串。 */
   async function test(id: string) {
     try {
       await api.video.canvasHttp("POST", `channels/${id}/test`);

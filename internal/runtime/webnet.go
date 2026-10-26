@@ -30,6 +30,7 @@ var (
 )
 
 // webSearch 去掉空白后检索。空查询返回错误。查询本身是 http(s) 地址时改走 webFetch。先过 Network 审批。SearchAPI 有可用结果就返回；否则依次试 Jina 和 DuckDuckGo，最后抓 html.duckduckgo.com。
+// query 先去掉空白，空串返回错误；看起来是 http(s) 地址时交给 webFetch，否则作为检索词传给 SearchAPI、SearchJina 和 SearchDuckDuckGo。
 func (t *WorkspaceTools) webSearch(query string) ToolResult {
 	query = strings.TrimSpace(query)
 	if query == "" {

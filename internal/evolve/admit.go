@@ -19,6 +19,9 @@ type Candidate struct {
 }
 
 // ApplyProposal 克隆父快照，把 Parent 和 Note 设成父哈希与审计说明，再写入唯一的 L1 载荷。载荷多于一种时 applyOne 返回错误。
+// cas 交给 applyOne，成功后 PutSnapshot。
+// base 交给 CloneSnapshot，作为 next 的起点。
+// parent 写入 next.Parent。
 func ApplyProposal(cas *artifact.Store, base artifact.HarnessSnapshot, parent string, p Proposal) (artifact.HarnessSnapshot, string, error) {
 	next := artifact.CloneSnapshot(base)
 	next.Parent = parent
@@ -31,6 +34,10 @@ func ApplyProposal(cas *artifact.Store, base artifact.HarnessSnapshot, parent st
 }
 
 // MergeProposals 把每条提议的 L1 载荷写到同一份父快照上。同一 surfaceKey 只保留先出现的那条。空列表返回 nothing to merge。Note 写成 merge-accepted。
+// cas 交给 applyOne，全部成功后 PutSnapshot。
+// base 交给 CloneSnapshot。
+// parent 写入 next.Parent。
+// props 长度为 0 时返回 nothing to merge；否则按出现顺序，同一 surfaceKey 只把先出现的那条交给 applyOne。
 func MergeProposals(cas *artifact.Store, base artifact.HarnessSnapshot, parent string, props []Proposal) (artifact.HarnessSnapshot, string, error) {
 	next := artifact.CloneSnapshot(base)
 	next.Parent = parent
@@ -54,6 +61,8 @@ func MergeProposals(cas *artifact.Store, base artifact.HarnessSnapshot, parent s
 }
 
 // applyOne 要求提议恰好一种 L1 载荷，并按片段、剧本、技能、指令槽或中间件写入。中间件的 MiddlewareN 小于等于 0 时用 2。指令槽空时用 verification。
+// cas 用来 Put 片段、剧本、技能或循环预设；Playbook 或 LoopPreset 的哈希非空时也用它 Decode。
+// next 的 PromptFragments、Playbook、Skills 或 LoopPreset 会被改成新写入的哈希。
 func applyOne(cas *artifact.Store, next *artifact.HarnessSnapshot, p Proposal) error {
 	if payloadCount(p) > 1 {
 		return fmt.Errorf("multiple L1 surfaces")
@@ -128,6 +137,9 @@ func applyOne(cas *artifact.Store, next *artifact.HarnessSnapshot, p Proposal) e
 }
 
 // AdmitWASM 把一段 WASM 作为插件纤维装上，卸载时调用 host.Unload。export 传给 Load，燃料参数为 0。
+// ctx 用来 Plugin，纤维名是 wasm: 加上 id。
+// id 拼进纤维名，并交给 host.Load 和卸载时的 host.Unload。
+// bin 交给 host.Load。
 func AdmitWASM(ctx *kernel.Context, host *wasm.Host, id string, bin []byte, export string) (*kernel.Fiber, error) {
 	return ctx.Plugin("wasm:"+id, func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {

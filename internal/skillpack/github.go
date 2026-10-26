@@ -107,11 +107,15 @@ func fetchGitHub(repo, ref, skillsRel string) ([]PackFile, string, error) {
 }
 
 // rawGitHubURL 拼出 raw.githubusercontent.com 上的文件地址。
+// repo 接在 raw.githubusercontent.com/ 后面。
+// ref 接在 repo 后面。
+// path 去掉开头的斜杠后接在最后。
 func rawGitHubURL(repo, ref, path string) string {
 	return "https://raw.githubusercontent.com/" + repo + "/" + ref + "/" + strings.TrimPrefix(path, "/")
 }
 
 // defaultGet 用 45 秒超时 GET。User-Agent 是 Yoyo-Workstation。YOYO_GITHUB_TOKEN 或 GITHUB_TOKEN 非空时带 Bearer。api.github.com 再加 Accept application/vnd.github+json 和 X-GitHub-Api-Version 2022-11-28。状态码大于等于 300 返回 "pack fetch: " 加状态。正文最多读到 16 MiB 再多 1 字节。
+// rawURL 作为 GET 地址；含 api.github.com 时加上 GitHub 的 Accept 和 X-GitHub-Api-Version。
 func defaultGet(rawURL string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -148,6 +152,7 @@ func githubAuthToken() string {
 }
 
 // packHasSkillMD 在任一文件的基名是 skill.md（不区分大小写）时返回 true。
+// files 里某个 Rel 的最后一段等于 skill.md（不区分大小写）时返回 true。
 func packHasSkillMD(files []PackFile) bool {
 	for _, f := range files {
 		if strings.EqualFold(pathBase(f.Rel), "skill.md") {
@@ -158,6 +163,7 @@ func packHasSkillMD(files []PackFile) bool {
 }
 
 // pathBase 返回相对路径的最后一段。
+// rel 把反斜杠换成斜杠后取最后一段。
 func pathBase(rel string) string {
 	rel = strings.ReplaceAll(rel, "\\", "/")
 	if i := strings.LastIndex(rel, "/"); i >= 0 {

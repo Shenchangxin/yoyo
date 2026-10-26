@@ -36,6 +36,8 @@ func (a *App) PersonalSnapshot() map[string]any {
 }
 
 // PersonalAnswer 把文本交给个人引擎的 Answer。
+// id 传给 Personal.Answer。
+// text 传给 Personal.Answer。
 func (a *App) PersonalAnswer(id, text string) (personal.Task, error) {
 	if a.Personal == nil {
 		return personal.Task{}, fmt.Errorf("no personal engine")
@@ -44,6 +46,7 @@ func (a *App) PersonalAnswer(id, text string) (personal.Task, error) {
 }
 
 // PersonalDecide 按 hash 批准或拒绝一条提案。
+// approve 传给 Personal.Decide。
 func (a *App) PersonalDecide(id, hash string, approve bool) (personal.Proposal, error) {
 	if a.Personal == nil {
 		return personal.Proposal{}, fmt.Errorf("no personal engine")
@@ -52,6 +55,7 @@ func (a *App) PersonalDecide(id, hash string, approve bool) (personal.Proposal, 
 }
 
 // PersonalIdea 按 action 处理一条想法。
+// id 传给 Personal.DecideIdea。
 func (a *App) PersonalIdea(id, action string) (personal.Idea, error) {
 	if a.Personal == nil {
 		return personal.Idea{}, fmt.Errorf("no personal engine")
@@ -60,6 +64,9 @@ func (a *App) PersonalIdea(id, action string) (personal.Idea, error) {
 }
 
 // PersonalGoal 用标题、描述和里程碑创建目标。
+// title 传给 Personal.CreateGoal。
+// description 传给 Personal.CreateGoal。
+// milestones 传给 Personal.CreateGoal。
 func (a *App) PersonalGoal(title, description string, milestones []string) (personal.Goal, error) {
 	if a.Personal == nil {
 		return personal.Goal{}, fmt.Errorf("no personal engine")
@@ -68,6 +75,11 @@ func (a *App) PersonalGoal(title, description string, milestones []string) (pers
 }
 
 // PersonalWatch 创建监视，并返回 monitor 和 task。
+// title 传给 Personal.Watch。
+// url 传给 Personal.Watch。
+// condition 传给 Personal.Watch。
+// value 传给 Personal.Watch。
+// interval 传给 Personal.Watch。
 func (a *App) PersonalWatch(title, url, condition, value string, interval int) (map[string]any, error) {
 	if a.Personal == nil {
 		return nil, fmt.Errorf("no personal engine")
@@ -80,6 +92,7 @@ func (a *App) PersonalWatch(title, url, condition, value string, interval int) (
 }
 
 // PersonalCancel 取消一条个人任务。
+// id 传给 Personal.Cancel。
 func (a *App) PersonalCancel(id string) (personal.Task, error) {
 	if a.Personal == nil {
 		return personal.Task{}, fmt.Errorf("no personal engine")
@@ -88,6 +101,7 @@ func (a *App) PersonalCancel(id string) (personal.Task, error) {
 }
 
 // PersonalChoice 为选择记录选定 option。
+// id 传给 Personal.SelectChoice。
 func (a *App) PersonalChoice(id, option string) (personal.Choice, error) {
 	if a.Personal == nil {
 		return personal.Choice{}, fmt.Errorf("no personal engine")
@@ -104,6 +118,7 @@ func (a *App) PersonalRefreshIdeas() error {
 }
 
 // PersonalPause 暂停一条个人任务。
+// id 传给 Personal.Pause。
 func (a *App) PersonalPause(id string) (personal.Task, error) {
 	if a.Personal == nil {
 		return personal.Task{}, fmt.Errorf("no personal engine")
@@ -112,6 +127,7 @@ func (a *App) PersonalPause(id string) (personal.Task, error) {
 }
 
 // PersonalResume 恢复一条个人任务。
+// id 传给 Personal.Resume。
 func (a *App) PersonalResume(id string) (personal.Task, error) {
 	if a.Personal == nil {
 		return personal.Task{}, fmt.Errorf("no personal engine")
@@ -120,6 +136,7 @@ func (a *App) PersonalResume(id string) (personal.Task, error) {
 }
 
 // PersonalRetry 重试一条个人任务。
+// id 传给 Personal.Retry。
 func (a *App) PersonalRetry(id string) (personal.Task, error) {
 	if a.Personal == nil {
 		return personal.Task{}, fmt.Errorf("no personal engine")
@@ -128,6 +145,8 @@ func (a *App) PersonalRetry(id string) (personal.Task, error) {
 }
 
 // PersonalGoalStatus 设置目标状态。
+// id 传给 Personal.SetGoalStatus。
+// status 传给 Personal.SetGoalStatus。
 func (a *App) PersonalGoalStatus(id, status string) (personal.Goal, error) {
 	if a.Personal == nil {
 		return personal.Goal{}, fmt.Errorf("no personal engine")
@@ -136,6 +155,8 @@ func (a *App) PersonalGoalStatus(id, status string) (personal.Goal, error) {
 }
 
 // PersonalMilestone 按 done 切换目标上的一个里程碑。
+// goalID 传给 Personal.ToggleMilestone。
+// milestoneID 传给 Personal.ToggleMilestone。
 func (a *App) PersonalMilestone(goalID, milestoneID string, done bool) (personal.Goal, error) {
 	if a.Personal == nil {
 		return personal.Goal{}, fmt.Errorf("no personal engine")
@@ -144,6 +165,8 @@ func (a *App) PersonalMilestone(goalID, milestoneID string, done bool) (personal
 }
 
 // PersonalMonitorStatus 设置监视状态。
+// id 传给 Personal.SetMonitorStatus。
+// status 传给 Personal.SetMonitorStatus。
 func (a *App) PersonalMonitorStatus(id, status string) (personal.Monitor, error) {
 	if a.Personal == nil {
 		return personal.Monitor{}, fmt.Errorf("no personal engine")

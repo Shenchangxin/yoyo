@@ -68,6 +68,7 @@ type Library struct {
 }
 
 // DomainSlug 取路径最后一段，去掉分隔符和首尾的点、下划线、连字符，再把大写改成小写。空结果用 libraryUnknown。
+// workspace 先去掉两端空白，空则返回 libraryUnknown；否则取 Clean 后的 Base，Base 为空、为 . 或为路径分隔符时也返回 libraryUnknown。librarySlugCut 替换后再去掉首尾的点、下划线和连字符，大写改成小写，结果仍为空则返回 libraryUnknown。
 func DomainSlug(workspace string) string {
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
@@ -99,6 +100,7 @@ func DomainSlug(workspace string) string {
 }
 
 // taskSlug 用 DomainSlug 给题号起目录名。结果是 libraryUnknown 且题号非空时，改用把非字母数字换成下划线的原文。
+// taskID 交给 DomainSlug；结果等于 libraryUnknown 且去掉空白后非空时，改用 librarySlugCut 替换后的这段原文。
 func taskSlug(taskID string) string {
 	s := DomainSlug(taskID)
 	if s == libraryUnknown && strings.TrimSpace(taskID) != "" {
@@ -121,6 +123,7 @@ func (l *Library) IndexPath() string {
 }
 
 // entryDir 返回该题号在 entries 下的目录。
+// taskID 交给 taskSlug，再拼到 Dir 下的 entries 里。
 func (l *Library) entryDir(taskID string) string {
 	return filepath.Join(l.Dir(), "entries", taskSlug(taskID))
 }
@@ -191,6 +194,10 @@ func (l *Library) Context() string {
 }
 
 // Add 写入一条完整经验及其采纳哈希，并重建索引。根为空或题号为空时返回错误。经验含 held 编号、清洗后不完整，或命中 libraryBanned 时返回 false 和 nil，不建文件。
+// taskID 去掉两端空白，空则返回 task id required；否则交给 entryDir。
+// adoptedHash 去掉两端空白后写入该目录的 hash 文件，并交给 renderExperienceMD。
+// why 交给 renderExperienceMD。
+// exp 先交给 experienceHasHeld，再经 SanitizeExperience；HasExperience 为假或 experienceBanned 为真时返回 false，否则写入 EXPERIENCE.md。
 func (l *Library) Add(taskID, adoptedHash, why string, exp Experience, held map[string]bool) (bool, error) {
 	if l == nil || strings.TrimSpace(l.Root) == "" {
 		return false, fmt.Errorf("library: root required")
@@ -263,6 +270,10 @@ func (l *Library) rebuildIndex() error {
 }
 
 // renderExperienceMD 把题号、哈希、选择理由、编辑表和可迁移字段写成 EXPERIENCE.md 正文。
+// taskID 写成一级标题。
+// hash 非空时写成 adopted 行。
+// why 去掉空白后非空时写成 Why this was chosen 一节。
+// exp 的 Edits 去掉空白后非空时写成 What each edit did；Cue、Lesson、Evidence、Confidence 去掉空白后非空的写成 Transferable lesson 列表。
 func renderExperienceMD(taskID, hash, why string, exp Experience) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", taskID)
@@ -296,6 +307,7 @@ func renderExperienceMD(taskID, hash, why string, exp Experience) string {
 }
 
 // experienceField 从 EXPERIENCE.md 里取 `- **name**:` 这一行的余下文本。
+// path 交给 readSmall，再按行查找以 - ** 加 name 加 **: 开头的那一行。
 func experienceField(path, name string) string {
 	for _, line := range strings.Split(readSmall(path), "\n") {
 		pref := "- **" + name + "**:"
@@ -307,6 +319,7 @@ func experienceField(path, name string) string {
 }
 
 // readSmall 读整个文件。读失败时返回空串。
+// path 用 os.ReadFile 读取，失败返回空串。
 func readSmall(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -316,6 +329,7 @@ func readSmall(path string) string {
 }
 
 // SanitizeExperience 用 stripHeld 去掉各字段里的 held 编号并去掉首尾空白。必填字段被清空后，由调用方把它当成不写入。
+// exp 的 Cue、Lesson、Evidence、Confidence、Edits，以及每条 Verdicts 的 Component、Candidates、Change、Observed、Verdict，都经 stripHeld 再去掉首尾空白。
 func SanitizeExperience(exp Experience, held map[string]bool) Experience {
 	exp.Cue = strings.TrimSpace(stripHeld(exp.Cue, held))
 	exp.Lesson = strings.TrimSpace(stripHeld(exp.Lesson, held))
@@ -358,6 +372,10 @@ func experienceBanned(exp Experience) bool {
 }
 
 // WriteL1 把采纳快照展开成条目 harness/ 下的 L1 文件。RenderL1 不含剧本和提示片段。含评分禁用词的正文跳过。库、库对象或哈希为空时返回 nil。
+// cas 为 nil 时返回 nil；否则 GetSnapshot，再和 hash 一起交给 MaterialsFromSnapshot。
+// taskID 交给 entryDir，文件写到其下的 harness。
+// hash 去掉两端空白后为空时返回 nil；否则交给 GetSnapshot。
+// held 交给 stripHeld，作用在 RenderL1 的每段正文上。
 func (l *Library) WriteL1(cas *artifact.Store, taskID, hash string, held map[string]bool) error {
 	if l == nil || cas == nil || strings.TrimSpace(hash) == "" {
 		return nil

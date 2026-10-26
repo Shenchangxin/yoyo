@@ -122,12 +122,14 @@ func Plan(p Project) Project {
 }
 
 // Quote 先重新计划，再返回可能产生花费的步骤。代码画面的花费写成无模型花费。
+// p 先传给 Plan，再返回 Needs。
 func Quote(p Project) []Need {
 	p = Plan(p)
 	return p.Needs
 }
 
 // Swap 把简介里非空的字段写上，并重算待办。换开头时只重写第一行的词。
+// patch 的 Host、Product、Language、Aspect、Price、CTA、Hook 经 clean 后非空才写进 Brief；Hook 非空时再传给 ReplaceLine。
 func Swap(p Project, patch Brief) Project {
 	if clean(patch.Host) != "" {
 		p.Brief.Host = clean(patch.Host)
@@ -157,6 +159,8 @@ func Swap(p Project, patch Brief) Project {
 }
 
 // Fork 复制一部片子再套上简介补丁。子片记下父片编号，不带走产物和任务。父片自己的产物不动。
+// p 传给 cloneProject，ID 写成子片的 ParentID。
+// patch 传给 Swap。
 func Fork(p Project, patch Brief) Project {
 	child := cloneProject(p)
 	child.ID = ""
@@ -167,6 +171,8 @@ func Fork(p Project, patch Brief) Project {
 }
 
 // Localize 按行号重写给出的句子，并只重排这些行的时间。没给出的行不动。
+// p 先传给 LineTexts，命中的行再传给 ReplaceLine。
+// lines 为 nil 时不取文本；否则按行 ID 取值，clean 后为空就跳过。
 func Localize(p Project, lines map[string]string) Project {
 	for _, line := range LineTexts(p) {
 		text := ""
@@ -182,6 +188,7 @@ func Localize(p Project, lines map[string]string) Project {
 }
 
 // openingLine 返回开始最早的那一行。没有词就返回空串。
+// words 长度为 0 时返回空串，否则取 Start 最小的那条的 LineID。
 func openingLine(words []Word) string {
 	if len(words) == 0 {
 		return ""
@@ -196,6 +203,8 @@ func openingLine(words []Word) string {
 }
 
 // stickerOn 返回钉在这一镜某个词上的贴纸文字。有多条时留下后遇到的那条。
+// p 用 Stickers 的 WordID 去对镜头上的词。
+// shot 提供要比对的 WordIDs。
 func stickerOn(p Project, shot Shot) string {
 	var text string
 	for _, sticker := range p.Stickers {
@@ -209,6 +218,9 @@ func stickerOn(p Project, shot Shot) string {
 }
 
 // rowLabels 返回排到当前这一镜为止的行标签，用竖线接起来。最后一镜列出全部行。
+// p 用 Entries 的 Label，按竖线接起来。
+// index 加 1 作为要列出的行数，算出来小于 0 时按 0，超过 Entries 长度时收到长度。
+// last 与 index 相等时，行数改用 Entries 的长度。
 func rowLabels(p Project, index, last int) string {
 	rows := p.Entries
 	n := index + 1
@@ -232,6 +244,7 @@ func rowLabels(p Project, index, last int) string {
 }
 
 // rehash 清掉待办再按现在的内容重算。输入摘要没变的产物编号会抄回来。
+// p 先清掉 Needs 再传给 Plan；旧 Needs 里 Key 相同、InputHash 相同且 AssetHash 非空时，抄回 AssetHash 并把 Status 写成 skipped。
 func rehash(p Project) Project {
 	old := p.Needs
 	p.Needs = nil
@@ -269,6 +282,7 @@ func musicPrompt(p Project) string {
 }
 
 // cloneProject 复制词、镜头、贴纸、待办和条目。区域框单独拷一份。产物和任务不带上。
+// p 的 Words、Shots、Stickers、Needs、Entries 换成新切片，镜头的 Region 单独拷贝，Artifacts 和 Tasks 设成 nil。
 func cloneProject(p Project) Project {
 	p.Words = append([]Word(nil), p.Words...)
 	shots := make([]Shot, len(p.Shots))
@@ -290,6 +304,8 @@ func cloneProject(p Project) Project {
 }
 
 // Route 为这一步挑一条已启用且有密钥的连接。名称或地址里带 hypihub 的拒绝。服务种类完全对上的优先于只是名字像。都没有就返回错误。
+// kind 经 clean 后传给 classify，没有命中时再传给 errNoConn。
+// list 逐条跳过 rejected、Active 为假或 HasKey 为假的；classify 的 exact 为真就返回，否则留下第一条非 exact。
 func Route(kind string, list []Endpoint) (Endpoint, error) {
 	kind = clean(kind)
 	var loose Endpoint
@@ -317,12 +333,15 @@ func Route(kind string, list []Endpoint) (Endpoint, error) {
 }
 
 // rejected 判断编号、名字、地址或服务里带不带 hypihub。
+// ep 的 ID、Name、BaseURL、Service 拼成小写后查找 hypihub。
 func rejected(ep Endpoint) bool {
 	blob := strings.ToLower(ep.ID + " " + ep.Name + " " + ep.BaseURL + " " + ep.Service)
 	return strings.Contains(blob, "hypihub")
 }
 
 // classify 判断这条连接能不能做这一步。图像、视频、语音和配乐必须服务种类完全一致。抠像优先要 matting，图像连接的名字像抠像时也能用，但不是精确匹配。
+// kind 为 image、video、speech、music、matting 时走对应分支，其余返回两个假。
+// ep 的 Service 转小写后与 kind 比较；matting 还会在 Model 和 Name 里查 matting、matte 或抠。
 func classify(kind string, ep Endpoint) (exact bool, ok bool) {
 	service := strings.ToLower(clean(ep.Service))
 	model := strings.ToLower(ep.Model + " " + ep.Name)
@@ -351,6 +370,7 @@ func classify(kind string, ep Endpoint) (exact bool, ok bool) {
 type noConn string
 
 // errNoConn 表示这一步没有可用连接。
+// kind 转成 noConn 返回。
 func errNoConn(kind string) error { return noConn(kind) }
 
 // Error 说明没有已启用的连接能做这一步。
@@ -362,9 +382,11 @@ type waitErr string
 func (e waitErr) Error() string { return string(e) }
 
 // Wait 表示这一步已经选中，但这一次调用做不完。
+// msg 转成 waitErr 返回。
 func Wait(msg string) error { return waitErr(msg) }
 
 // isWait 判断错误是不是 Wait 返回的。
+// err 做 waitErr 类型断言。
 func isWait(err error) bool {
 	_, ok := err.(waitErr)
 	return ok
@@ -381,6 +403,7 @@ type BuildEnv struct {
 
 // Build 先重新计划，再跑每一步。代码画面在本机画出。其余步骤先选连接再交给 Dispatch。
 // 一步失败会记下任务并继续。输入没变的产物直接跳过。词轴会另写一份一词一条的字幕。
+// env 的 Providers 传给 Route；Put 非 nil 时存放代码画面和字幕字节；Dispatch 为 nil 时把这一步记成等待，否则把 Need 交给它。
 func Build(p Project, env BuildEnv) Project {
 	p = Plan(p)
 	p.Tasks = nil
@@ -470,6 +493,8 @@ func Build(p Project, env BuildEnv) Project {
 }
 
 // shotByNeed 按 code:镜头编号 找回镜头。对不上就用第一镜。一镜都没有就返回一个代码画面。
+// p 在 Shots 里按 ID 找，一镜都没有时返回 Visual 为 code 的镜头。
+// key 去掉前缀 code: 后与镜头 ID 比较；对不上且还有镜头时用第一镜。
 func shotByNeed(p Project, key string) Shot {
 	id := strings.TrimPrefix(key, "code:")
 	for _, shot := range p.Shots {
@@ -484,6 +509,7 @@ func shotByNeed(p Project, key string) Shot {
 }
 
 // mediaOf 给出这一步产物的媒体类型。语音和配乐是音频，视频是 mp4，其余是 PNG。
+// kind 为 speech 或 music 时返回 audio/mpeg，为 video 时返回 video/mp4，其余返回 image/png。
 func mediaOf(kind string) string {
 	switch kind {
 	case "speech", "music":
@@ -496,6 +522,7 @@ func mediaOf(kind string) string {
 }
 
 // EncodeSRT 一词写一条字幕，方便字幕跟着词轴走。没有词就返回空串。有说话人时写在词前面。
+// words 长度为 0 时返回空串；否则逐词写序号和 stamp 起止，Speaker 非空时写在 Text 前面。
 func EncodeSRT(words []Word) string {
 	if len(words) == 0 {
 		return ""
@@ -522,6 +549,7 @@ func EncodeSRT(words []Word) string {
 }
 
 // stamp 把秒写成 SRT 的时:分:秒,毫秒。负数当成 0。
+// sec 小于 0 时改成 0，再乘 1000 加 0.5 取整；时分秒传给 pad，毫秒传给 pad3。
 func stamp(sec float64) string {
 	if sec < 0 {
 		sec = 0
@@ -537,6 +565,7 @@ func stamp(sec float64) string {
 }
 
 // pad 把整数写成至少两位。
+// n 小于 10 时前面加 0，再传给 itoa。
 func pad(n int) string {
 	if n < 10 {
 		return "0" + itoa(n)
@@ -545,6 +574,7 @@ func pad(n int) string {
 }
 
 // pad3 把整数写成至少三位，给毫秒用。
+// n 传给 itoa，长度不足 3 时前面补 0。
 func pad3(n int) string {
 	s := itoa(n)
 	for len(s) < 3 {

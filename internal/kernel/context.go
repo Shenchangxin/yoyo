@@ -112,6 +112,7 @@ func (c *Context) Provide(name string, svc any) error {
 		c.mu.Lock()
 		if _, exists := c.services[name]; exists {
 			c.mu.Unlock()
+			// 同名已经登记就拒绝，不覆盖。nil 也算这个名字已存在。
 			return nil, fmt.Errorf("kernel: service %q already registered", name)
 		}
 		c.services[name] = svc
@@ -137,6 +138,7 @@ func (c *Context) Inject(names ...string) error {
 }
 
 // Get 按名字取出服务。没有这个名字时 ok 为 false。用 nil 登记过的名字返回 nil, true。
+// name 作为 services 的键。
 func (c *Context) Get(name string) (any, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -145,6 +147,7 @@ func (c *Context) Get(name string) (any, bool) {
 }
 
 // MustGet 按名字取出服务。名字不存在时 panic。登记过的 nil 会原样返回，不 panic。
+// name 交给 Get；不存在时 panic，文本里带上这个名字。
 func (c *Context) MustGet(name string) any {
 	s, ok := c.Get(name)
 	if !ok {
@@ -167,6 +170,7 @@ func (c *Context) Fibers() []string {
 }
 
 // Fiber 返回同名且尚未卸下的第一条。没有则返回 nil。
+// name 与尚未卸下的 Fiber 的 Name 比较，返回第一条。
 func (c *Context) Fiber(name string) *Fiber {
 	c.mu.Lock()
 	defer c.mu.Unlock()

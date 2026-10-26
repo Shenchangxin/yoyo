@@ -104,6 +104,8 @@ func (a *App) SessionTrace(id string) (SessionTrace, error) {
 }
 
 // SpillBlob 按 id 读出 spill 正文。超过字节上限则截断。
+// sessionID 先 TrimSpace，空串则返回错误，否则传给 GetSession 和 BindSpill。
+// blobID 先 TrimSpace，空串则返回错误，否则传给 spill.Get，并写入返回值的 ID。
 func (a *App) SpillBlob(sessionID, blobID string) (SpillBlob, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	blobID = strings.TrimSpace(blobID)
@@ -129,6 +131,7 @@ func (a *App) SpillBlob(sessionID, blobID string) (SpillBlob, error) {
 }
 
 // collectTraceArtifacts 收集轨迹文件、meta、harness、笔记、spill、索引、溢出文件和待审批。spill 条数有上限，只留末尾。
+// id 用来拼轨迹和 meta 文件名，并传给 WorkspaceContextDir，也用来匹配待审批的 SessionID。
 func (a *App) collectTraceArtifacts(id string, meta SessionMeta, spill *runtime.Spill) []TraceArtifact {
 	var out []TraceArtifact
 	if art, ok := fileArtifact("trajectory", id+".jsonl", filepath.Join(a.Home.Sessions(), id+".jsonl")); ok {
@@ -208,6 +211,9 @@ func (a *App) collectTraceArtifacts(id string, meta SessionMeta, spill *runtime.
 }
 
 // fileArtifact 在路径是普通文件时做成一条产物。较小的文本文件带上预览。
+// kind 写入产物的 Kind。
+// label 写入 ID 和 Label，后缀是 .md、.json 或 .txt 且文件不超过 8000 字节时用来决定是否读预览。
+// path 传给 os.Stat，符合上面条件时再 ReadFile。
 func fileArtifact(kind, label, path string) (TraceArtifact, bool) {
 	fi, err := os.Stat(path)
 	if err != nil || fi.IsDir() {
@@ -223,6 +229,7 @@ func fileArtifact(kind, label, path string) (TraceArtifact, bool) {
 }
 
 // capPreview 把预览截到固定的 rune 数。
+// s 的 rune 数超过 4000 时截断并加上省略号。
 func capPreview(s string) string {
 	// n 是预览最多保留的 rune 数。
 	const n = 4_000
@@ -241,6 +248,7 @@ func shortHash(h string) string {
 }
 
 // firstLabel 返回第一个非空字符串。都空则返回空串。
+// ss 按顺序取第一条去掉首尾空白后非空的字符串。
 func firstLabel(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {

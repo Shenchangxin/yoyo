@@ -7,7 +7,7 @@ import { cn } from "../../lib/utils";
 // Tabs 转发标签根。
 export const Tabs = TabsPrimitive.Root;
 
-// TabsList 把触发器排成一条带内边距的横条。
+/** TabsList 把触发器排成一条带内边距的横条。className 传给 cn。props 展开到 TabsPrimitive.List。 */
 export function TabsList({ className, ...props }: ComponentProps<typeof TabsPrimitive.List>) {
   return (
     <TabsPrimitive.List
@@ -17,7 +17,7 @@ export function TabsList({ className, ...props }: ComponentProps<typeof TabsPrim
   );
 }
 
-// TabsTrigger 在 data-state=active 时换上面板底和前景色。
+/** TabsTrigger 在 data-state=active 时换上面板底和前景色。className 传给 cn。props 展开到 TabsPrimitive.Trigger。 */
 export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsPrimitive.Trigger>) {
   return (
     <TabsPrimitive.Trigger
@@ -30,7 +30,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsP
   );
 }
 
-// TabsContent 占满剩余高度，并去掉焦点轮廓。
+/** TabsContent 占满剩余高度，并去掉焦点轮廓。className 传给 cn。props 展开到 TabsPrimitive.Content。 */
 export function TabsContent({ className, ...props }: ComponentProps<typeof TabsPrimitive.Content>) {
   return <TabsPrimitive.Content className={cn("min-h-0 flex-1 outline-none", className)} {...props} />;
 }

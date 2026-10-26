@@ -76,11 +76,16 @@ type OverlayLedger struct {
 }
 
 // rollout 记一条 rollout。
+// label 写入条目的 Label。
+// usd 写入条目的 USD。
+// cached 写入条目的 Cached。
 func (l *OverlayLedger) rollout(label string, usd float64, cached bool) {
 	l.entries = append(l.entries, overlayLedgerEntry{Kind: "rollout", Label: label, Cached: cached, USD: usd})
 }
 
 // session 记一条改进会话。attempts 小于 1 时按 1 记。
+// label 写入条目的 Label。
+// usd 写入条目的 USD。
 func (l *OverlayLedger) session(label string, usd float64, attempts int) {
 	if attempts < 1 {
 		attempts = 1
@@ -127,6 +132,7 @@ func (l OverlayLedger) P() int {
 }
 
 // labels 按种类收集标签。
+// kind 与条目的 Kind 相等时，收集该条的 Label。
 func (l OverlayLedger) labels(kind string) []string {
 	var out []string
 	for _, e := range l.entries {
@@ -251,6 +257,8 @@ type OverlayResult struct {
 // 只有选中的终稿不是基线、已经采纳、哈希不同于父快照，且对应的 c 卷 Delivered 为真时，才把 Adopted 写成 true、KeptBase 写成 false。
 // 账本 IdentityOK 失败，或 assertRefsFrozen 发现 active、canary、staging 有变化时，采纳撤销，KeptBase 回到 true，哈希回到父快照。
 // 本方法不调用 Refs.Set，不把结果晋升为 active。
+// ctx 传给 overlayBases、overlaySeq 或 overlayAgg、overlayPickFinal 和 overlayCommitLibrary。
+// opts 的 Roller 为 nil 或 Parent.Hash 为空时直接返回错误；还读取 K、Mode、Domain、HeldOut、SessionID、ReuseBase、MaxUSD、MaxWall、Scratch、KeepEvidence、Task、Library。MaxUSD 大于 0 且已花到，或 MaxWall 大于 0 且已用时间达到，就视为超预算。
 func (e *Engine) Overlay(ctx context.Context, opts OverlayOpts) (OverlayResult, error) {
 	var res OverlayResult
 	if e == nil || e.CAS == nil {
@@ -443,6 +451,10 @@ type overlayProbeJob struct {
 }
 
 // applyOverlayCompose 按 keep 以外的决定换成 INV、DOM 或合并结果。采纳后若循环拓扑与 origin 不同，退回 current，原因是 l3 topology。未采纳时返回 current。
+// kind 为 adopt_inv、adopt_dom 或 merge 时才可能采纳。
+// notes 先当作原因；只有采纳后拓扑与 origin 不同时才改成 l3 topology。
+// inv 在 kind 为 adopt_inv 且未 fell、材料哈希不同于 current 时，用它的 mats；kind 为 merge 时还要求未 fell，并把 prop 交给 mergeOverlay。
+// dom 在 kind 为 adopt_dom 且未 fell、材料哈希不同于 current 时，用它的 mats；merge 时同样要求未 fell，prop 交给 mergeOverlay。
 func (e *Engine) applyOverlayCompose(origin, current MaterialSet, kind, notes string, inv, dom overlayCand) (MaterialSet, bool, string) {
 	succ := current
 	adopted := false
@@ -473,6 +485,10 @@ func (e *Engine) applyOverlayCompose(origin, current MaterialSet, kind, notes st
 }
 
 // overlayAbort 把采纳改回 false、KeptBase 改回 true，库状态改成 LibraryNoEntry，哈希改回父快照，并再查一次引用是否被改写。意图序号非 0 时提交日志。
+// res 把 Adopted 改成 false，KeptBase 改成 true，LibraryStatus 改成 LibraryNoEntry；Parent 非空时 Hash 改回 Parent。
+// before 交给 assertRefsFrozen。
+// intentSeq 非 0 且 Journal 非空时交给 Commit。
+// err 原样作为第二个返回值。
 func overlayAbort(e *Engine, res OverlayResult, before map[string]string, intentSeq uint64, err error) (OverlayResult, error) {
 	res.Adopted = false
 	res.KeptBase = true
@@ -488,6 +504,10 @@ func overlayAbort(e *Engine, res OverlayResult, before map[string]string, intent
 }
 
 // overlayBases 跑 k 次基线。k 大于 1 时标签为 base1 起。第一次且 ReuseBase 非空时记成缓存，不再调用 roller。
+// ctx 传给 overlayExec。
+// opts 的 ReuseBase 在第一次非空时复制并标上 Cached，不再调用 roller；否则用 Roller。Tree 传给 overlayRecordRollout。
+// parent 作为材料传给 overlayExec。
+// res 传给 overlayRecordRollout。
 func overlayBases(ctx context.Context, opts OverlayOpts, parent MaterialSet, k int, res *OverlayResult) ([]OverlayRollout, error) {
 	out := make([]OverlayRollout, 0, k)
 	for i := 1; i <= k; i++ {
@@ -514,6 +534,7 @@ func overlayBases(ctx context.Context, opts OverlayOpts, parent MaterialSet, k i
 }
 
 // joinOverlayBases 把多份基线轨迹接成标签为 base 的一条。任一交付则 Delivered 为真。空表返回标签 base 的零值。只有一条时原样返回。
+// bases 长度为 0 时返回标签 base 的零值，长度为 1 时原样返回；更多时拼接 Trajectory，任一 Delivered 则结果为真，标签改成 base。
 func joinOverlayBases(bases []OverlayRollout) OverlayRollout {
 	if len(bases) == 0 {
 		return OverlayRollout{Label: "base"}
@@ -540,6 +561,9 @@ func joinOverlayBases(bases []OverlayRollout) OverlayRollout {
 }
 
 // overlayExec 调用 roller。出错时仍返回带该标签和错误文本的 rollout，并带回原错误。
+// ctx 传给 roller。
+// label 传给 roller，返回前再写入 rollout 的 Label；出错时 Error 写成该错误文本。
+// mats 传给 roller。
 func overlayExec(ctx context.Context, roller OverlayRoller, label string, mats MaterialSet) (OverlayRollout, error) {
 	r, err := roller(ctx, label, mats)
 	if err != nil {
@@ -550,6 +574,8 @@ func overlayExec(ctx context.Context, roller OverlayRoller, label string, mats M
 }
 
 // overlayRecordRollout 记入账本和用量。held 非空时先从轨迹里去掉那些编号。
+// res 的账本记一条 rollout，Spend.USD 加上这次的 USD，并把该条追加进 Rollouts。
+// tree 非空时 writeRollout。
 func overlayRecordRollout(res *OverlayResult, r OverlayRollout, held map[string]bool, tree *OverlayTree) {
 	res.Ledger.rollout(r.Label, r.USD, r.Cached)
 	res.Spend.USD += r.USD
@@ -563,6 +589,12 @@ func overlayRecordRollout(res *OverlayResult, r OverlayRollout, held map[string]
 }
 
 // overlayRunProbes 执行探针并按原顺序入账。多于一条时并发，结果仍按任务下标写回。
+// ctx 传给每次 overlayExec。
+// roller 传给 overlayExec。
+// jobs 长度为 0 时直接返回；否则用每条的 label 和 mats 调用 overlayExec。
+// res 传给 overlayRecordRollout。
+// held 传给 overlayRecordRollout。
+// tree 传给 overlayRecordRollout。
 func overlayRunProbes(ctx context.Context, roller OverlayRoller, jobs []overlayProbeJob, res *OverlayResult, held map[string]bool, tree *OverlayTree) error {
 	if len(jobs) == 0 {
 		return nil
@@ -597,6 +629,8 @@ func overlayRunProbes(ctx context.Context, roller OverlayRoller, jobs []overlayP
 }
 
 // overlayPickRolls 按前缀加 1 到 k 取出标签匹配的 rollout。没有匹配时该位是零值。
+// all 里 Label 等于 prefix 加序号的那条写入对应位置。
+// prefix 和从 1 到 k 的序号拼成要找的 Label。
 func overlayPickRolls(all []OverlayRollout, k int, prefix string) []OverlayRollout {
 	out := make([]OverlayRollout, k)
 	for i := 1; i <= k; i++ {
@@ -612,6 +646,10 @@ func overlayPickRolls(all []OverlayRollout, k int, prefix string) []OverlayRollo
 }
 
 // overlayCandidatePool 把每一对 INV 与 DOM 的交付、退回和轨迹写成一段文本。
+// invs 决定循环次数，每一项的 fell 写进 inv 行。
+// doms 按下标取 fell，写进 dom 行。
+// invR 按下标取 Delivered 和 Trajectory，写进 inv 行。
+// domR 按下标取 Delivered 和 Trajectory，写进 dom 行。
 func overlayCandidatePool(invs, doms []overlayCand, invR, domR []OverlayRollout) string {
 	var b strings.Builder
 	for i := range invs {
@@ -622,6 +660,13 @@ func overlayCandidatePool(invs, doms []overlayCand, invR, domR []OverlayRollout)
 }
 
 // overlayStage 最多尝试 overlayStageAttempts 次。上下文取消时返回父材料和该错误。超预算、提议失败、准入失败、写入失败或循环拓扑变化时继续下一次。用尽后返回表面为 keep_base 的父材料，fell 为 true，错误为 nil。
+// ctx 的 Err 非空时返回父材料和该错误；否则传给 proposeOverlay。
+// dim 转成小写后拼进继承提议的 ID，并交给 proposeOverlay 和 AdmitOverlay。
+// index 传给 proposeOverlay。
+// opts 传给 proposeOverlay，HeldInText 交给 AdmitOverlay。
+// parent 在取消、超预算或用尽时返回；Snap 和 Hash 交给 ApplyProposal，Playbook 与 Loop.PlaybookTokens 交给 AdmitOverlay，Loop 用来比较拓扑。
+// held 交给 proposeOverlay、sanitizeHeldOut 和 AdmitOverlay。
+// overBudget 返回真时返回父材料，错误为 nil。
 func (e *Engine) overlayStage(ctx context.Context, dim string, index int, opts OverlayOpts, parent MaterialSet, held map[string]bool, base OverlayRollout, overBudget func() bool) (Proposal, MaterialSet, bool, int, error) {
 	used := 0
 	var lastErr error
@@ -663,6 +708,9 @@ func (e *Engine) overlayStage(ctx context.Context, dim string, index int, opts O
 }
 
 // mergeOverlay 在两个提议的 surfaceKey 相同时返回父材料。合并后循环拓扑与父材料不同时也退回父材料。
+// parent 在表面相同、合并失败或循环拓扑不同时原样返回；Snap 和 Hash 交给 MergeProposals，Loop 用来比较拓扑。
+// inv 与 dom 的 surfaceKey 相同则返回 parent 和 false，否则和 dom 一起交给 MergeProposals。
+// dom 与 inv 一起交给 MergeProposals。
 func (e *Engine) mergeOverlay(parent MaterialSet, inv, dom Proposal) (MaterialSet, bool) {
 	if surfaceKey(inv) == surfaceKey(dom) {
 		return parent, false
@@ -679,6 +727,8 @@ func (e *Engine) mergeOverlay(parent MaterialSet, inv, dom Proposal) (MaterialSe
 }
 
 // heuristicCompose 在两侧都相对基线交付了不同产物、表面不同且编号都非空时返回 merge。否则优先 adopt_inv，再 adopt_dom，都没有则 keep_base。
+// invR 必须 Delivered 为真，并且 base 未交付，或 Deliverable 非空且不同于 base.Deliverable，才算 INV 有帮助。
+// domR 用同样的条件和 base 比较。
 func heuristicCompose(inv, dom Proposal, base, invR, domR OverlayRollout) (string, string) {
 	invHelped := invR.Delivered && (!base.Delivered || (invR.Deliverable != "" && invR.Deliverable != base.Deliverable))
 	domHelped := domR.Delivered && (!base.Delivered || (domR.Deliverable != "" && domR.Deliverable != base.Deliverable))
@@ -695,6 +745,9 @@ func heuristicCompose(inv, dom Proposal, base, invR, domR OverlayRollout) (strin
 }
 
 // overlayCommitLibrary 先把库状态写成 LibraryNoEntry。未采纳或库为 nil 时返回。蒸馏结果标明不入库、经验含 held、不可迁移或命中禁用词时也不写。写入成功才把状态改成 LibraryAdded。
+// ctx 在 Client 非空时传给 distilOverlayLLM。
+// opts 的 Library 为 nil 或未采纳时直接返回；Client 非空时用于蒸馏；TaskID 去掉空白后为空则改用 SessionID。
+// res 先把 LibraryStatus 写成 LibraryNoEntry；Adopted 为假则返回。写入成功后 Experience 指向该经验，LibraryStatus 改成 LibraryAdded，Hash 和 Reason 交给 Library.Add。
 func (e *Engine) overlayCommitLibrary(ctx context.Context, opts OverlayOpts, res *OverlayResult, held map[string]bool) {
 	res.LibraryStatus = LibraryNoEntry
 	if !res.Adopted || opts.Library == nil {
@@ -744,12 +797,14 @@ func snapshotGlobalRefs(r *artifact.Refs) map[string]string {
 }
 
 // assertRefsFrozen 对照进入 Overlay 前的快照，检查 refs/active、refs/canary、refs/staging 都没变。有任一不同就返回错误。Refs 为 nil 时返回 nil。
+// before 与重新读到的 active、canary、staging 逐项比较，有任一不同就返回 overlay wrote refs/ 加该名字。
 func assertRefsFrozen(r *artifact.Refs, before map[string]string) error {
 	if r == nil {
 		return nil
 	}
 	after := snapshotGlobalRefs(r)
 	for _, n := range []string{artifact.RefActive, artifact.RefCanary, artifact.RefStaging} {
+		// 叠加只钉住这一次会话。三枚全局指针有任何一枚变了，这次采纳就撤销。
 		if after[n] != before[n] {
 			return fmt.Errorf("overlay wrote refs/%s", n)
 		}
@@ -768,6 +823,7 @@ func stripHeld(s string, held map[string]bool) string {
 }
 
 // overlayEvidenceBlob 把证据路径、INV、DOM 和经验字段接成一段，供测试查看 held 编号是否还在。
+// res 的 Evidence 每条一行，再接上 INV 的 Audit、Expected、SkillMD、InstructionText，以及 DOM 的 Audit、Expected、SkillMD；Experience 非空时再接 Cue、Lesson、Evidence。
 func overlayEvidenceBlob(res OverlayResult) string {
 	var b strings.Builder
 	for _, e := range res.Evidence {

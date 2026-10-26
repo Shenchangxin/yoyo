@@ -5,7 +5,7 @@ package capability
 // 内置节点的标题、正文和坐标上限。
 const (
 	// maxAgentNodeTitleRunes 是节点标题上限，240 个字符。
-	maxAgentNodeTitleRunes   = 240
+	maxAgentNodeTitleRunes = 240
 	// maxAgentNodeContentRunes 是正文上限，16000 个字符。
 	maxAgentNodeContentRunes = 16000
 	// 坐标绝对值上限：与 app 侧整理工具收敛几何值的范围一致。
@@ -112,6 +112,13 @@ func BuiltinRegistry() *Registry {
 }
 
 // generatedMediaDescriptor 拼出图片、视频或音频节点。正文补丁写的是下次生成的提示词草稿，不覆盖已提交提示词或媒体结果。
+// nodeType 写入 Type 和 InputKind，并传给 generatedMediaSemantics。
+// version 写入 Version。
+// label 写入 Label。
+// width 写入 DefaultWidth。
+// height 写入 DefaultHeight。
+// generationMode 写入 GenerationMode。
+// connection 写入 Connection。
 func generatedMediaDescriptor(nodeType, version, label string, width, height float64, generationMode string, connection ConnectionPolicy) Descriptor {
 	semantics := generatedMediaSemantics(nodeType)
 	return Descriptor{
@@ -136,6 +143,7 @@ type generatedMediaCapabilitySemantics struct {
 }
 
 // generatedMediaSemantics 返回 image、video、audio 的说明。其他类型返回空说明。
+// nodeType 为 image、video 或 audio 时走对应分支，其余走 default 返回空说明。
 func generatedMediaSemantics(nodeType string) generatedMediaCapabilitySemantics {
 	switch nodeType {
 	case "image":
@@ -168,6 +176,9 @@ func generatedMediaSemantics(nodeType string) generatedMediaCapabilitySemantics 
 }
 
 // editableNodeFields 给出标题、正文和坐标三类补丁。
+// contentPath 写入 content 补丁的 Path。
+// contentLabel 写入 content 补丁的 Label。
+// contentDescription 写入 content 补丁的 Description。
 func editableNodeFields(contentPath, contentLabel, contentDescription string) map[string]PatchField {
 	fields := map[string]PatchField{
 		"title": {

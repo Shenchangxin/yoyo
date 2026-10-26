@@ -18,6 +18,9 @@ type TaskSpec struct {
 }
 
 // spec 用编号、文件名和词拼一条规格。
+// id 写入 TaskSpec.ID。
+// file 写入 TaskSpec.File。
+// word 写入 TaskSpec.Contains。
 func spec(id, file, word string) TaskSpec {
 	return TaskSpec{ID: id, File: file, Contains: word}
 }
@@ -91,6 +94,8 @@ var BehaviorIDs = []string{
 const sealedEvolveN = 12
 
 // ReadInstruction 读题目 instruction.md。套件 TaskDir 为空时用 SuitesRoot。读失败时返回空串。
+// suite 的 TaskDir 非空时当作根，否则用 e.SuitesRoot。
+// id 和这个根一起交给 resolveTaskDir，再读该目录的 instruction.md。
 func (e *Engine) ReadInstruction(suite artifact.EvalSuite, id string) string {
 	root := suite.TaskDir
 	if root == "" {
@@ -104,6 +109,7 @@ func (e *Engine) ReadInstruction(suite artifact.EvalSuite, id string) string {
 }
 
 // idsOf 抽出规格里的编号，顺序与输入相同。
+// specs 按原顺序取出每条的 ID。
 func idsOf(specs []TaskSpec) []string {
 	out := make([]string, len(specs))
 	for i, s := range specs {
@@ -118,6 +124,7 @@ func SealedHeldOutIDs() []string {
 }
 
 // lookupSpec 在四张密封表里按编号查找。都没有时返回 false。
+// id 依次和 SealedHeldIn、SealedHeldOut、SealedTransfer、IndexTransfer 里每条的 ID 比较。
 func lookupSpec(id string) (TaskSpec, bool) {
 	for _, s := range SealedHeldIn {
 		if s.ID == id {
@@ -216,6 +223,8 @@ func ApplyBehavior(suite *artifact.EvalSuite) {
 }
 
 // uniqueAppend 在编号尚未出现时追加，已出现则原样返回。
+// ids 里已有与 id 相同的项时原样返回，否则把 id 追加到末尾。
+// id 与 ids 的每一项比较，没有相同项才追加。
 func uniqueAppend(ids []string, id string) []string {
 	for _, x := range ids {
 		if x == id {

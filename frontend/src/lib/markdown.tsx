@@ -16,10 +16,16 @@ type MdProps<T extends HTMLElement> = HTMLAttributes<T> & ExtraProps & { childre
 
 const SHIKI_SETTLE_MS = 400;
 
-/** 换成桌面尺寸的标题。Streamdown 自带的是 text-3xl 和 mt-6，列表是 list-inside。表格留它的复制菜单，去掉 bg-muted/80，因为 --muted 是墨色不是填充。不要覆盖 code，Streamdown 用它同时画行内和围栏。 */
+/**
+ * 换成桌面尺寸的标题。Streamdown 自带的是 text-3xl 和 mt-6，列表是 list-inside。表格留它的复制菜单，去掉 bg-muted/80，因为 --muted 是墨色不是填充。不要覆盖 code，Streamdown 用它同时画行内和围栏。
+ * tag 用作标签。
+ * name 写到 Tag 的 data-streamdown。
+ */
 function heading(tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6", name: string) {
   /** 去掉 node，其余属性和 className 原样交回。 */
-  return function MdHeading({ children, className, node: _node, ...props }: MdProps<HTMLHeadingElement>) {
+  return 
+         /** MdHeading 根据参数得到结果。children 作为子节点渲染。className 写到 Tag 的 className。_node 函数体内没有读取。props 展开到 Tag。 */
+         function MdHeading({ children, className, node: _node, ...props }: MdProps<HTMLHeadingElement>) {
     const Tag = tag;
     return (
       <Tag {...props} data-streamdown={name} className={className}>
@@ -29,7 +35,7 @@ function heading(tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6", name: string) {
   };
 }
 
-/** 取表格第一行的单元格数。没有则 0。 */
+/** 取表格第一行的单元格数。没有则 0。node 读取 children，为空时不读。 */
 function tableColumnCount(node: unknown): number {
   const row = (node as { children?: Array<{ children?: unknown[] }> } | undefined)?.children?.[0];
   return Array.isArray(row?.children) ? row.children.length : 0;
@@ -48,7 +54,7 @@ const mdComponents: Components = {
   h5: heading("h5", "heading-5"),
   /** h6 用桌面字号渲染六级标题。 */
   h6: heading("h6", "heading-6"),
-  /** 无序列表用外置圆点。嵌在列表项里时再缩进。 */
+  /** 无序列表用外置圆点。嵌在列表项里时再缩进。children 作为子节点渲染。className 传给 cn。_node 函数体内没有读取。props 展开到 ul。 */
   ul: ({ children, className, node: _node, ...props }: MdProps<HTMLUListElement>) => (
     <ul
       {...props}
@@ -58,7 +64,7 @@ const mdComponents: Components = {
       {children}
     </ul>
   ),
-  /** 有序列表用外置数字。嵌在列表项里时再缩进。 */
+  /** 有序列表用外置数字。嵌在列表项里时再缩进。children 作为子节点渲染。className 传给 cn。_node 函数体内没有读取。props 展开到 ol。 */
   ol: ({ children, className, node: _node, ...props }: MdProps<HTMLOListElement>) => (
     <ol
       {...props}
@@ -68,29 +74,29 @@ const mdComponents: Components = {
       {children}
     </ol>
   ),
-  /** 列表项里的段落保持行内。 */
+  /** 列表项里的段落保持行内。children 作为子节点渲染。className 传给 cn。_node 函数体内没有读取。props 展开到 li。 */
   li: ({ children, className, node: _node, ...props }: MdProps<HTMLLIElement>) => (
     <li {...props} data-streamdown="list-item" className={cn("[&>p]:inline", className)}>
       {children}
     </li>
   ),
-  /** 引用块只去掉 node。 */
+  /** 引用块只去掉 node。children 作为子节点渲染。className 写到 blockquote 的 className。_node 函数体内没有读取。props 展开到 blockquote。 */
   blockquote: ({ children, className, node: _node, ...props }: MdProps<HTMLQuoteElement>) => (
     <blockquote {...props} data-streamdown="blockquote" className={className}>
       {children}
     </blockquote>
   ),
-  /** 分隔线只去掉 node。 */
+  /** 分隔线只去掉 node。className 写到 hr 的 className。_node 函数体内没有读取。props 展开到 hr。 */
   hr: ({ className, node: _node, ...props }: MdProps<HTMLHRElement>) => (
     <hr {...props} data-streamdown="horizontal-rule" className={className} />
   ),
-  /** 链接加上文件提及的类名。 */
+  /** 链接加上文件提及的类名。children 作为子节点渲染。className 传给 cn。_node 函数体内没有读取。props 展开到 a。 */
   a: ({ children, className, node: _node, ...props }: MdProps<HTMLAnchorElement>) => (
     <a {...props} data-streamdown="link" className={cn("md-file-mention", className)}>
       {children}
     </a>
   ),
-  /** 表格留复制菜单。不少于四列时加宽并可以聚焦。 */
+  /** 表格留复制菜单。不少于四列时加宽并可以聚焦。children 作为子节点渲染。className 写到 table 的 className。node 传给 tableColumnCount。props 展开到 table。 */
   table: ({ children, className, node, ...props }: MdProps<HTMLTableElement>) => {
     const cols = tableColumnCount(node);
     const wide = cols >= 4;
@@ -111,31 +117,31 @@ const mdComponents: Components = {
       </div>
     );
   },
-  /** 表头只去掉 node。 */
+  /** 表头只去掉 node。children 作为子节点渲染。className 写到 thead 的 className。_node 函数体内没有读取。props 展开到 thead。 */
   thead: ({ children, className, node: _node, ...props }: MdProps<HTMLTableSectionElement>) => (
     <thead {...props} data-streamdown="table-header" className={className}>
       {children}
     </thead>
   ),
-  /** 表体只去掉 node。 */
+  /** 表体只去掉 node。children 作为子节点渲染。className 写到 tbody 的 className。_node 函数体内没有读取。props 展开到 tbody。 */
   tbody: ({ children, className, node: _node, ...props }: MdProps<HTMLTableSectionElement>) => (
     <tbody {...props} data-streamdown="table-body" className={className}>
       {children}
     </tbody>
   ),
-  /** 表行只去掉 node。 */
+  /** 表行只去掉 node。children 作为子节点渲染。className 写到 tr 的 className。_node 函数体内没有读取。props 展开到 tr。 */
   tr: ({ children, className, node: _node, ...props }: MdProps<HTMLTableRowElement>) => (
     <tr {...props} data-streamdown="table-row" className={className}>
       {children}
     </tr>
   ),
-  /** 表头单元格只去掉 node。 */
+  /** 表头单元格只去掉 node。children 作为子节点渲染。className 写到 th 的 className。_node 函数体内没有读取。props 展开到 th。 */
   th: ({ children, className, node: _node, ...props }: MdProps<HTMLTableCellElement>) => (
     <th {...props} data-streamdown="table-header-cell" className={className}>
       {children}
     </th>
   ),
-  /** 单元格只去掉 node。 */
+  /** 单元格只去掉 node。children 作为子节点渲染。className 写到 td 的 className。_node 函数体内没有读取。props 展开到 td。 */
   td: ({ children, className, node: _node, ...props }: MdProps<HTMLTableCellElement>) => (
     <td {...props} data-streamdown="table-cell" className={className}>
       {children}
@@ -152,7 +158,7 @@ class MarkdownBoundary extends Component<{ text: string; fallback: string; child
     return { failed: true };
   }
 
-  /** 把错误和组件栈打到控制台。 */
+  /** 把错误和组件栈打到控制台。err 读取 message。info 读取 componentStack。 */
   componentDidCatch(err: Error, info: ErrorInfo) {
     console.warn("[markdown]", err.message, info.componentStack);
   }
@@ -175,7 +181,13 @@ class MarkdownBoundary extends Component<{ text: string; fallback: string; child
 
 const UI_MARKDOWN_CAP = 24_000;
 
-/** Markdown 一条助手正文。流式走增量渲染。定稿后等 400 毫秒再打开高亮。超过 24000 字截断并加省略号。 */
+/**
+ * Markdown 一条助手正文。流式走增量渲染。定稿后等 400 毫秒再打开高亮。超过 24000 字截断并加省略号。
+ * text 读取 length，截取，为真时才继续，作为分支结果。
+ * streaming 为假时走另一支。
+ * quiet 为真时才继续，写到 StreamingMarkdown 的 quiet。
+ * rich 为空时改用后备值，为真时才继续。
+ */
 export const Markdown = memo(function Markdown({
   text,
   streaming,
@@ -254,7 +266,7 @@ const streamControls = {
   image: { download: false },
 } as const;
 
-/** 不稳定尾部。空文本不渲染。走流式模式且不复制、不下载。 */
+/** 不稳定尾部。空文本不渲染。走流式模式且不复制、不下载。text 为假时返回 null；作为子节点渲染。 */
 const TailMarkdown = memo(function TailMarkdown({ text }: { text: string }) {
   if (!text) return null;
   return (
@@ -284,7 +296,7 @@ class StreamingRenderer {
   private lastText: string | null = null;
   private lastRendered: { frozen: ReactNode[]; tail: string; generation: number } | null = null;
 
-  /** 相同文本返回上一次结果。冻结块变长时只补画新增的。尾部是 tailStart 之后的源码。 */
+  /** 相同文本返回上一次结果。冻结块变长时只补画新增的。尾部是 tailStart 之后的源码。text 与 this.lastText 比较是否相等，截取，记到 this.lastText，传给 parser.update。 */
   render(text: string): { frozen: ReactNode[]; tail: string; generation: number } {
     if (text === this.lastText && this.lastRendered) return this.lastRendered;
     let frozen: readonly PositionedBlock[] = [];
@@ -316,7 +328,7 @@ class StreamingRenderer {
   }
 }
 
-/** 流式正文：冻结块按代挂上，尾部交给 TailMarkdown，末尾一个光标。 */
+/** 流式正文：冻结块按代挂上，尾部交给 TailMarkdown，末尾一个光标。text 传给 renderer.current.render。quiet 为真时才继续。 */
 function StreamingMarkdown({ text, quiet }: { text: string; quiet?: boolean }) {
   const renderer = useRef<StreamingRenderer | null>(null);
   if (!renderer.current) renderer.current = new StreamingRenderer();

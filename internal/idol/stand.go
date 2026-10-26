@@ -57,6 +57,8 @@ func (c *StandCache) base() string {
 }
 
 // Open 返回一个立绘文件的字节和 Content-Type。同一路径同时只拉一次。缓存里已有且看起来像 Spine 文件时不再下载。atlas 会把已知的 date.png 页名改回 data.png。
+// outfit 交给 validOutfitID。不通过时返回 bad stand path。通过后传给 filePath 和 download。
+// name 须在 standFiles 里，否则返回 bad stand path。传给 filePath、standLooksValid、finishStand、standContentType 和 download。
 func (c *StandCache) Open(outfit, name string) ([]byte, string, error) {
 	if !validOutfitID(outfit) || !standFiles[name] {
 		return nil, "", fmt.Errorf("bad stand path")
@@ -105,6 +107,8 @@ func (c *StandCache) Open(outfit, name string) ([]byte, string, error) {
 }
 
 // filePath 把服装和文件名拼到 Dir 下，并拒绝逃出 Dir 的路径。
+// outfit 换成系统分隔符后接到 Dir 下。
+// name 接在服装目录后面。相对 Dir 以 .. 开头或是绝对路径时返回错误。
 func (c *StandCache) filePath(outfit, name string) (string, error) {
 	path := filepath.Join(c.Dir, filepath.FromSlash(outfit), name)
 	rel, err := filepath.Rel(c.Dir, path)
@@ -115,6 +119,8 @@ func (c *StandCache) filePath(outfit, name string) (string, error) {
 }
 
 // download 用 GET 向 base 拉取一个立绘文件，最多读 32 MiB。状态不是 200 或内容不像 Spine 文件时返回错误。User-Agent 是 Yoyo。
+// outfit 接在 base 后面组成 URL。
+// name 接在 outfit 后面组成 URL，并传给 standLooksValid。状态不是 200 时写进错误。
 func (c *StandCache) download(outfit, name string) ([]byte, error) {
 	url := strings.TrimRight(c.base(), "/") + "/" + outfit + "/" + name
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -141,6 +147,8 @@ func (c *StandCache) download(outfit, name string) ([]byte, error) {
 }
 
 // finishStand 对 data.atlas 调用 pointAtlasAtDataPNG，其余文件原样返回。
+// name 不是 data.atlas 时原样返回 body。
+// body 在 name 为 data.atlas 时转成字符串交给 pointAtlasAtDataPNG。
 func finishStand(name string, body []byte) []byte {
 	if name != "data.atlas" {
 		return body
@@ -149,6 +157,7 @@ func finishStand(name string, body []byte) []byte {
 }
 
 // pointAtlasAtDataPNG 把下一行以 size: 开头的 date.png 页名改回 data.png。贴图实际存在这个名字下。其他页名不动。
+// text 按换行切开。去掉空白后等于 date.png，且后面第一个非空行以 size: 开头时，把该行第一次出现的 date.png 换成 data.png。
 func pointAtlasAtDataPNG(text string) string {
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
@@ -171,6 +180,8 @@ func pointAtlasAtDataPNG(text string) string {
 }
 
 // standLooksValid 粗看文件是不是 Spine 资源。json 去掉左侧空白后须以 { 开头；png 须是 PNG 或 WebP；atlas 去掉空白后不能以 < 开头。
+// name 为 data.json 时看去掉左侧空白后是否以 { 开头。为 data.png 时交给 isPNG 或 isWebP。其他名字去掉左侧空白后首字节不能是 <。
+// body 按 name 做上述检查。
 func standLooksValid(name string, body []byte) bool {
 	if name == "data.json" {
 		return len(bytesTrimLeft(body)) > 0 && bytesTrimLeft(body)[0] == '{'
@@ -183,6 +194,8 @@ func standLooksValid(name string, body []byte) bool {
 }
 
 // standContentType 按文件名返回 Content-Type。data.png 若是 WebP 则用 image/webp，否则 image/png。
+// name 为 data.json 时返回 application/json; charset=utf-8。为 data.atlas 时返回 text/plain; charset=utf-8。
+// body 在 name 不是这两种时交给 isWebP。为真则返回 image/webp，否则 image/png。
 func standContentType(name string, body []byte) string {
 	switch name {
 	case "data.json":
@@ -207,6 +220,7 @@ func bytesTrimLeft(b []byte) []byte {
 }
 
 // isPNG 看前 8 字节是不是 PNG 签名。
+// b 长度小于 8 时返回 false。否则前 8 字节须等于 PNG 签名。
 func isPNG(b []byte) bool {
 	return len(b) >= 8 && string(b[:8]) == "\x89PNG\r\n\x1a\n"
 }
@@ -217,6 +231,7 @@ func isWebP(b []byte) bool {
 }
 
 // StandMiddleware 从缓存提供 /idol-stand/<服装>/<文件>。缺了就向 CDN 拉。路径对不上的请求交给 next；next 为空时用 404。只处理 GET 和 HEAD。缓存一年，并加上 nosniff。
+// dir 写入 StandCache 的 Dir。
 func StandMiddleware(dir string, next http.Handler) http.Handler {
 	if next == nil {
 		next = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -251,6 +266,7 @@ func StandMiddleware(dir string, next http.Handler) http.Handler {
 }
 
 // parseStandRequest 从 /idol-stand/ 后面拆出服装 id 和文件名。服装或文件名不在允许名单里则 ok 为 false。
+// path 须以前缀 /idol-stand/ 开头。去掉前缀后按最后一个斜杠拆成服装和文件名。
 func parseStandRequest(path string) (outfit, name string, ok bool) {
 	const prefix = "/idol-stand/"
 	if !strings.HasPrefix(path, prefix) {

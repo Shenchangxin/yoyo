@@ -55,6 +55,7 @@ func NewManager(dir string) *Manager {
 }
 
 // state 返回内存里的状态。没有时 LoadRun。LoadRun 出错就用 StatusIdle。调用方须已持有 mu。
+// id 用来查 runs，没有时和 Dir 一起传给 LoadRun。
 func (m *Manager) state(id string) RunState {
 	if st, ok := m.runs[id]; ok {
 		return st
@@ -74,6 +75,7 @@ func (m *Manager) persist(id string) {
 }
 
 // Load 返回该会话的运行状态。
+// id 传给 state。
 func (m *Manager) Load(id string) RunState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -81,6 +83,8 @@ func (m *Manager) Load(id string) RunState {
 }
 
 // SetStatus 写入状态。新状态不是 running 时清空 ResumeText、ResumePlan 和 ResumeInFlight。
+// id 传给 state 和 persist。
+// status 写入 Status。不等于 StatusRunning 时清空 ResumeText、ResumePlan 和 ResumeInFlight。
 func (m *Manager) SetStatus(id, status string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -96,11 +100,16 @@ func (m *Manager) SetStatus(id, status string) {
 }
 
 // SetResume 按文本是否非空或 plan 是否为真，调用 MarkTurnInFlight。文本本身不写入 ResumeText。
+// id 传给 MarkTurnInFlight。
+// text 去掉空白后是否为空，和 plan 一起决定 MarkTurnInFlight 的 inFlight 实参。
 func (m *Manager) SetResume(id, text string, plan bool) {
 	m.MarkTurnInFlight(id, strings.TrimSpace(text) != "" || plan, plan)
 }
 
 // MarkTurnInFlight 记下是否有未完成回合和是否带计划。ResumeText 总是写成空字符串，用户原文留在 JSONL。
+// id 传给 state 和 persist。
+// inFlight 写入 ResumeInFlight。
+// plan 写入 ResumePlan。
 func (m *Manager) MarkTurnInFlight(id string, inFlight, plan bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -114,6 +123,8 @@ func (m *Manager) MarkTurnInFlight(id string, inFlight, plan bool) {
 }
 
 // Enqueue 把回合加到队列末尾。ID 为空时用 q-、UTC 纳秒和当前长度加 1。
+// id 传给 state 和 persist。
+// turn 追加到 Queue。ID 为空时写成 q-、UTC 纳秒和当前长度加 1。
 func (m *Manager) Enqueue(id string, turn QueuedTurn) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -127,6 +138,8 @@ func (m *Manager) Enqueue(id string, turn QueuedTurn) {
 }
 
 // PrependQueue 把回合插到队列最前。ID 为空时写成 q-resume。
+// id 传给 state 和 persist。
+// turn 插到 Queue 最前。ID 为空时写成 q-resume。
 func (m *Manager) PrependQueue(id string, turn QueuedTurn) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -140,6 +153,7 @@ func (m *Manager) PrependQueue(id string, turn QueuedTurn) {
 }
 
 // CancelQueue 按 itemID 删掉一条队列项。找到返回 true。
+// id 传给 state 和 persist。
 func (m *Manager) CancelQueue(id, itemID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -160,6 +174,7 @@ func (m *Manager) CancelQueue(id, itemID string) bool {
 }
 
 // ReorderQueue 把 itemID 的下标加上 delta 后与该位置交换。找不到或越界返回 false。
+// id 传给 state 和 persist。
 func (m *Manager) ReorderQueue(id, itemID string, delta int) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -185,6 +200,7 @@ func (m *Manager) ReorderQueue(id, itemID string, delta int) bool {
 }
 
 // SetConnectorAllow 用 accounts 的副本替换 ConnectorAllow。
+// id 传给 state 和 persist。
 func (m *Manager) SetConnectorAllow(id string, accounts []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -195,6 +211,7 @@ func (m *Manager) SetConnectorAllow(id string, accounts []string) {
 }
 
 // ConnectorAllow 返回 ConnectorAllow 的副本。
+// id 传给 state。
 func (m *Manager) ConnectorAllow(id string) []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -202,6 +219,7 @@ func (m *Manager) ConnectorAllow(id string) []string {
 }
 
 // QueueList 返回队列副本。
+// id 传给 state。
 func (m *Manager) QueueList(id string) []QueuedTurn {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -210,6 +228,7 @@ func (m *Manager) QueueList(id string) []QueuedTurn {
 }
 
 // PopQueue 取出并删掉队列第一项。队列空时返回零值和 false。
+// id 传给 state。队列非空时也传给 persist。
 func (m *Manager) PopQueue(id string) (QueuedTurn, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -225,6 +244,7 @@ func (m *Manager) PopQueue(id string) (QueuedTurn, bool) {
 }
 
 // PushSteer 在会话正在跑时把 text 加进 Steers。没有 Actor 时错误文案是 session is not running。
+// id 用来查 actors。有 Actor 时传给 state 和 persist。
 func (m *Manager) PushSteer(id, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -239,6 +259,7 @@ func (m *Manager) PushSteer(id, text string) error {
 }
 
 // PullSteer 取走全部 Steers 并清空。没有时返回空字符串。有内容时前面加上 User steering (apply now): 和换行，各项用换行拼接。
+// id 传给 state。Steers 非空时也传给 persist。
 func (m *Manager) PullSteer(id string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -261,6 +282,8 @@ func (m *Manager) PullSteer(id string) string {
 }
 
 // SetCaps 把能力名单经 dropHighRisk 后写入 SessionCaps。
+// id 传给 state 和 persist。
+// caps 传给 dropHighRisk，结果写入 SessionCaps。
 func (m *Manager) SetCaps(id string, caps []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -271,6 +294,8 @@ func (m *Manager) SetCaps(id string, caps []string) {
 }
 
 // SetAuthMode 写入授权模式，并把 caps 经 dropHighRisk 后写入 SessionCaps。
+// id 传给 state 和 persist。
+// mode 写入 AuthMode。
 func (m *Manager) SetAuthMode(id, mode string, caps []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -282,6 +307,7 @@ func (m *Manager) SetAuthMode(id, mode string, caps []string) {
 }
 
 // AuthMode 返回该会话的授权模式。
+// id 传给 state。
 func (m *Manager) AuthMode(id string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -289,6 +315,7 @@ func (m *Manager) AuthMode(id string) string {
 }
 
 // Caps 返回 SessionCaps 的副本。
+// id 传给 state。
 func (m *Manager) Caps(id string) []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -297,6 +324,7 @@ func (m *Manager) Caps(id string) []string {
 
 // SetApprovals 写入待审批列表。列表非空时状态改为 awaiting_approval。
 // 列表为空且当前是 awaiting_approval 时，有 Actor 就改回 running，否则改回 idle。
+// offers 写入 PendingApprovals。长度大于 0 时 Status 改为 awaiting_approval。长度等于 0 且当前是 awaiting_approval 时，有 Actor 就改回 running，否则改回 idle。
 func (m *Manager) SetApprovals(id string, offers []PendingApproval) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -335,6 +363,7 @@ func (m *Manager) RunningIDs() []string {
 
 // Acquire 为该 id 占一个 Actor，并把状态写成 running。已经有 Actor 时取消新建的 context 并返回 ErrBusy。
 // 返回的释放函数会取消 context、删掉 Actor、把状态写成 idle，并清空 PendingApprovals。
+// parent 传给 context.WithCancel。
 func (m *Manager) Acquire(id string, parent context.Context) (context.Context, func(), error) {
 	ctx, cancel := context.WithCancel(parent)
 	m.mu.Lock()
@@ -363,6 +392,7 @@ func (m *Manager) Acquire(id string, parent context.Context) (context.Context, f
 }
 
 // Interrupt 调用该会话 Actor 的 cancel。没有 Actor 或 cancel 为空时什么都不做。
+// id 用来取 actors 里的 Actor。
 func (m *Manager) Interrupt(id string) {
 	m.mu.Lock()
 	a := m.actors[id]

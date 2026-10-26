@@ -34,6 +34,7 @@ type Rotator struct {
 
 // OpenRotator 打开 path 并追加。MaxSize、MaxFiles、MaxAgeDays 小于等于 0 时分别用 DefaultMaxSize、DefaultFiles、DefaultAgeDays。
 // 父目录权限 0o755。文件以 O_CREATE、O_APPEND、O_WRONLY 打开，权限 0o600。
+// opt 的 MaxSize、MaxFiles、MaxAgeDays 小于等于 0 时分别改成 DefaultMaxSize、DefaultFiles、DefaultAgeDays，然后记进返回的 Rotator。
 func OpenRotator(path string, opt RotatorOpts) (*Rotator, error) {
 	if opt.MaxSize <= 0 {
 		opt.MaxSize = DefaultMaxSize
@@ -153,6 +154,7 @@ func (r *Rotator) rotateLocked() error {
 }
 
 // backup 返回 path 加序号再加 .gz，例如 path.1.gz。
+// n 转成十进制，夹在路径、一个点和 .gz 之间。
 func (r *Rotator) backup(n int) string {
 	return r.path + "." + strconv.Itoa(n) + ".gz"
 }
@@ -188,6 +190,7 @@ func (r *Rotator) cleanupLocked() error {
 }
 
 // rotateIndex 从文件名取出备份序号。去掉 base 和一个点，再去掉末尾的 .gz。不是整数时返回 0。
+// name 去掉 base 加一个点的前缀，再去掉末尾的 .gz，然后按整数解析。解析失败返回 0。
 func rotateIndex(name, base string) int {
 	rest := strings.TrimPrefix(name, base+".")
 	rest = strings.TrimSuffix(rest, ".gz")

@@ -61,6 +61,9 @@ func (e *StopError) Unwrap() error {
 }
 
 // stopErr 包一层 StopError，Msg 和 Err 都按参数原样放进去。
+// reason 放进 StopError 的 Reason。
+// msg 放进 StopError 的 Msg。
+// err 放进 StopError 的 Err。
 func stopErr(reason StopReason, msg string, err error) error {
 	return &StopError{Reason: reason, Msg: msg, Err: err}
 }

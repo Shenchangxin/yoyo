@@ -21,6 +21,7 @@ type Hit struct {
 }
 
 // FormatHits 把命中排成带编号的标题、链接和摘要。标题和链接都空的跳过。最多 maxHits 条。没有可用行时返回空字符串。
+// hits 逐条取 Title、URL、Snippet。标题和链接去掉空白后都空则跳过。留下的行数达到 maxHits 就停止。
 func FormatHits(hits []Hit) string {
 	var lines []string
 	for _, h := range hits {

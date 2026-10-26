@@ -75,6 +75,7 @@ type TraceEvent struct {
 
 // ProjectTrace 把事件收成视图。delta 计入 Deltas，但不进入 Events。只有 kind 为 checkpoint 的压缩计入 Compactions；kind 为 shape 的计入 Projections。
 // 只有检查点才压缩：它摘要历史并重新播种提示。抽样的 shape 行只描述一轮提示如何投影，不能算进压缩次数。
+// evs 的长度写入 Stats.Events；逐条看时间和类型，delta、kind、tokens 从载荷读取，非 delta 再交给 projectTraceEvent。
 func ProjectTrace(evs []trace.Event) TraceView {
 	out := TraceView{Events: make([]TraceEvent, 0, len(evs))}
 	out.Stats.Events = len(evs)
@@ -139,6 +140,7 @@ func ProjectTrace(evs []trace.Event) TraceView {
 
 // TrimTraceView 保留整本账本的统计，但只把滤掉噪声后的短时间线送过 Wails。完整 jsonl 仍在盘上。
 // keep 小于等于 0 时用 uiTraceEvents。file_change、system、eval、evolve，以及非 checkpoint 的 compaction 被丢掉。超出 keep 时只留末尾。
+// view 的 Events 按类型过滤，超出 keep 时只留末尾，其余字段随 view 返回。
 func TrimTraceView(view TraceView, keep int) TraceView {
 	if keep <= 0 {
 		keep = uiTraceEvents
@@ -163,6 +165,7 @@ func TrimTraceView(view TraceView, keep int) TraceView {
 }
 
 // projectTraceEvent 把一条轨迹收成摘要。工具结果若正文里有省略标记，会补上 spill id 和字节数。字节超过 defaultIngestBudget 时摘要只写字节数。
+// ev 的 Payload、Type、Source 和 TS 用来填这一行；工具结果再从正文字段补 spill id 和字节数。
 func projectTraceEvent(i int, ev trace.Event) TraceEvent {
 	p := ev.Payload
 	id := payloadStr(p, "id")
@@ -316,6 +319,7 @@ func eventLane(t trace.EventType) string {
 }
 
 // payloadAny 读取载荷字段。载荷为空时返回 nil。
+// key 作为字段名从载荷取值。
 func payloadAny(p map[string]any, key string) any {
 	if p == nil {
 		return nil
@@ -324,6 +328,7 @@ func payloadAny(p map[string]any, key string) any {
 }
 
 // payloadStr 把载荷字段收成字符串。
+// key 作为字段名取出后交给 payloadString；载荷为 nil 时返回空串。
 func payloadStr(p map[string]any, key string) string {
 	if p == nil {
 		return ""
@@ -332,6 +337,7 @@ func payloadStr(p map[string]any, key string) string {
 }
 
 // payloadInt 按给定键的顺序读取第一个能转成整数的值。
+// keys 按顺序试，第一个能转成整数的值就返回；载荷为 nil 时返回 0。
 func payloadInt(p map[string]any, keys ...string) int {
 	if p == nil {
 		return 0
@@ -359,6 +365,7 @@ func payloadInt(p map[string]any, keys ...string) int {
 }
 
 // payloadBool 读取布尔值。字符串 true 或 1 也算真。
+// key 作为字段名取值；布尔真，或字符串 true、1，才返回真。
 func payloadBool(p map[string]any, key string) bool {
 	if p == nil {
 		return false
@@ -373,12 +380,14 @@ func payloadBool(p map[string]any, key string) bool {
 }
 
 // oneLine 把空白折成空格，再按符文截断。
+// s 先把连续空白收成单个空格，再交给 capTrace。
 func oneLine(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	return capTrace(s, n)
 }
 
 // capTrace 按符文截断，超出时加上省略号。n 小于等于 0 或字符串为空时原样返回。
+// s 在 n 小于等于 0 或自身为空时原样返回；rune 数超过 n 时截到前 n 个并加上省略号。
 func capTrace(s string, n int) string {
 	if n <= 0 || s == "" {
 		return s
@@ -390,6 +399,7 @@ func capTrace(s string, n int) string {
 }
 
 // firstNonEmpty 返回第一段非空白字符串。
+// ss 从前往后看，返回第一段去掉空白后仍非空的字符串。
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {

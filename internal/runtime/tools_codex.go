@@ -22,6 +22,7 @@ import (
 )
 
 // updatePlan 解析 explanation 和 plan。空计划返回错误。空状态写成 pending。正文写入 PlanText，并 WritePlanFile。
+// argsJSON 按 JSON 解出 explanation 和 plan；解不开或 plan 长度为 0 时返回错误。
 func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 	var p struct {
 		Explanation string `json:"explanation"`
@@ -57,6 +58,7 @@ func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 }
 
 // wait 把秒数夹到 1 到 30。用工具上下文等待，上下文取消则返回其错误。
+// seconds 小于 1 时改成 1，大于 30 时改成 30，再按秒等待。
 func (t *WorkspaceTools) wait(seconds int) ToolResult {
 	if seconds < 1 {
 		seconds = 1
@@ -144,6 +146,7 @@ func (t *WorkspaceTools) listSkills() ToolResult {
 }
 
 // viewImage 经 resolve 和 ReadWorkspace 审批后读取图片。扩展名只接受 png、jpg、jpeg、gif、webp、bmp。能编码时把 data URL 放进 Parts。
+// rel 交给 resolve，并写进成功时的说明。
 func (t *WorkspaceTools) viewImage(rel string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -180,6 +183,7 @@ func (t *WorkspaceTools) viewImage(rel string) ToolResult {
 const webFetchUA = "Yoyo/0.3 (+https://github.com/Shenchangxin/yoyo)"
 
 // webFetch 只接受带主机的 http 或 https。先用 blockedHost 拒绝主机，再做 Network 审批，超时 20 秒。SiteText 成功则截到 12000 个 rune。否则 httpGet。状态 406 时 retryHTTPOn406 得到的地址会再取一次。XML 源保留标签；非 JSON 且非源则去掉标签。shouldJinaReader 为真时再试 Jina。正文截到 12000 个 rune。
+// rawURL 交给 url.Parse；方案不是 http 或 https，或没有 Host 时返回错误。通过后交给 SiteText，失败再交给 httpGet。
 func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -234,6 +238,9 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 var jinaSkipLoopback = true
 
 // shouldJinaReader 在 u 为空、环回（当 jinaSkipLoopback 为真）、主机名含 jina.ai 或 duckduckgo.com、或内容类型含 json 时返回假。状态 403、429、503 返回真。其余看 LooksAntibot 或 ThinExtract。
+// status 等于 403、429 或 503 时返回真。
+// raw 交给 LooksAntibot，并和 stripped 一起交给 ThinExtract。
+// stripped 连同 raw 交给 ThinExtract。
 func shouldJinaReader(u *url.URL, status int, ct, raw, stripped string) bool {
 	if u == nil {
 		return false
@@ -260,6 +267,8 @@ func shouldJinaReader(u *url.URL, status int, ct, raw, stripped string) bool {
 }
 
 // httpGet 用 http.DefaultClient 发 GET，没有设置 CheckRedirect，跟随重定向时不再检查 blockedHost。正文经 io.LimitReader 截到 256<<10，即 256KiB。
+// ctx 交给 NewRequestWithContext。
+// rawURL 作为 GET 的地址；构造请求失败或 Do 失败时仍放进返回的地址。
 func httpGet(ctx context.Context, rawURL string) (status int, finalURL, contentType, body string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -267,11 +276,13 @@ func httpGet(ctx context.Context, rawURL string) (status int, finalURL, contentT
 	}
 	req.Header.Set("User-Agent", webFetchUA)
 	req.Header.Set("Accept", "application/atom+xml, application/xml, text/html;q=0.9, */*;q=0.8")
+	// 默认客户端没有 CheckRedirect。初始主机过了 blockedHost 之后，重定向到的下一跳不再检查。
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0, rawURL, "", "", err
 	}
 	defer resp.Body.Close()
+	// 正文最多读 256KiB。超出的部分不进入返回值。
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
 	if err != nil {
 		return resp.StatusCode, resp.Request.URL.String(), resp.Header.Get("Content-Type"), "", err

@@ -20,6 +20,7 @@ type Store struct {
 }
 
 // openStore 按 0o755 创建目录。文件读失败时仍返回存储。SamplePages 为 nil 时改成空映射。LastIdeasAt 为零时写成当前 UTC。
+// dir 按 0o755 创建，并作为 workspace.json 的父目录。
 func openStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -75,6 +76,7 @@ func (s *Store) snapshot() Snapshot {
 }
 
 // cloneMap 复制映射的顶层键。nil 得到空映射。
+// m 为 nil 时返回空映射，否则复制顶层键。
 func cloneMap(m map[string]any) map[string]any {
 	if m == nil {
 		return map[string]any{}
@@ -102,6 +104,7 @@ func (s *Store) putTask(t Task) {
 }
 
 // task 按 ID 查找，并复制 Input 和 State 后返回。
+// id 与每条任务的 ID 比较。
 func (s *Store) task(id string) (Task, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,6 +128,7 @@ func (s *Store) tasks() []Task {
 }
 
 // casTask 在 expectStatus 或 leaseID 非空时要求与当前值一致。patch 返回 false 则不写盘。
+// id 与每条任务的 ID 比较，不相等则跳过。
 func (s *Store) casTask(id, expectStatus, leaseID string, patch func(*Task) bool) (Task, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -152,6 +156,7 @@ func (s *Store) casTask(id, expectStatus, leaseID string, patch func(*Task) bool
 }
 
 // putGoal 按 ID 替换目标，没有则追加，然后 flush。
+// g 按 ID 替换已有目标，没有则追加。
 func (s *Store) putGoal(g Goal) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -167,6 +172,7 @@ func (s *Store) putGoal(g Goal) {
 }
 
 // goal 按 ID 查找目标。
+// id 与每个目标的 ID 比较。
 func (s *Store) goal(id string) (Goal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -186,6 +192,7 @@ func (s *Store) goals() []Goal {
 }
 
 // casGoal 在 expect 非空时要求状态一致。patch 返回 false 则不写盘。返回值带上里程碑副本。
+// id 与每个目标的 ID 比较。
 func (s *Store) casGoal(id, expect string, patch func(*Goal) bool) (Goal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -209,6 +216,7 @@ func (s *Store) casGoal(id, expect string, patch func(*Goal) bool) (Goal, bool) 
 }
 
 // putMonitor 按 ID 替换监视，没有则追加，然后 flush。
+// m 按 ID 替换已有监视，没有则追加。
 func (s *Store) putMonitor(m Monitor) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -224,6 +232,7 @@ func (s *Store) putMonitor(m Monitor) {
 }
 
 // casMonitor 在 expectStatus 非空或 expectChecks 大于等于 0 时核对这些字段。patch 返回 false 则不写盘。
+// id 与每条监视的 ID 比较。
 func (s *Store) casMonitor(id, expectStatus string, expectChecks int, patch func(*Monitor) bool) (Monitor, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -249,6 +258,7 @@ func (s *Store) casMonitor(id, expectStatus string, expectChecks int, patch func
 }
 
 // monitor 按 ID 查找监视。
+// id 与每条监视的 ID 比较。
 func (s *Store) monitor(id string) (Monitor, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -276,6 +286,7 @@ func (s *Store) putPage(p MonitorPage) {
 }
 
 // page 按 ID 查找监视页快照。
+// id 与每条快照的 ID 比较。
 func (s *Store) page(id string) (MonitorPage, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -288,6 +299,7 @@ func (s *Store) page(id string) (MonitorPage, bool) {
 }
 
 // insertIdea 在 ID 已存在时返回 false，否则追加并 flush。
+// it 的 ID 已存在时返回 false，否则整条追加。
 func (s *Store) insertIdea(it Idea) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -321,6 +333,7 @@ func (s *Store) ideas() []Idea {
 }
 
 // casIdea 在 expect 非空时要求状态一致。patch 返回 false 则不写盘。
+// id 与每条想法的 ID 比较。
 func (s *Store) casIdea(id, expect string, patch func(*Idea) bool) (Idea, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -366,6 +379,7 @@ func (s *Store) putProposal(p Proposal) {
 }
 
 // proposal 按 ID 查找提案。
+// id 与每条提案的 ID 比较。
 func (s *Store) proposal(id string) (Proposal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -378,6 +392,7 @@ func (s *Store) proposal(id string) (Proposal, bool) {
 }
 
 // casProposal 在 expect 或 hash 非空时要求状态和哈希一致。patch 返回 false 则不写盘。
+// id 与每条提案的 ID 比较。
 func (s *Store) casProposal(id, expect, hash string, patch func(*Proposal) bool) (Proposal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -418,6 +433,7 @@ func (s *Store) putChoice(c Choice) {
 }
 
 // choice 按 ID 查找选择。
+// id 与每条选择的 ID 比较。
 func (s *Store) choice(id string) (Choice, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -430,6 +446,7 @@ func (s *Store) choice(id string) (Choice, bool) {
 }
 
 // setTick 写下 LastTickAt 并 flush。
+// at 写入 LastTickAt。
 func (s *Store) setTick(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -438,6 +455,7 @@ func (s *Store) setTick(at time.Time) {
 }
 
 // setIdeasAt 写下 LastIdeasAt 并 flush。
+// at 写入 LastIdeasAt。
 func (s *Store) setIdeasAt(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -446,6 +464,8 @@ func (s *Store) setIdeasAt(at time.Time) {
 }
 
 // sample 把样例页正文写入 SamplePages 并 flush。
+// key 作为 SamplePages 的键。
+// text 作为该键的正文。
 func (s *Store) sample(key, text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -457,6 +477,7 @@ func (s *Store) sample(key, text string) {
 }
 
 // sampleGet 返回 SamplePages 里该键的正文，没有则为空串。
+// key 作为 SamplePages 的键。没有该键时返回空串。
 func (s *Store) sampleGet(key string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -471,6 +492,8 @@ func (s *Store) lastIdeasAt() time.Time {
 }
 
 // errf 给格式化错误加上 personal: 前缀。
+// format 接在 personal: 后面交给 fmt.Errorf。
+// args 传给 fmt.Errorf。
 func errf(format string, args ...any) error {
 	return fmt.Errorf("personal: "+format, args...)
 }

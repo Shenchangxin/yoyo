@@ -27,7 +27,7 @@ export function readLayout(): ShellLayout {
   return FALLBACK;
 }
 
-/** writeLayout 与当前值合并、夹紧后写回，并返回合并结果。写入失败时仍返回合并值。 */
+/** writeLayout 与当前值合并、夹紧后写回，并返回合并结果。写入失败时仍返回合并值。next 读取 rail、main、inspect。 */
 export function writeLayout(next: Partial<ShellLayout>) {
   const cur = readLayout();
   const merged: ShellLayout = {
@@ -43,7 +43,7 @@ export function writeLayout(next: Partial<ShellLayout>) {
   return merged;
 }
 
-/** 把有限数字夹进闭区间。非有限时取下界。 */
+/** 把有限数字夹进闭区间。非有限时取下界。n 传给 Number.isFinite，传给 Math.max。min 传给 Math.max。max 传给 Math.min。 */
 function clamp(n: number, min: number, max: number) {
   if (!Number.isFinite(n)) return min;
   return Math.min(max, Math.max(min, n));

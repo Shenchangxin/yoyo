@@ -25,7 +25,7 @@ import (
 // 下载压缩包时使用这些上限和请求头。
 const (
 	// ffmpegMaxZip 是压缩包和解压条目的上限，256 MiB。
-	ffmpegMaxZip    = 256 << 20
+	ffmpegMaxZip = 256 << 20
 	// ffmpegUserAgent 是下载请求的 User-Agent。
 	ffmpegUserAgent = "Mozilla/5.0 (compatible; Yoyo-Workstation)"
 )
@@ -35,13 +35,13 @@ var (
 	// ffmpegEndpoint 是默认站点。
 	ffmpegEndpoint = "https://www.modelscope.cn"
 	// ffmpegRepo 是默认数据集。
-	ffmpegRepo     = "NanoModel/ffmpeg"
+	ffmpegRepo = "NanoModel/ffmpeg"
 	// ffmpegRevision 是默认修订。
 	ffmpegRevision = "master"
 	// ffmpegHTTP 是带 cookie 的客户端，超时 25 分钟。
-	ffmpegHTTP     = newFFmpegHTTP()
+	ffmpegHTTP = newFFmpegHTTP()
 	// ffmpegVerify 指向校验解压结果的函数，测试可以换掉。
-	ffmpegVerify   = verifyFFmpegBin
+	ffmpegVerify = verifyFFmpegBin
 )
 
 // newFFmpegHTTP 返回带 cookie jar、超时 25 分钟的客户端。
@@ -111,6 +111,8 @@ func ffmpegRepoSpec() (endpoint, repo, rev string) {
 }
 
 // ffmpegArchiveName 把系统收成 windows、linux、macos，把架构收成 x86_64、aarch64，拼出 ffmpeg-<系统>-<架构>.zip。其他系统或架构返回错误。
+// goos 为 windows、linux 或 darwin，其他值返回错误。
+// goarch 为 amd64 或 arm64，其他值返回错误。
 func ffmpegArchiveName(goos, goarch string) (string, error) {
 	osName := ""
 	switch goos {
@@ -136,6 +138,9 @@ func ffmpegArchiveName(goos, goarch string) (string, error) {
 }
 
 // matchFFmpegArchive 要求名字含 ffmpeg、以 .zip 结尾，并匹配系统和架构。amd64 还认 x86_64、amd64 和单独的 x64。
+// name 取基名并转成小写，须以 .zip 结尾且包含 ffmpeg。
+// goos 为 windows、linux 或 darwin 时在名字里找对应系统词，其他值不匹配。
+// goarch 为 amd64 时认 x86_64、amd64 或单独的 x64，为 arm64 时认 aarch64 或 arm64，其他值返回 false。
 func matchFFmpegArchive(name, goos, goarch string) bool {
 	s := strings.ToLower(path.Base(name))
 	if !strings.HasSuffix(s, ".zip") || !strings.Contains(s, "ffmpeg") {
@@ -169,6 +174,9 @@ func hasX64(s string) bool {
 }
 
 // pickFFmpegArchive 先找与标准名完全相同的文件。没有时在匹配项里取文件名最短的。一个匹配都没有时仍返回标准名。
+// names 逐个与标准名比较，再交给 matchFFmpegArchive，没有匹配时仍返回标准名。
+// goos 传给 ffmpegArchiveName 和 matchFFmpegArchive。
+// goarch 传给 ffmpegArchiveName 和 matchFFmpegArchive。
 func pickFFmpegArchive(names []string, goos, goarch string) (string, error) {
 	want, err := ffmpegArchiveName(goos, goarch)
 	if err != nil {
@@ -198,12 +206,19 @@ func pickFFmpegArchive(names []string, goos, goarch string) (string, error) {
 }
 
 // ffmpegResolveURL 拼出 /datasets/<仓库>/resolve/<修订>/<文件>。
+// endpoint 去掉右侧斜杠后作为前缀。
+// repo 放进 /datasets/ 后面。
+// rev 放进 /resolve/ 后面。
+// file 把反斜杠换成斜杠并去掉开头的斜杠后接到路径末尾。
 func ffmpegResolveURL(endpoint, repo, rev, file string) string {
 	file = strings.TrimPrefix(strings.ReplaceAll(file, "\\", "/"), "/")
 	return strings.TrimRight(endpoint, "/") + "/datasets/" + repo + "/resolve/" + rev + "/" + file
 }
 
 // ffmpegAPIFileURL 拼出 /api/v1/datasets/<仓库>/repo，查询参数是 Revision 和 FilePath。
+// endpoint 去掉右侧斜杠后作为前缀，解析失败返回空串。
+// rev 写入查询参数 Revision。
+// file 写入查询参数 FilePath。
 func ffmpegAPIFileURL(endpoint, repo, rev, file string) string {
 	u, err := url.Parse(strings.TrimRight(endpoint, "/") + "/api/v1/datasets/" + repo + "/repo")
 	if err != nil {
@@ -217,6 +232,9 @@ func ffmpegAPIFileURL(endpoint, repo, rev, file string) string {
 }
 
 // ffmpegTreeURL 拼出仓库树接口，Recursive 为 true。
+// endpoint 去掉右侧斜杠后作为前缀，解析失败返回空串。
+// repo 放进 /api/v1/datasets/ 后面。
+// rev 写入查询参数 Revision。
 func ffmpegTreeURL(endpoint, repo, rev string) string {
 	u, err := url.Parse(strings.TrimRight(endpoint, "/") + "/api/v1/datasets/" + repo + "/repo/tree")
 	if err != nil {
@@ -230,6 +248,7 @@ func ffmpegTreeURL(endpoint, repo, rev string) string {
 }
 
 // parseFFmpegRepoTree 解析清单。跳过空路径和 Type 为 tree 的项。Path 空时用 Name。
+// raw 传给 json.Unmarshal。
 func parseFFmpegRepoTree(raw []byte) []ffmpegRemoteFile {
 	var wrap struct {
 		Code int `json:"Code"`
@@ -261,6 +280,7 @@ func parseFFmpegRepoTree(raw []byte) []ffmpegRemoteFile {
 }
 
 // listFFmpegRepo 用 GET 拉仓库树，正文最多读 2 MiB。状态码大于等于 300 或清单为空时失败。
+// ctx 传给 NewRequestWithContext。
 func (e *Engine) listFFmpegRepo(ctx context.Context) ([]ffmpegRemoteFile, error) {
 	endpoint, repo, rev := ffmpegRepoSpec()
 	rawURL := ffmpegTreeURL(endpoint, repo, rev)
@@ -291,6 +311,8 @@ func (e *Engine) listFFmpegRepo(ctx context.Context) ([]ffmpegRemoteFile, error)
 }
 
 // ffmpegDo 用 ffmpeg 的 User-Agent、Accept 和 Referer 发起 GET。
+// ctx 传给 NewRequestWithContext。
+// rawURL 作为 GET 地址。
 func (e *Engine) ffmpegDo(ctx context.Context, rawURL string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -303,6 +325,7 @@ func (e *Engine) ffmpegDo(ctx context.Context, rawURL string) (*http.Response, e
 }
 
 // EnsureFFmpeg 已可用时直接返回。否则等待安装。上下文取消时返回该错误。安装结束仍不可用时返回 ffErr，空则是 ffmpeg install failed。
+// ctx 为 nil 时换成 Background，取消时返回该错误。
 func (e *Engine) EnsureFFmpeg(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -390,6 +413,7 @@ func (e *Engine) beginFFmpegInstall() (<-chan struct{}, error) {
 }
 
 // runFFmpegInstall 用 25 分钟超时安装。成功时阶段为 ready、100，失败时为 error。结束后送出 ffmpeg 快照。
+// done 与 ffWait 相同时清掉等待，结束时关闭。
 func (e *Engine) runFFmpegInstall(done chan struct{}) {
 	defer func() {
 		e.ffMu.Lock()
@@ -416,6 +440,11 @@ func (e *Engine) runFFmpegInstall(done chan struct{}) {
 }
 
 // setFFmpegProgress 更新阶段、百分比、已下载字节、总字节和压缩包名。百分比小于 0 时不改百分比。总字节和压缩包名只在非空时覆盖。
+// phase 非空时写入阶段。
+// percent 小于 0 时不改百分比。
+// bytes 写入已下载字节。
+// total 大于 0 时写入总字节。
+// archive 非空时写入压缩包名。
 func (e *Engine) setFFmpegProgress(phase string, percent int, bytes, total int64, archive string) {
 	e.ffMu.Lock()
 	if phase != "" {
@@ -435,6 +464,7 @@ func (e *Engine) setFFmpegProgress(phase string, percent int, bytes, total int64
 }
 
 // installFFmpegBundle 列出仓库并挑选压缩包。体积为 0 或不少于 1 MiB 时才带上清单里的 SHA256。下载后解压到 bin，校验 ffmpeg -version，再刷新路径。
+// ctx 传给 listFFmpegRepo 和 downloadFFmpegZip。
 func (e *Engine) installFFmpegBundle(ctx context.Context) error {
 	goos, goarch := e.ffmpegPlatform()
 	want, err := ffmpegArchiveName(goos, goarch)
@@ -499,6 +529,10 @@ func (e *Engine) installFFmpegBundle(ctx context.Context) error {
 }
 
 // downloadFFmpegZip 先试 resolve 地址，再试 API 文件地址。都失败时返回最后一次错误。
+// ctx 传给 downloadFFmpegURL。
+// archive 传给 ffmpegResolveURL 和 ffmpegAPIFileURL。
+// dest 传给 downloadFFmpegURL。
+// wantSHA 传给 downloadFFmpegURL。
 func (e *Engine) downloadFFmpegZip(ctx context.Context, archive, dest, wantSHA string) error {
 	endpoint, repo, rev := ffmpegRepoSpec()
 	urls := []string{
@@ -523,6 +557,9 @@ func (e *Engine) downloadFFmpegZip(ctx context.Context, archive, dest, wantSHA s
 }
 
 // downloadFFmpegURL 把响应写到临时文件，同时计算 SHA256。超过 256 MiB 失败。wantSHA 非空时忽略大小写比较，不符返回 sha256 mismatch。进度百分比不超过 90。状态码大于等于 300 失败。
+// ctx 传给 ffmpegDo。
+// rawURL 传给 ffmpegDo。
+// dest 加上 .tmp 作为临时文件，校验通过后传给 replaceFile。
 func (e *Engine) downloadFFmpegURL(ctx context.Context, rawURL, dest, wantSHA string) error {
 	res, err := e.ffmpegDo(ctx, rawURL)
 	if err != nil {
@@ -593,6 +630,7 @@ type ffmpegProgressReader struct {
 }
 
 // Read 累计已读字节。百分比变化或读到错误时回调。
+// b 传给内部 Reader 的 Read。
 func (p *ffmpegProgressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.n += int64(n)
@@ -610,11 +648,14 @@ func (p *ffmpegProgressReader) Read(b []byte) (int, error) {
 }
 
 // zipEntryName 把压缩包条目名里的反斜杠换成斜杠。
+// name 把反斜杠换成斜杠。
 func zipEntryName(name string) string {
 	return strings.ReplaceAll(name, "\\", "/")
 }
 
 // extractFFmpegZip 跳过目录和符号链接，按分数选出 ffmpeg 和 ffprobe，并解压它们以及同目录的 dll。单条目超过 256 MiB 失败。非 Windows 上把解压出的文件设为 0755。
+// zipPath 传给 zip.OpenReader。
+// destDir 传给 MkdirAll，并作为解压文件的目录。
 func extractFFmpegZip(zipPath, destDir string) (ffmpegPath, probePath string, err error) {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -698,6 +739,7 @@ func extractFFmpegZip(zipPath, destDir string) (ffmpegPath, probePath string, er
 }
 
 // lookExtractedBinary 在目录里找 stem 或 stem.exe。Windows 先找 exe。
+// dir 与候选文件名拼成路径后 Stat。
 func lookExtractedBinary(dir, stem string) string {
 	cands := []string{stem, stem + ".exe"}
 	if runtime.GOOS == "windows" {
@@ -713,6 +755,7 @@ func lookExtractedBinary(dir, stem string) string {
 }
 
 // scoreZipBinary 只认 ffmpeg、ffmpeg.exe、ffprobe、ffprobe.exe。基础分是 50 减去路径层数，路径含 /bin/ 再加 10。
+// name 先经 zipEntryName，基名只认 ffmpeg、ffmpeg.exe、ffprobe、ffprobe.exe。
 func scoreZipBinary(name string) (kind string, score int) {
 	name = zipEntryName(name)
 	base := strings.ToLower(path.Base(name))
@@ -733,6 +776,8 @@ func scoreZipBinary(name string) (kind string, score int) {
 }
 
 // writeZipFile 把条目写到临时文件再替换目标，读取上限是 256 MiB 加 1 字节。
+// f 调用 Open，读取上限是 ffmpegMaxZip 加 1 字节。
+// dest 加上 .tmp 作为临时文件，再传给 replaceFile。
 func writeZipFile(f *zip.File, dest string) error {
 	rc, err := f.Open()
 	if err != nil {
@@ -762,6 +807,8 @@ func writeZipFile(f *zip.File, dest string) error {
 }
 
 // replaceFile 先删掉目标再改名。改名失败时复制过去，并删掉临时文件。
+// tmp 改名为 dest，失败时再打开并复制，最后删除。
+// dest 先删除，再作为改名或复制的目标。
 func replaceFile(tmp, dest string) error {
 	_ = os.Remove(dest)
 	if err := os.Rename(tmp, dest); err == nil {
@@ -791,6 +838,7 @@ func replaceFile(tmp, dest string) error {
 }
 
 // verifyFFmpegBin 用 -hide_banner -version 跑 20 秒。输出里不含 ffmpeg 时失败。
+// bin 去掉空白后为空则返回 extracted binary missing，否则用来执行 -hide_banner -version。
 func verifyFFmpegBin(bin string) error {
 	if strings.TrimSpace(bin) == "" {
 		return fmt.Errorf("ffmpeg: extracted binary missing")

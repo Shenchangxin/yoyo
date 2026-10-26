@@ -14,7 +14,7 @@ import { StudioWorkbench } from "./StudioWorkbench";
 import { VideoHistory } from "./VideoHistory";
 import { useStudioSelection } from "./workshop-store";
 
-/** VideoWorkshop 按栏挂上短片工作台、任务历史、画布，或画布旁边的短剧看板。 */
+/** VideoWorkshop 按栏挂上短片工作台、任务历史、画布，或画布旁边的短剧看板。props 的 sessionId、onNeedSession、onClose、projects、onOpenProject、onRefreshHistory 交给短片台；任务栏再用 canvasProjectId、dramaId、onOpenCut；画布和短剧看板也接上 sessionId 和 onNeedSession。 */
 export function VideoWorkshop(props: {
   sessionId?: string;
   onNeedSession: () => void | Promise<string | void>;
@@ -27,10 +27,10 @@ export function VideoWorkshop(props: {
   onRefreshHistory?: () => void;
 }) {
   const copy = useCopy();
-  const pane = useUI((s) => s.videoPane);
-  const videoBoard = useUI((s) => s.videoBoard);
-  const setVideoBoard = useUI((s) => s.setVideoBoard);
-  const studioId = useStudioSelection((s) => s.studioId);
+  const pane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
+  const videoBoard = useUI(/** s 取出 videoBoard。 */ (s) => s.videoBoard);
+  const setVideoBoard = useUI(/** s 取出 setVideoBoard。 */ (s) => s.setVideoBoard);
+  const studioId = useStudioSelection(/** s 取出 studioId。 */ (s) => s.studioId);
   const showBoard = videoBoard;
   const showYingce = isYingcePane(pane) || showBoard;
 

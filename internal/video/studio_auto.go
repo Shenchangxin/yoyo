@@ -20,6 +20,7 @@ const autoShotWait = 12 * time.Minute
 
 // StartStudioAuto 开始一键成片。编号空着就拒绝。这一条已经在做就返回当前工程，不另起一次。
 // 点这一下就开始用对话、语音和图像。函数立刻返回，后台接着做。
+// id 去掉首尾空白，空串时返回错误 id required，否则写入占用键，并传给 GetStudioProject 和 runStudioAuto。
 func (e *Engine) StartStudioAuto(id string) (StudioProject, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -47,6 +48,7 @@ func (e *Engine) StartStudioAuto(id string) (StudioProject, error) {
 }
 
 // runStudioAuto 按口播、配音、画面、合成的顺序做完。配音失败就记警告并跳过配音。任一步失败把阶段写成 failed。中途恐慌也收成失败，避免挂住。
+// id 用来清除 studio-auto 占用，并传给 autoScript、markAuto、SpeakStudio、GetStudioProject、SkipStudioAudio、autoVisuals、AssembleStudio 和 finishAuto。
 func (e *Engine) runStudioAuto(id string) {
 	defer e.inflight.Delete("studio-auto:" + id)
 	defer func() {
@@ -84,6 +86,7 @@ func (e *Engine) runStudioAuto(id string) {
 }
 
 // autoScript 保证有口播并锁定。口播是空的就先起草。然后按口播重排镜头，已有画面按字幕对上的会留下。锁定失败就返回错误。
+// id 传给 GetStudioProject 和 ApproveStudioScript。
 func (e *Engine) autoScript(id string) error {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -148,6 +151,7 @@ func (e *Engine) syncShotsToScript(p *StudioProject) {
 }
 
 // autoVisuals 给缺画面的镜头排队生图，然后等到它们回来。画面已经齐就直接返回。排队失败且一镜都没有时返回错误。
+// id 传给 GetStudioProject、GenerateMissingStudioShots 和 waitStudioShots。
 func (e *Engine) autoVisuals(id string) error {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -163,6 +167,7 @@ func (e *Engine) autoVisuals(id string) error {
 }
 
 // hasStudioMedia 判断至少有一镜已经有图或视频。
+// p 检查镜头里是否已有 ImageHash 或 VideoHash。
 func hasStudioMedia(p StudioProject) bool {
 	for _, s := range p.Storyboard.Shots {
 		if s.ImageHash != "" || s.VideoHash != "" {
@@ -173,6 +178,7 @@ func hasStudioMedia(p StudioProject) bool {
 }
 
 // waitStudioShots 等到每一镜都有可用画面，或没有还在跑的任务。最多等 12 分钟。引擎取消时返回已取消。超时或仍缺画面就返回错误。
+// id 传给 GetStudioProject。
 func (e *Engine) waitStudioShots(id string) error {
 	deadline := time.Now().Add(autoShotWait)
 	for {
@@ -275,6 +281,7 @@ func clipRunes(s string, n int) string {
 }
 
 // cleanDraftScript 去掉模型输出外面的代码围栏，以及开头的「口播」标记。
+// s 去掉首尾空白和首尾的代码围栏，并去掉开头一行或前缀里的「口播」。
 func cleanDraftScript(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "```")
@@ -289,6 +296,11 @@ func cleanDraftScript(s string) string {
 }
 
 // chatComplete 向对话接口要一段文本。端点空着用 api.openai.com。路径还没到 /chat/completions 就补上。45 秒超时。没有 choices 就返回错误。
+// endpoint 去掉首尾空白和右侧斜杠，空串时用 https://api.openai.com/v1，路径未以 /chat/completions 结尾时补上。
+// key 写进 Authorization 的 Bearer。
+// model 写入请求里的 model。
+// system 写入 role 为 system 的 content。
+// user 写入 role 为 user 的 content。
 func (e *Engine) chatComplete(endpoint, key, model, system, user string) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if base == "" {
@@ -355,6 +367,8 @@ func (e *Engine) chatComplete(endpoint, key, model, system, user string) (string
 }
 
 // markAuto 写下当前阶段并清掉错误。工程读不到就什么都不做。
+// id 传给 GetStudioProject。
+// phase 写入 AutoPhase。
 func (e *Engine) markAuto(id, phase string) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -366,6 +380,9 @@ func (e *Engine) markAuto(id, phase string) {
 }
 
 // finishAuto 写下结束阶段。成功时先打交付包，包打不上就记警告，阶段仍是 done，闸门改到交付。挂了选题且已有成片时，把选题标成完成。失败时只记下原因。
+// id 传给 GetStudioProject；phase 为 done 且 errMsg 为空时还会先传给 PackageStudio。
+// phase 写入 AutoPhase。
+// errMsg 写入 AutoError；为空时把 Gate 改成交付并让 noteStudio 记下 ready，非空时把 errMsg 传给 noteStudio。
 func (e *Engine) finishAuto(id, phase, errMsg string) {
 	var packErr error
 	if phase == "done" && errMsg == "" {

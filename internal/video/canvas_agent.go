@@ -86,6 +86,10 @@ func (e *Engine) lockAgents() *canvasAgentBook {
 }
 
 // canvasAgentHTTP 分发画布助手的能力、人设、运行、消息、插话、取消和审批路由。
+// method 与 GET、POST、PATCH 比较后选择路由。
+// path 传给 splitPath，并与各条 agent 路由比较。
+// query 在 GET agent/profile 时把 canvasId 传给 agentProfileView。
+// body 传给 patchAgentProfile、createCanvasAgentRun 和 messageCanvasAgent；插话时取 text、messageId、permissionMode、canvasId，审批时取 decision。
 func (e *Engine) canvasAgentHTTP(method, path string, query, body map[string]any) canvasEnv {
 	parts := splitPath(path)
 	match := func(pat string) (map[string]string, bool) {
@@ -148,6 +152,7 @@ func canvasAgentCapabilities() map[string]any {
 }
 
 // createCanvasAgentRun 按幂等键创建或复用一次运行，然后把这一轮交给 launchCanvasAgent。
+// body 用 strAnyMap、bodyText、agentModel 和 strList 读取 canvasId、prompt、idempotencyKey、permissionMode、模型和 skillIds；canvasId、prompt 或 idempotencyKey 取到空串时返回 400，permissionMode 为空时写成 request_approval，不是 read_only、auto 或 request_approval 时也返回 400。
 func (e *Engine) createCanvasAgentRun(body map[string]any) canvasEnv {
 	canvasID := strAnyMap(body, "canvasId", "canvas_id")
 	prompt := bodyText(body, "prompt")
@@ -192,6 +197,8 @@ func (e *Engine) createCanvasAgentRun(body map[string]any) canvasEnv {
 }
 
 // messageCanvasAgent 给已有运行追加一轮用户消息。相同幂等键直接返回当前视图。
+// id 去掉空白后为空则返回 400，否则作为 b.runs 的键。
+// body 用 bodyText 取 prompt 或 text，用 strAnyMap 取幂等键和 permissionMode，并用 agentModel、strList 取模型和 skillIds。
 func (e *Engine) messageCanvasAgent(id string, body map[string]any) canvasEnv {
 	prompt := bodyText(body, "prompt")
 	if prompt == "" {
@@ -242,6 +249,7 @@ func (e *Engine) messageCanvasAgent(id string, body map[string]any) canvasEnv {
 }
 
 // launchCanvasAgent 在桥的 Start 已接上时异步调用它。Start 为空就把这次运行标成失败。本函数不调用模型。
+// turn 传给 Agent.Start；Start 未接上或返回错误时，把 turn.RunID 和 turn.Epoch 传给 CanvasAgentFailRun。
 func (e *Engine) launchCanvasAgent(turn CanvasAgentTurn) {
 	if e.Agent == nil || e.Agent.Start == nil {
 		e.CanvasAgentFailRun(turn.RunID, turn.Epoch, "画布助手还没有接到对话运行时")
@@ -255,6 +263,7 @@ func (e *Engine) launchCanvasAgent(turn CanvasAgentTurn) {
 }
 
 // cancelCanvasAgent 把尚未结束的运行标成取消，并在已有会话时调用 Agent.Stop。
+// id 作为 b.runs 的键取出运行。
 func (e *Engine) cancelCanvasAgent(id string) {
 	b := e.lockAgents()
 	run := b.runs[id]
@@ -273,6 +282,9 @@ func (e *Engine) cancelCanvasAgent(id string) {
 }
 
 // decideCanvasAgent 把批准或拒绝交给 Agent.Decide，并清掉本地的等待审批状态。
+// runID 作为 b.runs 的键取出运行。
+// approvalID 传给 Agent.Decide，并写入 approval_decided 事件。
+// decision 去掉空白后必须是 approve 或 reject，再传给 Agent.Decide 并写入事件。
 func (e *Engine) decideCanvasAgent(runID, approvalID, decision string) canvasEnv {
 	decision = strings.TrimSpace(decision)
 	if decision != "approve" && decision != "reject" {
@@ -301,6 +313,7 @@ func (e *Engine) decideCanvasAgent(runID, approvalID, decision string) canvasEnv
 }
 
 // canvasAgentView 在锁内返回一次运行的轮询视图。找不到时 ok 为 false。
+// id 作为 b.runs 的键取出运行。
 func (e *Engine) canvasAgentView(id string) (map[string]any, bool) {
 	b := e.lockAgents()
 	defer b.mu.Unlock()
@@ -312,6 +325,9 @@ func (e *Engine) canvasAgentView(id string) (map[string]any, bool) {
 }
 
 // RememberCanvasAgentSession 记住画布、会话和这次运行的对应关系，供之后的轮询和事件回写使用。
+// canvasID 与 sessionID 同时非空时写入 canvasSessions。
+// sessionID 非空且运行存在时写入 SessionID，并作为 bySession 的键指向 runID。
+// runID 作为 b.runs 的键取出运行。
 func (e *Engine) RememberCanvasAgentSession(canvasID, sessionID, runID string) {
 	if e == nil {
 		return
@@ -329,6 +345,7 @@ func (e *Engine) RememberCanvasAgentSession(canvasID, sessionID, runID string) {
 }
 
 // CanvasAgentEpoch 返回该会话当前应接受的轮次。没有对应运行时返回 0。
+// sessionID 传给 runBySession。
 func (e *Engine) CanvasAgentEpoch(sessionID string) int {
 	if e == nil {
 		return 0
@@ -343,6 +360,9 @@ func (e *Engine) CanvasAgentEpoch(sessionID string) int {
 }
 
 // CanvasAgentStream 用这一轮的实时助手文本替换运行里的正文，并把状态保持为 running。
+// sessionID 传给 touchAgent。
+// epoch 传给 touchAgent。
+// text 在状态不是 waiting_approval 时写入运行的 Text。
 func (e *Engine) CanvasAgentStream(sessionID string, epoch int, text string) {
 	e.touchAgent(sessionID, epoch, func(run *canvasAgentRun) {
 		if run.Status == "waiting_approval" {
@@ -355,6 +375,9 @@ func (e *Engine) CanvasAgentStream(sessionID string, epoch int, text string) {
 }
 
 // CanvasAgentFinish 结束当前轮次。ok 为真时标成完成，正文为空则写入默认完成句；否则标成失败。
+// sessionID 传给 touchAgent。
+// epoch 传给 touchAgent。
+// text 去掉空白后非空时写入运行的 Text。
 func (e *Engine) CanvasAgentFinish(sessionID string, epoch int, text string, ok bool) {
 	e.touchAgent(sessionID, epoch, func(run *canvasAgentRun) {
 		if strings.TrimSpace(text) != "" {
@@ -379,6 +402,9 @@ func (e *Engine) CanvasAgentFinish(sessionID string, epoch int, text string, ok 
 }
 
 // CanvasAgentFail 把当前轮次标成失败并写入原因。轮次不一致时不改更新的运行。
+// sessionID 传给 touchAgent。
+// epoch 传给 touchAgent。
+// msg 去掉空白后写入 Failure，结果为空串时改成「画布助手执行失败」。
 func (e *Engine) CanvasAgentFail(sessionID string, epoch int, msg string) {
 	e.touchAgent(sessionID, epoch, func(run *canvasAgentRun) {
 		run.Status = "failed"
@@ -393,6 +419,9 @@ func (e *Engine) CanvasAgentFail(sessionID string, epoch int, msg string) {
 }
 
 // CanvasAgentFailRun 在会话还不存在时，按运行 id 和轮次把启动失败写回去。
+// runID 作为 b.runs 的键取出运行。
+// epoch 与运行的 Epoch 不等则返回。
+// msg 去掉空白后写入 Failure，结果为空串时改成「画布助手执行失败」。
 func (e *Engine) CanvasAgentFailRun(runID string, epoch int, msg string) {
 	if e == nil {
 		return
@@ -416,6 +445,10 @@ func (e *Engine) CanvasAgentFailRun(runID string, epoch int, msg string) {
 }
 
 // CanvasAgentTool 在会改画布的工具完成后推一条 canvas_updated，让打开的编辑器重新加载。
+// sessionID 传给 touchAgent。
+// epoch 传给 touchAgent。
+// name 传给 canvasAgentMutates，为真时写入 canvas_updated 的 toolName。
+// callID 写入 canvas_updated 的 callId。
 func (e *Engine) CanvasAgentTool(sessionID string, epoch int, name, callID string) {
 	e.touchAgent(sessionID, epoch, func(run *canvasAgentRun) {
 		if !canvasAgentMutates(name) {
@@ -435,6 +468,9 @@ func (e *Engine) CanvasAgentTool(sessionID string, epoch int, name, callID strin
 }
 
 // CanvasAgentApproval 把审批请求放进运行视图，并把状态改为 waiting_approval。
+// sessionID 传给 touchAgent。
+// epoch 传给 touchAgent。
+// payload 传给 approvalView，返回值为 nil 时直接返回。
 func (e *Engine) CanvasAgentApproval(sessionID string, epoch int, payload map[string]any) {
 	view := approvalView(payload)
 	if view == nil {
@@ -449,6 +485,8 @@ func (e *Engine) CanvasAgentApproval(sessionID string, epoch int, payload map[st
 }
 
 // touchAgent 在锁内按会话和轮次找到仍在进行的运行，再执行 fn。已结束或轮次不同则返回。
+// sessionID 传给 runBySession。
+// epoch 等于 0 时直接返回，与运行的 Epoch 不等也返回。
 func (e *Engine) touchAgent(sessionID string, epoch int, fn func(*canvasAgentRun)) {
 	if e == nil || epoch == 0 {
 		return
@@ -467,6 +505,7 @@ func (e *Engine) touchAgent(sessionID string, epoch int, fn func(*canvasAgentRun
 }
 
 // runBySession 用会话 id 查出对应的运行。
+// sessionID 作为 bySession 的键取出运行标识。
 func (b *canvasAgentBook) runBySession(sessionID string) *canvasAgentRun {
 	id := b.bySession[sessionID]
 	if id == "" {
@@ -476,6 +515,8 @@ func (b *canvasAgentBook) runBySession(sessionID string) *canvasAgentRun {
 }
 
 // push 给运行追加一条事件，只保留最近 40 条。
+// typ 写入事件的 type。
+// payload 写入事件的 payload。
 func (run *canvasAgentRun) push(typ string, payload map[string]any) {
 	run.Seq++
 	ev := map[string]any{
@@ -533,6 +574,7 @@ func (run *canvasAgentRun) view() map[string]any {
 }
 
 // agentProfileView 读出用户层和可选的画布层人设，并带上修订号和哈希。
+// canvasID 非空时从 Canvases 取出画布层，并拼进返回的 hash。
 func (e *Engine) agentProfileView(canvasID string) map[string]any {
 	rec, err := getDoc[agentProfileRec](e, colAgentProfile, "local")
 	if err != nil {
@@ -574,6 +616,7 @@ func (e *Engine) agentProfileView(canvasID string) map[string]any {
 }
 
 // patchAgentProfile 按 scope 更新用户层或指定画布层的人设正文。
+// body 用 strAnyMap 读取 scope 和 canvasId；content 键存在且值不是 nil 时转成正文。
 func (e *Engine) patchAgentProfile(body map[string]any) canvasEnv {
 	scope := strAnyMap(body, "scope")
 	canvasID := strAnyMap(body, "canvasId")
@@ -615,6 +658,7 @@ func (e *Engine) patchAgentProfile(body map[string]any) canvasEnv {
 }
 
 // agentModel 从请求里取模型名，或拼成通道 id 加模型键。
+// body 用 strAnyMap 读取 model、channelId、channelModelKey 和 logicalModelId。
 func agentModel(body map[string]any) string {
 	if m := strAnyMap(body, "model"); m != "" {
 		return m
@@ -631,6 +675,7 @@ func agentModel(body map[string]any) string {
 }
 
 // bodyText 取出请求字段里的非空文本。
+// key 用来从 body 取值；键不存在或值是 nil 时返回空串。
 func bodyText(body map[string]any, key string) string {
 	if body == nil {
 		return ""
@@ -647,6 +692,7 @@ func bodyText(body map[string]any, key string) string {
 }
 
 // strList 把字符串切片或任意切片收成字符串列表。
+// v 是 []string 时原样返回，是 []any 时丢掉空白和 <nil> 后返回字符串，其他类型返回 nil。
 func strList(v any) []string {
 	switch t := v.(type) {
 	case []string:
@@ -673,6 +719,7 @@ func hashText(s string) string {
 }
 
 // canvasAgentMutates 判断工具名是否会改画布，从而需要通知编辑器重载。
+// name 与 canvas_apply_ops、canvas_arrange_nodes、canvas_create_storyboard、canvas_edit_storyboard、canvas_edit_batch_table、generate_media、image_layer_split、image_annotation_render 比较。
 func canvasAgentMutates(name string) bool {
 	switch name {
 	case "canvas_apply_ops", "canvas_arrange_nodes", "canvas_create_storyboard", "canvas_edit_storyboard", "canvas_edit_batch_table", "generate_media", "image_layer_split", "image_annotation_render":
@@ -683,6 +730,7 @@ func canvasAgentMutates(name string) bool {
 }
 
 // approvalView 把审批载荷收成画布面板用的确认视图。载荷没有 id 时返回 nil。
+// payload 为 nil 时返回 nil，否则读取 id、action、command 和 path，id 去掉空白后为空也返回 nil。
 func approvalView(payload map[string]any) map[string]any {
 	if payload == nil {
 		return nil

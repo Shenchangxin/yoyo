@@ -30,6 +30,8 @@ type skillFrontmatter struct {
 // ParseSkillMD 解析 SKILL.md。会先把 CRLF 收成 LF；必须以 --- 开头的 YAML 前置信息开始，并用换行加 --- 结束。
 // 名字和描述都必填，描述为空时改用 description_zh。按字节计，名字超过 64 或描述超过 4096 就拒绝。
 // 图标不合法时留空，不报错。嵌套 metadata 会压成点分键。
+// raw 先把 CRLF 收成 LF，再拆出前置信息和正文。
+// source 写入返回值的 Source，并交给 skillDir 得到 Dir。
 func ParseSkillMD(raw, source string) (Skill, error) {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	if !strings.HasPrefix(raw, "---\n") {
@@ -106,6 +108,7 @@ func (s Skill) AllowsImplicit() bool {
 }
 
 // skillDir 在来源以 skill.md 结尾时返回所在目录，大小写不敏感。空来源、builtin，以及不以 skill.md 结尾的来源，返回空串。
+// source 为空或等于 builtin 时返回空串；转小写后以 skill.md 结尾时返回 filepath.Dir(source)，否则返回空串。
 func skillDir(source string) string {
 	if source == "" || source == "builtin" {
 		return ""
@@ -117,6 +120,7 @@ func skillDir(source string) string {
 }
 
 // LoadSkillFile 读路径上的 SKILL.md，并把该路径当作来源。
+// path 用 os.ReadFile 读取，读到的文本和 path 一起交给 ParseSkillMD。
 func LoadSkillFile(path string) (Skill, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -131,6 +135,7 @@ func (s Skill) CatalogLine() string {
 }
 
 // SafeIconURL 只接受带主机名的 https。http、相对路径、javascript:、file:，以及 localhost、127.0.0.1、::1 和以 .localhost 结尾的主机，都返回空串。
+// raw 先去掉两端空白；空串、解析失败、方案不是 https、Host 为空，或主机名是 localhost、127.0.0.1、::1、以 .localhost 结尾时返回空串，否则返回解析后的字符串。
 func SafeIconURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -148,6 +153,7 @@ func SafeIconURL(raw string) string {
 }
 
 // anyString 把字符串、列表或其他值收成一段文本。列表用空格拼接，空项丢掉。
+// v 为 nil 时返回空串；字符串去掉两端空白；列表逐项递归后丢掉空项再用空格拼接；其他类型用 fmt.Sprint 再去掉两端空白。
 func anyString(v any) string {
 	switch t := v.(type) {
 	case nil:
@@ -168,6 +174,7 @@ func anyString(v any) string {
 }
 
 // flattenMeta 把嵌套 metadata 压成点分键。没有可写的叶子时返回 nil，不是空映射。
+// v 交给 walkMeta，没有写下任何键时返回 nil。
 func flattenMeta(v any) map[string]string {
 	out := map[string]string{}
 	walkMeta("", v, out)
@@ -178,6 +185,9 @@ func flattenMeta(v any) map[string]string {
 }
 
 // walkMeta 把标量记在前缀下。两种映射都继续下钻，列表整段收成一个值。前缀为空的标量不写入。
+// prefix 为空时，字符串、列表和其他标量都不写入 out；非空时作为键，映射下钻时用点接上子键。
+// v 为 nil 时直接返回；字符串和其他标量在去掉空白后非空才写入；map[string]any 和 map[any]any 继续下钻；列表交给 anyString。
+// out 接收这些键值。
 func walkMeta(prefix string, v any, out map[string]string) {
 	switch t := v.(type) {
 	case nil:

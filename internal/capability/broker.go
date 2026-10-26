@@ -92,6 +92,7 @@ func NewBroker(policy AutoPolicy, ask func(ctx context.Context, req Request) (De
 }
 
 // SessionLevels 返回该会话已记住的级别。没有会话时返回空切片。遍历 map，顺序不稳定。
+// sessionID 用作 b.session 的键；没有对应项时返回空切片。
 func (b *Broker) SessionLevels(sessionID string) []Level {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -104,6 +105,7 @@ func (b *Broker) SessionLevels(sessionID string) []Level {
 }
 
 // RestoreSession 把 levels 经 DropSticky 过滤后并入该会话，不清除已有授权。HighRisk、SendAsYou、ComputerUse 不会被恢复。
+// sessionID 用作 b.session 的键；该键还没有 map 时先建一个，再写入过滤后的级别。
 func (b *Broker) RestoreSession(sessionID string, levels []Level) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -116,6 +118,7 @@ func (b *Broker) RestoreSession(sessionID string, levels []Level) {
 }
 
 // ClearSession 删掉该会话的授权和 AuthAsk 标记。
+// sessionID 用来从 b.session 和 b.strict 里删除。
 func (b *Broker) ClearSession(sessionID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -155,6 +158,7 @@ func (b *Broker) AllowAlways(l Level) {
 }
 
 // Check 用 context.Background 调用 CheckCtx。
+// req 原样交给 CheckCtx。
 func (b *Broker) Check(req Request) error {
 	return b.CheckCtx(context.Background(), req)
 }
@@ -165,6 +169,7 @@ func (b *Broker) Check(req Request) error {
 // ForceAsk 为假且本会话已有该级别则直接通过，不再询问。否则调用审批函数。
 // 审批返回 Always 时，身份级别和 NeverAlwaysAction 只写入本会话，其他级别写入始终表。
 // Session 写入本会话。Once 不记录。其余决定返回 denied。
+// req 的 Workspace、Path 在都非空且 workspacePathJail 为真时交给 WithinWorkspace；Level、Action 参与始终表和 NeverAlways 判断；ForceAsk 为假时用 SessionID 查本会话；审批函数也收到这份 req。
 func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -238,6 +243,7 @@ func WithinWorkspace(root, p string) bool {
 	if err != nil {
 		return false
 	}
+	// 用词法相对路径判断是否逃出根。这里不调用 EvalSymlinks，指向根外的符号链接仍可能被当成在根内。
 	rel, err := filepath.Rel(rootAbs, pathAbs)
 	if err != nil {
 		return false
@@ -258,6 +264,7 @@ func LooksLikeURL(p string) bool {
 
 // workspacePathJail 只对 ReadWorkspace 和 WriteWorkspace 返回 true，并且 Path 不能是 LooksLikeURL。
 // 其他级别返回 false。网络和浏览器工具把 URL 放在 Path 里，当成文件关进工作区会挡掉抓取。
+// req 只看 Level 和 Path：Level 是 ReadWorkspace 或 WriteWorkspace 时返回 Path 不是 LooksLikeURL。
 func workspacePathJail(req Request) bool {
 	switch req.Level {
 	case ReadWorkspace, WriteWorkspace:

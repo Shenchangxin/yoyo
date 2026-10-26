@@ -11,6 +11,8 @@ import (
 )
 
 // applyCanvasOps 在画布上执行增删改节点、连线和移动，最多 40 条，然后按当前修订号保存。
+// canvasID 传给 getCanvasProject 和 saveCanvasPayload，并写入 canvas_patch 事件。
+// ops 长度为 0 时返回 ops required，大于 40 时返回 too many ops，否则逐条按 op 或 type 改节点和连线。
 func (e *Engine) applyCanvasOps(canvasID string, ops []any) (string, error) {
 	if len(ops) == 0 {
 		return "", fmt.Errorf("ops required")
@@ -161,6 +163,8 @@ func (e *Engine) applyCanvasOps(canvasID string, ops []any) (string, error) {
 }
 
 // promptCompile 按操作名把变量收成一段提示词。未识别的操作则附上变量 JSON。
+// operation 选择 chapter_assets、characters、storyboard、storyboard_plan、first_frame、character_card、three_view 或 short_drama_outline，其他值与变量 JSON 拼在一起返回。
+// vars 用 strAnyMap 读取 source、script、shot、name、premise；未识别的操作把整份 vars 编码成 JSON。
 func (e *Engine) promptCompile(operation string, vars map[string]any) string {
 	switch operation {
 	case "chapter_assets", "characters":

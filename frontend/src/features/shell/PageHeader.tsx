@@ -5,7 +5,7 @@ import { browserSurface, chrome } from "../../lib/chrome";
 import { cn } from "../../lib/utils";
 import { WindowControls } from "./WindowControls";
 
-// PageHeader 高 12。macPad 为真时左侧留出 76px。双击时，若不是浏览器面，调用 chrome.toggleMaximise。右侧始终挂 WindowControls。
+/** PageHeader 高 12。macPad 为真时左侧留出 76px。双击时，若不是浏览器面，调用 chrome.toggleMaximise。右侧始终挂 WindowControls。props 读取 macPad、className、left、title、right。 */
 export function PageHeader(props: {
   left?: ReactNode;
   title?: ReactNode;

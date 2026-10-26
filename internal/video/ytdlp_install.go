@@ -33,6 +33,7 @@ func defaultYTDLPURL() string {
 }
 
 // EnsureYTDLP 返回本机 yt-dlp 路径。先看已发现的路径，没有就下载当前发布。引擎为空时返回错误。
+// ctx 在 YTDLP 去掉首尾空白后仍为空时传给 downloadYTDLP。
 func (e *Engine) EnsureYTDLP(ctx context.Context) (string, error) {
 	if e == nil {
 		return "", fmt.Errorf("video engine is missing")
@@ -45,6 +46,7 @@ func (e *Engine) EnsureYTDLP(ctx context.Context) (string, error) {
 }
 
 // downloadYTDLP 用 GET 把文件下到视频目录的 bin。上下文为空时用 Background，超时 5 分钟。请求带 User-Agent Yoyo；有 Engine.HTTP 就用它，否则用超时 5 分钟的 http.Client。状态码大于等于 300、空正文或超过 ytdlpMaxBytes 都失败并删掉临时文件。成功后把临时文件设为 0755，改名为 yt-dlp（Windows 上是 yt-dlp.exe），再记到 Engine.YTDLP。
+// ctx 为 nil 时换成 context.Background，再限制为 5 分钟，传给 http.NewRequestWithContext。
 func (e *Engine) downloadYTDLP(ctx context.Context) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()

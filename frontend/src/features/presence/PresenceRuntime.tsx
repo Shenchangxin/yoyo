@@ -24,7 +24,7 @@ type PresenceSlots = {
 
 const SlotsCtx = createContext<PresenceSlots | null>(null);
 
-/** PresenceRuntime 维持一只情绪球，并把它放到当前优先级最高的槽里。 */
+/** PresenceRuntime 维持一只情绪球，并把它放到当前优先级最高的槽里。props 读取 emotionId、reduced、children。 */
 export function PresenceRuntime(props: {
   emotionId: string;
   reduced: boolean;
@@ -51,7 +51,7 @@ export function PresenceRuntime(props: {
   }, [slots]);
   const activeId = active?.id ?? null;
 
-  /** 登记或换掉一个槽，并交回取消登记的函数。 */
+  /** 登记或换掉一个槽，并交回取消登记的函数。id 与 s.id 比较是否相等，与 s.id 比较是否不等，写入字段 id。el 与 prev[i]!.el 比较是否相等，与 s.el 比较是否不等，写入字段 el。size 与 prev[i]!.size 比较是否相等，写入字段 size。 */
   const claim = useCallback((id: PresenceSlotId, el: HTMLElement, size: number) => {
     setSlots((prev) => {
       const i = prev.findIndex((s) => s.id === id);
@@ -173,7 +173,7 @@ export function PresenceRuntime(props: {
   );
 }
 
-/** PresenceAnchor 占一个槽，点一下就庆祝。 */
+/** PresenceAnchor 占一个槽，点一下就庆祝。props 读取 id、size、className、fallback，调用 onClick。 */
 export function PresenceAnchor(props: {
   id: PresenceSlotId;
   size: number;
@@ -208,7 +208,7 @@ export function PresenceAnchor(props: {
   );
 }
 
-/** PresenceSprite 单独养一只情绪球，给陪伴窗或独占的模块加载用。 */
+/** PresenceSprite 单独养一只情绪球，给陪伴窗或独占的模块加载用。props 读取 size、emotionId、lite、reduced、spark、followPointer 等，调用 onClick。 */
 export function PresenceSprite(props: {
   emotionId: string;
   size?: number;
@@ -296,7 +296,7 @@ export function PresenceSprite(props: {
   );
 }
 
-/** PresenceStamp 画一张静态休息脸：奶油色身体和一对眼睛，不是活的引擎。 */
+/** PresenceStamp 画一张静态休息脸：奶油色身体和一对眼睛，不是活的引擎。props 读取 size、live、className。 */
 export function PresenceStamp(props: { className?: string; size?: number; live?: boolean }) {
   const n = props.size ?? 36;
   const raw = useId();
@@ -342,7 +342,7 @@ export function PresenceStamp(props: { className?: string; size?: number; live?:
 /** COMPOSER_PRESENCE_SIZE 是输入栏栖枝的尺寸。 */
 export const COMPOSER_PRESENCE_SIZE = 64;
 
-/** PresencePerch 在输入栏占作曲槽，空着时用信笺垫着。 */
+/** PresencePerch 在输入栏占作曲槽，空着时用信笺垫着。props 读取 size、className。 */
 export function PresencePerch(props: { className?: string; size?: number }) {
   const size = props.size ?? COMPOSER_PRESENCE_SIZE;
   return (
@@ -355,7 +355,7 @@ export function PresencePerch(props: { className?: string; size?: number }) {
 /** MODULE_PRESENCE_SIZE 是模块加载时情绪球的尺寸。 */
 export const MODULE_PRESENCE_SIZE = 228;
 
-/** PresenceModuleLoading 在模块加载时占住模块槽，并可带一行说明。 */
+/** PresenceModuleLoading 在模块加载时占住模块槽，并可带一行说明。props 读取 className、size、label。 */
 export function PresenceModuleLoading(props: { label?: string; className?: string; size?: number }) {
   return (
     <div

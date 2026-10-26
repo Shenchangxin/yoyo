@@ -48,7 +48,7 @@ export function getLocale(): Locale {
   return locale;
 }
 
-/** setLocale 切换语言、换上文案表，并通知订阅者。写入失败时忽略。 */
+/** setLocale 切换语言、换上文案表，并通知订阅者。写入失败时忽略。next 用作下标，赋给 locale，传给 localStorage.setItem。 */
 export function setLocale(next: Locale) {
   locale = next;
   setCopyCatalog(catalogs[next] || en);
@@ -60,7 +60,7 @@ export function setLocale(next: Locale) {
   listeners.forEach((l) => l());
 }
 
-/** applyLocale 只接受 zh-CN 和 en。其他值重新探测。 */
+/** applyLocale 只接受 zh-CN 和 en。其他值重新探测。next 与 zh-CN、en 比较是否相等，传给 setLocale。 */
 export function applyLocale(next?: string) {
   if (next === "zh-CN" || next === "en") {
     setLocale(next);
@@ -84,7 +84,7 @@ export function useCopy(): Copy {
   return catalog();
 }
 
-/** formatMoney 按当前语言格式成美元。非法数字为破折号。大于 0 且小于 0.01 时最少四位小数，小于 1 时最多四位，否则最多两位。 */
+/** formatMoney 按当前语言格式成美元。非法数字为破折号。大于 0 且小于 0.01 时最少四位小数，小于 1 时最多四位，否则最多两位。n 大于 0，小于 0.01，调用 toFixed，传给 Number.isFinite，传给 format。 */
 export function formatMoney(n: number): string {
   if (!Number.isFinite(n)) return "—";
   try {
@@ -99,7 +99,7 @@ export function formatMoney(n: number): string {
   }
 }
 
-/** formatDurationMs 非法或负数为破折号。不足一秒、不足一分钟和更长分别格式化。不足十秒保留一位小数。中文用「秒」和「分」。 */
+/** formatDurationMs 非法或负数为破折号。不足一秒、不足一分钟和更长分别格式化。不足十秒保留一位小数。中文用「秒」和「分」。ms 小于 0，小于 1000，传给 Number.isFinite。 */
 export function formatDurationMs(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "—";
   const zh = locale === "zh-CN";

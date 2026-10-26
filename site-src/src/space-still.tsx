@@ -46,10 +46,12 @@ export function SpaceStill({ theme }: { theme: Theme }) {
     const materials: THREE.Material[] = [];
     const textures: THREE.Texture[] = [];
 
+    /** take 调用 push。geometry 放进 geometries。 */
     const take = <T extends THREE.BufferGeometry>(geometry: T) => {
       geometries.push(geometry);
       return geometry;
     };
+    /** shade 调用 push。material 放进 materials。 */
     const shade = <T extends THREE.Material>(material: T) => {
       materials.push(material);
       return material;
@@ -114,6 +116,7 @@ export function SpaceStill({ theme }: { theme: Theme }) {
     const blobMat = shade(new THREE.MeshBasicMaterial({ map: blobMap, transparent: true, depthWrite: false, opacity: 0.85 }));
     const shadowMat = shade(new THREE.ShadowMaterial({ color: "#6a5038", opacity: 0.28 }));
 
+    /** mesh 调用 Mesh。geometry 传给 THREE.Mesh。material 传给 THREE.Mesh。parent 调用 add。 */
     const mesh = (
       geometry: THREE.BufferGeometry,
       material: THREE.Material,
@@ -204,6 +207,7 @@ export function SpaceStill({ theme }: { theme: Theme }) {
     }
 
     let painted = "";
+    /** applyTheme 调用 set。next 与 painted、dark 比较是否相等，赋给 painted。 */
     const applyTheme = (next: Theme) => {
       if (painted === next) return;
       painted = next;
@@ -287,6 +291,7 @@ export function SpaceStill({ theme }: { theme: Theme }) {
       looping = false;
     };
 
+    /** onPointer 调用 getBoundingClientRect。event 读取 clientX、clientY。 */
     const onPointer = (event: PointerEvent) => {
       const rect = root.getBoundingClientRect();
       if (rect.width < 2) return;

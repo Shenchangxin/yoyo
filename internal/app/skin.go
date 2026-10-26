@@ -53,6 +53,7 @@ func (a *App) ListSkins() []skin.Info {
 }
 
 // GetSkin 对内置调色板返回成对的 dark 和 light。用户皮肤从库里 Load。库不存在返回 no skin store。
+// id 传给 BuiltinPaletteID，不是内置时再传给 Load。
 func (a *App) GetSkin(id string) (map[string]any, error) {
 	if pal, ok := skin.BuiltinPaletteID(id); ok {
 		darkID, lightID := skin.PairForBuiltin(pal)
@@ -81,6 +82,7 @@ func (a *App) GetSkin(id string) (map[string]any, error) {
 }
 
 // ImportSkin 用 skin.Admit 接纳字节再 Save，返回保存后的 Info。
+// raw 传给 skin.Admit。
 func (a *App) ImportSkin(raw []byte) (skin.Info, error) {
 	p, err := skin.Admit(raw)
 	if err != nil {
@@ -98,6 +100,7 @@ func (a *App) ImportSkin(raw []byte) (skin.Info, error) {
 }
 
 // ImportSkinPath 读文件后调用 ImportSkin。
+// path 传给 os.ReadFile，读到的字节再传给 ImportSkin。
 func (a *App) ImportSkinPath(path string) (skin.Info, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -297,6 +300,7 @@ func (a *App) SaveSkin(in SkinSaveIn) (skin.Info, error) {
 }
 
 // fallbackPalette 在 light 模式优先用 PaletteLight，否则用 PaletteDark。都空时 light 返回 neutral，dark 返回 ink。
+// mode 等于 light 时优先读 PaletteLight，否则读 PaletteDark；都空时 light 返回 neutral，其他返回 ink。
 func fallbackPalette(mode string, a *App) string {
 	if a != nil && mode == "light" && a.Config.PaletteLight != "" {
 		return a.Config.PaletteLight
@@ -311,6 +315,7 @@ func fallbackPalette(mode string, a *App) string {
 }
 
 // sanitizeFileName 把空格换成连字符，只保留字母、数字、连字符和下划线。结果为空时返回 skin。
+// name 先 TrimSpace，空串或滤掉字符后为空则返回 skin，空格换成连字符。
 func sanitizeFileName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -334,6 +339,8 @@ func sanitizeFileName(name string) string {
 }
 
 // containsStr 判断切片里是否有相等的字符串。
+// xs 逐项与 v 比较。
+// v 用来和 xs 里的每一项比较。
 func containsStr(xs []string, v string) bool {
 	for _, x := range xs {
 		if x == v {

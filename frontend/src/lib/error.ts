@@ -65,7 +65,7 @@ const KINDS: ErrorKind[] = [
   "overflow", "auth", "rate_limit", "invalid", "timeout", "canceled", "provider", "budget", "max_turns", "stuck", "plan_open", "model", "unknown",
 ];
 
-/** errorCopy 按种类取标题和提示。对不上时用未知。 */
+/** errorCopy 按种类取标题和提示。对不上时用未知。t 读取 errorOverflow、errorOverflowHint、errorAuth、errorAuthHint、errorRateLimit、errorRateLimitHint 等。kind 用来做分支。 */
 export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint: string } {
   switch (kind) {
     case "overflow": return { title: t.errorOverflow, hint: t.errorOverflowHint };
@@ -84,7 +84,11 @@ export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint:
   }
 }
 
-/** classifyError 载荷里的 kind 属于已知种类则用它，否则从正文、detail 和 error 推断。retryable 显式为假，或种类是认证、预算时，不可重试。 */
+/**
+ * classifyError 载荷里的 kind 属于已知种类则用它，否则从正文、detail 和 error 推断。retryable 显式为假，或种类是认证、预算时，不可重试。
+ * raw 加上  ，作为后备值，传给 extractProviderMsg。
+ * payload 读取 kind、detail、error、retryable、title、hint，为空时不读。
+ */
 export function classifyError(raw: string, payload?: Record<string, any>): ClassifiedError {
   const kindRaw = str(payload?.kind).toLowerCase();
   const kind = (KINDS as string[]).includes(kindRaw) ? (kindRaw as ErrorKind) : inferKind(raw + " " + str(payload?.detail) + " " + str(payload?.error));
@@ -98,12 +102,12 @@ export function classifyError(raw: string, payload?: Record<string, any>): Class
   };
 }
 
-/** classifyItem 用条目正文和载荷做分类。 */
+/** classifyItem 用条目正文和载荷做分类。item 读取 text、payload。 */
 export function classifyItem(item: Item): ClassifiedError {
   return classifyError(item.text, item.payload);
 }
 
-/** 按正文里的特征短语推断种类。对不上则为未知。 */
+/** 按正文里的特征短语推断种类。对不上则为未知。s 转成小写后，传给 test。 */
 function inferKind(s: string): ErrorKind {
   const low = s.toLowerCase();
   if (/(context_length|too many tokens|prompt is too long|maximum context)/.test(low)) return "overflow";
@@ -119,7 +123,7 @@ function inferKind(s: string): ErrorKind {
   return "unknown";
 }
 
-/** 从正文里第一段 JSON 取出 msg、message、error 或 error.message。解析失败则保留原文。 */
+/** 从正文里第一段 JSON 取出 msg、message、error 或 error.message。解析失败则保留原文。s 查找位置，调用 lastIndexOf，截取，有的分支原样返回。 */
 function extractProviderMsg(s: string): string {
   const i = s.indexOf("{");
   if (i < 0) return s;
@@ -137,12 +141,12 @@ function extractProviderMsg(s: string): string {
   return s;
 }
 
-/** shortError 分类后的标题，不含具体原因。 */
+/** shortError 分类后的标题，不含具体原因。item 传给 classifyItem。t 传给 errorCopy。 */
 export function shortError(item: Item, t: ErrorCopy): string {
   return errorCopy(t, classifyItem(item).kind).title;
 }
 
-/** 去掉两端空白。像整页 HTML 时改成一句说明。超过 280 字则截到 277 再加省略号。 */
+/** 去掉两端空白。像整页 HTML 时改成一句说明。超过 280 字则截到 277 再加省略号。detail 去掉首尾空白后，读取 length，截取，为假时走另一支，作为分支结果，传给 test。 */
 function clipDetail(detail: string): string {
   const t = detail.trim();
   if (!t) return "";
@@ -152,7 +156,7 @@ function clipDetail(detail: string): string {
   return t.length > 280 ? `${t.slice(0, 277)}…` : t;
 }
 
-/** bannerError 标题加上真实原因。横幅以前只显示笼统标题。没有原因、原因与标题相同，或原因已以标题开头时，不再重复标题。 */
+/** bannerError 标题加上真实原因。横幅以前只显示笼统标题。没有原因、原因与标题相同，或原因已以标题开头时，不再重复标题。raw 作为后备值，传给 classifyError。t 传给 errorCopy。payload 传给 classifyError。 */
 export function bannerError(raw: string, t: ErrorCopy, payload?: Record<string, any>): string {
   const classified = classifyError(raw, payload);
   const { title } = errorCopy(t, classified.kind);

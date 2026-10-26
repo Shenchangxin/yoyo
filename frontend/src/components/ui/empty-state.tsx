@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-// EmptyState 始终画出 title。icon、body、action 缺了就不渲染对应一块。
+/** EmptyState 始终画出 title。icon、body、action 缺了就不渲染对应一块。props 读取 className、icon、title、body、action。 */
 export function EmptyState(props: {
   icon?: ReactNode;
   title: string;

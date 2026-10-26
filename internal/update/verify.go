@@ -31,6 +31,7 @@ type Asset struct {
 }
 
 // ParseManifest 解析清单 JSON。缺少 version 时返回 "update: manifest missing version"。
+// b 交给 json.Unmarshal；解出的 version 为空则返回错误。
 func ParseManifest(b []byte) (Manifest, error) {
 	var m Manifest
 	if err := json.Unmarshal(b, &m); err != nil {
@@ -43,6 +44,7 @@ func ParseManifest(b []byte) (Manifest, error) {
 }
 
 // Verify 用 ed25519 验清单字节。公钥长度不对返回 "update: bad public key"，正文为空返回 "update: empty body"，签名长度不对返回 "update: bad signature"，验签失败返回 "update: signature rejected"。
+// payload 长度为 0 时返回错误，否则和公钥、签名一起交给 ed25519.Verify。
 func Verify(pub ed25519.PublicKey, payload, sig []byte) error {
 	if len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("update: bad public key")
@@ -60,6 +62,8 @@ func Verify(pub ed25519.PublicKey, payload, sig []byte) error {
 }
 
 // Sign 用 ed25519 私钥对清单字节签名。
+// priv 和 payload 一起交给 ed25519.Sign。
+// payload 作为被签名的字节。
 func Sign(priv ed25519.PrivateKey, payload []byte) []byte {
 	return ed25519.Sign(priv, payload)
 }

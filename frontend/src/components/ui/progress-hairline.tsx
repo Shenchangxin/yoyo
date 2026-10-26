@@ -2,7 +2,7 @@
 
 import { cn } from "../../lib/utils";
 
-// ProgressHairline 用宽度表示确定进度，并把它夹在 0 到 100。不确定态不报 aria-valuenow，也不设宽度。
+/** ProgressHairline 用宽度表示确定进度，并把它夹在 0 到 100。不确定态不报 aria-valuenow，也不设宽度。value 为空时用 0，传给 Math.max。indeterminate 为真时才继续。className 传给 cn。 */
 export function ProgressHairline({
   value,
   indeterminate,

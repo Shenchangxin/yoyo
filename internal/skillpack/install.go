@@ -14,6 +14,8 @@ import (
 )
 
 // scanFile 拒绝空文件。png、jpg、jpeg、gif、webp、ico 不再检查正文。含 NUL 返回 "binary content"，非法 UTF-8 返回 "invalid UTF-8"。正文同时出现 "curl " 和 "| sh" 或 "| bash" 时返回 "install script pipe-to-shell"。
+// rel 的扩展名转成小写后，是 png、jpg、jpeg、gif、webp、ico 则不再检查正文。
+// raw 长度为 0 时返回错误；不是上述图片时检查 NUL、UTF-8，以及 curl 和管道到 sh 或 bash。
 func scanFile(rel string, raw []byte) error {
 	if len(raw) == 0 {
 		return fmt.Errorf("empty file")
@@ -42,6 +44,7 @@ type InstallOptions struct {
 }
 
 // Install 把技能文件写到 home/packs/<id>/skills，并写同级 pack.json。未知 id 且 Origin 没有 Kind、Path、Repo 时返回 "unknown pack"。Kind 为空时，有 Path 视为 local，否则视为 github。local 读本地目录，github 拉远程树。成功后按 GOOS 生成 references/yoyo-tools.md。
+// opts 的 Origin 决定本地还是 GitHub；GOOS 交给 writeGeneratedMapping。
 func Install(home, id string, opts InstallOptions) (Manifest, error) {
 	id = SanitizeID(id)
 	known, ok := Lookup(id)
@@ -128,6 +131,9 @@ func Uninstall(home, id string) error {
 }
 
 // writePackTree 先把文件写到 skills 目录加 .install-tmp 的临时目录，再删掉旧的 skills 目录并改名换上。脚本路径用 0o755，其余用 0o644。路径不合法或逃出临时目录则返回错误。
+// home 和 id 一起交给 SkillsDir。
+// id 和 home 一起交给 SkillsDir。
+// files 逐个检查 validRel 后写入临时目录。
 func writePackTree(home, id string, files []PackFile) error {
 	dst := SkillsDir(home, id)
 	tmp := dst + ".install-tmp"
@@ -164,6 +170,9 @@ func writePackTree(home, id string, files []PackFile) error {
 }
 
 // writeGeneratedMapping 在选中的技能目录 references/yoyo-tools.md 写入 MappingFile。没有目标技能目录时什么也不写。
+// home 和 id 交给 mappingTarget，并用来拼 references 目录。
+// id 和 goos 一起交给 MappingFile。
+// goos 和 id 一起交给 MappingFile。
 func writeGeneratedMapping(home, id, goos string) error {
 	name := mappingTarget(home, id)
 	if name == "" {
@@ -177,6 +186,7 @@ func writeGeneratedMapping(home, id, goos string) error {
 }
 
 // mappingTarget 选择接收 yoyo-tools.md 的技能目录。先看内置目录的 BootstrapSkill，再看与包 id 同名的目录，以存在 SKILL.md 为准。都没有则返回空串。
+// home 和 id 一起交给 SkillsDir，用来确认 SKILL.md 是否存在。
 func mappingTarget(home, id string) string {
 	id = SanitizeID(id)
 	known, _ := Lookup(id)

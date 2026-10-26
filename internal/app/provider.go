@@ -10,6 +10,8 @@ func (a *App) TestProvider() map[string]any {
 }
 
 // providerProbeError 把 HTTP 状态和网关原文交给 connection.ProbeError。
+// status 传给 connection.ProbeError。
+// raw 传给 connection.ProbeError。
 func providerProbeError(status int, raw string) string {
 	return connection.ProbeError(status, raw)
 }

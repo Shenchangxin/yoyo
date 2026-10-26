@@ -12,7 +12,7 @@ export const SelectValue = SelectPrimitive.Value;
 // SelectGroup 转发分组。
 export const SelectGroup = SelectPrimitive.Group;
 
-// SelectTrigger 在占位时用弱色，并在右侧放一个向下的箭头。
+/** SelectTrigger 在占位时用弱色，并在右侧放一个向下的箭头。className 传给 cn。children 作为子节点渲染。props 展开到 SelectPrimitive.Trigger。 */
 export function SelectTrigger({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) {
   return (
     <SelectPrimitive.Trigger
@@ -30,7 +30,7 @@ export function SelectTrigger({ className, children, ...props }: ComponentProps<
   );
 }
 
-// SelectContent 用弹出层对齐触发器宽度，选项放在 Viewport 里。
+/** SelectContent 用弹出层对齐触发器宽度，选项放在 Viewport 里。className 传给 cn。children 作为子节点渲染。props 展开到 SelectPrimitive.Content。 */
 export function SelectContent({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Content>) {
   return (
     <SelectPrimitive.Portal>
@@ -48,7 +48,7 @@ export function SelectContent({ className, children, ...props }: ComponentProps<
   );
 }
 
-// SelectLabel 用小号大写字标出一组选项。
+/** SelectLabel 用小号大写字标出一组选项。className 传给 cn。props 展开到 SelectPrimitive.Label。 */
 export function SelectLabel({ className, ...props }: ComponentProps<typeof SelectPrimitive.Label>) {
   return (
     <SelectPrimitive.Label
@@ -58,12 +58,12 @@ export function SelectLabel({ className, ...props }: ComponentProps<typeof Selec
   );
 }
 
-// SelectSeparator 在选项之间画一条横线。
+/** SelectSeparator 在选项之间画一条横线。className 传给 cn。props 展开到 SelectPrimitive.Separator。 */
 export function SelectSeparator({ className, ...props }: ComponentProps<typeof SelectPrimitive.Separator>) {
   return <SelectPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
-// SelectItem 把文字放进 ItemText，选中时在右侧画勾。禁用时不接收指针。
+/** SelectItem 把文字放进 ItemText，选中时在右侧画勾。禁用时不接收指针。className 传给 cn。children 作为子节点渲染。props 展开到 SelectPrimitive.Item。 */
 export function SelectItem({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Item>) {
   return (
     <SelectPrimitive.Item

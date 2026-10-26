@@ -30,7 +30,10 @@ import { Kbd } from "../components/ui/kbd";
 import { shownSeriesTitle } from "./video/drama-lib";
 import { useStudioSelection } from "./video/workshop-store";
 
-// CommandPalette 在打开变为假时调用 onClose。退出没有 onQuit 时调用 chrome.close。暂停调用 setPaused(true)。视频工程去掉 kind 为 game 的，最多 12 条。会话去掉子代理，最多 20 条。打开短片桌时先把 studioId 清空。
+/**
+ * CommandPalette 在打开变为假时调用 onClose。退出没有 onQuit 时调用 chrome.close。暂停调用 setPaused(true)。视频工程去掉 kind 为 game 的，最多 12 条。会话去掉子代理，最多 20 条。打开短片桌时先把 studioId 清空。
+ * props 读取 open、onQuit、videoProjects、threads，调用 onClose，调用 onNew，调用 onDiff，调用 onAbout，调用 onQuit，调用 onOpenHarness，调用 onLab，调用 onRunSuite，调用 onRunCycle，调用 onRunOverlay，调用 onSelectProject，调用 onSelectThread。
+ */
 export function CommandPalette(props: {
   open: boolean;
   threads: Thread[];

@@ -28,14 +28,14 @@ const iconBtn =
 
 const PHASES: Phase[] = ["script", "cast", "board", "cut"];
 
-/** DramaStudio 按剧本、定妆、分镜、成片推进当前集。草稿分集方案优先于集编辑。 */
+/** DramaStudio 按剧本、定妆、分镜、成片推进当前集。草稿分集方案优先于集编辑。 props 有 sessionId 就用来绑定和排队，没有就向 onNeedSession 要，有 onClose 就把它挂到关闭按钮上。 */
 export function DramaStudio(props: { sessionId?: string; onNeedSession: () => void | Promise<string | void>; onClose?: () => void }) {
   const copy = useCopy();
-  const openSettings = useUI((s) => s.openSettings);
-  const dramaId = useDramaSelection((s) => s.dramaId);
-  const episodeId = useDramaSelection((s) => s.episodeId);
-  const setDramaId = useDramaSelection((s) => s.setDramaId);
-  const setEpisodeId = useDramaSelection((s) => s.setEpisodeId);
+  const openSettings = useUI(/** s 取出 openSettings。 */ (s) => s.openSettings);
+  const dramaId = useDramaSelection(/** s 取出 dramaId。 */ (s) => s.dramaId);
+  const episodeId = useDramaSelection(/** s 取出 episodeId。 */ (s) => s.episodeId);
+  const setDramaId = useDramaSelection(/** s 取出 setDramaId。 */ (s) => s.setDramaId);
+  const setEpisodeId = useDramaSelection(/** s 取出 setEpisodeId。 */ (s) => s.setEpisodeId);
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [bundle, setBundle] = useState<Bundle | null>(null);
@@ -70,7 +70,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     setDramas(Array.isArray(list) ? list : []);
   }, []);
 
-  /** 读取这一集的包。集已经换了就丢掉结果。 */
+  /** 读取这一集的包。集已经换了就丢掉结果。 id 为空就清空包，否则交给 bundle；返回时当前集已经不是这个 id 就丢掉。 */
   const loadBundle = useCallback(async (id: string) => {
     if (!id) {
       setBundle(null);
@@ -84,7 +84,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     if (Array.isArray(b?.status?.missing)) setMissing(b.status.missing);
   }, []);
 
-  /** 读取分集方案。没有状态就当成没有方案。 */
+  /** 读取分集方案。没有状态就当成没有方案。 id 为空就清空方案，否则交给 getPlan；没有状态就清空。 */
   const loadPlan = useCallback(async (id: string) => {
     if (!id) {
       setPlan(null);
@@ -99,10 +99,10 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   }, []);
 
   useEffect(() => {
-    void loadList().catch((e) => setErr(api.errMessage(e))).finally(() => setListReady(true));
-    void api.video.styles().then((s) => setStyles(mergeDramaStyles(Array.isArray(s) ? s : []))).catch(() => {});
-    void api.video.providers().then((p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
-    void api.video.status().then((s) => {
+    void loadList().catch(/** e 交给 errMessage 后写入错误。 */ (e) => setErr(api.errMessage(e))).finally(() => setListReady(true));
+    void api.video.styles().then(/** s 是数组才交给 mergeDramaStyles，否则交给空数组。 */ (s) => setStyles(mergeDramaStyles(Array.isArray(s) ? s : []))).catch(() => {});
+    void api.video.providers().then(/** p 是数组才写入提供方，否则写入空数组。 */ (p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
+    void api.video.status().then(/** s 读 ffmpeg、ffmpeg_install 和 missing。 */ (s) => {
       setFfmpeg(!!s?.ffmpeg);
       if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install);
       if (Array.isArray(s?.missing)) setMissing(s.missing);
@@ -113,7 +113,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   useEffect(() => {
     if (!ffmpegWorking) return;
     const t = window.setInterval(() => {
-      void api.video.status().then((s) => {
+      void api.video.status().then(/** s 读 ffmpeg，安装信息是对象时记下。 */ (s) => {
         setFfmpeg(!!s?.ffmpeg);
         if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install);
       }).catch(() => {});
@@ -129,11 +129,11 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
       return;
     }
     void loadPlan(dramaId).catch(() => setPlan(null));
-    void api.video.dramaJobs(dramaId).then((list) => setDramaJobs(Array.isArray(list) ? list : [])).catch(() => setDramaJobs([]));
-    void api.video.episodes(dramaId).then((list) => {
+    void api.video.dramaJobs(dramaId).then(/** list 是数组才写入任务，否则写入空数组。 */ (list) => setDramaJobs(Array.isArray(list) ? list : [])).catch(() => setDramaJobs([]));
+    void api.video.episodes(dramaId).then(/** list 是数组才写成集列表，否则写成空数组。 */ (list) => {
       const eps = Array.isArray(list) ? list : [];
       setEpisodes(eps);
-    }).catch((e) => setErr(api.errMessage(e)));
+    }).catch(/** e 交给 errMessage 后写入错误。 */ (e) => setErr(api.errMessage(e)));
   }, [dramaId, loadPlan]);
 
   useEffect(() => {
@@ -146,7 +146,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
       setBundle(null);
       return;
     }
-    void loadBundle(episodeId).catch((e) => setErr(api.errMessage(e)));
+    void loadBundle(episodeId).catch(/** e 交给 errMessage 后写入错误。 */ (e) => setErr(api.errMessage(e)));
   }, [episodeId, loadBundle]);
 
   useEffect(() => {
@@ -161,15 +161,15 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     const hit = firstLook(bundle);
     if (!hit) return;
     const ids = new Set([
-      ...(bundle?.characters || []).filter((a) => a.linked !== false).map((a) => a.id),
-      ...(bundle?.scenes || []).filter((a) => a.linked !== false).map((a) => a.id),
-      ...(bundle?.props || []).filter((a) => a.linked !== false).map((a) => a.id),
+      ...(bundle?.characters || []).filter(/** a 留下 linked 不是 false 的。 */ (a) => a.linked !== false).map(/** a 取出 id。 */ (a) => a.id),
+      ...(bundle?.scenes || []).filter(/** a 留下 linked 不是 false 的。 */ (a) => a.linked !== false).map(/** a 取出 id。 */ (a) => a.id),
+      ...(bundle?.props || []).filter(/** a 留下 linked 不是 false 的。 */ (a) => a.linked !== false).map(/** a 取出 id。 */ (a) => a.id),
     ]);
     if (focusAsset.id && ids.has(focusAsset.id)) return;
     setFocusAsset(hit);
   }, [pane, bundle, episodeId, focusAsset.id]);
 
-  useEffect(() => subscribeItems((item) => {
+  useEffect(() => subscribeItems(/** item 来自视频且带上当前集就重读包，turn_end 时重读方案，出错时记下 text 并停掉等待。 */ (item) => {
     if (item.source === "video") {
       const epId = String(item.payload?.episode_id || "");
       if (epId && epId === episodeId) void loadBundle(episodeId);
@@ -207,12 +207,12 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     }
   }), [episodeId, dramaId, loadBundle, loadPlan, copy.video.failed, props.sessionId, setEpisodeId]);
 
-  const liveJobs = [...(bundle?.jobs || []), ...dramaJobs].some((j) => jobMoving(j.status));
+  const liveJobs = [...(bundle?.jobs || []), ...dramaJobs].some(/** j 把 status 交给 jobMoving。 */ (j) => jobMoving(j.status));
   useEffect(() => {
     if (!dramaId || (!liveJobs && !busy)) return;
     const t = window.setInterval(() => {
       if (episodeId) void loadBundle(episodeId);
-      void api.video.dramaJobs(dramaId).then((list) => setDramaJobs(Array.isArray(list) ? list : [])).catch(() => {});
+      void api.video.dramaJobs(dramaId).then(/** list 是数组才写入任务，否则写入空数组。 */ (list) => setDramaJobs(Array.isArray(list) ? list : [])).catch(() => {});
     }, 1600);
     return () => window.clearInterval(t);
   }, [dramaId, episodeId, liveJobs, busy, loadBundle]);
@@ -226,11 +226,11 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     if (dramaId) void api.video.bind(props.sessionId, "", dramaId).catch(() => {});
   }, [props.sessionId, episodeId, dramaId]);
 
-  const drama = dramas.find((d) => d.id === dramaId) || bundle?.drama;
+  const drama = dramas.find(/** d 用 id 和 dramaId 比对。 */ (d) => d.id === dramaId) || bundle?.drama;
   const ep = bundle?.episode;
   const shots = bundle?.shots || [];
-  const focused = shots.find((s) => s.id === focusShot) || shots[0];
-  const liveCount = [...(bundle?.jobs || []), ...dramaJobs].filter((j) => jobMoving(j.status) || j.status === "failed").length;
+  const focused = shots.find(/** s 用 id 和当前镜头比对。 */ (s) => s.id === focusShot) || shots[0];
+  const liveCount = [...(bundle?.jobs || []), ...dramaJobs].filter(/** j 看状态是不是仍在动，或已经失败。 */ (j) => jobMoving(j.status) || j.status === "failed").length;
   const showMissing = missing.includes("image") || missing.includes("video");
 
   useEffect(() => {
@@ -249,7 +249,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     return (typeof id === "string" && id) || "";
   }
 
-  /** 跑一次请求，然后刷新这一集、系列列表和集列表。 */
+  /** 跑一次请求，然后刷新这一集、系列列表和集列表。 label 写成忙碌标记。fn 执行，成功后刷新这一集和列表，失败就记下并弹出错误。 */
   async function run(label: string, fn: () => Promise<any>) {
     setBusy(label);
     setErr("");
@@ -269,7 +269,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     }
   }
 
-  /** 绑上当前集，有文本模型就设到会话，然后开这一阶段。 */
+  /** 绑上当前集，有文本模型就设到会话，然后开这一阶段。 name 作为阶段交给 stage。 */
   async function startStage(name: string) {
     const sid = await sessionId();
     if (!sid) {
@@ -380,7 +380,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   /** 选一个 sqlite 或 db 文件导入。 */
   async function importHuobao() {
     const paths = await api.pickFiles();
-    const db = paths.find((p) => p.toLowerCase().endsWith(".sqlite") || p.toLowerCase().endsWith(".db")) || paths[0];
+    const db = paths.find(/** p 转成小写后看是不是 sqlite 或 db。 */ (p) => p.toLowerCase().endsWith(".sqlite") || p.toLowerCase().endsWith(".db")) || paths[0];
     if (!db) return;
     await run("import", async () => {
       await api.video.importHuobao(db, "");
@@ -391,7 +391,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   /** 选一份文本导入系列。有会话就绑定并开大纲阶段。 */
   async function importNovel() {
     const paths = await api.pickFiles();
-    const path = (paths || []).find((p) => /\.(txt|md|markdown|docx|pdf)$/i.test(p)) || (paths || [])[0];
+    const path = (paths || []).find(/** p 用后缀判断是不是文本文件。 */ (p) => /\.(txt|md|markdown|docx|pdf)$/i.test(p)) || (paths || [])[0];
     if (!path) return;
     await run("ingest", async () => {
       const id = await ingestSeriesFile(path);
@@ -466,10 +466,10 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     } else if (pane === "cast" || pane === "board") {
       if (!(await ensureScript())) return;
     } else if (!ffmpeg) {
-      void api.video.installFFmpeg().then((s) => {
+      void api.video.installFFmpeg().then(/** s 读 ffmpeg，安装信息是对象时记下。 */ (s) => {
         setFfmpeg(!!s?.ffmpeg);
         if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install);
-      }).catch((e) => toast.error(api.errMessage(e)));
+      }).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
       return;
     }
     queueRef.current = phaseQueue(pane, bundle);
@@ -496,11 +496,11 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         : pane === "board" ? copy.video.breakShots
           : copy.video.exportCut;
 
-  const lookAsset = focusAsset.kind === "character" ? (bundle?.characters || []).find((a) => a.id === focusAsset.id)
-    : focusAsset.kind === "scene" ? (bundle?.scenes || []).find((a) => a.id === focusAsset.id)
-      : (bundle?.props || []).find((a) => a.id === focusAsset.id);
+  const lookAsset = focusAsset.kind === "character" ? (bundle?.characters || []).find(/** a 用 id 和当前定妆比对。 */ (a) => a.id === focusAsset.id)
+    : focusAsset.kind === "scene" ? (bundle?.scenes || []).find(/** a 用 id 和当前定妆比对。 */ (a) => a.id === focusAsset.id)
+      : (bundle?.props || []).find(/** a 用 id 和当前定妆比对。 */ (a) => a.id === focusAsset.id);
 
-  /** 挪动镜头后，把序号写回成从 1 开始。 */
+  /** 挪动镜头后，把序号写回成从 1 开始。 from 越界或和 to 相同就返回，否则从这里抽出镜头。to 越界或和 from 相同就返回，否则插到这里。 */
   function reorder(from: number, to: number) {
     if (from === to || from < 0 || to < 0 || from >= shots.length || to >= shots.length) return;
     const next = shots.slice();
@@ -532,7 +532,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           dramaId={dramaId}
           episodeId={episodeId}
           copy={copy}
-          onPick={(d, epId) => { setDramaId(d); setEpisodeId(epId); }}
+          onPick={/** d 写成当前系列。epId 写成当前集。 */ (d, epId) => { setDramaId(d); setEpisodeId(epId); }}
           onNewDrama={() => { setDraftTitle(""); setCreating(true); }}
           onNewEpisode={() => void createEpisode()}
         />
@@ -542,7 +542,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           </Tooltip>
         ) : null}
         <nav className="drama-phase" aria-label={copy.video.desk}>
-          {PHASES.map((id, i) => {
+          {PHASES.map(/** id 用来判断完成、选中和是否可点，并显示阶段名。i 没完成时显示成序号，还没到最后一项就画出连接线。 */ (id, i) => {
             const done = phaseDone(ep, bundle, id);
             const locked = !showDesk;
             return (
@@ -574,7 +574,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           className={cn("ml-auto inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium", tasksOpen ? "bg-lift text-foreground" : "text-muted hover:bg-lift hover:text-foreground")}
           aria-pressed={tasksOpen}
           aria-label={copy.video.jobs}
-          onClick={() => setTasksOpen((v) => !v)}
+          onClick={() => setTasksOpen(/** v 取反。 */ (v) => !v)}
         >
           {copy.video.jobs}
           {liveCount ? <span className="tabular-nums">{liveCount}</span> : null}
@@ -620,8 +620,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           copy={copy}
           busy={!!busy}
           onConfirm={() => void confirmMap()}
-          onSplit={(n) => void run("split", async () => { setPlan(await api.video.splitPlanEpisode(dramaId, n) as EpisodePlan); })}
-          onMerge={(n) => void run("merge", async () => { setPlan(await api.video.mergePlanEpisodes(dramaId, n) as EpisodePlan); })}
+          onSplit={/** n 交给 splitPlanEpisode。 */ (n) => void run("split", async () => { setPlan(await api.video.splitPlanEpisode(dramaId, n) as EpisodePlan); })}
+          onMerge={/** n 交给 mergePlanEpisodes。 */ (n) => void run("merge", async () => { setPlan(await api.video.mergePlanEpisodes(dramaId, n) as EpisodePlan); })}
           onBible={() => void extractBible()}
         />
       ) : !listReady ? (
@@ -634,7 +634,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           copy={copy}
           dramas={dramas}
           onNameSeries={() => { setDraftTitle(""); setCreating(true); }}
-          onPick={(id) => {
+          onPick={/** id 写成当前系列，并清掉集。 */ (id) => {
             setDramaId(id);
             setEpisodeId("");
           }}
@@ -645,14 +645,14 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             <section className="drama-viewer" aria-label={copy.video.play}>
               <div className="drama-viewer-stage">
                 {pane === "script" ? (
-                  <ScriptStage key={ep!.id} ep={ep!} plan={bundle?.plan} copy={copy} onSave={(patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} />
+                  <ScriptStage key={ep!.id} ep={ep!} plan={bundle?.plan} copy={copy} onSave={/** patch 展开进这一集的更新。 */ (patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} />
                 ) : pane === "cast" ? (
                   <CastGrid
                     bundle={bundle!}
                     copy={copy}
                     focusId={focusAsset.id}
-                    onFocus={(kind, id) => setFocusAsset({ kind, id })}
-                    onCreate={(kind, fields) => void run("new", () => api.video.createAsset(kind, episodeId, fields))}
+                    onFocus={/** kind 记成定妆种类。id 记成定妆 id。 */ (kind, id) => setFocusAsset({ kind, id })}
+                    onCreate={/** kind 决定资产种类。fields 交给新建。 */ (kind, fields) => void run("new", () => api.video.createAsset(kind, episodeId, fields))}
                   />
                 ) : pane === "cut" && ep?.video_url ? (
                   <video src={ep.video_url} poster={ep.poster_url} controls />
@@ -674,11 +674,11 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                     value={drama?.title || ""}
                     placeholder={copy.video.untitled}
                     aria-label={copy.video.seriesName}
-                    onChange={(e) => {
+                    onChange={/** e 取出 target.value 当系列标题。 */ (e) => {
                       const title = e.target.value;
-                      setDramas((list) => list.map((d) => d.id === dramaId ? { ...d, title } : d));
+                      setDramas(/** list 逐条改当前系列的标题。 */ (list) => list.map(/** d 的 id 是当前系列时换上标题，否则原样留下。 */ (d) => d.id === dramaId ? { ...d, title } : d));
                     }}
-                    onBlur={(e) => {
+                    onBlur={/** e 取出 target.value，占位标题收成空字符串后写回系列。 */ (e) => {
                       const title = commitSeriesTitle(e.target.value);
                       if (!dramaId || !title) return;
                       void api.video.updateDrama({ id: dramaId, title });
@@ -692,12 +692,12 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                     value={ep?.title || ""}
                     placeholder={shownEpisodeTitle("", ep?.episode_number, copy.video.episodeN)}
                     aria-label={copy.video.episodeName}
-                    onChange={(e) => {
+                    onChange={/** e 取出 target.value，写进当前集的标题。 */ (e) => {
                       const title = e.target.value;
-                      setBundle((b) => b ? { ...b, episode: { ...b.episode, title } } : b);
-                      setEpisodes((list) => list.map((x) => x.id === ep?.id ? { ...x, title } : x));
+                      setBundle(/** b 有内容时只改 episode.title，否则原样留下。 */ (b) => b ? { ...b, episode: { ...b.episode, title } } : b);
+                      setEpisodes(/** list 逐条改当前集的标题。 */ (list) => list.map(/** x 的 id 是当前集时换上标题，否则原样留下。 */ (x) => x.id === ep?.id ? { ...x, title } : x));
                     }}
-                    onBlur={(e) => {
+                    onBlur={/** e 取出 target.value，占位标题收成空字符串后写回这一集。 */ (e) => {
                       if (!ep) return;
                       void api.video.updateEpisode({ id: ep.id, title: commitEpisodeTitle(e.target.value) });
                     }}
@@ -721,8 +721,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   asset={lookAsset}
                   copy={copy}
                   onGen={() => void run("gen", () => api.video.generateAsset(focusAsset.kind, lookAsset.id, episodeId))}
-                  onUpload={(b64) => void run("up", () => api.video.uploadAsset(focusAsset.kind, lookAsset.id, b64))}
-                  onSave={(fields) => void run("asset", () => api.video.saveAsset(focusAsset.kind, lookAsset.id, fields))}
+                  onUpload={/** b64 交给当前定妆的上传。 */ (b64) => void run("up", () => api.video.uploadAsset(focusAsset.kind, lookAsset.id, b64))}
+                  onSave={/** fields 交给当前定妆的保存。 */ (fields) => void run("asset", () => api.video.saveAsset(focusAsset.kind, lookAsset.id, fields))}
                   onDelete={() => setKillAsset({ kind: focusAsset.kind, id: lookAsset.id })}
                 />
               ) : pane === "cast" ? (
@@ -734,9 +734,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   bundle={bundle!}
                   shot={focused}
                   copy={copy}
-                  onPatch={(s) => void run("shot", () => api.video.updateShot(s))}
+                  onPatch={/** s 交给 updateShot。 */ (s) => void run("shot", () => api.video.updateShot(s))}
                   onGen={() => void run("clip", () => api.video.generateShot(focused.id))}
-                  onApply={(id) => void run("apply", () => api.video.applyJob(id))}
+                  onApply={/** id 交给 applyJob。 */ (id) => void run("apply", () => api.video.applyJob(id))}
                 />
               ) : pane === "board" ? (
                 <EmptyState icon={<Film className="size-4" />} title={copy.video.noClip} body={copy.video.phaseHintBoard} />
@@ -750,12 +750,12 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   ffmpeg={ffmpeg}
                   ffmpegInstall={ffmpegInstall}
                   onInstall={() => {
-                    void api.video.installFFmpeg().then((s) => {
+                    void api.video.installFFmpeg().then(/** s 读 ffmpeg，安装信息是对象时记下。 */ (s) => {
                       setFfmpeg(!!s?.ffmpeg);
                       if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install);
-                    }).catch((e) => toast.error(api.errMessage(e)));
+                    }).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
                   }}
-                  onSendToCut={(hash, title) => requestSendToCut({ hash, title })}
+                  onSendToCut={/** hash 交给送到剪辑的请求。title 一起交给这个请求。 */ (hash, title) => requestSendToCut({ hash, title })}
                 />
               ) : null}
               {ep ? (
@@ -765,8 +765,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   styles={styles}
                   providers={providers}
                   copy={copy}
-                  onStyle={(style) => { if (dramaId) void api.video.updateDrama({ id: dramaId, style }).then(loadList); }}
-                  onEpisode={(patch) => { if (ep) void api.video.updateEpisode({ id: ep.id, ...patch }).then(() => loadBundle(ep.id)); }}
+                  onStyle={/** style 在已有系列时写回，并刷新列表。 */ (style) => { if (dramaId) void api.video.updateDrama({ id: dramaId, style }).then(loadList); }}
+                  onEpisode={/** patch 在已有集时展开写回，并重读这一集。 */ (patch) => { if (ep) void api.video.updateEpisode({ id: ep.id, ...patch }).then(() => loadBundle(ep.id)); }}
                 />
               ) : null}
               <button type="button" className="mt-3 h-6 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground" onClick={() => setKillEp(true)}>
@@ -776,7 +776,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           </div>
           {pane === "board" || pane === "cut" ? (
             <div className="drama-timeline" aria-label={copy.video.board}>
-              {(shots.length ? shots : Array.from({ length: Math.max(bundle?.plan.segment_count || 3, 3) }, (_, i) => ({
+              {(shots.length ? shots : Array.from({ length: Math.max(bundle?.plan.segment_count || 3, 3) }, /** i 用来拼占位 id，并写成从 1 开始的镜头序号。 */ (_, i) => ({
                 id: `ghost-${i}`,
                 shot_number: i + 1,
                 title: "",
@@ -784,8 +784,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                 video_prompt: "",
                 duration: 0,
                 status: "",
-              } as Shot))).map((s, i) => {
-                const live = (bundle?.jobs || []).some((j) => j.storyboard_id === s.id && jobMoving(j.status));
+              } as Shot))).map(/** s 用来判断任务、选中、是否纳入和画面，点击时记下 id。i 写进拖拽数据，放下时作为目标序号交给 reorder。 */ (s, i) => {
+                const live = (bundle?.jobs || []).some(/** j 看是不是这条镜头上仍在动的任务。 */ (j) => j.storyboard_id === s.id && jobMoving(j.status));
                 const on = focused?.id === s.id;
                 const included = selShots[s.id] !== false && !!s.video_url;
                 const ghost = s.id.startsWith("ghost-");
@@ -794,9 +794,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                     key={s.id}
                     draggable={pane === "cut" && !!s.video_url}
                     className={cn("drama-shot", on && "is-on", live && "is-live", pane === "cut" && s.video_url && !included && "is-off")}
-                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(i)); }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
+                    onDragStart={/** e 把当前序号写进拖拽数据。 */ (e) => { e.dataTransfer.setData("text/plain", String(i)); }}
+                    onDragOver={/** e 阻止默认。 */ (e) => e.preventDefault()}
+                    onDrop={/** e 阻止默认，并取出拖拽里的序号交给 reorder。 */ (e) => {
                       e.preventDefault();
                       reorder(Number(e.dataTransfer.getData("text/plain")), i);
                     }}
@@ -820,7 +820,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                         className={cn("drama-shot-check", included && "is-on")}
                         aria-pressed={included}
                         aria-label={(included ? copy.video.excludeShot : copy.video.includeShot).replace("{n}", String(s.shot_number))}
-                        onClick={(e) => {
+                        onClick={/** e 阻止冒泡，避免点到外层。 */ (e) => {
                           e.stopPropagation();
                           setSelShots({ ...selShots, [s.id]: !included });
                         }}
@@ -835,14 +835,14 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           ) : null}
           {tasksOpen ? (
             <div className="drama-task-drawer" role="status">
-              <JobDrawer jobs={dramaJobs.length ? dramaJobs : (bundle?.jobs || [])} bundle={bundle} episodes={episodes} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
+              <JobDrawer jobs={dramaJobs.length ? dramaJobs : (bundle?.jobs || [])} bundle={bundle} episodes={episodes} copy={copy} onRetry={/** id 交给 retryJob。 */ (id) => void run("retry", () => api.video.retryJob(id))} onCancel={/** id 交给 cancelJob。 */ (id) => void run("cancel", () => api.video.cancelJob(id))} />
             </div>
           ) : null}
         </>
       )}
       {tasksOpen && !showDesk ? (
         <div className="drama-task-drawer" role="status">
-          <JobDrawer jobs={dramaJobs} bundle={bundle} episodes={episodes} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
+          <JobDrawer jobs={dramaJobs} bundle={bundle} episodes={episodes} copy={copy} onRetry={/** id 交给 retryJob。 */ (id) => void run("retry", () => api.video.retryJob(id))} onCancel={/** id 交给 cancelJob。 */ (id) => void run("cancel", () => api.video.cancelJob(id))} />
         </div>
       ) : null}
       <ConfirmDialog
@@ -852,10 +852,10 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           <span className="grid gap-2 pt-2">
             <label className="grid gap-1">
               <span className="text-[11px] text-muted">{copy.video.createName}</span>
-              <Input autoFocus value={draftTitle} placeholder={copy.video.untitled} onChange={(e) => setDraftTitle(e.target.value)} />
+              <Input autoFocus value={draftTitle} placeholder={copy.video.untitled} onChange={/** e 取出 target.value 交给 setDraftTitle。 */ (e) => setDraftTitle(e.target.value)} />
             </label>
             <span className="flex rounded-[8px] bg-lift p-0.5">
-              {["9:16", "16:9", "1:1"].map((r) => (
+              {["9:16", "16:9", "1:1"].map(/** r 用来判断选中，点击时记成比例，并显示成文案。 */ (r) => (
                 <button
                   key={r}
                   type="button"
@@ -885,7 +885,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           const id = episodeId;
           try {
             await api.video.deleteEpisode(id);
-            const next = episodes.filter((e) => e.id !== id);
+            const next = episodes.filter(/** e 的 id 和要删的不同才留下。 */ (e) => e.id !== id);
             setEpisodes(next);
             setEpisodeId(next[0]?.id || "");
             setKillEp(false);
@@ -918,7 +918,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   );
 }
 
-/** 系列和集的菜单，可以新建或改选。 */
+/** 系列和集的菜单，可以新建或改选。 props 用 dramas、dramaId、episodes 和 episodeId 拼出当前标签，用 copy 取文案，新建交给 onNewDrama 和 onNewEpisode，改选交给 onPick。 */
 function ProjectMenu(props: {
   dramas: Drama[];
   episodes: Episode[];
@@ -929,8 +929,8 @@ function ProjectMenu(props: {
   onNewDrama: () => void;
   onNewEpisode: () => void;
 }) {
-  const drama = props.dramas.find((d) => d.id === props.dramaId);
-  const episode = props.episodes.find((e) => e.id === props.episodeId);
+  const drama = props.dramas.find(/** d 用 id 和菜单上的系列比对。 */ (d) => d.id === props.dramaId);
+  const episode = props.episodes.find(/** e 用 id 和菜单上的集比对。 */ (e) => e.id === props.episodeId);
   const label = [
     shownSeriesTitle(drama?.title, props.copy.video.untitled),
     episode ? shownEpisodeTitle(episode.title, episode.episode_number, props.copy.video.episodeN) : "",
@@ -956,7 +956,7 @@ function ProjectMenu(props: {
           </DropdownMenuItem>
         ) : null}
         {props.dramas.length ? <DropdownMenuSeparator /> : null}
-        {props.dramas.map((d) => (
+        {props.dramas.map(/** d 用 id 判断当前集，并作为系列传给 DramaGroup。 */ (d) => (
           <DramaGroup key={d.id} drama={d} active={d.id === props.dramaId ? props.episodeId : ""} copy={props.copy} onPick={props.onPick} />
         ))}
       </DropdownMenuContent>
@@ -964,7 +964,7 @@ function ProjectMenu(props: {
   );
 }
 
-/** 展开一个系列下的集。 */
+/** 展开一个系列下的集。 props 用 drama 的 id 读集、用标题当标签，用 copy 取文案，点集时把系列 id 和集 id 交给 onPick，active 和集 id 相同就打勾。 */
 function DramaGroup(props: {
   drama: Drama;
   active: string;
@@ -973,12 +973,12 @@ function DramaGroup(props: {
 }) {
   const [eps, setEps] = useState<Episode[]>([]);
   useEffect(() => {
-    void api.video.episodes(props.drama.id).then((list) => setEps(Array.isArray(list) ? list : [])).catch(() => setEps([]));
+    void api.video.episodes(props.drama.id).then(/** list 是数组才写入，否则写入空数组。 */ (list) => setEps(Array.isArray(list) ? list : [])).catch(() => setEps([]));
   }, [props.drama.id]);
   return (
     <>
       <DropdownMenuLabel className="truncate">{shownSeriesTitle(props.drama.title, props.copy.video.untitled)}</DropdownMenuLabel>
-      {eps.length ? eps.map((ep) => (
+      {eps.length ? eps.map(/** ep 用 id 交给 onPick 并当 key，显示标题和集号，和 active 相同就打勾。 */ (ep) => (
         <DropdownMenuItem key={ep.id} onSelect={() => props.onPick(props.drama.id, ep.id)}>
           <span className="min-w-0 flex-1 truncate pl-1">{shownEpisodeTitle(ep.title, ep.episode_number, props.copy.video.episodeN)}</span>
           {props.active === ep.id ? <Check className="size-3.5 shrink-0" /> : null}

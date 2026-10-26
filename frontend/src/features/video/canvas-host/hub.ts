@@ -6,12 +6,12 @@ import { getRemoteCanvasProject } from "@yingce/services/api/user-data";
 import { useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
 import { useCanvasHost } from "./session";
 
-/** 取出事件上的条目种类。 */
+/** 取出事件上的条目种类。ev 依次看 item_kind、ItemKind 和 payload.kind。 */
 function eventKind(ev: any) {
   return String(ev?.item_kind || ev?.ItemKind || ev?.payload?.kind || "");
 }
 
-/** 取出事件载荷，没有就用事件本身。 */
+/** 取出事件载荷，没有就用事件本身。ev 先取 payload 或 Payload，都没有就用自身。 */
 function eventPayload(ev: any) {
   return ev?.payload || ev?.Payload || ev || {};
 }
@@ -38,7 +38,7 @@ export function installCanvasHub() {
       const id = useCanvasHost.getState().projectId;
       if (!id) return;
       void getRemoteCanvasProject(id)
-        .then((doc: any) => {
+        .then(/** doc 先取 project，没有就用自身；有 id 才交给 importProject。 */ (doc: any) => {
           const project = doc?.project || doc;
           if (!project?.id) return;
           const store = useCanvasStore.getState();
@@ -48,10 +48,10 @@ export function installCanvasHub() {
     }, 40);
   };
 
-  void wailsEvents().then((Events) => {
+  void wailsEvents().then(/** Events 没有 On 就返回，否则用 On 听 yoyo:item。 */ (Events) => {
     if (!alive || !Events?.On) return;
     /** 只重读当前画布；还没选工程时先记下事件里的画布 id。 */
-    off = Events.On("yoyo:item", (ev: any) => {
+    off = Events.On("yoyo:item", /** ev 交给 eventKind 和 eventPayload，用来判断要不要重读当前画布。 */ (ev: any) => {
       const kind = eventKind(ev);
       const payload = eventPayload(ev);
       if (kind === "canvas_patch" || kind === "canvas_text_delta" || kind === "video_job") {

@@ -20,15 +20,15 @@ type Episode = { id: string; drama_id: string; title: string; episode_number?: n
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
-/** DramaProjectChip 列出系列和集，并能新建或打开看板。 */
+/** DramaProjectChip 列出系列和集，并能新建或打开看板。props 的 disabled 传给触发按钮。 */
 export function DramaProjectChip(props: { disabled?: boolean }) {
   const copy = useCopy();
-  const dramaId = useDramaSelection((s) => s.dramaId);
-  const episodeId = useDramaSelection((s) => s.episodeId);
-  const setDramaId = useDramaSelection((s) => s.setDramaId);
-  const setEpisodeId = useDramaSelection((s) => s.setEpisodeId);
-  const setVideoBoard = useUI((s) => s.setVideoBoard);
-  const sessionId = useUI((s) => s.videoThreadId);
+  const dramaId = useDramaSelection(/** s 取出 dramaId。 */ (s) => s.dramaId);
+  const episodeId = useDramaSelection(/** s 取出 episodeId。 */ (s) => s.episodeId);
+  const setDramaId = useDramaSelection(/** s 取出 setDramaId。 */ (s) => s.setDramaId);
+  const setEpisodeId = useDramaSelection(/** s 取出 setEpisodeId。 */ (s) => s.setEpisodeId);
+  const setVideoBoard = useUI(/** s 取出 setVideoBoard。 */ (s) => s.setVideoBoard);
+  const sessionId = useUI(/** s 取出 videoThreadId。 */ (s) => s.videoThreadId);
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
 
@@ -47,13 +47,13 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
       setEpisodes([]);
       return;
     }
-    void api.video.episodes(dramaId).then((list) => {
+    void api.video.episodes(dramaId).then(/** list 是数组才写入集列表。 */ (list) => {
       setEpisodes(Array.isArray(list) ? list : []);
     }).catch(() => setEpisodes([]));
   }, [dramaId]);
 
-  const drama = dramas.find((d) => d.id === dramaId);
-  const episode = episodes.find((e) => e.id === episodeId);
+  const drama = dramas.find(/** d 的 id 和当前系列比对。 */ (d) => d.id === dramaId);
+  const episode = episodes.find(/** e 的 id 和当前集比对。 */ (e) => e.id === episodeId);
   const label = episode
     ? shownEpisodeTitle(episode.title, episode.episode_number, copy.video.episodeN)
     : drama
@@ -88,7 +88,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
     }
   }
 
-  /** 选中这一集。有会话就绑定。 */
+  /** 选中这一集。有会话就绑定。d 的 id 写成当前系列。ep 的 id 写成当前集。 */
   function pickEpisode(d: Drama, ep: Episode) {
     setDramaId(d.id);
     setEpisodeId(ep.id);
@@ -126,7 +126,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
           </DropdownMenuItem>
         ) : null}
         {dramas.length ? <DropdownMenuSeparator /> : null}
-        {dramas.map((d) => (
+        {dramas.map(/** d 交给 DramaGroup，id 和当前系列相同才带上当前集。 */ (d) => (
           <DramaGroup
             key={d.id}
             drama={d}
@@ -142,7 +142,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
   );
 }
 
-/** 展开一个系列下的集。 */
+/** 展开一个系列下的集。props 的 drama 用来取集和标题，activeEpisode 和集 id 相同就打勾，copyLabel、episodeN、untitled 显示文案，onPick 带上系列和这一集。 */
 function DramaGroup(props: {
   drama: Drama;
   activeEpisode: string;
@@ -153,7 +153,7 @@ function DramaGroup(props: {
 }) {
   const [eps, setEps] = useState<Episode[]>([]);
   useEffect(() => {
-    void api.video.episodes(props.drama.id).then((list) => {
+    void api.video.episodes(props.drama.id).then(/** list 是数组才写入。 */ (list) => {
       setEps(Array.isArray(list) ? list : []);
     }).catch(() => setEps([]));
   }, [props.drama.id]);
@@ -161,7 +161,7 @@ function DramaGroup(props: {
   return (
     <>
       <DropdownMenuLabel className="truncate">{shownSeriesTitle(props.drama.title, props.untitled)}</DropdownMenuLabel>
-      {eps.length ? eps.map((ep) => (
+      {eps.length ? eps.map(/** ep 显示标题，点选时和系列一起交给 onPick。 */ (ep) => (
         <DropdownMenuItem key={ep.id} onSelect={() => props.onPick(props.drama, ep)}>
           <span className="min-w-0 flex-1 truncate pl-1">{shownEpisodeTitle(ep.title, ep.episode_number, props.episodeN)}</span>
           {props.activeEpisode === ep.id ? <Check className="size-3.5 shrink-0" /> : null}

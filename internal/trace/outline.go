@@ -28,6 +28,7 @@ var mentionTok = regexp.MustCompile(`@(?:file|folder|skill):\S+|@harness\b`)
 const outlineTitleRunes = 42
 
 // OutlineTitle 去掉 mentionTok 匹配的提及，把空白收成单个空格。空结果返回空字符串。超过 42 个 rune 时截断并在末尾加 …。
+// text 交给 mentionTok 替换成空格，再把空白收成单个空格。
 func OutlineTitle(text string) string {
 	s := mentionTok.ReplaceAllString(text, " ")
 	s = strings.Join(strings.Fields(s), " ")
@@ -42,11 +43,13 @@ func OutlineTitle(text string) string {
 }
 
 // IsSteerUser 报告这是不是转向注入的用户事件。
+// ev 交给 isSteerUser。
 func IsSteerUser(ev Event) bool {
 	return isSteerUser(ev)
 }
 
 // isSteerUser 在类型为 user，且 Source 为 steer，或载荷 name、kind 为 steer 时返回 true。
+// ev 的类型不是 user 时返回 false；Source 为 steer，或载荷 name、kind 为 steer 时返回 true。
 func isSteerUser(ev Event) bool {
 	if ev.Type != TypeUser {
 		return false
@@ -60,6 +63,7 @@ func isSteerUser(ev Event) bool {
 }
 
 // payloadString 按 keys 的顺序返回载荷里第一个非空白字符串。没有载荷或都空时返回空字符串。
+// ev 的 Payload 为 nil 时返回空串。
 func payloadString(ev Event, keys ...string) string {
 	if ev.Payload == nil {
 		return ""
@@ -73,6 +77,7 @@ func payloadString(ev Event, keys ...string) string {
 }
 
 // OutlineTurns 只读类型为 user 的索引行，跳过转向注入。文件不存在时返回空切片和 nil。读某一行失败或 JSON 无效就跳过该行。
+// sessionID 交给 indexLocked 和 path。
 func (s *Store) OutlineTurns(sessionID string) ([]OutlineTurn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -122,6 +127,7 @@ func (s *Store) OutlineTurns(sessionID string) ([]OutlineTurn, error) {
 
 // PageAroundUser 返回含 userSeq 的一页，宽度是 turns 个操作者回合。后面的回合够时，目标在窗口开头。靠近文件末尾时向前补，避免只剩一行。
 // turns 小于等于 0 时用 DefaultPageTurns。userSeq 小于等于 0 时改调 PageTurns。找不到该序号时错误文案是 turn <序号> not in session。
+// sessionID 在 userSeq 小于等于 0 时交给 PageTurns，否则交给 indexLocked。
 func (s *Store) PageAroundUser(sessionID string, userSeq int64, turns int) (Page, error) {
 	if turns <= 0 {
 		turns = DefaultPageTurns

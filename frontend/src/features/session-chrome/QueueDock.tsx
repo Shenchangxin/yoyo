@@ -5,7 +5,7 @@
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import type { Copy } from "../../lib/copy";
 
-/** QueueDock 列出排队的下一轮，取消和排序交给外面。 */
+/** QueueDock 列出排队的下一轮，取消和排序交给外面。props 读取 items、copy、onReorder，调用 onReorder，调用 onCancel。 */
 export function QueueDock(props: {
   items: { id?: string; text?: string; plan?: boolean }[];
   onCancel?: (id: string) => void;

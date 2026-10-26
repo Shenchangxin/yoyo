@@ -20,19 +20,19 @@ function read(): Record<string, string> {
   }
 }
 
-/** cutThreadId 返回这个剪辑工程记下的会话，没有就是空字符串。 */
+/** cutThreadId 返回这个剪辑工程记下的会话，没有就是空字符串。projectId 去掉空白后当作对照表的键。 */
 export function cutThreadId(projectId: string): string {
   return read()[(projectId || "").trim()] || "";
 }
 
-/** isCutThread 判断这个会话是不是某条剪辑记下的。 */
+/** isCutThread 判断这个会话是不是某条剪辑记下的。sessionId 去掉空白后看是否出现在对照表的值里，空的直接返回假。 */
 export function isCutThread(sessionId: string): boolean {
   const id = (sessionId || "").trim();
   if (!id) return false;
   return Object.values(read()).includes(id);
 }
 
-/** rememberCutThread 一条剪辑记一条聊天。会话挪到新剪辑时离开上一条。 */
+/** rememberCutThread 一条剪辑记一条聊天。会话挪到新剪辑时离开上一条。projectId 去掉空白后当作新键，并清掉同键旧项。sessionId 去掉空白后写到这个键上，并清掉别的键上相同的会话。 */
 export function rememberCutThread(projectId: string, sessionId: string) {
   const id = (projectId || "").trim();
   const sid = (sessionId || "").trim();

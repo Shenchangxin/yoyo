@@ -45,6 +45,8 @@ var officialSHA256 = map[string]string{
 }
 
 // archiveName 只为 windows/amd64 返回 PowerShell-<Version>-win-x64.zip，为 windows/arm64 返回 PowerShell-<Version>-win-arm64.zip。其他组合返回 errUnsupported。
+// goos 不是 windows 时和 goarch 一起传给 errUnsupported。
+// goarch 为 amd64 或 arm64 时拼进返回的文件名，其他值时和 goos 一起传给 errUnsupported。
 func archiveName(goos, goarch string) (string, error) {
 	if goos != "windows" {
 		return "", errUnsupported(goos, goarch)

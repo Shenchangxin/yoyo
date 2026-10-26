@@ -145,7 +145,7 @@ export const RADIUS_TOKENS: readonly { name: string; fallback: string }[] = [
   { name: "--radius-chip", fallback: "0.375rem" },
 ];
 
-/** isUserSkinId 小写开头、长度符合目录名，且不是 builtin. 前缀，才是用户皮肤。 */
+/** isUserSkinId 小写开头、长度符合目录名，且不是 builtin. 前缀，才是用户皮肤。id 看开头，为假时走另一支，传给 test。 */
 export function isUserSkinId(id: string | undefined | null): boolean {
   return !!id && /^[a-z][a-z0-9._-]{2,63}$/.test(id) && !id.startsWith("builtin.");
 }

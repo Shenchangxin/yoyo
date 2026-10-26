@@ -12,6 +12,8 @@ import (
 )
 
 // evaluateManifestValue 求值清单模板。数字和布尔原样返回。整段是 ${路径} 的字符串按路径取值，其他字符串原样返回。数组丢掉 nil。只有一个 $ 键的对象当成运算符。普通对象逐项求值并丢掉 nil。其余类型先转成 JSON 再求值。
+// template 为 nil、布尔或数字时原样返回；字符串整段是 ${路径} 时从 env 取值；数组逐项求值并丢掉 nil；只有一个 $ 键的对象交给 evaluateManifestOperator。
+// env 传给 manifestPathValue、递归求值和 evaluateManifestOperator。
 func evaluateManifestValue(template any, env map[string]any) (any, error) {
 	switch value := template.(type) {
 	case nil, bool, float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
@@ -67,6 +69,8 @@ func evaluateManifestValue(template any, env map[string]any) (any, error) {
 }
 
 // evaluateManifestOperator 实现 $ref、$literal、$coalesce、$concat、$map、$filter、$indexObject、$first、$last、$at、$len、$split、$if、$switch、$omitEmpty、大小写和类型转换、$merge、$sortByOrder、四则和比较。未知运算符返回 unsupported manifest operator。$divide 的除数不能为 0。$ceilStep 的步长必须为正。$json 把值编成 JSON 文本。$dataMime 和 $dataPayload 交给同名函数处理 data URL。
+// operand 在 $ref 时要求是字符串路径，在 $literal 时原样返回，在多数运算符里先求值或要求是数组、对象。
+// env 传给 manifestPathValue、evaluateManifestValue 和 cloneManifestEnv。
 func evaluateManifestOperator(operator string, operand any, env map[string]any) (any, error) {
 	switch operator {
 	case "$ref":
@@ -444,6 +448,9 @@ func evaluateManifestOperator(operator string, operand any, env map[string]any) 
 }
 
 // evaluateManifestComparison 对 $and、$or 做真值组合。$eq 和 $ne 比较两边的 JSON 文本。大小比较用浮点数。$in 看左边的 JSON 是否出现在右边数组里。除逻辑运算外必须正好两个操作数。
+// operator 为 $and 或 $or 时做真值组合；$eq、$ne 比较 JSON 文本；$gt、$gte、$lt、$lte 用浮点数；$in 看左边的 JSON 是否出现在右边数组里。
+// operand 必须是数组，否则失败；除 $and、$or 外求值后必须正好两项。
+// env 传给每一项的 evaluateManifestValue。
 func evaluateManifestComparison(operator string, operand any, env map[string]any) (any, error) {
 	values, ok := operand.([]any)
 	if !ok {
@@ -503,6 +510,8 @@ func evaluateManifestComparison(operator string, operand any, env map[string]any
 }
 
 // interpolateManifestString 把 {{路径}} 换成环境里该路径的文本。没有成对的 }} 时留下原文。
+// value 里成对的 {{路径}} 换成文本，没有成对的 }} 时留下原文。
+// env 传给 manifestPathValue。
 func interpolateManifestString(value string, env map[string]any) string {
 	result := value
 	for {
@@ -521,6 +530,8 @@ func interpolateManifestString(value string, env map[string]any) string {
 }
 
 // manifestPathValue 按点号路径取值。空路径返回根。数组下标不是非负整数或越界时返回 nil。
+// root 在 path 去掉空白后为空时原样返回，否则按点号逐段往下取。
+// path 去掉首尾点号后按点号分段；数组下标小于 0 或越界时返回 nil。
 func manifestPathValue(root any, path string) any {
 	if strings.TrimSpace(path) == "" {
 		return root
@@ -544,6 +555,7 @@ func manifestPathValue(root any, path string) any {
 }
 
 // cloneManifestEnv 浅拷贝求值环境。
+// env 的键值浅拷贝进新 map，容量是原长度加 2。
 func cloneManifestEnv(env map[string]any) map[string]any {
 	result := make(map[string]any, len(env)+2)
 	for key, value := range env {
@@ -553,6 +565,7 @@ func cloneManifestEnv(env map[string]any) map[string]any {
 }
 
 // manifestArray 在值已是数组时原样返回，nil 返回 nil，其他值包成单元素数组。
+// value 为 nil 时返回 nil，已是数组时原样返回，其他值包成单元素数组。
 func manifestArray(value any) []any {
 	if value == nil {
 		return nil
@@ -564,12 +577,14 @@ func manifestArray(value any) []any {
 }
 
 // manifestObject 把值当成对象。不是对象时返回 nil。
+// value 做 map[string]any 断言，失败返回 nil。
 func manifestObject(value any) map[string]any {
 	result, _ := value.(map[string]any)
 	return result
 }
 
 // manifestEmpty 把 nil、空白字符串、空数组和空对象当成空。0 和 false 不算空。
+// value 为 nil、去掉空白后的空串、空数组或空对象时返回真，其余返回假。
 func manifestEmpty(value any) bool {
 	switch typed := value.(type) {
 	case nil:
@@ -586,6 +601,7 @@ func manifestEmpty(value any) bool {
 }
 
 // manifestTruthy 把 nil、假、0、空集合，以及 false、0、no、null 这些文本当成假。其他值当成真。
+// value 为 nil、false、0、空串、空数组、空对象，或文本 false、0、no、null 时返回假，其余返回真。
 func manifestTruthy(value any) bool {
 	switch typed := value.(type) {
 	case nil:
@@ -613,6 +629,7 @@ func manifestTruthy(value any) bool {
 }
 
 // manifestString 把 nil 收成空串，数字和布尔收成文本，其余值收成 JSON。
+// value 为 nil 时返回空串，字符串原样返回，数字和布尔收成文本，其余 Marshal 成 JSON。
 func manifestString(value any) string {
 	switch typed := value.(type) {
 	case nil:
@@ -638,12 +655,14 @@ func manifestString(value any) string {
 }
 
 // manifestFloat 调用 manifestFloatValue，解析失败时返回 0。
+// value 传给 manifestFloatValue，解析失败时返回 0。
 func manifestFloat(value any) float64 {
 	parsed, _ := manifestFloatValue(value)
 	return parsed
 }
 
 // manifestFloatValue 接受浮点、整数、json.Number 和去掉空白后的数字字符串。其他类型返回 0 和假。
+// value 为 float64、float32、int、int64 时转成 float64；json.Number 和去掉空白后的数字字符串用解析结果；其他类型返回 0 和假。
 func manifestFloatValue(value any) (float64, bool) {
 	switch typed := value.(type) {
 	case float64:
@@ -666,11 +685,13 @@ func manifestFloatValue(value any) (float64, bool) {
 }
 
 // manifestInt 把 manifestFloat 的结果截成 int。
+// value 传给 manifestFloat，结果截成 int。
 func manifestInt(value any) int {
 	return int(manifestFloat(value))
 }
 
 // normalizeManifestNumber 在数值没有小数部分时返回 int，否则返回 float64。
+// value 与 Trunc 相等时返回 int，否则返回自身。
 func normalizeManifestNumber(value float64) any {
 	if math.Trunc(value) == value {
 		return int(value)

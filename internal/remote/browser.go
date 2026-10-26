@@ -41,6 +41,7 @@ type browserHold struct {
 
 // UseStatic 换上允许浏览器之后要提供的桌面静态文件。
 // Bind 可能已经在听，所以清掉已组好的页面处理器，下一次请求才按新文件重做。
+// h 在 n 非 nil 时写入 static，并清空 pages 和 pagesFor。
 func (n *Node) UseStatic(h http.Handler) {
 	if n == nil {
 		return
@@ -258,6 +259,7 @@ func (n *Node) waitBrowser(w http.ResponseWriter, r *http.Request) {
 
 // takeOffer 核销一枚配对码并返回它的到期时刻。不存在，或此刻已经晚于 Exp，就返回过期。
 // 删掉之后不放回去。手机 stage 再来，或浏览器再打开同一次，都会失败。
+// nonce 用来查 offers。不存在，或此刻已经晚于 Exp，就返回过期。否则删掉该条并返回 Exp。
 func (n *Node) takeOffer(nonce string) (time.Time, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -271,6 +273,8 @@ func (n *Node) takeOffer(nonce string) (time.Time, error) {
 
 // settleBrowser 结束一次还没完成的浏览器等待。已经完成或不存在就返回假。
 // 允许时用 32 字节随机数做令牌，sessions 里记 12 小时。随机数失败就把允许改回假。然后关掉等待通道并记审计。
+// id 用来查 browsers，并传给 audit。
+// allow 写入这条等待的 allow。为真时读 32 字节随机数做令牌，放进 sessions，到期加上 12 小时。随机数失败就把 allow 改回假。
 func (n *Node) settleBrowser(id string, allow bool) bool {
 	n.mu.Lock()
 	b := n.browsers[id]
@@ -297,9 +301,11 @@ func (n *Node) settleBrowser(id string, allow bool) bool {
 }
 
 // approveBrowser 把这次浏览器等待记成允许。
+// id 和 true 传给 settleBrowser。
 func (n *Node) approveBrowser(id string) bool { return n.settleBrowser(id, true) }
 
 // denyBrowser 把这次浏览器等待记成拒绝。
+// id 和 false 传给 settleBrowser。
 func (n *Node) denyBrowser(id string) bool { return n.settleBrowser(id, false) }
 
 // browserAuthed 看呈现出来的令牌是否还在 sessions 里，并且此刻没有晚于过期时间。过期的会从 sessions 删掉。
@@ -335,6 +341,7 @@ func browserPresented(r *http.Request) string {
 }
 
 // cleanSession 去掉首尾空白。长度要在 32 到 128 之间，并且只含 0-9 和 a-f。大写十六进制会当成没有令牌。
+// v 去掉首尾空白。长度小于 32 或大于 128，或含有 0-9 和 a-f 以外的字符时返回空字符串。
 func cleanSession(v string) string {
 	v = strings.TrimSpace(v)
 	if len(v) < 32 || len(v) > 128 {
@@ -349,6 +356,7 @@ func cleanSession(v string) string {
 }
 
 // waitID 先看查询参数 id。不合法再看等待 cookie。都不是合法浏览器号就返回空字符串。
+// r 的查询参数 id 先交给 validBrowserID。不合法再读等待 cookie 的值。
 func (n *Node) waitID(r *http.Request) string {
 	if id := r.URL.Query().Get("id"); validBrowserID(id) {
 		return id
@@ -390,6 +398,7 @@ func sameSite(r *http.Request) bool {
 }
 
 // hostMatches 先比整串。不一致时去掉端口再比主机名。去掉之后主机为空则不算相同。
+// b 与 a 先做不区分大小写的整串比较。不一致时去掉端口后再比。
 func hostMatches(a, b string) bool {
 	if strings.EqualFold(a, b) {
 		return true
@@ -406,12 +415,16 @@ func hostMatches(a, b string) bool {
 }
 
 // isAsset 看路径最后一段里有没有点。有点才当成静态文件。
+// p 取最后一段，看里面有没有点。
 func isAsset(p string) bool {
 	return strings.Contains(path.Base(p), ".")
 }
 
 // setBrowserCookie 写 Path 为 /、HttpOnly、SameSite 严格的 cookie。不设 Secure，因为这扇门是明文 HTTP。
 // MaxAge 由调用方传入。负值用来删掉 cookie。
+// name 写入 Cookie 的 Name。
+// value 写入 Cookie 的 Value。
+// maxAge 写入 Cookie 的 MaxAge。
 func setBrowserCookie(w http.ResponseWriter, name, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
@@ -424,6 +437,8 @@ func setBrowserCookie(w http.ResponseWriter, name, value string, maxAge int) {
 }
 
 // writeJSONStatus 写 JSON 正文和给定的状态码。
+// status 传给 WriteHeader。
+// v 传给 json.NewEncoder 的 Encode。
 func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -431,6 +446,9 @@ func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 }
 
 // writeBrowserPage 写一页不缓存的说明 HTML。标题和正文会做转义，extra 原样拼进页面。
+// status 传给 WriteHeader。
+// title 传给 htmlText 后写入 h1。
+// body 传给 htmlText 后写入段落。
 func writeBrowserPage(w http.ResponseWriter, status int, title, body, extra string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -441,6 +459,7 @@ func writeBrowserPage(w http.ResponseWriter, status int, title, body, extra stri
 }
 
 // htmlText 把 &、<、> 和双引号换成字符引用。
+// s 交给 strings.NewReplacer，替换 &、<、> 和双引号。
 func htmlText(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;").Replace(s)
 }
@@ -450,6 +469,7 @@ const browserTouch = `<style id="yoyo-browser-touch">.drag{-webkit-app-region:no
 
 // markBrowser 只改写这扇门送出的 HTML。桌面窗口用的是另一台服务器，拖拽区域保持原样。
 // 微信把拖拽区域当成点不了的地方，没写值也一样。HEAD 原样转发。其它请求去掉 Range，好把整页攒起来再插入。
+// files 为 nil 时返回 nil。否则返回的处理器在 HEAD 时直接 ServeHTTP。其他请求去掉 Range 后，用 htmlInject 包住 ResponseWriter 再 ServeHTTP。
 func markBrowser(files http.Handler) http.Handler {
 	if files == nil {
 		return nil
@@ -477,6 +497,7 @@ type htmlInject struct {
 }
 
 // WriteHeader 只认第一次。HTML 先攒着，其它类型马上写下状态码。
+// code 在尚未决定时写入 code 字段。内容类型不含 text/html 时传给底层 WriteHeader。
 func (m *htmlInject) WriteHeader(code int) {
 	if m.decided {
 		return
@@ -490,6 +511,7 @@ func (m *htmlInject) WriteHeader(code int) {
 }
 
 // Write 在还没决定时补上内容类型。HTML 进缓冲区，其它字节直接写出。
+// p 在尚未决定且 Content-Type 为空时传给 http.DetectContentType。是 HTML 时写入缓冲区，否则传给底层 Write。
 func (m *htmlInject) Write(p []byte) (int, error) {
 	if !m.decided {
 		if m.Header().Get("Content-Type") == "" {
@@ -524,6 +546,7 @@ func (m *htmlInject) finish() {
 }
 
 // injectBrowserTouch 把 browserTouch 放进 head 开始标签后面。没有 head 就接到正文最前。
+// body 转成小写后找 <head> 或 <head。找到就在标签结束后传给 joinAt。找不到就把 browserTouch 接到 body 前面。
 func injectBrowserTouch(body []byte) []byte {
 	lower := bytes.ToLower(body)
 	if i := bytes.Index(lower, []byte("<head>")); i >= 0 {
@@ -541,6 +564,7 @@ func injectBrowserTouch(body []byte) []byte {
 }
 
 // joinAt 在 at 这个下标处插入 browserTouch。
+// body 在 at 处切开，中间插入 browserTouch。
 func joinAt(body []byte, at int) []byte {
 	out := make([]byte, 0, len(body)+len(browserTouch))
 	out = append(out, body[:at]...)
@@ -580,6 +604,7 @@ type scrubResponse struct {
 }
 
 // WriteHeader 只认第一次。内容类型含 json 时先不往下写状态码，等洗完再写。
+// code 在尚未劫持且尚未决定时写入 code 字段。内容类型含 json 时只标记 hold。否则传给底层 WriteHeader。
 func (s *scrubResponse) WriteHeader(code int) {
 	if s.hijacked || s.decided {
 		return
@@ -595,6 +620,7 @@ func (s *scrubResponse) WriteHeader(code int) {
 }
 
 // Write 在攒 JSON 时只追加缓冲区。已经 Hijack，或内容类型不是 JSON，就直接写出。
+// p 在已劫持或不是 JSON 时传给底层 Write。正在攒时追加到缓冲区并返回长度。
 func (s *scrubResponse) Write(p []byte) (int, error) {
 	if s.hijacked {
 		return s.ResponseWriter.Write(p)
@@ -664,6 +690,7 @@ func (s *scrubResponse) Flush() {
 func (s *scrubResponse) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // jsonBody 把内容类型转成小写后，看里面有没有 json。
+// ct 转成小写后看是否包含 json。
 func jsonBody(ct string) bool {
 	return strings.Contains(strings.ToLower(ct), "json")
 }

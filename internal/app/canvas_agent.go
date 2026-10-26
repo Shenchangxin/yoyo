@@ -52,6 +52,7 @@ func (a *App) startCanvasAgent(turn video.CanvasAgentTurn) error {
 }
 
 // stopCanvasAgent 对给定会话调用 Interrupt。会话 id 空白或 App 为空则返回。
+// sessionID 去掉首尾空白后为空则返回，否则传给 Interrupt。
 func (a *App) stopCanvasAgent(sessionID string) {
 	if a == nil || strings.TrimSpace(sessionID) == "" {
 		return
@@ -60,6 +61,8 @@ func (a *App) stopCanvasAgent(sessionID string) {
 }
 
 // decideCanvasAgent 把 approve 解析成 capability.Once，其他决定解析成 Deny。没有 Gate 时返回没有审批网关。
+// approvalID 传给 Gate.Resolve。
+// decision 等于 approve 时决定用 Once，否则用 Deny。
 func (a *App) decideCanvasAgent(approvalID, decision string) error {
 	if a == nil || a.Gate == nil {
 		return fmt.Errorf("没有审批网关")
@@ -72,6 +75,7 @@ func (a *App) decideCanvasAgent(approvalID, decision string) error {
 }
 
 // canvasAgentSession 复用该画布已记住且仍存在的会话。否则在视频工作区新建频道为视频的会话，标题写为画布助手。
+// canvasID 用作 agentSess 的键。
 func (a *App) canvasAgentSession(canvasID string) (string, error) {
 	if v, ok := a.agentSess.Load(canvasID); ok {
 		if id, _ := v.(string); id != "" {
@@ -91,6 +95,7 @@ func (a *App) canvasAgentSession(canvasID string) (string, error) {
 }
 
 // ensureCanvasAgentWatch 为会话订阅 Hub，并只启动一次 canvasAgentLoop。Hub 为空返回对话事件通道还没有就绪。
+// sessionID 用作 agentWatch 的键，并传给 Hub.Subscribe 和 canvasAgentLoop。
 func (a *App) ensureCanvasAgentWatch(sessionID string) error {
 	if a == nil || a.Hub == nil {
 		return fmt.Errorf("对话事件通道还没有就绪")
@@ -104,6 +109,8 @@ func (a *App) ensureCanvasAgentWatch(sessionID string) error {
 }
 
 // canvasAgentLoop 把同一 epoch 的流式文本、回合结束、错误、工具结果和审批写回视频引擎。epoch 变了的事件丢掉。退出时取消订阅并删掉监视标记。
+// sessionID 传给 CanvasAgentEpoch、CanvasAgentStream、CanvasAgentFinish、CanvasAgentFail、CanvasAgentTool 和 CanvasAgentApproval，退出时从 agentWatch 删掉。
+// unsub 在退出时调用。
 func (a *App) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub func()) {
 	defer unsub()
 	defer a.agentWatch.Delete(sessionID)
@@ -167,6 +174,7 @@ func (a *App) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub fun
 }
 
 // canvasAgentPrompt 写明画布 id，并按 read_only、auto 或其他权限加上约束。有点名技能时列出技能 id。
+// turn 用来读 CanvasID、Permission、SkillIDs 和 Prompt。
 func canvasAgentPrompt(turn video.CanvasAgentTurn) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "你正在 Yoyo 的视频画布里工作。当前画布 id 是 %s。请用已挂上的画布工具查看和修改这块画布，不要把工作区里的普通文件当成画布。\n", turn.CanvasID)
@@ -187,6 +195,7 @@ func canvasAgentPrompt(turn video.CanvasAgentTurn) string {
 }
 
 // assistantDelta 从事件的 chunk 里取 text。类型不是空也不是 text-delta 时返回空串。
+// ev 从 Payload 的 chunk 里取 type 和 text；Payload 为空则返回空串。
 func assistantDelta(ev trace.Event) string {
 	if ev.Payload == nil {
 		return ""
@@ -203,6 +212,7 @@ func assistantDelta(ev trace.Event) string {
 }
 
 // agentEventMessage 按 error、title、detail、message、text 的顺序取第一条非空文本。都没有则返回画布助手执行失败。
+// ev 的 Payload 为空时返回画布助手执行失败，否则按 error、title、detail、message、text 取第一条去掉首尾空白后非空的文本。
 func agentEventMessage(ev trace.Event) string {
 	if ev.Payload == nil {
 		return "画布助手执行失败"

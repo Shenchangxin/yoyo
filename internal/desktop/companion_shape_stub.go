@@ -5,9 +5,12 @@ package desktop
 import "github.com/wailsapp/wails/v3/pkg/application"
 
 // applyCompanionShape 在非 Windows 上不裁窗口。
+// bool 没有使用。
 func applyCompanionShape(application.Window, bool) {}
 
 // setCompanionPassthrough 在非 Windows 上调用 SetIgnoreMouseEvents。窗口为空时返回。
+// win 为 nil 时返回。否则把 ignore 传给 SetIgnoreMouseEvents。
+// ignore 传给 SetIgnoreMouseEvents。
 func setCompanionPassthrough(win application.Window, ignore bool) {
 	if win == nil {
 		return

@@ -13,12 +13,12 @@ import { structureSig } from "../src/lib/stream-live";
 import type { Item } from "../src/lib/protocol";
 import { itemMatchesTurn, isOutlineActive, itemTurnKey, neighborTurn, outlineTitle, outlineTurnKey, pendingOutline, pickActiveTurnKey, rowMatchesJump, turnJumpAliases } from "../src/lib/turn-outline";
 
-/** visibleParts 把工作组拆成里面的片段，其余片段原样留下。 */
+/** visibleParts 把工作组拆成里面的片段，其余片段原样留下。parts 调用 flatMap。 */
 function visibleParts(parts: AgentPart[]): AgentPart[] {
   return parts.flatMap((p) => (p.kind === "work" ? p.parts : [p]));
 }
 
-/** liveUser 用一条用户事件造出实时转录条目。extra 并进 payload。 */
+/** liveUser 用一条用户事件造出实时转录条目。extra 并进 payload。text 写入字段 text。 */
 function liveUser(text: string, extra?: Record<string, any>): Item {
   return itemFromEvent({
     type: "user",
@@ -28,7 +28,7 @@ function liveUser(text: string, extra?: Record<string, any>): Item {
   });
 }
 
-/** uiUser 造一条界面先画出来的用户条目，source 是 ui。 */
+/** uiUser 造一条界面先画出来的用户条目，source 是 ui。text 拼进字符串，写入字段 text。 */
 function uiUser(text: string): Item {
   return {
     key: `ui:s:${text}:1`,

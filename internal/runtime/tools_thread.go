@@ -16,6 +16,7 @@ type ThreadRef struct {
 }
 
 // readThread 在 sessionID 为空时列出会话。message 非空时发送。不能读当前会话。片段最多 8 条、每条 400 个 rune、合计 2000 个 rune。
+// query 在 sessionID 去掉空白后为空时交给 listThreads；否则作为 formatThreadSnippets 的过滤词。
 func (t *WorkspaceTools) readThread(sessionID, query, message string) ToolResult {
 	if t == nil {
 		return ToolResult{Err: fmt.Errorf("read_thread is not available")}
@@ -46,6 +47,8 @@ func (t *WorkspaceTools) readThread(sessionID, query, message string) ToolResult
 }
 
 // formatThreadSnippets 只保留 user 和 assistant，并跳过 isControlUser。query 非空时按小写子串过滤。达到 maxHits 停止，再用 capRunes 截到 total。
+// msgs 只保留 user 和 assistant，并跳过 isControlUser。
+// perMsg 作为 capRunes 的上限截每条正文。
 func formatThreadSnippets(msgs []Message, query string, maxHits, perMsg, total int) (string, int) {
 	q := strings.ToLower(strings.TrimSpace(query))
 	var b strings.Builder
@@ -70,6 +73,9 @@ func formatThreadSnippets(msgs []Message, query string, maxHits, perMsg, total i
 }
 
 // FormatSessionMentions 为 @session 注入有界摘录，策略与 read_thread 相同，不倒出整段轨迹。budget 小于等于 0 时用 1600 字节。剩余不足 64 时停止。已写入后再超出则写下 session mentions truncated。
+// refs 只处理 Kind 为 session 且 Ref 非空的项。
+// currentID 交给 sessionMentionChunk。
+// tools 交给 sessionMentionChunk。
 func FormatSessionMentions(refs []Mention, currentID string, tools *WorkspaceTools, budget int) string {
 	if budget <= 0 {
 		budget = 1600
@@ -99,6 +105,9 @@ func FormatSessionMentions(refs []Mention, currentID string, tools *WorkspaceToo
 }
 
 // sessionMentionChunk 能从 ListThreads 取标题。ID 等于当前会话时只说明这是当前对话，不附消息。没有命中时提示改用 read_thread。有命中时用 formatThreadSnippets，每条 400 个 rune，条数 8，总长是 remain 减 80。
+// id 去掉空白后用来对 ListThreads 的 ID，并和 currentID 比较。
+// currentID 与去掉空白后的 id 相等时只说明这是当前对话。
+// tools 非 nil 时用 ListThreads 取标题，用 Sessions 取消息。
 func sessionMentionChunk(id, currentID string, tools *WorkspaceTools, remain int) string {
 	id = strings.TrimSpace(id)
 	title := id
@@ -135,6 +144,7 @@ func sessionMentionChunk(id, currentID string, tools *WorkspaceTools, remain int
 }
 
 // listThreads 在 ListThreads 为空时要求 session_id。跳过空 ID、当前会话和子会话。最多 24 条。没有其他会话时返回 no other sessions。
+// query 去掉空白并转成小写；非空时用来过滤会话 ID 和标题。
 func (t *WorkspaceTools) listThreads(query string) ToolResult {
 	if t.ListThreads == nil {
 		return ToolResult{Err: fmt.Errorf("session_id required")}
@@ -170,6 +180,8 @@ func (t *WorkspaceTools) listThreads(query string) ToolResult {
 }
 
 // sendThread 在 SendThread 为空时返回错误。不能发给当前会话。成功则说明已排队或并入该会话。
+// id 等于当前 SessionID 时返回错误，否则作为第一参交给 SendThread。
+// text 作为第二参交给 SendThread。
 func (t *WorkspaceTools) sendThread(id, text string) ToolResult {
 	if t.SendThread == nil {
 		return ToolResult{Err: fmt.Errorf("send to another session is not available")}
@@ -184,6 +196,8 @@ func (t *WorkspaceTools) sendThread(id, text string) ToolResult {
 }
 
 // consolidateMemory 只在 SoftHorizon、工具和 Memory 都存在且 Objective 非空时写入。正文截到 800 个 rune。若已有相同文本或以前缀开头的情景记忆则不写。
+// req 的 SoftHorizon 为假，或 Tools、Memory 为空时直接返回；否则用 Memory 按目标搜索并写入。
+// notes 的 Objective 去掉空白后为空则返回；否则和 Files 拼成正文。
 func consolidateMemory(req RunRequest, notes SessionNotes) {
 	if !req.SoftHorizon || req.Tools == nil || req.Tools.Memory == nil {
 		return

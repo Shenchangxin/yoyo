@@ -48,7 +48,7 @@ type TranscriptCopy = Copy["transcript"];
 // 进行中的动词不能比 150 毫秒更快地换成下一个。
 const PROCESS_TITLE_MINIMUM_MS = 150;
 
-// 不在进行中时立刻跟上 key。进行中时若 key 变了，先等到距上次稳住满 150 毫秒。
+/** useStableLiveKey 不在进行中时立刻跟上 key。进行中时若 key 变了，先等到距上次稳住满 150 毫秒。live 为假时走另一支。 */
 function useStableLiveKey(key: string, live: boolean): string {
   const [shown, setShown] = useState(key);
   const heldAt = useRef(Date.now());
@@ -84,7 +84,12 @@ export function useNow(active: boolean): number {
   return now;
 }
 
-// WorkingLine 用在回合还活着、但没有工具在飞的时候。since 是上一条用户消息的时间，时钟不在每一批重新起算。没有 since，或 now 不大于 since，就不显示耗时。
+/**
+ * WorkingLine 用在回合还活着、但没有工具在飞的时候。since 是上一条用户消息的时间，时钟不在每一批重新起算。没有 since，或 now 不大于 since，就不显示耗时。
+ * label 为假时改用后备值，作为子节点渲染。
+ * detail 为真时才继续，作为子节点渲染。
+ * hint 为真时才继续，作为子节点渲染。
+ */
 export function WorkingLine({
   since,
   label,
@@ -117,7 +122,15 @@ export function WorkingLine({
   );
 }
 
-// ProcessGroup 默认收成一组，liveDetail 默认打开。用户没点过时，分组的默认是合上。展开后先显示一页，再按 PROCESS_PAGE 往前补。进行中且没有当前工具时标题停在 composing。
+/**
+ * ProcessGroup 默认收成一组，liveDetail 默认打开。用户没点过时，分组的默认是合上。展开后先显示一页，再按 PROCESS_PAGE 往前补。进行中且没有当前工具时标题停在 composing。
+ * rawItems 传给 pairTools，传给 processFailedCount，传给 processStartMs，传给 processSpanMs，传给 summarize。
+ * live 为真时才继续，传给 useStableLiveKey，传给 useNow。
+ * running 为假时走另一支，传给 pairState，写到 ProcessPair 的 running。
+ * compact 为真时才继续，写到 ProcessPair 的 compact。
+ * grouped 为假时走另一支。
+ * onOpenChild 写到 ProcessPair 的 onOpenChild。
+ */
 export const ProcessGroup = memo(function ProcessGroup({
   items: rawItems,
   live,
@@ -274,7 +287,7 @@ export const ProcessGroup = memo(function ProcessGroup({
   && a.items.every((it, i) => it === b.items[i])
 ));
 
-// 没有调用也没有结果时显示思考。kind 为 other 时用工具名填 other。detail 不为 false 时，字节超过 2048 且带 progress 才显示 KB。
+/** LiveLabel 没有调用也没有结果时显示思考。kind 为 other 时用工具名填 other。detail 不为 false 时，字节超过 2048 且带 progress 才显示 KB。pair 读取 call、result，为空时不读。t 读取 live。 */
 function LiveLabel({ pair, t, detail }: { pair?: ToolPair; t: TranscriptCopy; detail?: boolean }) {
   if (!pair?.call && !pair?.result) {
     return <span className="shimmer-text font-medium">{t.live.think}</span>;
@@ -296,7 +309,14 @@ function LiveLabel({ pair, t, detail }: { pair?: ToolPair; t: TranscriptCopy; de
   );
 }
 
-// 有调用或结果就画一条 ToolLine，其余条目交给 ProcessExtra。
+/**
+ * ProcessPair 有调用或结果就画一条 ToolLine，其余条目交给 ProcessExtra。
+ * pair 读取 call、result、extra，传给 pairState。
+ * running 传给 pairState，写到 ToolLine 的 running。
+ * compact 写到 ToolLine 的 compact。
+ * highlightFail 写到 ToolLine 的 highlightFail。
+ * onOpenChild 写到 ProcessExtra 的 onOpenChild。
+ */
 function ProcessPair({
   pair,
   running,
@@ -330,7 +350,7 @@ function ProcessPair({
   );
 }
 
-// 传入 icon 就用它。否则 running 用圆点，failed 用叉，interrupted 用虚线圈，其余用实心点。compact 时底色用侧栏。
+/** StepGlyph 传入 icon 就用它。否则 running 用圆点，failed 用叉，interrupted 用虚线圈，其余用实心点。compact 时底色用侧栏。state 与 running、failed、interrupted 比较是否相等。 */
 function StepGlyph({ state, compact, icon }: { state: PairState | "note"; compact?: boolean; icon?: ReactNode }) {
   return (
     <span
@@ -349,7 +369,17 @@ function StepGlyph({ state, compact, icon }: { state: PairState | "note"; compac
   );
 }
 
-// 点整行切换展开。open 为真且有 children 才放出正文。减少动效时不做高度动画。
+/**
+ * StepRow 点整行切换展开。open 为真且有 children 才放出正文。减少动效时不做高度动画。
+ * glyph 作为子节点渲染。
+ * label 作为子节点渲染。
+ * labelTone 为假时用 text-foreground/85，传给 cn。
+ * detail 为真时才继续，作为子节点渲染。
+ * meta 作为子节点渲染。
+ * onToggle 写到 button 的 onClick。
+ * testId 写到 div 的 data-testid。
+ * className 传给 cn。
+ */
 function StepRow({
   glyph,
   label,
@@ -414,7 +444,13 @@ function StepRow({
   );
 }
 
-// 缺省截到 4000。语言猜不出来时交给 guessLang。
+/**
+ * CodeSurface 缺省截到 4000。语言猜不出来时交给 guessLang。
+ * text 传给 guessLang，写到 CodePreview 的 text。
+ * cap 写到 CodePreview 的 cap。
+ * dim 写到 CodePreview 的 dim。
+ * lang 为假时改用后备值，写到 CodePreview 的 lang。
+ */
 function CodeSurface({ text, cap = 4000, dim, lang }: { text: string; cap?: number; dim?: boolean; lang?: string }) {
   return (
     <CodePreview
@@ -427,7 +463,7 @@ function CodeSurface({ text, cap = 4000, dim, lang }: { text: string; cap?: numb
   );
 }
 
-// live 为真时在末尾留一个光标块。
+/** ShellTerminal live 为真时在末尾留一个光标块。text 作为子节点渲染。 */
 function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
   return (
     <pre
@@ -440,7 +476,7 @@ function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
   );
 }
 
-// read 用代码面，search 只取前 40 条非空行，web 把地址和正文分开。
+/** TypedToolBody read 用代码面，search 只取前 40 条非空行，web 把地址和正文分开。props 读取 kind、path、text、lang、query、url。 */
 function TypedToolBody(props: {
   kind: "read" | "search" | "web";
   text: string;
@@ -484,7 +520,11 @@ function guessLang(text: string): string {
   return "text";
 }
 
-// 流式时强制展开。推理、进度、子代理和上下文注入各走一行；对不上就什么都不画。没有 onOpenChild 时，打开子会话会先 dump，再把路径或子会话 id 写入剪贴板。
+/**
+ * ProcessExtra 流式时强制展开。推理、进度、子代理和上下文注入各走一行；对不上就什么都不画。没有 onOpenChild 时，打开子会话会先 dump，再把路径或子会话 id 写入剪贴板。
+ * item 读取 delta、payload、type、source，传给 readableExtra，传给 reasoningText，传给 toolElapsedMs。
+ * compact 写到 StepGlyph 的 compact。
+ */
 function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: boolean; onOpenChild?: (id: string) => void }) {
   const copy = useCopy();
   const streaming = !!item.delta || !!item.payload?.streaming;
@@ -618,7 +658,11 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
 // 摘要里种类的先后。最多只用前三种。
 const TALLY_ORDER: ToolKind[] = ["edit", "run", "read", "search", "web", "list", "plan", "skill", "other"];
 
-// 有计数就取前三种拼起来。没有计数时依次退到推理耗时、进度条数、子代理、技能，最后是进行中文案。一条用单数文案。
+/**
+ * summarize 有计数就取前三种拼起来。没有计数时依次退到推理耗时、进度条数、子代理、技能，最后是进行中文案。一条用单数文案。
+ * items 调用 find，调用 some，传给 processKindTally，传给 processHasReasoning，传给 processProgressCount。
+ * t 读取 tally、thoughtFor、thinking、progressNote、progressNotes、subagent 等。
+ */
 function summarize(items: Item[], t: TranscriptCopy): string {
   const tally = processKindTally(items);
   const parts: string[] = [];
@@ -641,7 +685,7 @@ function summarize(items: Item[], t: TranscriptCopy): string {
   return t.working;
 }
 
-// 推理取 reasoningText。其余按 text、summary、prompt、note、question 取第一条非空。
+/** readableExtra 推理取 reasoningText。其余按 text、summary、prompt、note、question 取第一条非空。item 读取 payload、type、text，传给 reasoningText。 */
 function readableExtra(item: Item): string {
   if (item.payload?.groupPart === "reasoning" || item.type === "reasoning") {
     return reasoningText(item);
@@ -655,7 +699,7 @@ function readableExtra(item: Item): string {
   return "";
 }
 
-// 没有调用，或正文是空、{}、null，就返回空字符串。
+/** argsPreview 没有调用，或正文是空、{}、null，就返回空字符串。call 为假时返回空字符串；传给 formatToolBody。 */
 function argsPreview(call?: Item): string {
   if (!call) return "";
   const raw = formatToolBody(call).trim();
@@ -663,7 +707,14 @@ function argsPreview(call?: Item): string {
   return raw;
 }
 
-// ToolLine 在 pending 且 running 时自动展开。pending 但不在跑算中断，结果失败算失败，否则算完成。read、search、web 不画输入。shell 用终端，补丁类输出用 diff。
+/**
+ * ToolLine 在 pending 且 running 时自动展开。pending 但不在跑算中断，结果失败算失败，否则算完成。read、search、web 不画输入。shell 用终端，补丁类输出用 diff。
+ * item 作为后备值，传给 toolName。
+ * call 为假时用 source，为假时用 item，作为后备值，传给 toolDetail，传给 argsPreview，传给 toolArgs。
+ * result 为假时用 call，为假时用 item，读取 delta、payload，为空时不读，传给 toolElapsedMs，传给 isToolFailed，传给 formatToolBody，传给 toolArgs。
+ * compact 写到 StepGlyph 的 compact。
+ * highlightFail 为真时才继续。
+ */
 export function ToolLine({
   item,
   call,

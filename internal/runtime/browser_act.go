@@ -52,11 +52,13 @@ type browserStepResult struct {
 }
 
 // parseBrowserSteps 按 maxBrowserActSteps 解析步骤数组。
+// v 传给 parseBrowserStepsN，上限用 maxBrowserActSteps。
 func parseBrowserSteps(v any) ([]BrowserStep, error) {
 	return parseBrowserStepsN(v, maxBrowserActSteps)
 }
 
 // parseBrowserStepsN 把数组或 JSON 字符串解析成步骤。空数组失败。超过 max 失败。max 小于等于 0 时用 maxBrowserActSteps。
+// v 交给 coerceJSONArray。
 func parseBrowserStepsN(v any, max int) ([]BrowserStep, error) {
 	raw, err := coerceJSONArray(v)
 	if err != nil {
@@ -83,6 +85,7 @@ func parseBrowserStepsN(v any, max int) ([]BrowserStep, error) {
 }
 
 // parseBrowserStep 规范化一步。ref 优先于 selector，并写成 ref=。wait 未给毫秒时，有条件用 10000，否则用 200。毫秒超过对应上限则截断。
+// v 已是 BrowserStep 时直接用；是 map 时先编成 JSON 再解开，并补 wait_ms 和 text_contains；其它值同样走 JSON。
 func parseBrowserStep(v any) (BrowserStep, error) {
 	var st BrowserStep
 	switch t := v.(type) {
@@ -192,6 +195,7 @@ func parseBrowserStep(v any) (BrowserStep, error) {
 }
 
 // normalizeBrowserOp 把别名收成规范操作名。未知名字原样返回，由调用方拒绝。
+// op 去掉空白并转小写后查别名表，不在表里则原样返回。
 func normalizeBrowserOp(op string) string {
 	op = strings.ToLower(strings.TrimSpace(op))
 	switch op {
@@ -239,6 +243,7 @@ func stepHandle(selector, ref string) string {
 }
 
 // firstNonEmptyStep 返回第一段非空白字符串。
+// ss 按顺序返回第一段去掉空白后非空的字符串。
 func firstNonEmptyStep(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {
@@ -249,6 +254,7 @@ func firstNonEmptyStep(ss ...string) string {
 }
 
 // coerceJSONArray 把 []any、[]BrowserStep 或 JSON 数组字符串收成 []any。
+// v 为 nil 时返回错误；是 []any 或 []BrowserStep 时收成数组；字符串去掉空白后为空也报错，否则按 JSON 数组解开。
 func coerceJSONArray(v any) ([]any, error) {
 	switch t := v.(type) {
 	case nil:
@@ -285,6 +291,7 @@ func coerceJSONArray(v any) ([]any, error) {
 }
 
 // browserAct 解析 steps 并在第一次失败时停下。没有隔离浏览器时返回错误。
+// args 读取 steps，交给 parseBrowserSteps。
 func (t *WorkspaceTools) browserAct(args map[string]any) ToolResult {
 	steps, err := parseBrowserSteps(args["steps"])
 	if err != nil {
@@ -298,6 +305,7 @@ func (t *WorkspaceTools) browserAct(args map[string]any) ToolResult {
 }
 
 // checkBrowserSeq 要求已有隔离浏览器，通过 Browser 能力检查，并 EnsurePreview。
+// action 传给 check，能力是 Browser，路径参数是空串。
 func (t *WorkspaceTools) checkBrowserSeq(action string) error {
 	if t == nil || t.Browser == nil {
 		return fmt.Errorf("no isolated browser")
@@ -309,6 +317,7 @@ func (t *WorkspaceTools) checkBrowserSeq(action string) error {
 }
 
 // runBrowserSteps 按顺序执行。stopOnFail 为真时在第一步失败后返回，stopped 为真。
+// steps 按顺序交给 runBrowserStep，序号从 1 起。
 func (t *WorkspaceTools) runBrowserSteps(steps []BrowserStep, stopOnFail bool) (out []browserStepResult, stopped bool) {
 	out = make([]browserStepResult, 0, len(steps))
 	for i, st := range steps {
@@ -322,6 +331,8 @@ func (t *WorkspaceTools) runBrowserSteps(steps []BrowserStep, stopOnFail bool) (
 }
 
 // runBrowserStep 执行一步。无条件的 wait 在本进程 Sleep。带条件的 wait 交给浏览器。截图路径为空时，结果里的 Visual 写成 .yoyo/captures/browser.png。
+// index 写入结果的 Index。
+// st 的 Op 选择动作，并读取 Path、Selector、Text、Level、MS、Contains、URL、Direction、Amount、Key、Tab、Value 和 Check。
 func (t *WorkspaceTools) runBrowserStep(index int, st BrowserStep) browserStepResult {
 	res := browserStepResult{Index: index, Op: st.Op, Check: st.Check}
 	if t == nil || t.Browser == nil {
@@ -435,6 +446,8 @@ func (t *WorkspaceTools) runBrowserStep(index int, st BrowserStep) browserStepRe
 }
 
 // finishBrowserStep 把工具结果抄进步骤结果。有错误则 OK 保持假。
+// res 在 got.Err 非 nil 时写入 Err 和 Detail，否则把 OK 设为真并把 Content 写入 Detail。
+// got 读取 Err 和 Content。
 func finishBrowserStep(res browserStepResult, got ToolResult) browserStepResult {
 	if got.Err != nil {
 		res.Err = got.Err.Error()
@@ -447,6 +460,8 @@ func finishBrowserStep(res browserStepResult, got ToolResult) browserStepResult 
 }
 
 // formatBrowserAct 逐行列出步骤，并在中途停下时写明停在第一次失败。正文提醒不要自起静态服务或连接 CDP 9333/9222。
+// results 逐条写成一行，并统计 OK 的数量。
+// stopped 为真且 OK 数小于条数时附上 stopped on first failure。
 func formatBrowserAct(results []browserStepResult, stopped bool) string {
 	var b strings.Builder
 	ok := 0
@@ -495,6 +510,7 @@ func truncRunes(s string, n int) string {
 }
 
 // isQACheck 判断名字是不是 launch、render、input、coreLoop、outcome 或 restart。
+// name 等于这些名字之一时返回 true。
 func isQACheck(name string) bool {
 	switch name {
 	case "launch", "render", "input", "coreLoop", "outcome", "restart":

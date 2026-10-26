@@ -148,6 +148,7 @@ type Input struct {
 }
 
 // digest 把值编成 JSON 再取 SHA-256 的前 12 个字节，当成输入摘要。编码失败时用错误文本。
+// v 先 Marshal，失败时改用错误文本，再取 SHA-256 的前 12 个字节。
 func digest(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -158,4 +159,5 @@ func digest(v any) string {
 }
 
 // clean 去掉字符串两端的空白。
+// s 传给 TrimSpace。
 func clean(s string) string { return strings.TrimSpace(s) }

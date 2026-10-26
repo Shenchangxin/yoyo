@@ -43,14 +43,15 @@ const emptyStats = (): SessionStats => ({
   outputTokens: 0,
 });
 
-/** billedInputTokens 未缓存输入、缓存读和缓存写之和。 */
+/** billedInputTokens 未缓存输入、缓存读和缓存写之和。stats 读取 uncachedInputTokens、cacheReadTokens、cacheWriteTokens。 */
 export function billedInputTokens(stats: Pick<SessionStats, "uncachedInputTokens" | "cacheReadTokens" | "cacheWriteTokens">): number {
   return stats.uncachedInputTokens + stats.cacheReadTokens + stats.cacheWriteTokens;
 }
 
-/** formatCompactTokens 紧凑 token。不足一千取整，不足一百万用 K，再大用 M。一百以上的缩写取整，否则保留一位小数。 */
+/** formatCompactTokens 紧凑 token。不足一千取整，不足一百万用 K，再大用 M。一百以上的缩写取整，否则保留一位小数。value 传给 Math.max。 */
 export function formatCompactTokens(value: number): string {
   const n = Math.max(0, value);
+  /** scaled 根据参数得到结果。candidate 四舍五入，转成字符串，大于等于 100，乘以 10，作为分支结果。 */
   const scaled = (candidate: number): string =>
     candidate >= 100 ? String(Math.round(candidate)) : String(Math.round(candidate * 10) / 10);
   if (n < 1_000) return String(Math.round(n));
@@ -58,7 +59,7 @@ export function formatCompactTokens(value: number): string {
   return `${scaled(n / 1_000_000)}M`;
 }
 
-/** formatExactTokens 带千分位的精确 token。 */
+/** formatExactTokens 带千分位的精确 token。value 四舍五入，传给 Math.max。 */
 export function formatExactTokens(value: number): string {
   const digits = String(Math.max(0, Math.round(value)));
   const groups: string[] = [];
@@ -68,7 +69,7 @@ export function formatExactTokens(value: number): string {
   return groups.join(",");
 }
 
-/** formatCompactDuration 不足一分钟用秒并保留一位小数，否则用分和两位秒。 */
+/** formatCompactDuration 不足一分钟用秒并保留一位小数，否则用分和两位秒。ms 除以 1_000。 */
 export function formatCompactDuration(ms: number): string {
   const s = ms / 1_000;
   if (s < 60) return `${Math.round(s * 10) / 10}s`;
@@ -76,13 +77,13 @@ export function formatCompactDuration(ms: number): string {
   return `${Math.floor(whole / 60)}m${String(whole % 60).padStart(2, "0")}s`;
 }
 
-/** formatTokensPerSecond 十以上取整，十以下保留一位小数。 */
+/** formatTokensPerSecond 十以上取整，十以下保留一位小数。tps 传给 Math.max。 */
 export function formatTokensPerSecond(tps: number): string {
   const clamped = Math.max(0, tps);
   return clamped >= 10 ? String(Math.round(clamped)) : String(Math.round(clamped * 10) / 10);
 }
 
-/** 在给定小数位下，把命中数折成百分比的整数单位。 */
+/** 在给定小数位下，把命中数折成百分比的整数单位。cacheReadTokens 大于等于 threshold。denominator 除以 doubledScale，取余 doubledScale。decimalPlaces 与 0 比较是否相等。 */
 function roundedPercentUnits(cacheReadTokens: number, denominator: number, decimalPlaces: 0 | 1): number {
   const unitsPerPercent = decimalPlaces === 0 ? 1 : 10;
   const scale = unitsPerPercent * 100;
@@ -102,7 +103,7 @@ function roundedPercentUnits(cacheReadTokens: number, denominator: number, decim
   return lower;
 }
 
-/** 把百分比单位格式化成整数，或去掉末尾零的一位小数。 */
+/** 把百分比单位格式化成整数，或去掉末尾零的一位小数。units 转成字符串，除以 10，取余 10。decimalPlaces 与 0 比较是否相等。 */
 function displayPercentUnits(units: number, decimalPlaces: 0 | 1): string {
   if (decimalPlaces === 0) return String(units);
   const whole = Math.floor(units / 10);
@@ -113,6 +114,9 @@ function displayPercentUnits(units: number, decimalPlaces: 0 | 1): string {
 /**
  * formatCacheHitPercent 给出可展示的缓存命中占比。
  * 提示词为零时返回空。全部命中为 100。差一点满命中时保留 99 开头，避免把部分命中四舍五入成 100。
+ * cacheReadTokens 减去 promptTokens，传给 roundedPercentUnits。
+ * promptTokens 为 0 时返回 null；减去 cacheReadTokens，除以 10，传给 roundedPercentUnits。
+ * decimalPlaces 与 0 比较是否相等，传给 roundedPercentUnits，传给 displayPercentUnits。
  */
 export function formatCacheHitPercent(
   cacheReadTokens: number,
@@ -147,7 +151,7 @@ export function formatCacheHitPercent(
   return `99.${"9".repeat(distinguishingPlaces - 1)}${10 - roundedLoss}`;
 }
 
-/** 两个时间戳的毫秒差。缺一、无法解析或结束早于开始时为零。 */
+/** 两个时间戳的毫秒差。缺一、无法解析或结束早于开始时为零。from 为假时走另一支，传给 Date.parse。to 为假时走另一支，传给 Date.parse。 */
 function deltaMs(from: string, to: string): number {
   if (!from || !to) return 0;
   const a = Date.parse(from);
@@ -156,7 +160,7 @@ function deltaMs(from: string, to: string): number {
   return b - a;
 }
 
-/** 按追踪里成对的工具调用和结果累加工具耗时。 */
+/** 按追踪里成对的工具调用和结果累加工具耗时。trace 读取 events，为空时不读。 */
 function toolMsOfTrace(trace: SessionTrace | null | undefined): number {
   const open = new Map<string, string>();
   let ms = 0;
@@ -174,7 +178,7 @@ function toolMsOfTrace(trace: SessionTrace | null | undefined): number {
   return ms;
 }
 
-/** 按转录条目里成对的工具调用和结果累加工具耗时。 */
+/** 按转录条目里成对的工具调用和结果累加工具耗时。items 为假时改用后备值，用来遍历。 */
 function toolMsOfItems(items: Item[] | undefined): number {
   const open = new Map<string, string>();
   let ms = 0;
@@ -192,7 +196,7 @@ function toolMsOfItems(items: Item[] | undefined): number {
   return ms;
 }
 
-/** deriveSessionStats 从大纲、条目和追踪折出统计。引导备注不算回合。模型调用优先，没有则用助手条目当步数。工具耗时优先用追踪。 */
+/** deriveSessionStats 从大纲、条目和追踪折出统计。引导备注不算回合。模型调用优先，没有则用助手条目当步数。工具耗时优先用追踪。input 读取 trace、outlineTurns、items。 */
 export function deriveSessionStats(input: {
   outlineTurns?: OutlineTurn[];
   items?: Item[];
@@ -227,11 +231,12 @@ export function deriveSessionStats(input: {
   return stats;
 }
 
-/** formatMessageClock 同一天只显示时分，同一年显示月日和时分，更早则带上年份。月日模板由调用方提供。无效时间返回空串。 */
+/** formatMessageClock 同一天只显示时分，同一年显示月日和时分，更早则带上年份。月日模板由调用方提供。无效时间返回空串。time 小于等于 0，传给 Number.isFinite，传给 Date。templates 读取 md、ymd。now 传给 Date。 */
 export function formatMessageClock(time: number, templates: { md: string; ymd: string }, now = Date.now()): string {
   if (!Number.isFinite(time) || time <= 0) return "";
   const d = new Date(time);
   const n = new Date(now);
+  /** pad 调用 padStart。v 转成字符串，调用 padStart。 */
   const pad = (v: number) => String(v).padStart(2, "0");
   const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) {

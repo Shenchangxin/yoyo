@@ -17,6 +17,8 @@ var skipDirNames = map[string]bool{
 }
 
 // globWalk 按 filepath.Match 匹配相对路径或文件名。模式含 ** 时再试 matchStarStar。达到 limit 就停止。忽略目录和文件被跳过。
+// root 交给 loadIgnore 和 filepath.Walk，并用来算相对路径。
+// pattern 先换成斜杠，再对相对路径和文件名做 filepath.Match；含 ** 时再交给 matchStarStar。
 func globWalk(root, pattern string, limit int) ([]string, error) {
 	pattern = filepath.ToSlash(pattern)
 	ign := loadIgnore(root)
@@ -62,6 +64,8 @@ func globWalk(root, pattern string, limit int) ([]string, error) {
 }
 
 // matchStarStar 把 **/*、**/ 和 ** 收成 * 后再做 filepath.Match，先对相对路径，再对基名。
+// pattern 把 **/*、**/ 和 ** 收成 * 后再做 filepath.Match。
+// rel 先整段匹配，不中再取最后一个斜杠后面的基名匹配。
 func matchStarStar(pattern, rel string) bool {
 	pattern = strings.ReplaceAll(pattern, "**/*", "*")
 	pattern = strings.ReplaceAll(pattern, "**/", "")
@@ -79,6 +83,8 @@ func matchStarStar(pattern, rel string) bool {
 }
 
 // grepWalk 逐行匹配。globPat 非空时先按文件名或相对路径过滤。文件头 512 字节含 NUL 则跳过。扫描缓冲最大 1MiB。单行超过 240 字节会截断。达到 limit 就停止。
+// root 交给 filepath.Walk；相对路径先对 ws 取，失败再对 root 取。
+// ws 交给 loadIgnore，并作为 filepath.Rel 的第一选择。
 func grepWalk(root, ws string, re *regexp.Regexp, globPat string, limit int) (string, error) {
 	var b strings.Builder
 	n := 0
@@ -145,6 +151,9 @@ func grepWalk(root, ws string, re *regexp.Regexp, globPat string, limit int) (st
 }
 
 // fmtLine 写成 相对路径:行号:内容。内容长于 240 字节时截断并加省略号。
+// b 写入相对路径、行号和内容，并加换行。
+// rel 写在行首。
+// line 长于 240 字节时截到 240 再写入。
 func fmtLine(b *strings.Builder, rel string, n int, line string) {
 	if len(line) > 240 {
 		line = line[:240] + "…"
@@ -158,6 +167,7 @@ func fmtLine(b *strings.Builder, rel string, n int, line string) {
 }
 
 // hasNull 在字节里出现 0 时返回真。
+// b 逐字节看有没有 0。
 func hasNull(b []byte) bool {
 	for _, c := range b {
 		if c == 0 {

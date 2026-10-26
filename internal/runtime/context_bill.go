@@ -30,6 +30,7 @@ func (b contextBill) prefix() string { return b.systemWire + b.pinsWire }
 func (b contextBill) dynamic() string { return b.Bodies + b.Today + b.Notes }
 
 // write 把各层的估算 token 写进账本，并重写前缀和动态尾的 token。
+// rep 为 nil 时直接返回，否则写入各层估算 token。
 func (b contextBill) write(rep *ShapeReport) {
 	if rep == nil {
 		return
@@ -96,6 +97,7 @@ func buildBill(in billInput) contextBill {
 }
 
 // playbookSection 按 PlaybookTokens 渲染，小于等于 0 时用 2000。渲染结果为空则返回空串。这段进入 pins，不进入动态尾。
+// loop 的 PlaybookTokens 小于等于 0 时用 2000，再传给 RenderBudget。
 func playbookSection(loop artifact.LoopPreset, playbook artifact.Playbook) string {
 	pbBudget := loop.PlaybookTokens
 	if pbBudget <= 0 {
@@ -109,6 +111,7 @@ func playbookSection(loop artifact.LoopPreset, playbook artifact.Playbook) strin
 }
 
 // rulesSection 包上工作区规则标题。正文为空返回空串。来源为空时标题用 YOYO.md。
+// src 为空时标题写成 YOYO.md。
 func rulesSection(rules, src string) string {
 	if strings.TrimSpace(rules) == "" {
 		return ""
@@ -120,6 +123,8 @@ func rulesSection(rules, src string) string {
 }
 
 // catalogSection 拼技能目录、路由和额外钉子。loop 参数不参与正文。
+// skills 非空时交给 renderSkillCatalog。
+// opts 的 Routing 和 Extra 去掉空白后非空则写入，并传给 renderSkillCatalog。
 func catalogSection(loop artifact.LoopPreset, skills []artifact.Skill, opts PinsOpts) string {
 	var b strings.Builder
 	if len(skills) > 0 {
@@ -142,6 +147,8 @@ func catalogSection(loop artifact.LoopPreset, skills []artifact.Skill, opts Pins
 }
 
 // memorySection 内联档案记忆，并接上项目记忆钉子。项目记忆是路径提示，不是文件正文。
+// profile 去掉空白后非空时写入 Profile memory。
+// project 直接接在后面。
 func memorySection(profile, project string) string {
 	var b strings.Builder
 	if strings.TrimSpace(profile) != "" {
@@ -156,6 +163,7 @@ func memorySection(profile, project string) string {
 }
 
 // skillBodiesText 把已加载技能正文放进动态尾，并先按 capLoadedSkills 截断。没有正文时返回空串。
+// tools 传给 loadedFrom。
 func skillBodiesText(tools *WorkspaceTools) string {
 	loaded := capLoadedSkills(loadedFrom(tools))
 	if len(loaded) == 0 {
@@ -171,6 +179,7 @@ func skillBodiesText(tools *WorkspaceTools) string {
 }
 
 // pathRulesOf 返回工具上已经吸收的路径规则。工具为 nil 时返回空串。
+// tools 为 nil 时返回空串，否则调用 PathRules。
 func pathRulesOf(tools *WorkspaceTools) string {
 	if tools == nil {
 		return ""
@@ -179,6 +188,12 @@ func pathRulesOf(tools *WorkspaceTools) string {
 }
 
 // notesSection 拼建议、计划、笔记、检查点、路径规则，以及 Soft 时的当前页面。笔记截到 2000 个 rune，页面截到 3200 个 rune。
+// plan 去掉空白后非空时写入 Plan 段。
+// checkpoint 去掉空白后非空时写入 Checkpoint 段。
+// suggested 去掉空白后非空时写在最前。
+// pathRules 去掉空白后非空时写入 Path rules 段。
+// page 在 soft 为真且去掉空白后非空时截到 3200 个符文。
+// soft 为真时才写入 page。
 func notesSection(plan, notes, checkpoint, suggested, pathRules, page string, soft bool) string {
 	var b strings.Builder
 	if strings.TrimSpace(suggested) != "" {
@@ -226,6 +241,7 @@ func notesSection(plan, notes, checkpoint, suggested, pathRules, page string, so
 }
 
 // historyTokens 只数用户、助手和工具。系统、developer、memory，以及以 dynMarker 开头的动态块不计。
+// msgs 逐条按 Role 跳过系统、developer 和 memory，再跳过正文以 dynMarker 开头的，其余交给 messageTokens。
 func historyTokens(msgs []Message) int {
 	n := 0
 	for _, m := range msgs {

@@ -32,6 +32,7 @@ func (b Bin) probeOK() error {
 }
 
 // run 用 ffmpeg 跑参数并收集合并输出。失败时经 ffmpegErr 收成错误文本。
+// args 展开传给 ffmpeg。
 func (b Bin) run(args ...string) ([]byte, error) {
 	if err := b.ok(); err != nil {
 		return nil, err
@@ -45,6 +46,7 @@ func (b Bin) run(args ...string) ([]byte, error) {
 }
 
 // probe 优先用 ffprobe，路径为空时改用 ffmpeg。两者都空则返回 ffprobe missing。
+// args 展开传给 ffprobe；FFprobe 为空时改传给 ffmpeg。
 func (b Bin) probe(args ...string) ([]byte, error) {
 	bin := b.FFprobe
 	if bin == "" {
@@ -62,6 +64,8 @@ func (b Bin) probe(args ...string) ([]byte, error) {
 }
 
 // ffmpegErr 取命令输出的尾部。输出含换行且长于 400 字节时只留最后 8 行。输出为空时用原错误，原错误也空则返回 ffmpeg failed。
+// out 转成字符串并去掉首尾空白；含换行且长于 400 字节时只留最后 8 行。
+// err 在输出为空且非 nil 时返回 Error，输出和 err 都空则返回 ffmpeg failed。
 func ffmpegErr(out []byte, err error) string {
 	tail := strings.TrimSpace(string(out))
 	if n := strings.LastIndex(tail, "\n"); n >= 0 && len(tail) > 400 {

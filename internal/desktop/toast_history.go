@@ -9,6 +9,7 @@ import "strings"
 const toastAppID = "Yoyo"
 
 // clearToastHistoryScript 生成清空某个应用操作中心历史的 PowerShell。单引号会加倍，避免提前结束字符串。
+// appID 里的单引号加倍后放进 History.Clear 的参数。
 func clearToastHistoryScript(appID string) string {
 	q := strings.ReplaceAll(appID, "'", "''")
 	return "[void][Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime];" +

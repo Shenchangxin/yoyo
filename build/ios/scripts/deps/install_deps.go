@@ -303,6 +303,7 @@ func checkCommand(args []string) bool {
 }
 
 // promptUser 在 CI 非空或 TASK_FORCE_YES 等于 true 时直接返回 true。否则读一行，小写后是 y 或 yes 才返回 true。读失败返回 false。
+// question 写进提示，后面接 [y/N]:。
 func promptUser(question string) bool {
 	// CI 非空或 TASK_FORCE_YES 为 true 时不再读标准输入。
 	if os.Getenv("CI") != "" || os.Getenv("TASK_FORCE_YES") == "true" {

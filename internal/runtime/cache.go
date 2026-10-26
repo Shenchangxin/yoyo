@@ -39,6 +39,7 @@ func hex16(sum []byte) string {
 }
 
 // compactPrompt 返回第一个 Slot 为 compact 且正文非空白的片段。没有时返回 compactSystem。
+// fragments 按顺序查找，命中则返回该项的 Text。
 func compactPrompt(fragments []artifact.PromptFragment) string {
 	for _, f := range fragments {
 		if f.Slot == "compact" && strings.TrimSpace(f.Text) != "" {

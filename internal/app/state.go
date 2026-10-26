@@ -12,6 +12,8 @@ type StateChange struct {
 }
 
 // Touch 记下一次变更并返回新的 Epoch。订阅通道满时丢掉这次投递，不阻塞写入方。App 为空返回 0。
+// topic 写入 StateChange.Topic。
+// object 写入 StateChange.Object。
 func (a *App) Touch(topic, object string) int64 {
 	if a == nil {
 		return 0
@@ -63,6 +65,7 @@ func (a *App) SubscribeState() (<-chan StateChange, func()) {
 }
 
 // NoteRPC 在 JSON-RPC 方法会改状态时 Touch 一次。读方法和未知方法不产生变更。
+// method 传给 RPCTopic。
 func (a *App) NoteRPC(method string) {
 	topic, ok := RPCTopic(method)
 	if !ok || a == nil {
@@ -72,6 +75,7 @@ func (a *App) NoteRPC(method string) {
 }
 
 // RPCTopic 返回会改状态的方法对应的重绘主题。读方法返回空串和 false，避免轮询唤醒每一扇窗口。
+// method 先 TrimSpace，空串或 isRPCRead 为真时返回空串和 false，否则按前缀选主题。
 func RPCTopic(method string) (string, bool) {
 	method = strings.TrimSpace(method)
 	if method == "" || isRPCRead(method) {
@@ -106,6 +110,7 @@ func RPCTopic(method string) (string, bool) {
 }
 
 // isRPCRead 把 health、about、doctor 等固定读方法，以及以 .list、.get、.status、.catalog、.tail、.search、.diff、.preview、.lineage 结尾的方法当成读。
+// method 与固定读方法比较，或看是否包含 .list，或以 .get、.status、.catalog、.tail、.search、.diff、.preview、.lineage 结尾。
 func isRPCRead(method string) bool {
 	switch method {
 	case "health", "about", "doctor", "models.catalog", "key.status", "turn.running", "turn.running_ids", "turn.running_status",

@@ -11,12 +11,12 @@ type State = { err: Error | null };
 export class AppErrorBoundary extends Component<{ children: ReactNode }, State> {
   state: State = { err: null };
 
-  // getDerivedStateFromError 只记下错误，下一轮渲染改走提示。
+  /** getDerivedStateFromError 只记下错误，下一轮渲染改走提示。err 写入字段 err。 */
   static getDerivedStateFromError(err: Error): State {
     return { err };
   }
 
-  // componentDidCatch 把错误和组件栈打到控制台，并交给 reportRenderer，source 为 ErrorBoundary。
+  /** componentDidCatch 把错误和组件栈打到控制台，并交给 reportRenderer，source 为 ErrorBoundary。err 读取 message、stack，传给 console.error。info 读取 componentStack。 */
   componentDidCatch(err: Error, info: ErrorInfo) {
     console.error(err, info.componentStack);
     reportRenderer({

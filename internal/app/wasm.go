@@ -26,11 +26,13 @@ func (e ErrUnsignedWASM) Error() string {
 }
 
 // SetWASMPublicKey 把调用方给出的 ed25519 公钥放进 a.wasmPub。
+// pub 赋给 wasmPub。
 func (a *App) SetWASMPublicKey(pub ed25519.PublicKey) {
 	a.wasmPub = pub
 }
 
 // verifySnapshotWASM 校验快照里每个 WASM 插件的签名。公钥长度不是 ed25519.PublicKeySize 时返回 ErrUnsignedWASM，ID 为 missing YOYO_WASM_PUBKEY。没有插件时返回 nil。
+// snap 用来读 WASMPlugins，逐条 Decode 后验签。
 func (a *App) verifySnapshotWASM(snap artifact.HarnessSnapshot) error {
 	if len(snap.WASMPlugins) == 0 {
 		return nil
@@ -62,6 +64,7 @@ func (a *App) verifySnapshotWASM(snap artifact.HarnessSnapshot) error {
 }
 
 // syncWASM 把快照里尚未加载的 WASM 交给 evolve.AdmitWASM。解码或读模块失败则跳过该条。这里不改 refs。
+// snap 用来读 WASMPlugins，逐条 Decode 后把尚未加载的交给 AdmitWASM。
 func (a *App) syncWASM(snap artifact.HarnessSnapshot) {
 	for _, h := range snap.WASMPlugins {
 		p, _, err := artifact.Decode[artifact.WASMPlugin](a.CAS, h)
@@ -80,6 +83,10 @@ func (a *App) syncWASM(snap artifact.HarnessSnapshot) {
 }
 
 // LoadWASM 先过 capability 的 load_wasm。AutoAllow 为假时 ForceAsk。公钥长度不是 ed25519.PublicKeySize 时返回 ID 为 missing YOYO_WASM_PUBKEY 的 ErrUnsignedWASM。验签通过后写入 CAS，进程内 Admit，TimeoutMS 为 2000，再把带该插件的快照 Set 到 refs/staging，不移动 refs/active。
+// id 写入插件的 ID 和 Name，并传给 CAS.Put 和 AdmitWASM。
+// bin 传给 Verify、PutRaw 和 AdmitWASM。
+// export 写入插件的 Export，并传给 AdmitWASM。
+// sigHex 传给 ParseSig，并写入插件的 SigHex。
 func (a *App) LoadWASM(id string, bin []byte, export, sigHex string) error {
 	req := capability.Request{Level: capability.HighRisk, Action: "load_wasm", SessionID: "ui"}
 	if !a.Config.AutoAllow {
@@ -129,6 +136,10 @@ func (a *App) LoadWASM(id string, bin []byte, export, sigHex string) error {
 }
 
 // StageSignedWASM 把签名字节编码成十六进制后调用 LoadWASM。
+// id 传给 LoadWASM。
+// bin 传给 LoadWASM。
+// export 传给 LoadWASM。
+// sig 经 hex.EncodeToString 后传给 LoadWASM。
 func (a *App) StageSignedWASM(id string, bin []byte, export string, sig []byte) error {
 	return a.LoadWASM(id, bin, export, hex.EncodeToString(sig))
 }

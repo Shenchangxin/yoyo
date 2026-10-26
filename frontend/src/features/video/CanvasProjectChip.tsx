@@ -17,13 +17,13 @@ type CanvasSummary = { id: string; title?: string };
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
-/** CanvasProjectChip 列出画布工程，并能新建、选中或打开画布。 */
+/** CanvasProjectChip 列出画布工程，并能新建、选中或打开画布。props 的 disabled 传给触发按钮。 */
 export function CanvasProjectChip(props: { disabled?: boolean }) {
   const copy = useCopy();
-  const projectId = useCanvasHost((s) => s.projectId);
-  const title = useCanvasHost((s) => s.title);
-  const sessionId = useUI((s) => s.videoThreadId);
-  const openVideoPane = useUI((s) => s.openVideoPane);
+  const projectId = useCanvasHost(/** s 取出 projectId。 */ (s) => s.projectId);
+  const title = useCanvasHost(/** s 取出 title。 */ (s) => s.title);
+  const sessionId = useUI(/** s 取出 videoThreadId。 */ (s) => s.videoThreadId);
+  const openVideoPane = useUI(/** s 取出 openVideoPane。 */ (s) => s.openVideoPane);
   const [list, setList] = useState<CanvasSummary[]>([]);
 
   /** 读取画布工程列表。 */
@@ -37,7 +37,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
     void load().catch(() => {});
   }, [load]);
 
-  const current = list.find((p) => p.id === projectId);
+  const current = list.find(/** p 用 id 和当前工程比对。 */ (p) => p.id === projectId);
   const label = current?.title || (projectId ? title : copy.video.noCanvas);
 
   /** 新建一块画布；已有会话就绑上。 */
@@ -55,7 +55,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
     }
   }
 
-  /** 选中一块画布；已有会话就绑上。 */
+  /** 选中一块画布；已有会话就绑上。p 的 id 和 title 写进宿主，有会话就绑定。 */
   async function pick(p: CanvasSummary) {
     useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
     if (sessionId) void bindCanvasSession(sessionId, p.id);
@@ -81,7 +81,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
         </DropdownMenuItem>
         {list.length ? <DropdownMenuSeparator /> : null}
         {list.length ? <DropdownMenuLabel>{copy.video.canvas}</DropdownMenuLabel> : null}
-        {list.map((p) => (
+        {list.map(/** p 显示 title 或 id，id 和当前工程相同就打勾，点选时交给 pick。 */ (p) => (
           <DropdownMenuItem key={p.id} onSelect={() => void pick(p)}>
             <span className="min-w-0 flex-1 truncate">{p.title || p.id}</span>
             {p.id === projectId ? <Check className="size-3.5 shrink-0" /> : null}

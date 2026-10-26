@@ -157,6 +157,7 @@ func checkCommand(name string, args ...string) bool {
 }
 
 // offerCreateAVD 在没有 AVD 时提议创建名为 wails 的设备。只从已经安装、且 ABI 与本机匹配的系统镜像里选 API 数字最大的一份。这里不运行 sdkmanager。
+// androidHome 非空时用来 Glob system-images 下匹配 ABI 的镜像，并传给 findAVDManager。选中的镜像路径也用它去掉 system-images 前缀来拼包名。
 func offerCreateAVD(androidHome string) {
 	abi := "x86_64"
 	if runtime.GOARCH == "arm64" {
@@ -215,6 +216,7 @@ func offerCreateAVD(androidHome string) {
 }
 
 // findAVDManager 先在 PATH 里找 avdmanager。没有则在 SDK 的 cmdline-tools/*/bin 里找。目录名是 latest 的优先。否则按版本数字取最大的。都没有就返回空字符串。
+// androidHome 非空且 PATH 里没有 avdmanager 时，用来 Glob cmdline-tools/*/bin/avdmanager。为空时在 PATH 也没有的情况下返回空字符串。
 func findAVDManager(androidHome string) string {
 	if p, err := exec.LookPath("avdmanager"); err == nil {
 		return p
@@ -244,6 +246,7 @@ func findAVDManager(androidHome string) string {
 }
 
 // promptUser 在 CI 非空或 TASK_FORCE_YES 等于 true 时返回 true。否则读一行，小写后是 y 或 yes 才返回 true。读失败返回 false。
+// question 写进提示，后面接 [y/N]:。
 func promptUser(question string) bool {
 	if os.Getenv("CI") != "" || os.Getenv("TASK_FORCE_YES") == "true" {
 		fmt.Printf("%s [y/N]: y (auto-accepted)\n", question)

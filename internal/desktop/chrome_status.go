@@ -13,6 +13,9 @@ const (
 )
 
 // chromeStatusOf 按暂停、待审批、正在工作、空闲的顺序取托盘状态。暂停优先于审批，审批优先于工作。
+// paused 为真时返回 chromePaused。
+// working 只在 paused 为假且 approvals 不大于 0 时，为真则返回 chromeWorking。
+// approvals 大于 0 且 paused 为假时返回 chromeApproval。
 func chromeStatusOf(paused, working bool, approvals int) chromeStatus {
 	if paused {
 		return chromePaused
@@ -27,6 +30,7 @@ func chromeStatusOf(paused, working bool, approvals int) chromeStatus {
 }
 
 // sliceLen 返回切片或数组的长度。nil 和其他类型返回 0。
+// v 为 nil 时返回 0。是切片或数组时返回长度，其他类型返回 0。
 func sliceLen(v any) int {
 	if v == nil {
 		return 0

@@ -84,6 +84,8 @@ type CycleOpts struct {
 // 套件有 EvolveIn 时，挖掘用 EvolveIn 当 HeldIn 且清空 HeldOut 与 Transfer；胜出者再在原来的 HeldIn 上复评，复评不接受则清空胜出哈希。
 // 预算用尽的提议记 reason 为 budget，不再评测。StagingHash 非空且不同于基线时，先试用该快照，然后把 refs/staging 写成空串。
 // 胜出后 publishCanary 写 canary。只有 PromoteActive 为真才移动 active。
+// ctx 传给 evalMats、ReflectLLM、Propose、trialSnapshot、trialMats 和 pickWinner。
+// opts 读取 Parent、Baseline、K、PromoteRepeats、Suite、Behavior、IndexTransfer、IsolateRoot、Trace、Client、Model、FailedTasks、StagingHash、MaxUSD、MaxWall；K 小于等于 0 时改成 3，PromoteRepeats 小于等于 0 时改成 2，套件 Repeats 低于它时抬到它。
 func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error) {
 	var res CycleResult
 	parent := opts.Parent
@@ -305,6 +307,10 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 }
 
 // matsFrom 在父材料上叠一条提议。片段追加，剧本条目做增量，技能解析成功才追加。指令槽为空时用 verification。中间件次数小于等于 0 时用 2。
+// parent 的 Loop、Fragments、Playbook、Skills 复制进结果。
+// snap 写入结果的 Snap。
+// hash 写入结果的 Hash。
+// p 有 Fragment 就追加，有 PlaybookBullet 就 ApplyDelta，SkillMD 解析成功才追加技能，InstructionText 非空时 SetInstructionSlot，MiddlewareText 非空时写入中间件字段。
 func matsFrom(parent MaterialSet, snap artifact.HarnessSnapshot, hash string, p Proposal) MaterialSet {
 	mats := MaterialSet{
 		Snap:      snap,
@@ -341,6 +347,13 @@ func matsFrom(parent MaterialSet, snap artifact.HarnessSnapshot, hash string, p 
 
 // pickWinner 在没有接受项时返回空试用。只有一条时直接返回它，合并标志为假。
 // 多条时去掉 online-ace-stage，再按表面各留得分最高的一条。至少两条才合并；合并试用被接受则返回它且合并标志为真，否则退回得分最高的单条。
+// ctx 在合并评测时传给 trialMats。
+// opts 传给 trialMats。
+// parent 的 Snap 和 Hash 交给 MergeProposals，解码材料时作为 fallback。
+// baseline 传给 trialMats。
+// baseReport 传给 trialMats。
+// accepted 长度为 0 时返回空试用和 false，长度为 1 时返回那一条和 false；更多时跳过 ID 为 online-ace-stage 的提议。
+// held 传给 trialMats。
 func (e *Engine) pickWinner(ctx context.Context, opts CycleOpts, parent, baseline MaterialSet, baseReport eval.RunReport, accepted []Trial, held map[string]bool) (Trial, bool) {
 	if len(accepted) == 0 {
 		return Trial{}, false
@@ -379,6 +392,7 @@ func (e *Engine) pickWinner(ctx context.Context, opts CycleOpts, parent, baselin
 }
 
 // bestTrial 取得分最高的试用。得分是 HeldInPass 加 HeldOutPass。相等时保留先出现的那条。
+// ts 以第一条为起点，其后每条用 HeldInPass 加 HeldOutPass，更大才替换。
 func bestTrial(ts []Trial) Trial {
 	best := ts[0]
 	bestScore := best.Metrics.HeldInPass + best.Metrics.HeldOutPass
@@ -392,6 +406,9 @@ func bestTrial(ts []Trial) Trial {
 }
 
 // publishCanary 把哈希写到 refs/canary，模型指纹非空时再写该指纹的 canary，并归档。PromoteActive 为假时返回 false，不写 active。为真时再写 refs/active 和指纹的 active，并返回 true。
+// opts 只看 PromoteActive，为假时不写 active 并返回 false。
+// baseline 只读 Snap.ModelFingerprint，非空时用来写该指纹的 canary，PromoteActive 为真时再写 active。
+// hash 写到 refs/canary 并交给 Archive；PromoteActive 为真时再写到 refs/active。
 func (e *Engine) publishCanary(opts CycleOpts, baseline MaterialSet, hash string) bool {
 	_ = e.Refs.Set(artifact.RefCanary, hash)
 	if fp := baseline.Snap.ModelFingerprint; fp != "" {
@@ -409,6 +426,10 @@ func (e *Engine) publishCanary(opts CycleOpts, baseline MaterialSet, hash string
 }
 
 // evalMats 用材料调用 eval.Run。AllowLLMCompact 由 eval 的 runTask 在副本上写成 false，这里不改循环字段。
+// ctx 传给 Eval.Run。
+// opts 的 USDPerMTok 写入 Meter；Suite、Client、Trace、SessionID、Model、IsolateRoot 写入 RunOpts。
+// mats 的 Snap、Hash、Loop、Fragments、Playbook、Skills 写入 RunOpts。
+// suffix 接在 opts.SessionID 后面，作为 RunOpts 的 SessionID。
 func (e *Engine) evalMats(ctx context.Context, opts CycleOpts, mats MaterialSet, suffix string) (eval.RunReport, error) {
 	meter := &runtime.Meter{USDPerMTok: opts.USDPerMTok}
 	return e.Eval.Run(ctx, eval.RunOpts{
@@ -429,6 +450,12 @@ func (e *Engine) evalMats(ctx context.Context, opts CycleOpts, mats MaterialSet,
 }
 
 // trialSnapshot 按哈希取出快照再试用。取快照失败时原因是该错误，不评测。
+// ctx 传给 trialMats。
+// opts 传给 trialMats。
+// baseline 在取到快照后作为 MaterialsFromSnapshot 的 fallback，并传给 trialMats。
+// baseReport 传给 trialMats。
+// hash 交给 CAS.GetSnapshot；失败时写进返回试用的 Hash 和 Reason。
+// held 传给 trialMats。
 func (e *Engine) trialSnapshot(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, hash string, p Proposal, held map[string]bool) Trial {
 	snap, err := e.CAS.GetSnapshot(hash)
 	if err != nil {
@@ -440,6 +467,13 @@ func (e *Engine) trialSnapshot(ctx context.Context, opts CycleOpts, baseline Mat
 
 // trialMats 注册一条不执行宿主工具的候选纤维，再跑评测。通过与否先看 eval.Promote。Promote 通过但 PredictedFixes 非空且命中数为 0 时改成拒绝，原因是 manifesto_miss。
 // 未接受或评测出错时卸下纤维。无论是否接受都写入档案。
+// ctx 传给 evalMats。
+// opts 传给 evalMats；Parent.Hash 交给 nodeFrom。
+// baseline 本函数不读取。
+// baseReport 的 Metrics 作为 eval.Promote 的第一参。
+// mats 的 Hash 用来拼纤维名和试用哈希，Snap.Tools、Skills 放进纤维，并传给 evalMats。
+// p 写入试用的 Proposal，ID 接在会话后缀 -cand- 后面，并交给 scoreManifesto、logTrial 和 nodeFrom。
+// held 交给 scoreManifesto 和 logTrial。
 func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, mats MaterialSet, p Proposal, held map[string]bool) Trial {
 	short := mats.Hash
 	if len(short) > 8 {
@@ -498,6 +532,12 @@ func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline Materia
 }
 
 // nodeFrom 用试用和报告拼一条档案节点。Canary 固定写成 false。
+// parent 写入节点的 Parent。
+// hash 同时写入 ID 和 Snapshot。
+// p 的 ID 写入 ProposalID，Surface 写入 Surface。
+// report 的 Metrics 写入节点。
+// trial 的 Reason 写入 Note，ManifestoHit 和 ManifestoMiss 原样写入。
+// ok 写入 Accepted。
 func nodeFrom(parent, hash string, p Proposal, report eval.RunReport, trial Trial, ok bool) Node {
 	return Node{
 		ID: hash, Parent: parent, Snapshot: hash, ProposalID: p.ID,
@@ -507,6 +547,8 @@ func nodeFrom(parent, hash string, p Proposal, report eval.RunReport, trial Tria
 }
 
 // scoreManifesto 数 PredictedFixes。held 里的编号跳过。结果里该题通过则命中加一，否则未命中加一。
+// p 的 PredictedFixes 逐个编号，在 held 里的跳过。
+// report 的 Results 按 ID 记下 Pass，用来区分命中和未命中。
 func scoreManifesto(p Proposal, report eval.RunReport, held map[string]bool) (hit, miss int) {
 	byID := map[string]bool{}
 	for _, r := range report.Results {
@@ -526,6 +568,7 @@ func scoreManifesto(p Proposal, report eval.RunReport, held map[string]bool) (hi
 }
 
 // playbookHas 在编号相同，或两边正文都非空且相同时为真。
+// pb 的 Bullets 与另一条比较 ID，或在两边 Text 都非空时比较 Text。
 func playbookHas(pb artifact.Playbook, b artifact.PlaybookBullet) bool {
 	for _, x := range pb.Bullets {
 		if x.ID == b.ID {
@@ -539,6 +582,8 @@ func playbookHas(pb artifact.Playbook, b artifact.PlaybookBullet) bool {
 }
 
 // uniqueSafety 在编号尚未出现时追加。
+// ids 里已有与 id 相同的项时原样返回，否则把 id 追加到末尾。
+// id 与 ids 的每一项比较。
 func uniqueSafety(ids []string, id string) []string {
 	for _, x := range ids {
 		if x == id {
@@ -549,6 +594,7 @@ func uniqueSafety(ids []string, id string) []string {
 }
 
 // lastNodes 返回末尾 n 条。n 小于等于 0 或列表为空时返回 nil。不足 n 条时返回全部。
+// nodes 为空时返回 nil；长度不超过 n 时整份返回，否则返回末尾 n 条。
 func lastNodes(nodes []Node, n int) []Node {
 	if n <= 0 || len(nodes) == 0 {
 		return nil
@@ -560,6 +606,7 @@ func lastNodes(nodes []Node, n int) []Node {
 }
 
 // exclusiveSurfaces 跳过 online-ace-stage，每个 surfaceKey 只留 trialScore 更高的一条，顺序按该表面第一次出现。
+// accepted 里 ID 为 online-ace-stage 的跳过，其余按 surfaceKey 分组，只留 trialScore 更高的提议。
 func exclusiveSurfaces(accepted []Trial) []Proposal {
 	best := map[string]Trial{}
 	var order []string
@@ -591,6 +638,7 @@ func trialScore(t Trial) int {
 }
 
 // splitCycleSuites 在 EvolveIn 为空时两份都是原选项。否则挖掘套件的 HeldIn 换成 EvolveIn，HeldOut 与 Transfer 清空；晋升套件保留原来的 HeldIn。
+// opts 在 Suite.EvolveIn 为空时原样作为两份返回；否则挖掘份的 HeldIn 换成 EvolveIn 并清空 HeldOut 与 Transfer，晋升份的 HeldIn 复制原来的 HeldIn。
 func splitCycleSuites(opts CycleOpts) (mine, promote CycleOpts) {
 	mine, promote = opts, opts
 	if len(opts.Suite.EvolveIn) == 0 {
@@ -607,6 +655,7 @@ func splitCycleSuites(opts CycleOpts) (mine, promote CycleOpts) {
 }
 
 // sameIDs 要求长度相同且逐项相等。
+// b 与 a 长度不同则返回 false，否则逐项和 a 比较。
 func sameIDs(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -620,6 +669,8 @@ func sameIDs(a, b []string) bool {
 }
 
 // collectEvents 按结果里的尝试会话读轨迹。同一会话只读一次。存储为 nil 时返回 nil。
+// st 为 nil 时返回 nil；否则对每个未读过的会话调用 Read。
+// report 的 Results 里每个 Attempt，SessionID 非空且没读过时用来 Read。
 func (e *Engine) collectEvents(st *trace.Store, report eval.RunReport) []trace.Event {
 	if st == nil {
 		return nil
@@ -640,6 +691,8 @@ func (e *Engine) collectEvents(st *trace.Store, report eval.RunReport) []trace.E
 }
 
 // loadHeldInInstructions 读挖掘用的题面。EvolveIn 非空时用它，否则用 HeldIn。引擎为 nil 或读空时跳过。
+// eng 为 nil 时返回 nil；否则对每个题号调用 ReadInstruction。
+// suite 的 EvolveIn 长度大于 0 时用它作为题号，否则用 HeldIn；ReadInstruction 也收到这份 suite。
 func loadHeldInInstructions(eng *eval.Engine, suite artifact.EvalSuite) []string {
 	if eng == nil {
 		return nil
@@ -669,6 +722,8 @@ func (t specTool) Annotations() tool.Annotations {
 }
 
 // Call 固定返回候选纤维不执行宿主工具的错误。
+// ctx 本函数不读取。
+// inv 本函数不读取。
 func (t specTool) Call(ctx context.Context, inv tool.Invocation) tool.Result {
 	return tool.Result{Err: fmt.Errorf("candidate fiber does not execute host tools")}
 }

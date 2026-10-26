@@ -12,7 +12,7 @@ import { pointerLabel } from "../../lib/harness-copy";
 import { MaterialChangeList } from "../harness/Changes";
 import { useUI } from "../../lib/store";
 
-// HarnessLab 列出带哈希的指针。在用标成可信，其余可移到在用。实验室开关打开时才显示短哈希、字段表和手工对比。
+/** HarnessLab 列出带哈希的指针。在用标成可信，其余可移到在用。实验室开关打开时才显示短哈希、字段表和手工对比。props 读取 harness、diffOut、diffA、diffB、onRollback，调用 onA，调用 onB，调用 onCompare，调用 onCheckout。 */
 export function HarnessLab(props: {
   harness: any;
   diffA: string;
@@ -43,7 +43,7 @@ export function HarnessLab(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refs.active, refs.staging]);
 
-  // 先以 l3 为假去检出。只有返回体标了 l3，或消息里含有 "L3 confirmation"，才记下待确认；其余错误继续抛出。表面列表缺省是 loop_preset/policy_pack。
+  /** tryCheckout 先以 l3 为假去检出。只有返回体标了 l3，或消息里含有 "L3 confirmation"，才记下待确认；其余错误继续抛出。表面列表缺省是 loop_preset/policy_pack。hash 传给 props.onCheckout，写入字段 hash。 */
   async function tryCheckout(hash: string) {
     try {
       await props.onCheckout(hash, false);

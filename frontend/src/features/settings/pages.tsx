@@ -43,7 +43,7 @@ export { ProviderSettings } from "./ProviderPanel";
 /** GenerationSettings 从生成设置再导出。 */
 export { GenerationSettings } from "./GenerationSettings";
 
-/** GeneralSettings 改工作区、通知和桌面行为。 */
+/** GeneralSettings 改工作区、通知和桌面行为。host 读取 cfg，调用 patch，调用 onBrowse，写到 ShortcutsSettings 的 host。 */
 export function GeneralSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const cfg = host.cfg;
@@ -138,7 +138,7 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** AppearanceSettings 改主题、色板、语言和显示。 */
+/** AppearanceSettings 改主题、色板、语言和显示。host 读取 cfg，调用 patch，写到 SkinStudio 的 host。 */
 export function AppearanceSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const showHarnessLab = useUI((s) => s.showHarnessLab);
@@ -293,7 +293,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** ShortcutsSettings 改快捷键映射。 */
+/** ShortcutsSettings 改快捷键映射。host 读取 cfg，调用 patch。 */
 export function ShortcutsSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const keymap = mergeKeymap(host.cfg.keymap);
@@ -335,7 +335,7 @@ export function ShortcutsSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** PolicySettings 改门禁、预算，并查看壳和隔离。 */
+/** PolicySettings 改门禁、预算，并查看壳和隔离。host 读取 cfg，调用 patch，写到 IsolationSection 的 host。 */
 export function PolicySettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const savedBudget = String(host.cfg.maxBudgetUsd || 0);
@@ -442,7 +442,7 @@ type PwshInstall = {
   shell?: string;
 };
 
-/** 安装还在解析、下载、解压或校验时为真。 */
+/** 安装还在解析、下载、解压或校验时为真。phase 是 resolving、downloading、extracting 或 verifying 时返回真。 */
 function pwshBusy(phase?: string) {
   return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
 }
@@ -451,7 +451,7 @@ function pwshBusy(phase?: string) {
 function PwshSection() {
   const copy = useCopy();
   const [st, setSt] = useState<PwshInstall>({});
-  /** 把状态收成对象。 */
+  /** 把状态收成对象。s 为真时才继续，用 typeof 看类型，作为分支结果。 */
   function apply(s: any) {
     setSt(s && typeof s === "object" ? s : {});
   }
@@ -520,7 +520,7 @@ function PwshSection() {
   );
 }
 
-/** 投影隔离报告。 */
+/** 投影隔离报告。host 读取 doctor、vault。 */
 function IsolationSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const [rep, setRep] = useState<any>(host.doctor?.isolation || {});
@@ -553,7 +553,7 @@ function IsolationSection({ host }: { host: SettingsHost }) {
   );
 }
 
-/** 画一颗成功或失败的状态。 */
+/** 画一颗成功或失败的状态。ok 为真时才继续。label 作为子节点渲染。 */
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
@@ -568,7 +568,10 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-/** AdvancedSettings 改更新，并查看日志、日记和诊断。 */
+/**
+ * AdvancedSettings 改更新，并查看日志、日记和诊断。
+ * host 读取 cfg、logs、journal、health、onExportDiagnostics、onDiagnose 等，调用 onCheckUpdate，调用 patch，调用 onRevealLogs，调用 onExportDiagnostics，调用 onDiagnose，调用 onRevealJournal，调用 onApplyUpdate。
+ */
 export function AdvancedSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const [url, setUrl] = useState(host.cfg.updateUrl);
@@ -807,7 +810,7 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** 按色板编号取出名字和说明。 */
+/** 按色板编号取出名字和说明。id 用来做分支。palettes 读取 ink、inkHint、dim、dimHint、slate、slateHint 等。 */
 function paletteCopy(id: PaletteId, palettes: ReturnType<typeof useCopy>["settings"]["palettes"]) {
   switch (id) {
     case "ink": return { name: palettes.ink, hint: palettes.inkHint };
@@ -819,7 +822,7 @@ function paletteCopy(id: PaletteId, palettes: ReturnType<typeof useCopy>["settin
   }
 }
 
-/** 画一组色板供挑选。 */
+/** 画一组色板供挑选。label 作为子节点渲染。ids 做映射。selected 与 id 比较是否相等。onPick 被调用，并传入 id。className 写到 div 的 className。 */
 function PaletteGroup<T extends DarkPalette | LightPalette>({
   label,
   ids,
@@ -869,7 +872,7 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
   );
 }
 
-/** 预览当前明暗色板。 */
+/** 预览当前明暗色板。mode 与 system、dark 比较是否相等。dark 作为分支结果，写到 PreviewPane 的 palette。light 作为分支结果，写到 PreviewPane 的 palette。 */
 function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalette; light: LightPalette }) {
   if (mode === "system") {
     return (
@@ -890,7 +893,7 @@ function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalett
   );
 }
 
-/** 画出一块色板。 */
+/** 画出一块色板。palette 传给 builtinTokens，写到 div 的 data-theme-preview。 */
 function PreviewPane({ palette }: { palette: PaletteId }) {
   const tokens = builtinTokens(palette);
   return (

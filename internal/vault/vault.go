@@ -27,6 +27,7 @@ func New(home string) *Store {
 }
 
 // NewFileOnly 只使用 vault.json，不启用操作系统钥匙串，避免测试改写系统钥匙串。
+// home 和 false 一起交给 open。
 func NewFileOnly(home string) *Store {
 	return open(home, false)
 }
@@ -48,6 +49,7 @@ func open(home string, useKeychain bool) *Store {
 // Set 在持锁期间保存或删除一条密钥，然后写回文件，落盘错误被忽略。
 // value 为空时从内存删除，并调用 keychainDelete，与钥匙串是否启用不相关。
 // value 非空时写入内存；只有钥匙串启用才调用 keychainSet。钥匙串错误被忽略。
+// name 作为内存的键；value 为空时也交给 keychainDelete，非空且钥匙串启用时交给 keychainSet。
 func (s *Store) Set(name, value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -73,6 +75,7 @@ func (s *Store) Get(name string) (string, error) {
 	if v, err := s.GetStored(name); err == nil && strings.TrimSpace(v) != "" {
 		return v, nil
 	}
+	// 只有这两个名字才读环境变量。自定义供应商名不会落到 YOYO_API_KEY。
 	if name == "openai" || name == "default" {
 		if v := os.Getenv(EnvAPIKey); v != "" {
 			return v, nil
@@ -93,6 +96,7 @@ func (s *Store) Get(name string) (string, error) {
 // GetStored 返回已经保存的密钥。持锁查看内存，非空字符串则返回，空串视为未命中；读钥匙串和文件时已经解锁。
 // 钥匙串只在启用时查询，查询失败或值为空则继续读 vault.json，钥匙串错误不返回给调用方。
 // 本函数不读进程环境变量，残留的 OPENAI_API_KEY 不会盖住自定义供应商的令牌。三处都没有则返回 vault: missing key。
+// name 先查内存，非空字符串则返回；钥匙串启用时再交给 keychainGet；仍没有则交给 readFileKey。
 func (s *Store) GetStored(name string) (string, error) {
 	s.mu.Lock()
 	if v := s.mem[name]; v != "" {
@@ -102,6 +106,7 @@ func (s *Store) GetStored(name string) (string, error) {
 	useKeychain := s.keychain
 	path := s.path
 	s.mu.Unlock()
+	// 读钥匙串和文件前先解锁。下面不读进程环境变量，残留的 OPENAI_API_KEY 不会盖住已保存的令牌。
 	if useKeychain {
 		if v, err := keychainGet(name); err == nil && v != "" {
 			return v, nil
@@ -114,6 +119,7 @@ func (s *Store) GetStored(name string) (string, error) {
 }
 
 // Lease 调用 Get，把密钥明文交给调用方。
+// name 交给 Get。
 func (s *Store) Lease(name string) (string, error) {
 	return s.Get(name)
 }
