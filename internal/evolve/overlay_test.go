@@ -1,3 +1,6 @@
+// 锁住叠加不改 refs/active、refs/canary、refs/staging，也不写 archive/。
+// k 为 1 时 R 为 OverlayR、P 为 OverlayP；k 为 2 时 R 为 8、P 为 6。未交付的 c 卷或相同产物保持 KeptBase。
+
 package evolve
 
 import (
@@ -12,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// seedOverlayParent 放入带固定 active、canary、staging 的父材料和引擎。
 func seedOverlayParent(t *testing.T) (MaterialSet, *Engine) {
 	t.Helper()
 	dir := t.TempDir()
@@ -61,6 +65,7 @@ func seedOverlayParent(t *testing.T) (MaterialSet, *Engine) {
 	return MaterialSet{Snap: base, Hash: hash, Loop: loop, Playbook: pb}, eng
 }
 
+// scriptedRoller 按标签表决定是否交付。表里没有的标签默认交付。产物为空时用标签本身。
 func scriptedRoller(deliver map[string]bool, artifact string) OverlayRoller {
 	return func(_ context.Context, label string, _ MaterialSet) (OverlayRollout, error) {
 		ok, known := deliver[label]
@@ -79,11 +84,13 @@ func scriptedRoller(deliver map[string]bool, artifact string) OverlayRoller {
 	}
 }
 
+// scriptClient 按顺序回放预设回复，用尽后重复最后一条。
 type scriptClient struct {
 	replies []string
 	i       int
 }
 
+// Chat 返回下一条预设正文。没有回复时返回空消息。
 func (s *scriptClient) Chat(_ context.Context, _ runtime.ChatRequest) (runtime.Message, error) {
 	if len(s.replies) == 0 {
 		return runtime.Message{}, nil
@@ -96,6 +103,7 @@ func (s *scriptClient) Chat(_ context.Context, _ runtime.ChatRequest) (runtime.M
 	return runtime.Message{Content: c}, nil
 }
 
+// TestAdmitOverlayAlwaysOnTriggerAndCap 要求带触发语或超过常开上限的指令被拒绝，短的 verification 指令可以通过。
 func TestAdmitOverlayAlwaysOnTriggerAndCap(t *testing.T) {
 	pb := artifact.Playbook{ID: "main"}
 	if err := AdmitOverlay(Proposal{
@@ -121,6 +129,7 @@ func TestAdmitOverlayAlwaysOnTriggerAndCap(t *testing.T) {
 	}
 }
 
+// TestAdmitOverlayDOMPlaybookRejected 要求 DOM 的剧本被拒绝，INV 的 verification 指令可以通过。
 func TestAdmitOverlayDOMPlaybookRejected(t *testing.T) {
 	pb := artifact.Playbook{ID: "main"}
 	if err := AdmitOverlay(Proposal{
@@ -138,6 +147,7 @@ func TestAdmitOverlayDOMPlaybookRejected(t *testing.T) {
 	}
 }
 
+// TestOverlayKeepBaseDoesNotMoveRefs 要求产物都相同时 KeptBase 为真，且三枚引用仍是种子值。
 func TestOverlayKeepBaseDoesNotMoveRefs(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	res, err := eng.Overlay(context.Background(), OverlayOpts{
@@ -160,6 +170,7 @@ func TestOverlayKeepBaseDoesNotMoveRefs(t *testing.T) {
 	}
 }
 
+// TestOverlayAdoptDoesNotMoveRefs 要求基线未交付、INV 交付且 c1 交付时采纳子快照，同时三枚引用不变。
 func TestOverlayAdoptDoesNotMoveRefs(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	res, err := eng.Overlay(context.Background(), OverlayOpts{
@@ -199,6 +210,7 @@ func TestOverlayAdoptDoesNotMoveRefs(t *testing.T) {
 	}
 }
 
+// TestOverlayLedgerIdentityCachedBase 要求复用的基线记成缓存，且 R、P 仍等于 OverlayR、OverlayP。
 func TestOverlayLedgerIdentityCachedBase(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	base := OverlayRollout{Delivered: false, Trajectory: "base miss", Deliverable: ""}
@@ -220,6 +232,7 @@ func TestOverlayLedgerIdentityCachedBase(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// TestOverlayHeldOutNotInEvidence 要求证据文本里不出现 HeldOut 编号。
 func TestOverlayHeldOutNotInEvidence(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	res, err := eng.Overlay(context.Background(), OverlayOpts{
@@ -237,6 +250,7 @@ func TestOverlayHeldOutNotInEvidence(t *testing.T) {
 	}
 }
 
+// TestOverlayInvalidINVInheritsAndHitsBudget 要求非法 INV 退回，会话尝试数至少为 OverlayP+1，且不采纳、不改引用。
 func TestOverlayInvalidINVInheritsAndHitsBudget(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	cli := &scriptClient{replies: []string{
@@ -275,6 +289,7 @@ func TestOverlayInvalidINVInheritsAndHitsBudget(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// TestOverlayK2IdentityAndFrozenRefs 要求 k 为 2 且产物相同时 R 为 8、P 为 6，KeptBase 为真，引用不变。
 func TestOverlayK2IdentityAndFrozenRefs(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	res, err := eng.Overlay(context.Background(), OverlayOpts{
@@ -303,6 +318,7 @@ func TestOverlayK2IdentityAndFrozenRefs(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// TestOverlayK2AdoptDoesNotMoveRefs 要求 k 为 2 且只有 c1 交付时采纳，R 为 8、P 为 6，引用不变。
 func TestOverlayK2AdoptDoesNotMoveRefs(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	res, err := eng.Overlay(context.Background(), OverlayOpts{
@@ -331,6 +347,7 @@ func TestOverlayK2AdoptDoesNotMoveRefs(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// TestOverlayAdoptWritesLibrary 要求采纳后库状态为 LibraryAdded，并写出 verification.md。
 func TestOverlayAdoptWritesLibrary(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	lib := &Library{Root: t.TempDir(), Domain: "alpha"}
@@ -366,6 +383,7 @@ func TestOverlayAdoptWritesLibrary(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// TestOverlayEvidenceTreeOnDisk 要求保留证据时磁盘上有 task.md、verification.md 和 base.md，且结果带上证据列表。
 func TestOverlayEvidenceTreeOnDisk(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	scratch := t.TempDir()
@@ -393,6 +411,7 @@ func TestOverlayEvidenceTreeOnDisk(t *testing.T) {
 	}
 }
 
+// TestOverlayKeepBaseSkipsLibrary 要求保留基线时库状态为 LibraryNoEntry，且索引文件不出现。
 func TestOverlayKeepBaseSkipsLibrary(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	lib := &Library{Root: t.TempDir(), Domain: "alpha"}
@@ -413,6 +432,7 @@ func TestOverlayKeepBaseSkipsLibrary(t *testing.T) {
 	}
 }
 
+// TestOverlayC1MissKeepsBase 要求 c1 未交付时 KeptBase 为真，哈希仍是父快照。
 func TestOverlayC1MissKeepsBase(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	res, err := eng.Overlay(context.Background(), OverlayOpts{
@@ -435,6 +455,7 @@ func TestOverlayC1MissKeepsBase(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// assertSeedRefs 要求 active、canary、staging 仍是种子值，且没有 archive/ 前缀的引用。
 func assertSeedRefs(t *testing.T, eng *Engine) {
 	t.Helper()
 	if eng.Refs.GetOrEmpty(artifact.RefActive) != "seed-active" {

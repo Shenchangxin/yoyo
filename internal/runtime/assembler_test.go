@@ -1,7 +1,10 @@
+// 块组装：只有增量也能拼上；结束帧之后的增量被丢掉；打断只留文本；输出上限丢掉工具调用。
+
 package runtime
 
 import "testing"
 
+// TestBlockAssemblerDeltaOnly 确认只有增量时拼出 hello。
 func TestBlockAssemblerDeltaOnly(t *testing.T) {
 	a := NewBlockAssembler()
 	a.Push(StreamChunk{Type: ChunkTextDelta, Index: 0, Text: "he"})
@@ -12,6 +15,7 @@ func TestBlockAssemblerDeltaOnly(t *testing.T) {
 	}
 }
 
+// TestBlockAssemblerIgnoresStragglersAfterEnd 确认结束帧之后同序号的增量被忽略。
 func TestBlockAssemblerIgnoresStragglersAfterEnd(t *testing.T) {
 	a := NewBlockAssembler()
 	a.Push(StreamChunk{Type: ChunkBlockStart, Index: 0, BlockType: BlockText})
@@ -24,6 +28,7 @@ func TestBlockAssemblerIgnoresStragglersAfterEnd(t *testing.T) {
 	}
 }
 
+// TestBlockAssemblerToolCallAndInterrupted 确认打断结果只留文本，不含工具调用。
 func TestBlockAssemblerToolCallAndInterrupted(t *testing.T) {
 	a := NewBlockAssembler()
 	a.Push(StreamChunk{Type: ChunkTextDelta, Index: 0, Text: "look"})
@@ -38,6 +43,7 @@ func TestBlockAssemblerToolCallAndInterrupted(t *testing.T) {
 	}
 }
 
+// TestBlockAssemblerMaxTokensDropsTools 确认输出 token 上限丢掉工具调用块。
 func TestBlockAssemblerMaxTokensDropsTools(t *testing.T) {
 	a := NewBlockAssembler()
 	a.Push(StreamChunk{Type: ChunkTextDelta, Index: 0, Text: "cut"})
@@ -49,6 +55,7 @@ func TestBlockAssemblerMaxTokensDropsTools(t *testing.T) {
 	}
 }
 
+// TestCompactStreamRoundTrip 确认流式块经累积再展开后，文本和工具调用都还在。
 func TestCompactStreamRoundTrip(t *testing.T) {
 	acc := NewStreamAccumulator()
 	acc.Push(1, StreamChunk{Type: ChunkTextDelta, Index: 0, Text: "he"})

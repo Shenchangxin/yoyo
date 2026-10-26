@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短片副驾标题条上的名称、短片 id 和下一步文案。不拥有聊天记录。
+ * 它只读本地选择，不改服务端。
+ */
 import { Sparkles } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
 import { studioNextCopy, type StudioNextKey } from "./studio-next";
@@ -5,6 +9,7 @@ import { useStudioSelection } from "./workshop-store";
 
 const NEXT_KEYS: StudioNextKey[] = ["collect", "produce", "setup", "script", "audio", "visuals", "compose", "pack", "open"];
 
+/** StudioCopilotHeader 显示当前短片标题；没有标题时下一步落到收集。 */
 export function StudioCopilotHeader() {
   const copy = useCopy();
   const s = copy.video.studio;

@@ -1,3 +1,5 @@
+// main.go 把版本号写进 Windows、macOS 和 Linux 的打包元数据。不编译安装包。发布前调用。
+
 package main
 
 import (
@@ -9,6 +11,7 @@ import (
 	"strings"
 )
 
+// main 去掉版本前的 v。连字符前的那段写入 Windows 的 file_version、plist 和 NSIS，并收成四段版本写入清单。完整版本写入 ProductVersion 和 nfpm。参数为空时以状态 2 退出。
 func main() {
 	if len(os.Args) < 2 || strings.TrimSpace(os.Args[1]) == "" {
 		fmt.Fprintln(os.Stderr, "usage: stampversion <version>")
@@ -36,11 +39,13 @@ func main() {
 	fmt.Printf("stamped version %s (bundle %s, assembly %s)\n", v, base, asm)
 }
 
+// fatal 把错误写到标准错误并以状态 1 退出。
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, err)
 	os.Exit(1)
 }
 
+// fourPart 把版本补到四段，不足的段填 0，多出的段丢掉。
 func fourPart(v string) string {
 	p := strings.Split(v, ".")
 	for len(p) < 4 {
@@ -49,6 +54,7 @@ func fourPart(v string) string {
 	return strings.Join(p[:4], ".")
 }
 
+// stampWindowsInfo 把文件版本写进 fixed 的 file_version，把产品版本写进 0000 的 ProductVersion。
 func stampWindowsInfo(path, product, fileVer string) error {
 	type infoJSON struct {
 		Fixed map[string]string            `json:"fixed"`
@@ -82,6 +88,7 @@ func stampWindowsInfo(path, product, fileVer string) error {
 	return os.WriteFile(path, append(out, '\n'), 0o644)
 }
 
+// stampManifest 替换 assemblyIdentity 的 version。找不到则返回错误。
 func stampManifest(path, asm string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -95,6 +102,7 @@ func stampManifest(path, asm string) error {
 	return os.WriteFile(path, out, 0o644)
 }
 
+// stampPlist 替换 CFBundleShortVersionString 和 CFBundleVersion。任一键找不到则返回错误。
 func stampPlist(path, ver string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -113,6 +121,7 @@ func stampPlist(path, ver string) error {
 	return os.WriteFile(path, []byte(out), 0o644)
 }
 
+// stampNFPM 替换 version 字段。文件不存在时返回 nil。找不到该字段则返回错误。
 func stampNFPM(path, ver string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -132,6 +141,7 @@ func stampNFPM(path, ver string) error {
 	return os.WriteFile(path, out, 0o644)
 }
 
+// stampNSIS 替换 INFO_PRODUCTVERSION。文件不存在时返回 nil。找不到则返回错误。
 func stampNSIS(path, ver string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {

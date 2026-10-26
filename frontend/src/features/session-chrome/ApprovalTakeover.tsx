@@ -1,15 +1,13 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized from deepseek-harness ApprovalPanel (composer takeover).
- * Ask forms reuse Yoyo AskDeck as the detail body.
+ * 拥有：作曲区被审批或提问占住时的面板。提问正文复用 AskDeck。
+ * 不拥有：审批队列。决定交给外面的回调送出。不调用 api。
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { Approval } from "../../lib/protocol";
 import { AskDeck } from "../AskDeck";
 import { useCopy } from "../../lib/i18n";
 
+/** ApprovalTakeover 占住作曲区，让人回答或作出决定。 */
 export function ApprovalTakeover(props: {
   ask?: Approval | null;
   approval?: Approval | null;
@@ -33,12 +31,14 @@ export function ApprovalTakeover(props: {
     );
   }
 
+  /** 同一条只接受一次。记下已回答再回调。 */
   const answer = (decision: "once" | "deny") => {
     if (answered) return;
     setAnswered(true);
     props.onResolve(item.id, decision);
   };
 
+  /** 焦点在输入里时不抢键。回车允许一次，退出则拒绝。 */
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const el = event.target as Element;
     if (event.defaultPrevented || !event.currentTarget.contains(document.activeElement)) return;

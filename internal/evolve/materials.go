@@ -1,9 +1,10 @@
+// 把库里的 harness 快照解成循环、片段、剧本和技能。解不出的字段沿用 fallback。不写 refs。
+
 package evolve
 
 import "github.com/Shenchangxin/yoyo/internal/artifact"
 
-// MaterialSet is a decoded harness snapshot used by the evolve loop.
-// Parent is the DGM mutation origin; Baseline is production (refs/active).
+// MaterialSet 是一份解开的快照。Cycle 里父材料是变异起点，基线是对照用的那一份。
 type MaterialSet struct {
 	Snap      artifact.HarnessSnapshot
 	Hash      string
@@ -13,6 +14,7 @@ type MaterialSet struct {
 	Skills    []artifact.Skill
 }
 
+// MaterialsFromSnapshot 用 snap 和 hash 覆盖 fallback。循环、剧本、片段、技能只在对应哈希非空且解码成功时替换；片段或技能一条都解不出时保留 fallback 里的列表。
 func MaterialsFromSnapshot(cas *artifact.Store, snap artifact.HarnessSnapshot, hash string, fallback MaterialSet) MaterialSet {
 	out := fallback
 	out.Snap = snap
@@ -52,6 +54,7 @@ func MaterialsFromSnapshot(cas *artifact.Store, snap artifact.HarnessSnapshot, h
 	return out
 }
 
+// PlaybooksEqual 比较编号、条目数，以及每条的编号、文本、Helpful 和 Harmful。
 func PlaybooksEqual(a, b artifact.Playbook) bool {
 	if a.ID != b.ID || len(a.Bullets) != len(b.Bullets) {
 		return false

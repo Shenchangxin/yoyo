@@ -1,3 +1,5 @@
+// visual_sign.go 给视觉接口的 POST 请求签 HMAC-SHA256。
+
 package video
 
 import (
@@ -8,6 +10,7 @@ import (
 	"time"
 )
 
+// signVisual 按地域 cn-north-1、服务 cv 写上内容摘要、日期和 Authorization。请求或 URL 为空则直接返回。
 func signVisual(req *http.Request, body []byte, ak, sk string, now time.Time) {
 	if req == nil || req.URL == nil {
 		return
@@ -41,6 +44,7 @@ func signVisual(req *http.Request, body []byte, ak, sk string, now time.Time) {
 	req.Header.Set("Authorization", "HMAC-SHA256 Credential="+ak+"/"+scope+", SignedHeaders="+signed+", Signature="+signature)
 }
 
+// visualSigningKey 用密钥、短日期、地域 cn-north-1、服务 cv 和 request 派生签名密钥。
 func visualSigningKey(secret, shortDate string) []byte {
 	kDate := hmacSHA256([]byte(secret), []byte(shortDate))
 	kRegion := hmacSHA256(kDate, []byte("cn-north-1"))
@@ -48,6 +52,7 @@ func visualSigningKey(secret, shortDate string) []byte {
 	return hmacSHA256(kService, []byte("request"))
 }
 
+// hmacSHA256 用给定密钥对消息做 HMAC-SHA256。
 func hmacSHA256(key, msg []byte) []byte {
 	h := hmac.New(sha256.New, key)
 	_, _ = h.Write(msg)

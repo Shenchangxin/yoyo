@@ -9,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 )
 
+// mountVideo 把 /api/video/ 转到 a.VideoCall。GET 只用查询参数；其他方法先读正文，上限 32MiB，查询参数只填正文里还没有的键。videoHTTPMethod 返回空则 404。
 func mountVideo(mux *http.ServeMux, a *app.App) {
 	mux.HandleFunc("/api/video/", func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, "/api/video/")
@@ -38,6 +39,7 @@ func mountVideo(mux *http.ServeMux, a *app.App) {
 	})
 }
 
+// videoHTTPMethod 把 /api/video/ 后面的路径和 HTTP 方法映射成 video.、drama. 或 connections. 方法。providers、settings、dramas、episodes、connections、connections/defaults 在 POST 时走写入方法，其他方法走读取。未知路径返回空字符串。
 func videoHTTPMethod(rest, httpMethod string) string {
 	rest = strings.Trim(rest, "/")
 	switch rest {

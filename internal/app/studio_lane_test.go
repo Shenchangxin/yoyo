@@ -1,3 +1,5 @@
+// 锁住未绑定的视频频道走指挥席而不是短片工具，画布不重复注册 ask_user，以及短片提示会换掉检查仓库的开场白。
+
 package app
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
+// TestConductorLaneGetsCutToolsNotStudio 锁住未绑定的视频会话有 cut_get 和 video_route，没有 studio_get，并且 shell、list_dir、glob、grep 不在广告名和允许名里。
 func TestConductorLaneGetsCutToolsNotStudio(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -72,6 +75,7 @@ func TestConductorLaneGetsCutToolsNotStudio(t *testing.T) {
 	}
 }
 
+// TestCanvasAskUserDoesNotDuplicateHostTool 锁住画布工具挂上后 ask_user 只出现一次，且不在 Extra 里再注册。
 func TestCanvasAskUserDoesNotDuplicateHostTool(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -120,6 +124,7 @@ func TestCanvasAskUserDoesNotDuplicateHostTool(t *testing.T) {
 	}
 }
 
+// TestStudioBoundAttachesStudioTools 锁住已绑定短片项目的会话启用 studio_get，并且不再带指挥席的 video_route。
 func TestStudioBoundAttachesStudioTools(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -161,6 +166,7 @@ func TestStudioBoundAttachesStudioTools(t *testing.T) {
 	}
 }
 
+// TestOpenCutReturnsConductorLane 锁住短片项目送去剪辑后，工具回到 cut_get 和 video_route，studio_get 消失。
 func TestOpenCutReturnsConductorLane(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -215,12 +221,14 @@ func TestOpenCutReturnsConductorLane(t *testing.T) {
 	}
 }
 
+// TestStudioTitleFromLegacyPrompt 锁住做成短片：后面的标题被 studioTitleFromPrompt 留下。
 func TestStudioTitleFromLegacyPrompt(t *testing.T) {
 	if got := studioTitleFromPrompt("做成短片：爱用洗衣凝珠的人天塌了"); got != "爱用洗衣凝珠的人天塌了" {
 		t.Fatalf("got %q", got)
 	}
 }
 
+// TestStudioJobPromptNamesProject 锁住已有项目 id 的提示包含 studio_id、studio_get、studio_update、studio_approve_script 和 studio_generate_shot。
 func TestStudioJobPromptNamesProject(t *testing.T) {
 	p := studioJobPrompt(video.Topic{Title: "爱用洗衣凝珠的人天塌了", Angle: "反转"}, video.StudioProject{ID: "proj-1"})
 	for _, want := range []string{"studio_id: proj-1", "studio_get", "studio_update", "studio_approve_script", "studio_generate_shot", "不要检查代码仓库"} {
@@ -230,6 +238,7 @@ func TestStudioJobPromptNamesProject(t *testing.T) {
 	}
 }
 
+// TestApplyStudioLanePromptDropsInspect 锁住短片车道会去掉检查工作区的开场白，并放上 studioRuntimePin。
 func TestApplyStudioLanePromptDropsInspect(t *testing.T) {
 	loop := runtime.DefaultLoop()
 	frags := []artifact.PromptFragment{{Slot: "bootstrap", Text: "Inspect the workspace first."}}
@@ -251,6 +260,7 @@ func TestApplyStudioLanePromptDropsInspect(t *testing.T) {
 	}
 }
 
+// TestApplyConductorLanePrompt 锁住指挥席开场白等于 conductorBootstrap，最后一条片段是 conductorRuntimePin。
 func TestApplyConductorLanePrompt(t *testing.T) {
 	loop := runtime.DefaultLoop()
 	loop, frags := applyConductorLanePrompt(loop, nil)

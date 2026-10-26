@@ -1,5 +1,8 @@
-/** Instant poster stills for drama looks. JPG files override these when present. */
-
+/**
+ * 本文件拥有风格封面的色板、纹样，以及拼成 SVG 海报的函数。
+ * 不拥有 JPG 文件，也不读取它们。它不改服务端。
+ */
+/** StyleCoverSeed 是一张封面的三色、角标和纹样名。 */
 export type StyleCoverSeed = {
   a: string;
   b: string;
@@ -19,6 +22,7 @@ const MOTIFS: Record<StyleCoverSeed["motif"], string> = {
   court: `<rect x="220" y="86" width="200" height="230" rx="8" fill="#fff" fill-opacity=".12"/><polygon points="180,86 500,86 340,36" fill="#fff" fill-opacity=".18"/><rect x="292" y="210" width="56" height="106" fill="#fff" fill-opacity=".16"/>`,
 };
 
+/** STYLE_COVER_SEEDS 按风格值记下封面色板。表里没有的值改由哈希配色。 */
 export const STYLE_COVER_SEEDS: Record<string, StyleCoverSeed> = {
   "3d": { a: "#141820", b: "#3d6aa8", c: "#e8c27a", mark: "3D", motif: "sky" },
   pixar: { a: "#1c2a38", b: "#5aa8e0", c: "#f2d08a", mark: "PIXAR", motif: "toy" },
@@ -258,10 +262,12 @@ export const STYLE_COVER_SEEDS: Record<string, StyleCoverSeed> = {
   fadegrain: { a: "#1c1410", b: "#8a7060", c: "#e0d0b8", mark: "FADE", motif: "film" },
 };
 
+/** 转义要写进 SVG 文本的字符。 */
 function escapeXml(value: string) {
   return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[ch] || ch));
 }
 
+/** 用风格值的字符算出一组色板和纹样。 */
 function hashPalette(key: string): StyleCoverSeed {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
@@ -276,6 +282,7 @@ function hashPalette(key: string): StyleCoverSeed {
   };
 }
 
+/** dramaStylePoster 返回一张 SVG data URL。角标最多 18 个字符。 */
 export function dramaStylePoster(value: string, label = "") {
   const key = String(value || "").trim() || "cover";
   const seed = STYLE_COVER_SEEDS[key] || hashPalette(key);

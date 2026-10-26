@@ -1,3 +1,5 @@
+// 锁住计划文件往返：正文写入 .yoyo/plans，再读回来仍含原文，父目录名是 plans。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestPlanFileRoundTrip 确认写入的句子能读回，并且文件位于 plans 目录。
 func TestPlanFileRoundTrip(t *testing.T) {
 	ws := t.TempDir()
 	WritePlanFile(ws, "sess-1", "1. [pending] draft a briefing")

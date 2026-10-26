@@ -1,3 +1,5 @@
+// 锁住市场安装会写下脚本、来源标成 market，卸下后目录消失。
+
 package app
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillmarket"
 )
 
+// TestInstallMarketSkill 锁住 demo-skill 安装后 source 为 market、incomplete 不是 1，scripts/hello.py 落在家目录技能夹，卸下后目录不存在。
 func TestInstallMarketSkill(t *testing.T) {
 	md := "## 1. 技能包 skills/\n\n### Tools（1）\n\n| 目录 | 名称 | 用来做什么 | 前置条件 |\n|------|------|------------|----------|\n| `demo-skill` | demo-skill | fixture | 无 |\n"
 	skill := "---\nname: demo-skill\ndescription: Fixture pack used by market install tests.\n---\n\nSay hello via `scripts/hello.py`.\n"

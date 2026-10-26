@@ -1,3 +1,5 @@
+// 从磁盘根目录收集 SKILL.md，并按名字、显示名和目录别名建索引。包引导是否把正文放进提示由 pack_bootstrap.go 决定，本文件只加载文件。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// SkillRoots 按 bundled、home/skills、packDirs、工作区 .yoyo/skills、.agents/skills、skills 的顺序返回非空根。空的 home、workspace、bundled 或 pack 目录会跳过。
 func SkillRoots(home, workspace, bundled string, packDirs ...string) []string {
 	var out []string
 	if bundled != "" {
@@ -31,6 +34,7 @@ func SkillRoots(home, workspace, bundled string, packDirs ...string) []string {
 	return out
 }
 
+// LoadSkillDirs 遍历每个根下的 SKILL.md。同名技能后者覆盖前者，但 order 保留第一次出现的位置。解析失败的文件跳过。
 func LoadSkillDirs(roots ...string) []artifact.Skill {
 	seen := map[string]artifact.Skill{}
 	order := []string{}
@@ -63,6 +67,7 @@ func LoadSkillDirs(roots ...string) []artifact.Skill {
 	return out
 }
 
+// SkillPackFiles 列出目录下非点开头的文件，相对路径用斜杠，并按名字排序。空目录返回 nil。
 func SkillPackFiles(dir string) []string {
 	if dir == "" {
 		return nil
@@ -86,8 +91,7 @@ func SkillPackFiles(dir string) []string {
 	return out
 }
 
-// SkillAliasKeys are names the operator or model may use to load a skill:
-// frontmatter name, display name, and the on-disk directory slug.
+// SkillAliasKeys 返回可用的加载名：frontmatter 的 name、显示名，以及磁盘目录的基名。重复项去掉。
 func SkillAliasKeys(s artifact.Skill) []string {
 	var keys []string
 	add := func(k string) {
@@ -110,8 +114,7 @@ func SkillAliasKeys(s artifact.Skill) []string {
 	return keys
 }
 
-// MapSkills indexes skills by primary name, then by unused aliases so
-// load_skill / @skill can use the install slug when it differs from YAML name.
+// MapSkills 先按主名写入正文、目录和元数据，再把尚未占用的别名指到同一技能，使 load_skill 和 @skill 能用安装目录名。
 func MapSkills(skills []artifact.Skill) (bodies map[string]string, dirs map[string]string, meta map[string]artifact.Skill) {
 	bodies = map[string]string{}
 	dirs = map[string]string{}
@@ -147,6 +150,7 @@ func MapSkills(skills []artifact.Skill) (bodies map[string]string, dirs map[stri
 	return bodies, dirs, meta
 }
 
+// MergeSkills 以 base 为底，extra 里同名的项整份替换，新名字追加在后。
 func MergeSkills(base, extra []artifact.Skill) []artifact.Skill {
 	idx := map[string]int{}
 	out := append([]artifact.Skill(nil), base...)
@@ -164,6 +168,7 @@ func MergeSkills(base, extra []artifact.Skill) []artifact.Skill {
 	return out
 }
 
+// FilterSkills 在 planMode 为假时原样返回。为真时丢掉 Compatibility 含 network 的技能。
 func FilterSkills(skills []artifact.Skill, planMode bool) []artifact.Skill {
 	if !planMode {
 		return skills

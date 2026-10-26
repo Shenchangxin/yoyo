@@ -1,7 +1,8 @@
+// 翻拍能力的闭合清单。每一行不是已实现，就是明确不做。
+
 package film
 
-// Row is one line of the parity contract.
-// State is "implemented" or "excluded". Pending is not a finished contract.
+// Row 是能力清单里的一行。State 是 implemented 或 excluded。除此之外都不算这份清单做完。
 type Row struct {
 	ID    string
 	Name  string
@@ -9,8 +10,7 @@ type Row struct {
 	Note  string
 }
 
-// Contract is the closed list. A capability that changes the film is implemented.
-// Anything that must not be copied is excluded, and the list of exclusions does not grow quietly.
+// Contract 返回闭合清单。会改变成片的能力标成已实现。不该抄进来的标成排除，排除项不会在这里悄悄变长。
 func Contract() []Row {
 	return []Row{
 		{ID: "workflow", Name: "参考片或描述变成可再跑的工程", State: "implemented", Note: "FromReference 与 FromTemplate 会保存词、镜头和待办"},
@@ -31,7 +31,7 @@ func Contract() []Row {
 	}
 }
 
-// Pending reports rows that are neither implemented nor excluded.
+// Pending 返回既不是已实现、也不是排除的行。清单闭合时是空的。
 func Pending() []Row {
 	var out []Row
 	for _, row := range Contract() {

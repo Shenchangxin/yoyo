@@ -1,3 +1,5 @@
+// 本文件把 zip 解到目标目录，跳过符号链接和含 .. 的路径。字节上限在 pin.go。
+
 package pwsh
 
 import (
@@ -9,6 +11,9 @@ import (
 	"strings"
 )
 
+// extractZip 把 zipPath 解到 destDir，并返回其中的 pwsh 可执行文件路径。
+// 跳过空名、目录项、符号链接、safeRel 拒绝的名字，以及落在 destDir 外面的路径。
+// 累计 UncompressedSize64 超过 maxUncompressedBytes，或单条超过 maxZipBytes，就失败。找不到 pwsh.exe 时错误文案是 pwsh: archive has no pwsh.exe。
 func extractZip(zipPath, destDir string) (string, error) {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -57,10 +62,12 @@ func extractZip(zipPath, destDir string) (string, error) {
 	return bin, nil
 }
 
+// zipEntryName 去掉两端空白，并把反斜杠换成斜杠。
 func zipEntryName(name string) string {
 	return strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
 }
 
+// safeRel 把 zip 内路径收成相对路径。空、.、或任何一段是 .. 时返回 false。
 func safeRel(name string) (string, bool) {
 	name = zipEntryName(name)
 	if name == "" || name == "." {
@@ -83,6 +90,7 @@ func safeRel(name string) (string, bool) {
 	return filepath.Join(keep...), true
 }
 
+// within 报告 dest 是否落在 root 里。Rel 失败、结果以 .. 开头或是绝对路径时返回 false。dest 就是 root 时返回 true。
 func within(root, dest string) bool {
 	rel, err := filepath.Rel(root, dest)
 	if err != nil {
@@ -94,6 +102,7 @@ func within(root, dest string) bool {
 	return rel != "" && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
 
+// writeZipFile 把条目写到 dest.tmp，权限 0o755，再改名为 dest。复制用 LimitReader 截到 maxZipBytes+1。复制或关闭失败时删掉临时文件。
 func writeZipFile(f *zip.File, dest string) error {
 	rc, err := f.Open()
 	if err != nil {

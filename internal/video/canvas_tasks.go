@@ -1,3 +1,5 @@
+// 行为：画布生成任务的登记、列表、文本回放、取消、重试和媒体恢复。本文件不调用模型。
+
 package video
 
 import (
@@ -7,6 +9,7 @@ import (
 	"strings"
 )
 
+// createCanvasTask 把画布生成请求登记成任务。文本任务进入 text_replay，其余进入 queued。
 func (e *Engine) createCanvasTask(req map[string]any) (map[string]any, error) {
 	typ := strings.ToLower(firstNonEmpty(strAnyMap(req, "type"), "image"))
 	prompt := strAnyMap(req, "prompt")
@@ -65,6 +68,7 @@ func (e *Engine) createCanvasTask(req map[string]any) (map[string]any, error) {
 	return e.taskView(j), nil
 }
 
+// listCanvasTasks 列出画布任务。只要活动任务时，只留排队、运行、轮询和文本回放。
 func (e *Engine) listCanvasTasks(projectID string, activeOnly bool, limit int) []map[string]any {
 	if limit <= 0 {
 		limit = 50
@@ -96,6 +100,7 @@ func (e *Engine) listCanvasTasks(projectID string, activeOnly bool, limit int) [
 	return out
 }
 
+// canvasTask 按 id 返回任务视图。
 func (e *Engine) canvasTask(id string) (map[string]any, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -104,6 +109,7 @@ func (e *Engine) canvasTask(id string) (map[string]any, error) {
 	return e.taskView(j), nil
 }
 
+// taskView 把任务收成前端字段。轮询状态对外显示为 running。
 func (e *Engine) taskView(j Job) map[string]any {
 	p := parseParams(j.Params)
 	status := j.Status
@@ -168,11 +174,13 @@ func (e *Engine) taskView(j Job) map[string]any {
 	return out
 }
 
+// appendTaskLog 追加一条任务日志。
 func (e *Engine) appendTaskLog(taskID, level, stage, message string) {
 	rec := canvasTaskLogRec{ID: NewID(), TaskID: taskID, Level: level, Stage: stage, Message: message, CreatedAt: Now()}
 	_ = e.putDoc(colTaskLogs, rec.ID, rec)
 }
 
+// taskLogs 按时间顺序列出任务日志。
 func (e *Engine) taskLogs(id string) []map[string]any {
 	var recs []canvasTaskLogRec
 	for _, r := range loadCol[canvasTaskLogRec](e, colTaskLogs) {
@@ -188,6 +196,7 @@ func (e *Engine) taskLogs(id string) []map[string]any {
 	return out
 }
 
+// appendTextDelta 给文本任务追加一段增量，并更新草稿。
 func (e *Engine) appendTextDelta(id, content string) (map[string]any, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -213,6 +222,7 @@ func (e *Engine) appendTextDelta(id, content string) (map[string]any, error) {
 	return map[string]any{"seq": seq, "content": content, "createdAt": now}, nil
 }
 
+// textReplay 返回序号大于 after 的文本增量，以及草稿和是否已经结束。
 func (e *Engine) textReplay(id string, after int) map[string]any {
 	var recs []canvasDeltaRec
 	for _, d := range loadCol[canvasDeltaRec](e, colTextDeltas) {
@@ -246,6 +256,7 @@ func (e *Engine) textReplay(id string, after int) map[string]any {
 	}
 }
 
+// completeTextReplay 用最终文本结束文本回放，并把任务标成成功。
 func (e *Engine) completeTextReplay(id, text string) (map[string]any, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -265,6 +276,7 @@ func (e *Engine) completeTextReplay(id, text string) (map[string]any, error) {
 	return e.taskView(j), nil
 }
 
+// queryProviderTask 返回任务上已保存的供应商请求号和状态，不向供应商再发请求。
 func (e *Engine) queryProviderTask(id string) (map[string]any, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -275,6 +287,7 @@ func (e *Engine) queryProviderTask(id string) (map[string]any, error) {
 	}, nil
 }
 
+// cancelCanvasTask 取消任务并返回取消后的视图。
 func (e *Engine) cancelCanvasTask(id string) (map[string]any, error) {
 	if err := e.CancelJob(id); err != nil {
 		return nil, err
@@ -282,6 +295,7 @@ func (e *Engine) cancelCanvasTask(id string) (map[string]any, error) {
 	return e.canvasTask(id)
 }
 
+// retryCanvasTask 重试任务并返回新的任务视图。
 func (e *Engine) retryCanvasTask(id string) (map[string]any, error) {
 	j, err := e.RetryJob(id)
 	if err != nil {
@@ -290,6 +304,7 @@ func (e *Engine) retryCanvasTask(id string) (map[string]any, error) {
 	return e.taskView(j), nil
 }
 
+// recoverCanvasTask 调用 RecoverCanvasMedia，再返回任务视图。
 func (e *Engine) recoverCanvasTask(id string) (map[string]any, error) {
 	j, err := e.RecoverCanvasMedia(id)
 	if err != nil {
@@ -298,6 +313,7 @@ func (e *Engine) recoverCanvasTask(id string) (map[string]any, error) {
 	return e.taskView(j), nil
 }
 
+// deleteCanvasTask 删掉这条任务文档。
 func (e *Engine) deleteCanvasTask(id string) error {
 	return e.delDoc(colJobs, id)
 }

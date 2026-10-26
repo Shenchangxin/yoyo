@@ -1,3 +1,6 @@
+// 本文件用假的 CDP WebSocket 锁住往返、空闲连接仍算活着、慢回复不拆连接，以及页面脚本异常会变成错误。
+// 由 go test 调用。
+
 package browser
 
 import (
@@ -12,10 +15,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// fakeCDP answers CDP requests over one websocket. "Quit" closes the socket
-// without replying, "Slow" replies late, and Runtime.evaluate with an
-// expression containing "throw" returns exceptionDetails. It also emits an
-// unsolicited event before every reply so the reader must skip events.
+// fakeCDP 用一条 WebSocket 回答 CDP。Quit 直接关掉，Slow 晚一点回，表达式里含 throw 时返回 exceptionDetails。每次回复前先发一条无关事件。
 func fakeCDP(t *testing.T) (string, func()) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +44,7 @@ func fakeCDP(t *testing.T) (string, func()) {
 					time.Sleep(300 * time.Millisecond)
 				}
 				_ = wsjson.Write(ctx, c, map[string]any{"method": "Page.loadEventFired", "params": map[string]any{}})
-				// Runtime.evaluate's payload is {result, exceptionDetails} and
-				// sits inside the response's "result" object, as in CDP.
+				// Runtime.evaluate 的载荷是 {result, exceptionDetails}，放在响应的 result 对象里，和 CDP 一样。
 				var payload map[string]any
 				switch {
 				case req.Method == "Runtime.evaluate" && strings.Contains(req.Params.Expression, "throw"):
@@ -68,6 +67,7 @@ func fakeCDP(t *testing.T) (string, func()) {
 	return "ws" + strings.TrimPrefix(srv.URL, "http"), srv.Close
 }
 
+// dialFake 连上假的 WebSocket 并返回 newCDPConn。
 func dialFake(t *testing.T, wsURL string) *cdpConn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -79,6 +79,7 @@ func dialFake(t *testing.T, wsURL string) *cdpConn {
 	return newCDPConn(ws)
 }
 
+// TestCDPCallRoundTripSkipsEvents 锁住调用能跳过中间的事件，拿到 Runtime.evaluate 的结果。
 func TestCDPCallRoundTripSkipsEvents(t *testing.T) {
 	url, stop := fakeCDP(t)
 	defer stop()
@@ -93,9 +94,7 @@ func TestCDPCallRoundTripSkipsEvents(t *testing.T) {
 	}
 }
 
-// Regression for session 3b9f1bbb660e4236: liveness was a Ping that nothing
-// read, so an idle healthy connection was reported dead, Chrome was relaunched
-// onto about:blank, and every click reported "selector not found".
+// TestIdleConnectionStaysAlive 锁住空闲 600 毫秒后连接仍算活着，之后的调用还能成功。
 func TestIdleConnectionStaysAlive(t *testing.T) {
 	url, stop := fakeCDP(t)
 	defer stop()
@@ -110,6 +109,7 @@ func TestIdleConnectionStaysAlive(t *testing.T) {
 	}
 }
 
+// TestSlowReplyDoesNotCloseConnection 锁住慢回复不会把连接拆掉。
 func TestSlowReplyDoesNotCloseConnection(t *testing.T) {
 	url, stop := fakeCDP(t)
 	defer stop()
@@ -123,6 +123,7 @@ func TestSlowReplyDoesNotCloseConnection(t *testing.T) {
 	}
 }
 
+// TestPeerCloseFailsWaitersAsGone 锁住对端关掉时等待者得到 isCDPGone 能认出的错误，之后的调用也算断开。
 func TestPeerCloseFailsWaitersAsGone(t *testing.T) {
 	url, stop := fakeCDP(t)
 	defer stop()
@@ -143,6 +144,7 @@ func TestPeerCloseFailsWaitersAsGone(t *testing.T) {
 	}
 }
 
+// TestCloseIsIdempotent 锁住 close 可以调用两次，空连接的 close 和 cdpAlive 也不会误报活着。
 func TestCloseIsIdempotent(t *testing.T) {
 	url, stop := fakeCDP(t)
 	defer stop()
@@ -159,6 +161,7 @@ func TestCloseIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestEvalOnConnSurfacesPageException 锁住页面异常变成错误，普通表达式仍返回 ok。
 func TestEvalOnConnSurfacesPageException(t *testing.T) {
 	url, stop := fakeCDP(t)
 	defer stop()
@@ -173,6 +176,7 @@ func TestEvalOnConnSurfacesPageException(t *testing.T) {
 	}
 }
 
+// TestProbeJSEscapesSelectorAndCarriesHelpers 锁住选择器按 JSON 转义，并带上页面里的辅助函数。focusOnly 决定走聚焦还是按压分支。
 func TestProbeJSEscapesSelectorAndCarriesHelpers(t *testing.T) {
 	js := probeJS(`#a"b`, false)
 	if !strings.Contains(js, `const sel = "#a\"b";`) {
@@ -189,9 +193,9 @@ func TestProbeJSEscapesSelectorAndCarriesHelpers(t *testing.T) {
 	}
 }
 
+// TestPageHelpersAreFunctionsOnly 锁住 pageHelpers 顶层没有 const 或 let，避免重复执行时重复声明。
 func TestPageHelpersAreFunctionsOnly(t *testing.T) {
-	// Top-level const/let in a repeated Runtime.evaluate would throw
-	// "already declared" on the second call. Helpers must stay in functions.
+	// 重复执行的 Runtime.evaluate 里，顶层 const 或 let 第二次会报 already declared。辅助代码必须留在函数里。
 	for _, line := range strings.Split(pageHelpers, "\n") {
 		if strings.HasPrefix(line, "const ") || strings.HasPrefix(line, "let ") {
 			t.Fatalf("top-level declaration would break repeated evaluation: %q", line)
@@ -199,6 +203,7 @@ func TestPageHelpersAreFunctionsOnly(t *testing.T) {
 	}
 }
 
+// TestKeyForCoversGameKeys 锁住数字、小写字母、换行和汉字各自的 key、code 和 text。
 func TestKeyForCoversGameKeys(t *testing.T) {
 	d := keyFor('2')
 	if d.key != "2" || d.code != "Digit2" || d.text != "2" {
@@ -218,6 +223,7 @@ func TestKeyForCoversGameKeys(t *testing.T) {
 	}
 }
 
+// TestFormatActionsListsSelectorsAndDisabled 锁住列表里有选择器和 disabled 标记。
 func TestFormatActionsListsSelectorsAndDisabled(t *testing.T) {
 	got := formatActions([]Action{
 		{Selector: "#opt-0", Tag: "button", Text: "1 走近"},

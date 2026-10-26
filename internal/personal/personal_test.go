@@ -1,3 +1,6 @@
+// 锁住文档填写不改原件、监视的第一次检查不通知、提案要账号，以及 agent 不被 worker 租走。
+// 本包不写记忆，这些测试也不判断记忆写入是否默认要问。
+
 package personal
 
 import (
@@ -13,6 +16,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
+// testEngine 打开临时目录里的引擎，绑上本地邮件连接器和收件箱，并启动 Run。
 func testEngine(t *testing.T) (*Engine, context.CancelFunc) {
 	t.Helper()
 	e, err := Open(t.TempDir())
@@ -26,6 +30,7 @@ func testEngine(t *testing.T) (*Engine, context.CancelFunc) {
 	return e, cancel
 }
 
+// waitStatus 在时限内等到任务变成指定状态，否则让测试失败。
 func waitStatus(t *testing.T, e *Engine, id string, want Status) Task {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -43,6 +48,7 @@ func waitStatus(t *testing.T, e *Engine, id string, want Status) Task {
 	return last
 }
 
+// TestDocumentFillKeepsOriginalAndProposesSend 确认填写后原件字节不变，并产生待审阅的发信提案。哈希不符时 Decide 拒绝。
 func TestDocumentFillKeepsOriginalAndProposesSend(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(filepath.Join(dir, "personal"))
@@ -102,6 +108,7 @@ func TestDocumentFillKeepsOriginalAndProposesSend(t *testing.T) {
 	}
 }
 
+// TestIdeasRulesAndDedup 确认表单邮件和约见邮件会出想法，重复刷新不增加条数，接受后变成任务。
 func TestIdeasRulesAndDedup(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir)
@@ -151,6 +158,7 @@ func TestIdeasRulesAndDedup(t *testing.T) {
 	}
 }
 
+// TestMonitorChangeRisingEdgeAndQuietTime 用 sample:// 监视。只改相对时间并强制到期后，检查次数增加。
 func TestMonitorChangeRisingEdgeAndQuietTime(t *testing.T) {
 	e, _ := testEngine(t)
 	page := "No tables. posted 1 day ago"
@@ -168,7 +176,7 @@ func TestMonitorChangeRisingEdgeAndQuietTime(t *testing.T) {
 		cur.NextRunAt = &now
 		return true
 	})
-	// Force due by setting next run in the past.
+	// 把下次运行时间改到过去，迫使这一轮到期。
 	past := e.now().Add(-time.Second)
 	e.store.casTask(task.ID, "", "", func(cur *Task) bool {
 		cur.Status = StatusScheduled
@@ -185,7 +193,7 @@ func TestMonitorChangeRisingEdgeAndQuietTime(t *testing.T) {
 		t.Fatalf("checks %+v", mon)
 	}
 	unread := 0
-	// relative-time-only change must not notify after a baseline exists; first check never notifies (no previous hash).
+	// 已有基线后，只有相对时间变化不得通知。第一次检查没有先前哈希，也不通知。
 	page = "Window open. posted 1 hour ago"
 	e.SetSample("availability", page)
 	e.store.casTask(task.ID, "", "", func(cur *Task) bool {
@@ -204,6 +212,7 @@ func TestMonitorChangeRisingEdgeAndQuietTime(t *testing.T) {
 	_ = unread
 }
 
+// TestMonitorContainsRisingEdgeAndBackoff 确认 contains 第一次命中不通知，再次命中才通知，相同键不重复推送。
 func TestMonitorContainsRisingEdgeAndBackoff(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir)
@@ -270,6 +279,7 @@ func TestMonitorContainsRisingEdgeAndBackoff(t *testing.T) {
 	}
 }
 
+// TestFinanceArtifact 确认 CSV 任务成功后留下 finance 产物。
 func TestFinanceArtifact(t *testing.T) {
 	e, _ := testEngine(t)
 	csv := "date,description,amount,category\n2026-01-01,Coffee,4.50,Food\n2026-01-02,Pay,-100.00,Income\n"
@@ -286,6 +296,7 @@ func TestFinanceArtifact(t *testing.T) {
 	}
 }
 
+// TestPlanWaitingThenMilestones 确认计划任务先等待输入，回答里程碑后写到目标上。
 func TestPlanWaitingThenMilestones(t *testing.T) {
 	e, _ := testEngine(t)
 	g, err := e.CreateGoal("Ship", "personal os", "", nil)
@@ -307,6 +318,7 @@ func TestPlanWaitingThenMilestones(t *testing.T) {
 	}
 }
 
+// TestProposalConnectionBound 确认账号不在连接器列表里时 Propose 返回错误。
 func TestProposalConnectionBound(t *testing.T) {
 	dir := t.TempDir()
 	e, _ := Open(dir)
@@ -323,6 +335,7 @@ func TestProposalConnectionBound(t *testing.T) {
 	}
 }
 
+// TestPresentChoices 确认选项 ID 能被选中。
 func TestPresentChoices(t *testing.T) {
 	dir := t.TempDir()
 	e, _ := Open(dir)
@@ -335,6 +348,7 @@ func TestPresentChoices(t *testing.T) {
 	}
 }
 
+// TestAgentDoesNotSpawnWorkerLoop 确认 agent 任务保持 waiting_input，worker 不把它租走，Complete 后变为 succeeded。
 func TestAgentDoesNotSpawnWorkerLoop(t *testing.T) {
 	e, _ := testEngine(t)
 	task, err := e.CreateTask("Think", "do it in chat", KindAgent, nil, "", "")
@@ -354,6 +368,7 @@ func TestAgentDoesNotSpawnWorkerLoop(t *testing.T) {
 	}
 }
 
+// TestLeaseCompareAndSwap 确认错误的租约 ID 不能改掉正在 running 的任务。
 func TestLeaseCompareAndSwap(t *testing.T) {
 	e, err := Open(t.TempDir())
 	if err != nil {
@@ -377,12 +392,14 @@ func TestLeaseCompareAndSwap(t *testing.T) {
 	}
 }
 
+// TestBlockedHost 确认回环地址被 blockedHost 拒绝。
 func TestBlockedHost(t *testing.T) {
 	if !blockedHost("localhost") || !blockedHost("127.0.0.1") || !blockedHost("10.0.0.1") {
 		t.Fatal("blocked")
 	}
 }
 
+// TestPauseGoalPausesTasks 确认目标标成 paused 后，其下任务也暂停，里程碑完成标记能写上。
 func TestPauseGoalPausesTasks(t *testing.T) {
 	e, _ := testEngine(t)
 	g, err := e.CreateGoal("Ship", "os", "", []string{"types"})
@@ -412,6 +429,7 @@ func TestPauseGoalPausesTasks(t *testing.T) {
 	}
 }
 
+// TestIdeaRecoveryRecreatesLostTask 确认 accepted 想法在任务丢失后会被 recoverIdeas 补回。
 func TestIdeaRecoveryRecreatesLostTask(t *testing.T) {
 	e, err := Open(t.TempDir())
 	if err != nil {
@@ -429,6 +447,7 @@ func TestIdeaRecoveryRecreatesLostTask(t *testing.T) {
 	}
 }
 
+// TestRecurringCalendarRefused 确认带 recurrence 的提案被拒绝。
 func TestRecurringCalendarRefused(t *testing.T) {
 	e, err := Open(t.TempDir())
 	if err != nil {
@@ -441,6 +460,7 @@ func TestRecurringCalendarRefused(t *testing.T) {
 	}
 }
 
+// TestOutcomeUnknownBlocksRetry 确认关联提案为 outcome_unknown 时 Retry 返回错误。
 func TestOutcomeUnknownBlocksRetry(t *testing.T) {
 	e, err := Open(t.TempDir())
 	if err != nil {
@@ -459,6 +479,7 @@ func TestOutcomeUnknownBlocksRetry(t *testing.T) {
 	}
 }
 
+// TestContainsFirstCheckIsBaseline 确认 contains 的第一次检查不往收件箱推 watch。
 func TestContainsFirstCheckIsBaseline(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir)
@@ -496,6 +517,7 @@ func TestContainsFirstCheckIsBaseline(t *testing.T) {
 	}
 }
 
+// TestProposalActivityAndDisconnectExpire 确认新提案带活动记录，InvalidateAccount 后状态变为 expired。
 func TestProposalActivityAndDisconnectExpire(t *testing.T) {
 	dir := t.TempDir()
 	e, _ := Open(dir)
@@ -513,8 +535,9 @@ func TestProposalActivityAndDisconnectExpire(t *testing.T) {
 	}
 }
 
+// TestRememberFactSource 确认带 Source 的比较选项被截到 3 个。它不调用记忆写入。
 func TestRememberFactSource(t *testing.T) {
-	// covered by memory.Write KindProfile + Source field on the tool; keep a hash/title smoke here.
+	// 记忆写入的 KindProfile 和 Source 在工具侧。本测试不写记忆，也不判断默认是否询问，只检查带 Source 的比较选项被截到 3 个。
 	e, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

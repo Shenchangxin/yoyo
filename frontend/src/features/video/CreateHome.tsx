@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有创作入口：导入、翻拍、成片模式和最近的成片与剪辑。
+ * 不拥有剪辑台和成片台的编辑。它只读列表并改本地指针，写入交给回调。
+ */
 import { useEffect, useState } from "react";
 import { Clapperboard, Film, Images, PanelsTopLeft } from "lucide-react";
 import * as api from "../../lib/client";
@@ -10,10 +14,12 @@ import { RemakeDraft } from "./RemakeDraft";
 import { useRemakeDesk } from "./remake-desk";
 import { useCreateMode, type CreateMode } from "./create-mode";
 
+/** 把未知值收成剪辑工程数组。 */
 function asCuts(v: unknown): CutProject[] {
   return Array.isArray(v) ? v as CutProject[] : [];
 }
 
+/** 把结构 id 换成榜单、播客或访谈的名字。 */
 function structureLabel(id: string | undefined, film: { ranking: string; podcast: string; interview: string }) {
   if (id === "ranking") return film.ranking;
   if (id === "podcast") return film.podcast;
@@ -21,6 +27,7 @@ function structureLabel(id: string | undefined, film: { ranking: string; podcast
   return "";
 }
 
+/** CreateHome 在成片模式下列出对应结构，否则列出导入、翻拍和最近六条成片与剪辑。 */
 export function CreateHome(props: {
   onImport: () => void;
   onRemake: () => void;

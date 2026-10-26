@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 )
 
+// SetStartAtLogin 在打开时把 yoyo.desktop 写到 ~/.config/autostart，Exec 是当前可执行文件。关闭时删掉该文件并忽略删除错误。路径为空则返回 nil。
 func SetStartAtLogin(enabled bool) error {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -1,3 +1,5 @@
+// 偶像桌面的唯一入口 IdolCall。对话、旁白和主动联系走偶像引擎；工作指令由 startIdolWork 交回会话的 StartSendOpts。立绘字节的读写在 idol_media.go 和存储的 blob。
+
 package app
 
 import (
@@ -14,8 +16,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// idolBrain 用 App 的聊天客户端实现偶像引擎的 Chat 和 Paint。
 type idolBrain struct{ a *App }
 
+// Chat 按 kind 选模型和输出上限：judge 为 320，title 为 48，其余 700。温度 0.7。角色只认 system、assistant 和 user。
 func (b idolBrain) Chat(ctx context.Context, kind, cacheKey string, messages []idol.Msg) (string, error) {
 	client, model, err := b.a.idolClient(kind)
 	if err != nil {
@@ -48,14 +52,17 @@ func (b idolBrain) Chat(ctx context.Context, kind, cacheKey string, messages []i
 	return out.Content, nil
 }
 
+// Paint 把提示交给 idolPaint。
 func (b idolBrain) Paint(ctx context.Context, prompt string) ([]byte, error) {
 	return b.a.idolPaint(ctx, prompt)
 }
 
+// idolEngine 用当前偶像存储和 idolBrain 组一个引擎。
 func (a *App) idolEngine() *idol.Engine {
 	return &idol.Engine{Store: a.Idols, Brain: idolBrain{a}}
 }
 
+// beginIdolTurn 取消上一轮偶像调用，再开一个 120 秒超时的上下文。
 func (a *App) beginIdolTurn() (context.Context, context.CancelFunc) {
 	a.idolMu.Lock()
 	defer a.idolMu.Unlock()
@@ -67,6 +74,7 @@ func (a *App) beginIdolTurn() (context.Context, context.CancelFunc) {
 	return ctx, cancel
 }
 
+// cancelIdolTurn 取消当前偶像回合并清掉取消函数。
 func (a *App) cancelIdolTurn() {
 	a.idolMu.Lock()
 	defer a.idolMu.Unlock()
@@ -76,7 +84,7 @@ func (a *App) cancelIdolTurn() {
 	}
 }
 
-// IdolCall is the single door for the idol desk. payload is a JSON object.
+// IdolCall 是偶像桌面的唯一入口，payload 是 JSON 对象。它按 op 读写偶像、圈子、记忆、礼物和 blob；turn 走 idolTurn，speak 走 idolSpeak。未知 op 返回 unknown idol op。
 func (a *App) IdolCall(op, payload string) (string, error) {
 	if a == nil || a.Idols == nil {
 		return "", fmt.Errorf("idol store missing")
@@ -416,6 +424,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 	}
 }
 
+// idolTurn 在暂停时返回 paused。回合超时 120 秒。结果要求工作时调用 startIdolWork，并把会话 id 和错误记到该条记录。
 func (a *App) idolTurn(payload string, now time.Time) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
@@ -448,6 +457,7 @@ func (a *App) idolTurn(payload string, now time.Time) (string, error) {
 	return idolJSON(res)
 }
 
+// idolNarrate 在会话仍在跑时返回 Pending。否则取最后一条助手正文，用 90 秒超时做旁白。
 func (a *App) idolNarrate(payload string, now time.Time) (string, error) {
 	var p struct {
 		IdolID  string `json:"idol_id"`
@@ -467,6 +477,7 @@ func (a *App) idolNarrate(payload string, now time.Time) (string, error) {
 	return idolJSON(res)
 }
 
+// idolReach 在偶像 id 为空时用当前钉住的偶像。超时 60 秒。引擎返回 not due 时响应 due 为 false。
 func (a *App) idolReach(payload string, now time.Time) (string, error) {
 	var p struct {
 		IdolID string `json:"idol_id"`
@@ -492,6 +503,7 @@ func (a *App) idolReach(payload string, now time.Time) (string, error) {
 	return idolJSON(res)
 }
 
+// startIdolWork 复用偶像的工作会话，没有则新建并改名为偶像名。档案为空时用 assistant。然后 SetSessionProfile，并用 StartSendOpts 把指令交回该会话。
 func (a *App) startIdolWork(idolID, instruction string) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
@@ -535,6 +547,7 @@ func (a *App) startIdolWork(idolID, instruction string) (string, error) {
 	return sid, nil
 }
 
+// lastAssistant 从轨迹里取最后一条非 delta 的助手正文。轨迹库或会话 id 为空返回空串。
 func (a *App) lastAssistant(sessionID string) string {
 	if a.Traces == nil || sessionID == "" {
 		return ""
@@ -558,6 +571,7 @@ func (a *App) lastAssistant(sessionID string) string {
 	return text
 }
 
+// idolJSON 把值编码成 JSON 字符串。
 func idolJSON(v any) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -566,6 +580,7 @@ func idolJSON(v any) (string, error) {
 	return string(b), nil
 }
 
+// decodeIdolB64 去掉 data URL 前缀后按标准 base64 解码。
 func decodeIdolB64(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	if i := strings.Index(s, ","); i >= 0 && strings.Contains(s[:i], "base64") {

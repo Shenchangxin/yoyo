@@ -1,3 +1,6 @@
+// Harbor 之前的确定性准入。多种 L1 载荷、tool_use、held 编号、仓库概览、照抄 held-in 说明、剧本超长和非行动技能都会拒绝。
+// AdmitOverlay 在此之上限制 INV 与 DOM 的表面。不跑评测。
+
 package evolve
 
 import (
@@ -8,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// payloadCount 数提议上非空的 L1 载荷种数。
 func payloadCount(p Proposal) int {
 	n := 0
 	if p.Fragment != nil {
@@ -28,6 +32,7 @@ func payloadCount(p Proposal) int {
 	return n
 }
 
+// proposalText 把载荷、Expected 和 Audit 拼成一段，供检索 held 编号和概览用语。
 func proposalText(p Proposal) string {
 	var b strings.Builder
 	if p.Fragment != nil {
@@ -46,6 +51,7 @@ func proposalText(p Proposal) string {
 	return b.String()
 }
 
+// surfaceKey 优先用 Surface。为空时按载荷种类回落，都没有时为 unknown。
 func surfaceKey(p Proposal) string {
 	if p.Surface != "" {
 		return p.Surface
@@ -66,6 +72,7 @@ func surfaceKey(p Proposal) string {
 	}
 }
 
+// ModuleOf 把 surface 收成 observation、completion、agent_loop 或 context。middleware 是 observation。verification 槽的 instruction 是 completion，其他 instruction 是 agent_loop。playbook、prompt_fragment 和 skill 是 context。
 func ModuleOf(p Proposal) string {
 	switch p.Surface {
 	case "middleware":
@@ -88,7 +95,8 @@ func ModuleOf(p Proposal) string {
 	}
 }
 
-// AdmitQuality is a deterministic pre-Harbor gate. Failures must not spend eval.
+// AdmitQuality 在花评测之前拒绝提议。载荷多于一种、surface 为 tool_use、正文含 held 编号、像仓库概览、照抄 held-in 说明的前 80 个字节（说明折叠空白后至少 40 字节）、剧本 rune 数超过上限，或技能被 fluffSkill 判为无效时返回错误。
+// playbookTokens 小于等于 0 时按 2000 计。
 func AdmitQuality(p Proposal, pb artifact.Playbook, playbookTokens int, held map[string]bool, heldInText []string) error {
 	if payloadCount(p) > 1 {
 		return fmt.Errorf("multiple L1 surfaces")
@@ -126,10 +134,8 @@ func AdmitQuality(p Proposal, pb artifact.Playbook, playbookTokens int, held map
 	return nil
 }
 
-// AdmitOverlay is AdmitQuality plus the session-PPC surface contract.
-// INV may write instruction (verification|failure_recovery), middleware, or a
-// procedure skill. DOM may write only an on-demand skill. Playbook is global
-// ACE memory and is never an overlay surface.
+// AdmitOverlay 先走 AdmitQuality。INV 拒绝剧本和常开片段；instruction 的槽只许 verification 或 failure_recovery，空槽按 verification，正文不能为空，rune 数不能超过 overlayAlwaysOnMax，也不能带触发语。middleware 和 skill 的正文不能为空。
+// DOM 只许 surface 为 skill 且 SkillMD 非空，不能再带剧本、片段、指令或中间件。其他维度返回 unknown overlay dim。
 func AdmitOverlay(p Proposal, dim string, pb artifact.Playbook, playbookTokens int, held map[string]bool, heldInText []string) error {
 	if err := AdmitQuality(p, pb, playbookTokens, held, heldInText); err != nil {
 		return err
@@ -184,6 +190,7 @@ func AdmitOverlay(p Proposal, dim string, pb artifact.Playbook, playbookTokens i
 	return nil
 }
 
+// instructionHasTrigger 在正文里找 when、whenever、if the user、if a user、after the user，以及「当用户」「当请求」「如果用户」「若用户」。
 func instructionHasTrigger(text string) bool {
 	lower := strings.ToLower(text)
 	for _, p := range []string{
@@ -197,6 +204,7 @@ func instructionHasTrigger(text string) bool {
 	return false
 }
 
+// looksLikeRepoOverview 在小写正文里找仓库概览、目录结构、this repo contains、agents.md 和 warehouse tour。
 func looksLikeRepoOverview(lower string) bool {
 	for _, n := range []string{"repository overview", "directory structure", "this repo contains", "agents.md", "warehouse tour"} {
 		if strings.Contains(lower, n) {
@@ -206,6 +214,7 @@ func looksLikeRepoOverview(lower string) bool {
 	return false
 }
 
+// leakedInstruction 把说明折成单行小写。短于 40 字节则不算泄漏。否则取前 80 字节，看提议小写正文是否包含这段。
 func leakedInstruction(lower, inst string) bool {
 	inst = strings.ToLower(strings.Join(strings.Fields(inst), " "))
 	if len(inst) < 40 {
@@ -218,6 +227,7 @@ func leakedInstruction(lower, inst string) bool {
 	return strings.Contains(lower, clip)
 }
 
+// fluffSkill 去掉前置信息后，正文 rune 数小于 1200 则不算空话。达到 1200 时，write、run、check、verify、call、read 里命中少于 2 个则算空话。
 func fluffSkill(md string) bool {
 	body := md
 	if strings.HasPrefix(md, "---") {
@@ -239,6 +249,7 @@ func fluffSkill(md string) bool {
 	return hits < 2
 }
 
+// renderPlaybook 把每条剧本正文按行接起来，供 rune 计数。
 func renderPlaybook(pb artifact.Playbook) string {
 	var b strings.Builder
 	for _, x := range pb.Bullets {

@@ -1,3 +1,5 @@
+// 锁住 read_thread 列出其他会话时跳过自己和子会话，能按查询取片段，也能把消息送进另一场会话。@session 注入带标题，当前会话不倒出正文。
+
 package runtime
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestReadThreadListsAndSends 锁住列表含 abc 且不含 tasks，读取能命中 hello，发送记成 abc:steer please。FormatSessionMentions 对其他会话带标题和正文，对当前会话不附消息。
 func TestReadThreadListsAndSends(t *testing.T) {
 	sent := ""
 	tools := &WorkspaceTools{

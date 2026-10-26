@@ -1,3 +1,6 @@
+// 用代码画出一帧，或把当前的词和贴纸画到已有静帧上。
+// 不调用生成模型。本机浏览器要截的页面也在这里拼。
+
 package film
 
 import (
@@ -13,17 +16,17 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// RenderCode paints the last word of a shot without calling a generation model.
+// RenderCode 画出这一镜最后一个词的画面，不调用生成模型。
 func RenderCode(p Project, shot Shot) ([]byte, error) {
 	return RenderMoment(p, shot, Word{})
 }
 
-// RenderMoment paints one word of a shot: the board, the speakers, the reveal, the caption, and the sticker.
+// RenderMoment 画出这一词上的板、分屏、揭示、字幕和贴纸。
 func RenderMoment(p Project, shot Shot, word Word) ([]byte, error) {
 	return RenderMomentImages(p, shot, word, nil)
 }
 
-// RenderMomentImages paints the same moment and fills ranking wells from stored stills.
+// RenderMomentImages 画出同一帧，并把排行榜格子里已有的静帧填进去。
 func RenderMomentImages(p Project, shot Shot, word Word, pictures map[string][]byte) ([]byte, error) {
 	w, h := frameSize(p.Brief.Aspect)
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -33,7 +36,7 @@ func RenderMomentImages(p Project, shot Shot, word Word, pictures map[string][]b
 	return encodePNG(img)
 }
 
-// Annotate draws the current word and sticker onto a generated still.
+// Annotate 把当前的词和贴纸画到一张已有静帧上。图解不开就改画代码画面。
 func Annotate(raw []byte, p Project, shot Shot, word Word) ([]byte, error) {
 	src, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
@@ -52,7 +55,7 @@ func Annotate(raw []byte, p Project, shot Shot, word Word) ([]byte, error) {
 	return encodePNG(img)
 }
 
-// CompositeInsert places a generated still over the lower part of a code frame.
+// CompositeInsert 把一张生成图叠到代码画面的下半部分。叠图解不开就返回原来的画面。
 func CompositeInsert(basePNG, insert []byte) ([]byte, error) {
 	base, err := png.Decode(bytes.NewReader(basePNG))
 	if err != nil {
@@ -81,12 +84,12 @@ func CompositeInsert(basePNG, insert []byte) ([]byte, error) {
 	return encodePNG(img)
 }
 
-// RenderHTML is the same moment as a document a local browser can capture.
+// RenderHTML 把这一镜最后一个词写成一页 HTML，给本机浏览器截图。
 func RenderHTML(p Project, shot Shot) string {
 	return RenderHTMLMoment(p, shot, Word{})
 }
 
-// RenderHTMLMoment writes one word of the composition.
+// RenderHTMLMoment 把这一词的构图写成 HTML。
 func RenderHTMLMoment(p Project, shot Shot, word Word) string {
 	frame := compose(p, shot, word)
 	var b strings.Builder
@@ -209,6 +212,7 @@ type piece struct {
 	On   bool
 }
 
+// compose 把工程、镜头和当前词收成一帧要画的内容。词是空的就用这一镜最后一个词。
 func compose(p Project, shot Shot, word Word) frame {
 	words := ShotWords(p, shot)
 	if word.ID == "" && len(words) > 0 {
@@ -238,6 +242,7 @@ func compose(p Project, shot Shot, word Word) frame {
 	return out
 }
 
+// VisibleEntries 返回到这一镜为止该露出的行。最后一镜露出全部。没有条目时用每一行的句子代替。
 func VisibleEntries(p Project, shot Shot) []Entry {
 	entries := p.Entries
 	if len(entries) == 0 {
@@ -261,6 +266,7 @@ func VisibleEntries(p Project, shot Shot) []Entry {
 	return append([]Entry(nil), entries[:n]...)
 }
 
+// boardRows 把已露出的行收成板。口播里提到的行会点亮，最后一行在板或揭示上会闪一下。
 func boardRows(p Project, shot Shot) []boardRow {
 	entries := VisibleEntries(p, shot)
 	if len(entries) == 0 {
@@ -279,6 +285,7 @@ func boardRows(p Project, shot Shot) []boardRow {
 	return rows
 }
 
+// splitColumns 按说话人分成左右两栏，并标出当前词是谁在说。只取前两个说话人。
 func splitColumns(p Project, word Word) (column, column) {
 	var names []string
 	text := map[string]string{}
@@ -307,6 +314,7 @@ func splitColumns(p Project, word Word) (column, column) {
 	return left, right
 }
 
+// captionPieces 列出这一行的词，并标出当前这个词。没有行号时只留这个词自己。
 func captionPieces(p Project, word Word) []piece {
 	if word.LineID == "" && word.Text == "" {
 		return nil
@@ -324,6 +332,7 @@ func captionPieces(p Project, word Word) []piece {
 	return out
 }
 
+// activeSticker 返回已经说到的最新一条贴纸。还没说到的不算。
 func activeSticker(p Project, word Word) string {
 	var text string
 	var at float64
@@ -344,6 +353,7 @@ func activeSticker(p Project, word Word) string {
 	return text
 }
 
+// shotIndex 返回这一镜在工程里的位置。找不到就返回 0。
 func shotIndex(p Project, shot Shot) int {
 	for i := range p.Shots {
 		if p.Shots[i].ID == shot.ID {
@@ -353,6 +363,7 @@ func shotIndex(p Project, shot Shot) int {
 	return 0
 }
 
+// frameSize 按画幅给代码画面的像素。16:9 是 640×360，1:1 是 480，4:5 是 480×600，其余是 360×640。
 func frameSize(aspect string) (int, int) {
 	switch clean(aspect) {
 	case "16:9":
@@ -366,6 +377,7 @@ func frameSize(aspect string) (int, int) {
 	}
 }
 
+// paintFrame 把一帧画到图上，包括标题、分屏、产品、排行和字幕。
 func paintFrame(img *image.RGBA, frame frame, region *Box) {
 	b := img.Bounds()
 	fill(img, b, visualColor(frame.Visual))
@@ -423,6 +435,7 @@ func paintFrame(img *image.RGBA, frame frame, region *Box) {
 	drawSticker(img, frame.Sticker)
 }
 
+// drawCaption 在画面底部或区域下沿画出字幕，当前词用另一色。
 func drawCaption(img *image.RGBA, frame frame, region *Box) {
 	if len(frame.Caption) == 0 {
 		return
@@ -453,6 +466,7 @@ func drawCaption(img *image.RGBA, frame frame, region *Box) {
 	}
 }
 
+// drawSticker 在右上角画一条贴纸。文字是空的就什么都不画。
 func drawSticker(img *image.RGBA, text string) {
 	if text == "" {
 		return
@@ -462,6 +476,7 @@ func drawSticker(img *image.RGBA, text string) {
 	drawLine(img, textFace(14), b.Max.X-152, b.Min.Y+34, 132, color.RGBA{18, 22, 28, 255}, text)
 }
 
+// visualColor 按画面种类给底色。认不出的用近黑。
 func visualColor(visual string) color.RGBA {
 	switch visual {
 	case "board":
@@ -477,6 +492,7 @@ func visualColor(visual string) color.RGBA {
 	}
 }
 
+// fill 把一块矩形涂成纯色。
 func fill(img *image.RGBA, b image.Rectangle, col color.RGBA) {
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
@@ -485,6 +501,7 @@ func fill(img *image.RGBA, b image.Rectangle, col color.RGBA) {
 	}
 }
 
+// rect 在图里画一块矩形，超出画面的部分会裁掉。
 func rect(img *image.RGBA, x0, y0, x1, y1 int, col color.RGBA) {
 	b := img.Bounds()
 	if x0 < b.Min.X {
@@ -506,6 +523,7 @@ func rect(img *image.RGBA, x0, y0, x1, y1 int, col color.RGBA) {
 	}
 }
 
+// drawLine 按最大宽度把文字画成一行或多行。没有字体时用一条色块代替。返回下一行的纵坐标。
 func drawLine(img *image.RGBA, face font.Face, x, y, maxW int, col color.Color, text string) int {
 	if text == "" {
 		return y
@@ -542,6 +560,7 @@ func drawLine(img *image.RGBA, face font.Face, x, y, maxW int, col color.Color, 
 	return y
 }
 
+// drawInline 在同一行接着画文字，返回画完后的横坐标。没有字体时用色块占位。
 func drawInline(img *image.RGBA, face font.Face, x, y int, col color.Color, text string) int {
 	if text == "" {
 		return x
@@ -556,6 +575,7 @@ func drawInline(img *image.RGBA, face font.Face, x, y int, col color.Color, text
 	return d.Dot.X.Ceil()
 }
 
+// blend 按透明度把一张图贴进目标。完全透明的像素留着原来的画面。
 func blend(dst *image.RGBA, src image.Image, x, y, w, h int) {
 	sb := src.Bounds()
 	if sb.Dx() == 0 || sb.Dy() == 0 || w <= 0 || h <= 0 {
@@ -585,6 +605,7 @@ func blend(dst *image.RGBA, src image.Image, x, y, w, h int) {
 	}
 }
 
+// blit 把一张图缩放贴进目标，不处理透明度。
 func blit(dst *image.RGBA, src image.Image, x, y, w, h int) {
 	sb := src.Bounds()
 	if sb.Dx() == 0 || sb.Dy() == 0 || w <= 0 || h <= 0 {
@@ -599,6 +620,7 @@ func blit(dst *image.RGBA, src image.Image, x, y, w, h int) {
 	}
 }
 
+// encodePNG 把图编成 PNG 字节。
 func encodePNG(img image.Image) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
@@ -607,32 +629,33 @@ func encodePNG(img image.Image) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// htmlText 转义 &、<、> 和引号。
 func htmlText(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 	return r.Replace(s)
 }
 
-// DownloadCommand is the local yt-dlp invocation for a reference URL.
+// DownloadCommand 拼本机 yt-dlp 下载参考地址的参数，不拉播放列表。
 func DownloadCommand(bin, pageURL, out string) []string {
 	return []string{bin, "-o", out, "--no-playlist", pageURL}
 }
 
-// StampCommand is the whisperx invocation that writes {stem}.json into outDir.
+// StampCommand 拼 whisperx 的参数，把词级 JSON 写到输出目录，文件名沿用媒体主名。
 func StampCommand(bin, media, outDir string) []string {
 	return []string{bin, media, "--model", "small", "--output_format", "json", "--output_dir", outDir, "--compute_type", "int8"}
 }
 
-// RegionCommand is the local region detector invocation.
+// RegionCommand 拼本机区域程序的参数，把区域写到指定文件。
 func RegionCommand(bin, media, out string) []string {
 	return []string{bin, media, "--regions", out}
 }
 
-// BrowserCommand captures one HTML document to a PNG with current headless Chrome or Edge.
+// BrowserCommand 拼当前无头 Chrome 或 Edge 的参数，把一页 HTML 截成 PNG。
 func BrowserCommand(bin, htmlPath, pngPath string) []string {
 	return []string{bin, "--headless=new", "--disable-gpu", "--window-size=720,1280", "--screenshot=" + pngPath, htmlPath}
 }
 
-// CompositeMatte paints a cutout into the shot region. Transparent pixels leave the frame alone.
+// CompositeMatte 把抠出的图按透明度贴进镜头区域。透明像素留着原来的画面。抠图解不开就返回原来的画面。
 func CompositeMatte(basePNG, cutout []byte, box *Box) ([]byte, error) {
 	base, err := png.Decode(bytes.NewReader(basePNG))
 	if err != nil {
@@ -673,7 +696,7 @@ func CompositeMatte(basePNG, cutout []byte, box *Box) ([]byte, error) {
 	return encodePNG(img)
 }
 
-// ParseRegions reads a detector document: {"regions":[{"x":0,"y":0,"w":1,"h":1,"label":"脸"}]}
+// ParseRegions 读区域程序写出的 JSON，取出 regions 数组。
 func ParseRegions(raw []byte) ([]Box, error) {
 	var doc struct {
 		Regions []Box `json:"regions"`
@@ -684,7 +707,7 @@ func ParseRegions(raw []byte) ([]Box, error) {
 	return doc.Regions, nil
 }
 
-// ParseCrop reads an ffmpeg cropdetect token, "crop=w:h:x:y", into a 0..1 box.
+// ParseCrop 把 ffmpeg cropdetect 的 crop=宽:高:x:y 收成 0 到 1 的区域。宽或高不是正数，或画面尺寸无效，就返回假。
 func ParseCrop(spec string, width, height int) (Box, bool) {
 	spec = strings.TrimSpace(spec)
 	if i := strings.Index(spec, "crop="); i >= 0 {

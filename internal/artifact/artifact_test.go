@@ -1,3 +1,5 @@
+// 锁住对象库和指针：信封能按类型读回；文件裸字节入库后再次写入返回同一哈希；active 可以改指向；SKILL.md 保留名字、嵌套 metadata 和 https 图标，并拒绝非 https；关掉模型自行调用后不再隐式载入；相同正文的剧本条目合并计数；快照能按哈希读回。
+
 package artifact
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestCASRoundTrip 确认 Put 写入的提示词信封能按 PromptFragment 读回。
 func TestCASRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(filepath.Join(dir, "cas"))
@@ -22,6 +25,7 @@ func TestCASRoundTrip(t *testing.T) {
 	}
 }
 
+// TestPutFileCopiesBytes 确认拷进库的是源文件裸字节，并且第二次 PutFile 返回同一哈希。
 func TestPutFileCopiesBytes(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "clip.bin")
@@ -46,6 +50,7 @@ func TestPutFileCopiesBytes(t *testing.T) {
 	}
 }
 
+// TestRefsCheckout 确认 active 被改写后读到新哈希，并能对 12 位哈希做 Archive。
 func TestRefsCheckout(t *testing.T) {
 	dir := t.TempDir()
 	r := NewRefs(filepath.Join(dir, "refs"))
@@ -67,6 +72,7 @@ func TestRefsCheckout(t *testing.T) {
 	}
 }
 
+// TestSkillParse 确认前置信息里的名字能被解析出来。
 func TestSkillParse(t *testing.T) {
 	raw := "---\nname: verify-artifact\ndescription: Always check required output files exist.\n---\n\nRead the task, then confirm the artifact path.\n"
 	sk, err := ParseSkillMD(raw, "mem")
@@ -78,6 +84,7 @@ func TestSkillParse(t *testing.T) {
 	}
 }
 
+// TestSkillParseNestedMetadataAndIcon 确认中文显示名、https 图标和嵌套 metadata 能留下，非 https 图标被丢掉。
 func TestSkillParseNestedMetadataAndIcon(t *testing.T) {
 	raw := "---\nname: maishou\ndescription: Compare prices across shops.\ndisplay_name: 买手\nicon: https://cdn.example.com/skill.png\nmetadata:\n  openclaw:\n    emoji: shop\nallowed-tools: Read, Bash\n---\n\nRun `uv run scripts/main.py search`.\n"
 	sk, err := ParseSkillMD(raw, filepath.Join("skills", "maishou", "SKILL.md"))
@@ -95,6 +102,7 @@ func TestSkillParseNestedMetadataAndIcon(t *testing.T) {
 	}
 }
 
+// TestSkillAllowsImplicitFromFrontmatter 确认 disable-model-invocation 关掉隐式调用，缺省技能仍允许。
 func TestSkillAllowsImplicitFromFrontmatter(t *testing.T) {
 	raw := "---\nname: verify\ndescription: Run verify only when asked.\ndisable-model-invocation: true\nmetadata:\n  allow_implicit_invocation: false\n---\n\nManual only.\n"
 	sk, err := ParseSkillMD(raw, "skills/verify/SKILL.md")
@@ -110,6 +118,7 @@ func TestSkillAllowsImplicitFromFrontmatter(t *testing.T) {
 	}
 }
 
+// TestPlaybookDeltaNoCollapse 确认不同正文会留下，相同正文则把 Helpful 加在一起。
 func TestPlaybookDeltaNoCollapse(t *testing.T) {
 	p := Playbook{ID: "main", Bullets: []PlaybookBullet{{ID: "1", Text: "create output early", Helpful: 2}}}
 	p = p.ApplyDelta([]PlaybookBullet{{ID: "2", Text: "do not retry the same failing command"}}, nil)
@@ -125,6 +134,7 @@ func TestPlaybookDeltaNoCollapse(t *testing.T) {
 	}
 }
 
+// TestSnapshotGet 确认 PutSnapshot 写入的快照能按哈希读回模型指纹。
 func TestSnapshotGet(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(filepath.Join(dir, "cas"))

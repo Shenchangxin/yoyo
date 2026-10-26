@@ -1,3 +1,5 @@
+// 两份快照解开之后的内容差异。不改指针，也不做只比哈希的逐行对照。会话详情和血统图调用它。
+
 package artifact
 
 import (
@@ -8,14 +10,16 @@ import (
 )
 
 const (
-	OpAdded   = "added"
+	// OpAdded 表示条目出现在新的一侧，值为 added。
+	OpAdded = "added"
+	// OpRemoved 表示条目只留在旧的一侧，值为 removed。
 	OpRemoved = "removed"
+	// OpChanged 表示两侧都有但内容不同，值为 changed。
 	OpChanged = "changed"
 )
 
-// MaterialChange is a decoded, operator-facing delta between two snapshots.
-// Surface names match SnapshotDiffFields so the UI can group hash diffs and
-// content diffs together.
+// MaterialChange 是两份快照之间一条给人看的内容差异。Surface 与 SnapshotDiffFields 的字段名对齐。
+// L3 为真表示这条差异落在循环拓扑或策略上。零值不是拓扑变化。
 type MaterialChange struct {
 	Surface string `json:"surface"`
 	Op      string `json:"op"`
@@ -26,7 +30,8 @@ type MaterialChange struct {
 	L3      bool   `json:"l3,omitempty"`
 }
 
-// MaterialDiff walks CAS payloads so a hash-only snapshot diff is not a black box.
+// MaterialDiff 解开两边的对象，把哈希差异写成可读变更。哈希相同的面不会出现。
+// 模型指纹和笔记直接比快照上的字符串。其余面解不开时，退回整对象替换。
 func MaterialDiff(cas *Store, a, b HarnessSnapshot) []MaterialChange {
 	var out []MaterialChange
 	if a.ModelFingerprint != b.ModelFingerprint {
@@ -47,6 +52,7 @@ func MaterialDiff(cas *Store, a, b HarnessSnapshot) []MaterialChange {
 	return out
 }
 
+// MaterialDiffText 把变更逐行拼成文本。没有变更时返回空串。L3 的行末尾带 [L3]。
 func MaterialDiffText(changes []MaterialChange) string {
 	if len(changes) == 0 {
 		return ""
@@ -71,6 +77,7 @@ func MaterialDiffText(changes []MaterialChange) string {
 	return b.String()
 }
 
+// noteOp 在旧笔记为空时记 added，新笔记为空时记 removed，否则记 changed。
 func noteOp(from, to string) string {
 	if from == "" {
 		return OpAdded
@@ -81,6 +88,7 @@ func noteOp(from, to string) string {
 	return OpChanged
 }
 
+// diffPlaybook 按条目 ID 对照；ID 为空则用去空白并转小写的正文。两边都解不开，或解开后条目没有差异，就记一条不带 L3 的整本替换。
 func diffPlaybook(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -150,6 +158,7 @@ func diffPlaybook(cas *Store, ah, bh string) []MaterialChange {
 	return out
 }
 
+// diffLoop 按字段列出变化。拓扑字段只在两份预设拓扑不同时标 L3，文案槽不标。有一边解不开时，记一条带 L3 的整份替换；字段都相同但仍是两个哈希时也记整份替换，这时 L3 仍看拓扑是否相同。
 func diffLoop(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -212,6 +221,7 @@ func diffLoop(cas *Store, ah, bh string) []MaterialChange {
 	return out
 }
 
+// diffPolicy 比较 mode，以及 default_allow、require_approval、network_allow。Notes 不单独比较。解不开，或这些字段没有差异时，仍记一条带 L3 的整包替换。
 func diffPolicy(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -234,6 +244,7 @@ func diffPolicy(cas *Store, ah, bh string) []MaterialChange {
 	return out
 }
 
+// diffEval 比较编号、任务目录、重复次数、超时和是否密封，以及 held_in、held_out、safety、transfer。EvolveIn 不参与比较。解不开或没有字段差异时记整套替换，不标 L3。
 func diffEval(cas *Store, ah, bh string) []MaterialChange {
 	if ah == bh {
 		return nil
@@ -269,6 +280,7 @@ func diffEval(cas *Store, ah, bh string) []MaterialChange {
 	return out
 }
 
+// diffPrompts 用 ID，否则用槽位，再否则用哈希当键。同一键只留该侧最后一条。键对上但哈希不同算 changed。顺序变化本身不留行；对出空结果时退回哈希增减。
 func diffPrompts(cas *Store, a, b []string) []MaterialChange {
 	if join(a) == join(b) {
 		return nil
@@ -345,6 +357,7 @@ func diffPrompts(cas *Store, a, b []string) []MaterialChange {
 	return out
 }
 
+// diffSkills 用技能名当键，同名只留最后一条。同名哈希不同算 changed。顺序变化本身不留行；对出空结果时退回哈希增减。
 func diffSkills(cas *Store, a, b []string) []MaterialChange {
 	if join(a) == join(b) {
 		return nil
@@ -402,6 +415,7 @@ func diffSkills(cas *Store, a, b []string) []MaterialChange {
 	return out
 }
 
+// diffWASM 把哈希解成插件名再做增减。解不开时用哈希前 12 位。同名换了模块不会记成 changed。
 func diffWASM(cas *Store, a, b []string) []MaterialChange {
 	if join(a) == join(b) {
 		return nil
@@ -420,10 +434,12 @@ func diffWASM(cas *Store, a, b []string) []MaterialChange {
 	return diffNamedList("wasm", names(a), names(b))
 }
 
+// diffNamedList 按字符串集合做增减，不标 L3。
 func diffNamedList(surface string, a, b []string) []MaterialChange {
 	return listChanges(surface, "", a, b, false)
 }
 
+// listChanges 忽略空串和顺序，只报告新增和删除。l3 原样抄到每一行。
 func listChanges(surface, id string, a, b []string, l3 bool) []MaterialChange {
 	added, removed := sliceDelta(a, b)
 	var out []MaterialChange
@@ -436,6 +452,7 @@ func listChanges(surface, id string, a, b []string, l3 bool) []MaterialChange {
 	return out
 }
 
+// hashListFallback 在条目对不上时按哈希报增减，明细只留前 12 位。
 func hashListFallback(surface string, a, b []string) []MaterialChange {
 	added, removed := sliceDelta(a, b)
 	var out []MaterialChange
@@ -448,6 +465,7 @@ func hashListFallback(surface string, a, b []string) []MaterialChange {
 	return out
 }
 
+// sliceDelta 用集合比较，忽略空串，结果按字典序。
 func sliceDelta(a, b []string) (added, removed []string) {
 	am, bm := map[string]bool{}, map[string]bool{}
 	for _, v := range a {
@@ -475,6 +493,7 @@ func sliceDelta(a, b []string) (added, removed []string) {
 	return added, removed
 }
 
+// load 在库为空、哈希为空白或解码失败时返回 false。
 func load[T any](cas *Store, hash string) (T, bool) {
 	var zero T
 	if cas == nil || strings.TrimSpace(hash) == "" {
@@ -487,10 +506,13 @@ func load[T any](cas *Store, hash string) (T, bool) {
 	return v, true
 }
 
+// join 用逗号拼接。
 func join(xs []string) string { return strings.Join(xs, ",") }
 
+// itoa 转成十进制文本。
 func itoa(n int) string { return strconv.Itoa(n) }
 
+// boolish 写成 true 或 false。
 func boolish(v bool) string {
 	if v {
 		return "true"
@@ -498,6 +520,7 @@ func boolish(v bool) string {
 	return "false"
 }
 
+// promptLabel 有槽位时写成「槽位: 正文」。
 func promptLabel(slot, text string) string {
 	if slot == "" {
 		return text
@@ -508,6 +531,7 @@ func promptLabel(slot, text string) string {
 	return slot + ": " + text
 }
 
+// label 有字段名时写成「字段名 值」。
 func label(id, v string) string {
 	if id == "" {
 		return v
@@ -515,6 +539,7 @@ func label(id, v string) string {
 	return id + " " + v
 }
 
+// short 按字节截到 n 位。n 小于等于 0 或原串更短时原样返回。
 func short(hash string, n int) string {
 	hash = strings.TrimSpace(hash)
 	if n <= 0 || len(hash) <= n {
@@ -523,6 +548,7 @@ func short(hash string, n int) string {
 	return hash[:n]
 }
 
+// clip 先把空白收成单空格，再按 rune 截断并加省略号。n 小于等于 0 时不截。
 func clip(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if s == "" {

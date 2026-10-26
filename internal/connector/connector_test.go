@@ -1,3 +1,5 @@
+// 锁住外泄草稿会被拒绝，以及 Gmail 和 Outlook 的读取、发送、日历创建会带上保存的令牌。
+
 package connector
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestNoExfilSend 确认发往 webhook.site 的草稿发送失败。
 func TestNoExfilSend(t *testing.T) {
 	b, err := Open(t.TempDir())
 	if err != nil {
@@ -18,21 +21,29 @@ func TestNoExfilSend(t *testing.T) {
 	}
 }
 
+// TestCatalogHasFirstParty 确认目录里同时有 gmail 和 feishu。
 func TestCatalogHasFirstParty(t *testing.T) {
 	if len(Catalog()) < 6 {
 		t.Fatal("catalog")
 	}
 }
 
+// memTokens 是测试用的内存令牌表。
 type memTokens map[string]string
 
+// Get 返回该名字下保存的字符串。
 func (m memTokens) Get(name string) (string, error) { return m[name], nil }
-func (m memTokens) Set(name, value string)          { m[name] = value }
 
+// Set 把字符串写到该名字下。
+func (m memTokens) Set(name, value string) { m[name] = value }
+
+// roundTripFunc 把函数适配成 http.RoundTripper。
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
+// RoundTrip 调用底层函数。
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// TestLiveGmailReadSend 确认换票后令牌进 TokenStore，读取和发送都带 Bearer。
 func TestLiveGmailReadSend(t *testing.T) {
 	b, err := Open(t.TempDir())
 	if err != nil {
@@ -72,6 +83,7 @@ func TestLiveGmailReadSend(t *testing.T) {
 	}
 }
 
+// TestLiveOutlookCalendar 确认 Outlook 日历查询能读出事件。
 func TestLiveOutlookCalendar(t *testing.T) {
 	b, err := Open(t.TempDir())
 	if err != nil {
@@ -96,6 +108,7 @@ func TestLiveOutlookCalendar(t *testing.T) {
 	}
 }
 
+// TestLiveOutlookCalendarCreate 确认创建 Outlook 事件时请求体被发出。
 func TestLiveOutlookCalendarCreate(t *testing.T) {
 	b, err := Open(t.TempDir())
 	if err != nil {

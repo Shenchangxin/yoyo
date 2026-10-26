@@ -1,3 +1,5 @@
+// 从 api.skillhub.cn 分页列出并下载技能。
+
 package skillmarket
 
 import (
@@ -8,8 +10,10 @@ import (
 	"sync"
 )
 
+// SkillHubCNBase 是 SkillHub 中国的 API 根地址。测试可以改它。
 var SkillHubCNBase = "https://api.skillhub.cn"
 
+// listSkillHubCN 从第 1 页起拉，后续页最多再要 39 页，并发数是 4。无查询时前 8 条标成 Featured。total 大于实际条数时 Truncated 为真。
 func listSkillHubCN(query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	pageSize := hubPageSize
@@ -98,6 +102,7 @@ type skillHubCNList struct {
 	} `json:"data"`
 }
 
+// fetchSkillHubCNPage 请求 /api/skills。page 小于 1 时按 1。pageSize 非法时用 100。有关键词时 sortBy=score，否则按 downloads 降序。code 不是 0 时返回 "skillhub.cn: " 加 message。
 func fetchSkillHubCNPage(query string, page, pageSize int) ([]skillHubCNRow, int, error) {
 	if page < 1 {
 		page = 1
@@ -145,6 +150,7 @@ type skillHubCNRow struct {
 	} `json:"subCategories"`
 }
 
+// itemFromSkillHubCN 优先用中文描述。slug 净化失败返回 false。分类空时用 "SkillHub 中国"。
 func itemFromSkillHubCN(row skillHubCNRow) (Item, bool) {
 	slug := SanitizeSlug(row.Slug)
 	if slug == "" {
@@ -190,6 +196,7 @@ func itemFromSkillHubCN(row skillHubCNRow) (Item, bool) {
 	}, true
 }
 
+// fetchSkillHubCN 用 slug 调 /api/v1/skills/<slug>。keen 状态为 malicious、virus 或 trojan 时拒绝。再按版本列出文件并下载。没有 SKILL.md 返回 "pack missing SKILL.md"。
 func fetchSkillHubCN(remote string) (PackResult, error) {
 	slug := InstallSlug(remote)
 	if slug == "" {
@@ -197,8 +204,8 @@ func fetchSkillHubCN(remote string) (PackResult, error) {
 	}
 	base := strings.TrimRight(SkillHubCNBase, "/") + "/api/v1/skills/" + url.PathEscape(slug)
 	var detail struct {
-		Slug   string `json:"slug"`
-		Skill  struct {
+		Slug  string `json:"slug"`
+		Skill struct {
 			Slug    string `json:"slug"`
 			Summary string `json:"summary"`
 		} `json:"skill"`

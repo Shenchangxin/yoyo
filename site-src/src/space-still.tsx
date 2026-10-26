@@ -5,7 +5,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 
 type Theme = "light" | "dark";
 
-/** Quiet tabletop. One slab, a sheet in front, a lamp behind. */
+/** SpaceStill 画一张安静的桌面：一块台面，前面一张纸，后面一盏灯。theme 只改颜色。 */
 export function SpaceStill({ theme }: { theme: Theme }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);

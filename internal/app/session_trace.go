@@ -1,3 +1,5 @@
+// 给检查器看的轨迹投影，以及 spill 正文读取。
+
 package app
 
 import (
@@ -12,8 +14,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// spillAPIBytes 是 SpillBlob 返回正文的字节上限，超出则截断并标 Truncated。
 const spillAPIBytes = 80_000
 
+// SessionTrace 是给检查器看的轨迹投影、统计和产物预览。
 type SessionTrace struct {
 	SessionID string               `json:"session_id"`
 	Title     string               `json:"title,omitempty"`
@@ -28,6 +32,7 @@ type SessionTrace struct {
 	Artifacts []TraceArtifact      `json:"artifacts"`
 }
 
+// TraceArtifact 是检查器列表里的一条产物，正文只带预览。
 type TraceArtifact struct {
 	Kind    string `json:"kind"`
 	ID      string `json:"id"`
@@ -36,6 +41,7 @@ type TraceArtifact struct {
 	Preview string `json:"preview,omitempty"`
 }
 
+// SpillBlob 是按 id 读出的 spill 正文，超限时标 Truncated。
 type SpillBlob struct {
 	ID        string `json:"id"`
 	Bytes     int    `json:"bytes"`
@@ -43,6 +49,7 @@ type SpillBlob struct {
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
+// SessionTrace 投影该会话的轨迹，并附上笔记、spill 和待审批等产物。空 id 返回错误。
 func (a *App) SessionTrace(id string) (SessionTrace, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -96,6 +103,7 @@ func (a *App) SessionTrace(id string) (SessionTrace, error) {
 	}, nil
 }
 
+// SpillBlob 按 id 读出 spill 正文。超过字节上限则截断。
 func (a *App) SpillBlob(sessionID, blobID string) (SpillBlob, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	blobID = strings.TrimSpace(blobID)
@@ -120,6 +128,7 @@ func (a *App) SpillBlob(sessionID, blobID string) (SpillBlob, error) {
 	return SpillBlob{ID: blobID, Bytes: n, Text: text, Truncated: trunc}, nil
 }
 
+// collectTraceArtifacts 收集轨迹文件、meta、harness、笔记、spill、索引、溢出文件和待审批。spill 条数有上限，只留末尾。
 func (a *App) collectTraceArtifacts(id string, meta SessionMeta, spill *runtime.Spill) []TraceArtifact {
 	var out []TraceArtifact
 	if art, ok := fileArtifact("trajectory", id+".jsonl", filepath.Join(a.Home.Sessions(), id+".jsonl")); ok {
@@ -155,6 +164,7 @@ func (a *App) collectTraceArtifacts(id string, meta SessionMeta, spill *runtime.
 				Bytes: spill.Size(sid),
 			})
 		}
+		// maxSpillArts 是投影里最多带上的 spill 条数，只留列表末尾。
 		const maxSpillArts = 24
 		if len(spills) > maxSpillArts {
 			spills = spills[len(spills)-maxSpillArts:]
@@ -197,6 +207,7 @@ func (a *App) collectTraceArtifacts(id string, meta SessionMeta, spill *runtime.
 	return out
 }
 
+// fileArtifact 在路径是普通文件时做成一条产物。较小的文本文件带上预览。
 func fileArtifact(kind, label, path string) (TraceArtifact, bool) {
 	fi, err := os.Stat(path)
 	if err != nil || fi.IsDir() {
@@ -211,7 +222,9 @@ func fileArtifact(kind, label, path string) (TraceArtifact, bool) {
 	return art, true
 }
 
+// capPreview 把预览截到固定的 rune 数。
 func capPreview(s string) string {
+	// n 是预览最多保留的 rune 数。
 	const n = 4_000
 	if utf8.RuneCountInString(s) <= n {
 		return s
@@ -219,6 +232,7 @@ func capPreview(s string) string {
 	return string([]rune(s)[:n]) + "…"
 }
 
+// shortHash 返回哈希的前 12 个字符。更短则原样返回。
 func shortHash(h string) string {
 	if len(h) <= 12 {
 		return h
@@ -226,6 +240,7 @@ func shortHash(h string) string {
 	return h[:12]
 }
 
+// firstLabel 返回第一个非空字符串。都空则返回空串。
 func firstLabel(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {

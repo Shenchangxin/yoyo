@@ -1,3 +1,6 @@
+// 锁住未完成计划会继续催促，催促用尽后的聊天回合记成 plan_open 并在 turn_end 之后发卡片。
+// SoftHorizon 不看 MaxTurns 和 MaxToolMessages。硬循环仍在 MaxTurns 停止，重复工具失败只在 SoftHorizon 上停成 StopStuck。
+
 package runtime
 
 import (
@@ -11,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestPlanOpen 确认空文本和已完成清单不是开着的计划，含 pending 或 in_progress 的清单才是。done 和 finished 也算完成。
 func TestPlanOpen(t *testing.T) {
 	if PlanOpen("") || PlanOpen("just a paragraph") {
 		t.Fatal("empty")
@@ -28,6 +32,7 @@ func TestPlanOpen(t *testing.T) {
 	}
 }
 
+// TestPlanContinueIfOpen 确认计划开着时先催一次；工具条数没变就不再催，条数增加才再催；计划模式和已完成计划返回空串。
 func TestPlanContinueIfOpen(t *testing.T) {
 	tools := &WorkspaceTools{}
 	res := tools.Call("update_plan", `{"plan":[{"step":"a","status":"in_progress"},{"step":"b","status":"pending"}]}`)
@@ -61,6 +66,7 @@ func TestPlanContinueIfOpen(t *testing.T) {
 	}
 }
 
+// TestPlanContinueNudgeFollowsOperator 确认操作者是中文时，继续催促用中文文案。
 func TestPlanContinueNudgeFollowsOperator(t *testing.T) {
 	tools := &WorkspaceTools{}
 	if res := tools.Call("update_plan", `{"plan":[{"step":"勘察现状","status":"in_progress"}]}`); res.Err != nil {
@@ -73,6 +79,7 @@ func TestPlanContinueNudgeFollowsOperator(t *testing.T) {
 	}
 }
 
+// TestRunContinuesOpenPlanInsteadOfEndTurn 确认硬循环在计划仍开着时越过「请确认」，写完 out.txt 后，一次没有工具的继续才停在 stopping now。
 func TestRunContinuesOpenPlanInsteadOfEndTurn(t *testing.T) {
 	dir := t.TempDir()
 	client := &ScriptedClient{Steps: []Message{
@@ -113,9 +120,7 @@ func TestRunContinuesOpenPlanInsteadOfEndTurn(t *testing.T) {
 	}
 }
 
-// A chat turn whose plan is still open when the nudges run out keeps the
-// end_turn bookkeeping, but is tagged plan_open and followed by a visible,
-// retryable plan_open error. A bare clean end_turn was the silent "ghost" stop.
+// TestSoftHorizonOpenPlanStopIsVisible 确认催促用尽后计划仍开着时，返回值仍是正常结束，req.Stop 是 plan_open，turn_end 在错误卡片之前，卡片种类是 plan_open。
 func TestSoftHorizonOpenPlanStopIsVisible(t *testing.T) {
 	dir := t.TempDir()
 	client := &ScriptedClient{Steps: []Message{
@@ -177,6 +182,7 @@ func TestSoftHorizonOpenPlanStopIsVisible(t *testing.T) {
 	}
 }
 
+// TestPlanOpenNotSurfacedOutsideChat 确认 SoftHorizon 为假时，计划没做完也只是普通结束，不发 plan_open 卡片。
 func TestPlanOpenNotSurfacedOutsideChat(t *testing.T) {
 	dir := t.TempDir()
 	client := &ScriptedClient{Steps: []Message{
@@ -209,6 +215,7 @@ func TestPlanOpenNotSurfacedOutsideChat(t *testing.T) {
 	}
 }
 
+// TestPlanSteps 确认三条清单里两条未完成；没有清单时总数和未完成数都是 0。
 func TestPlanSteps(t *testing.T) {
 	total, open := planSteps("1. [in_progress] a\n2. [complete] b\n3. [pending] c\n")
 	if total != 3 || open != 2 {
@@ -219,6 +226,7 @@ func TestPlanSteps(t *testing.T) {
 	}
 }
 
+// TestRunDoesNotContinueCompletePlan 确认计划步骤都是 complete 时，下一条助手回复就结束，不再多跑一步。
 func TestRunDoesNotContinueCompletePlan(t *testing.T) {
 	dir := t.TempDir()
 	client := &ScriptedClient{Steps: []Message{
@@ -247,11 +255,13 @@ func TestRunDoesNotContinueCompletePlan(t *testing.T) {
 	}
 }
 
+// planRecordingClient 记下每次 Chat 收到的消息副本。
 type planRecordingClient struct {
 	ScriptedClient
 	seen [][]Message
 }
 
+// Chat 先复制消息再交给脚本客户端。
 func (c *planRecordingClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	cp := make([]Message, len(req.Messages))
 	copy(cp, req.Messages)
@@ -259,6 +269,7 @@ func (c *planRecordingClient) Chat(ctx context.Context, req ChatRequest) (Messag
 	return c.ScriptedClient.Chat(ctx, req)
 }
 
+// TestOpenPlanUsesContinueNudgeAtToolCap 确认工具条数碰到上限且计划仍开着时，注入的是继续催促，不是 toolBudgetNudge，并且写入仍然发生。
 func TestOpenPlanUsesContinueNudgeAtToolCap(t *testing.T) {
 	dir := t.TempDir()
 	loop := DefaultLoop()
@@ -307,6 +318,7 @@ func TestOpenPlanUsesContinueNudgeAtToolCap(t *testing.T) {
 	}
 }
 
+// contentsOf 收集指定角色里非空白的正文。
 func contentsOf(msgs []Message, role Role) []string {
 	var out []string
 	for _, m := range msgs {
@@ -317,6 +329,7 @@ func contentsOf(msgs []Message, role Role) []string {
 	return out
 }
 
+// TestPlanModeDoesNotForceContinue 确认计划模式下，列出未完成步骤后的散文回复就结束。
 func TestPlanModeDoesNotForceContinue(t *testing.T) {
 	dir := t.TempDir()
 	loop := DefaultLoop()
@@ -344,6 +357,7 @@ func TestPlanModeDoesNotForceContinue(t *testing.T) {
 	}
 }
 
+// TestSoftHorizonIgnoresTurnAndToolCaps 确认 SoftHorizon 在 MaxTurns 为 2、MaxToolMessages 为 1 时仍写完 5 个文件，并且不注入 toolBudgetNudge。
 func TestSoftHorizonIgnoresTurnAndToolCaps(t *testing.T) {
 	dir := t.TempDir()
 	loop := DefaultLoop()
@@ -392,6 +406,7 @@ func TestSoftHorizonIgnoresTurnAndToolCaps(t *testing.T) {
 	}
 }
 
+// TestSoftHorizonStopsRepeatedToolFailure 确认同一空路径 write_file 重复时以 StopStuck 结束，卡片可重试，模型调用次数不超过 errorRepeatStopHits 加 2。
 func TestSoftHorizonStopsRepeatedToolFailure(t *testing.T) {
 	dir := t.TempDir()
 	var steps []Message
@@ -425,6 +440,7 @@ func TestSoftHorizonStopsRepeatedToolFailure(t *testing.T) {
 	}
 }
 
+// TestHarborDoesNotStuckStopOnToolErrors 确认 SoftHorizon 为假时，重复的失败写入仍能以助手的结束语正常返回。
 func TestHarborDoesNotStuckStopOnToolErrors(t *testing.T) {
 	dir := t.TempDir()
 	var steps []Message
@@ -449,6 +465,7 @@ func TestHarborDoesNotStuckStopOnToolErrors(t *testing.T) {
 	}
 }
 
+// TestHardHorizonStillStopsAtMaxTurns 确认 MaxTurns 为 2 的硬循环以 max turns 停止，并且写不到第三个文件。
 func TestHardHorizonStillStopsAtMaxTurns(t *testing.T) {
 	dir := t.TempDir()
 	loop := DefaultLoop()

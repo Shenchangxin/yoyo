@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有视频模式菜单。不拥有短剧、画布或创作页本身。
+ * 它只改本地模式，不改服务端。
+ */
 import { Check, ChevronDown, Clapperboard, LayoutGrid, Sparkles } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { cn } from "../../lib/utils";
@@ -8,6 +12,7 @@ import type { VideoMode } from "../../lib/protocol";
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
+/** VideoModeSwitch 在短剧、画布、创作三种模式里切换。 */
 export function VideoModeSwitch(props: { disabled?: boolean; menuSide?: "top" | "bottom" }) {
   const copy = useCopy();
   const mode = useUI((s) => s.videoMode);

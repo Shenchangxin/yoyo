@@ -1,3 +1,7 @@
+// 本文件拥有 CDP WebSocket、查找浏览器和启动隔离 Chrome。一次调用超时 12 秒，读取上限是 64 MiB。
+// 隔离启动的调试端口来自 freePort，写进 --remote-debugging-port。找不到浏览器时错误是 browser: no isolated Chromium (set YOYO_CHROME)。
+// 空白地址拒绝导航。不调用 runtime.Run。
+
 package browser
 
 import (
@@ -20,18 +24,11 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// cdpCallTimeout bounds one CDP round trip. A slow page must not tear the
-// connection down; only a dead socket does.
+// cdpCallTimeout 是一次 CDP 往返的上限，12 秒。慢页面不会因此拆掉连接，只有套接字死了才算断开。
 const cdpCallTimeout = 12 * time.Second
 
-// cdpConn is one CDP websocket. A single readLoop goroutine owns every Read:
-// replies are matched to callers by id and the connection is alive exactly
-// until the reader observes a failure or the host closes it.
-//
-// Liveness used to be probed with ws.Ping. coder/websocket only processes a
-// pong while something is reading, so an idle, healthy connection always
-// looked dead. The host then relaunched Chrome onto about:blank on every
-// click (session 3b9f1bbb660e4236: every click reported "selector not found").
+// cdpConn 是一条 CDP WebSocket。唯一的 readLoop 负责全部读取，按 id 把回复对上调用方。连接在读循环看到失败或宿主关闭之前都算活着。
+// 空闲时不再用 Ping 探活：coder/websocket 只在有人读取时处理 pong，空闲的健康连接会被误判成断开，然后把 Chrome 重新开到 about:blank。
 type cdpConn struct {
 	ws      *websocket.Conn
 	writeMu sync.Mutex
@@ -42,18 +39,19 @@ type cdpConn struct {
 	done    chan struct{}
 	err     error
 
-	// errs holds the JavaScript errors the page raised since the last browser
-	// call. The reader fills it from protocol events; the host drains it.
+	// errs 记下上次浏览器调用以来页面抛出的 JavaScript 错误。读循环从协议事件里填它，宿主再取走。
 	errs pageErrors
 
 	onEvent func(method string, params json.RawMessage)
 }
 
+// cdpReply 是一次调用的结果或错误。
 type cdpReply struct {
 	result json.RawMessage
 	err    error
 }
 
+// newCDPConn 建一条连接并启动 readLoop。下一个 id 从 1 开始。
 func newCDPConn(ws *websocket.Conn) *cdpConn {
 	c := &cdpConn{
 		ws:      ws,
@@ -65,6 +63,7 @@ func newCDPConn(ws *websocket.Conn) *cdpConn {
 	return c
 }
 
+// readLoop 一直读 JSON。id 为 0 的是协议事件，页面错误总会记下，录制和导航失效在宿主装了 onEvent 时再交给它。其余按 id 交给等待的调用方。
 func (c *cdpConn) readLoop() {
 	for {
 		var msg struct {
@@ -81,8 +80,7 @@ func (c *cdpConn) readLoop() {
 			return
 		}
 		if msg.ID == 0 {
-			// Protocol event. Page errors always; recording and navigation
-			// invalidation go through onEvent when the host installed one.
+			// 协议事件。页面错误总会记下；录制和导航失效在宿主装了 onEvent 时再交给它。
 			if msg.Method != "" {
 				c.errs.add(msg.Method, msg.Params)
 				c.mu.Lock()
@@ -109,8 +107,7 @@ func (c *cdpConn) readLoop() {
 	}
 }
 
-// fail marks the connection dead exactly once, wakes every waiter, and
-// releases the socket. Waiters receive an error that isCDPGone recognises.
+// fail 只把连接标死一次，唤醒所有等待者，并关掉套接字。等待者收到的错误能被 isCDPGone 认出来。
 func (c *cdpConn) fail(cause error) {
 	c.mu.Lock()
 	if c.err != nil {
@@ -129,6 +126,7 @@ func (c *cdpConn) fail(cause error) {
 	}
 }
 
+// close 用「closed by host」调用 fail。空连接什么也不做。
 func (c *cdpConn) close() {
 	if c == nil {
 		return
@@ -136,6 +134,7 @@ func (c *cdpConn) close() {
 	c.fail(errors.New("closed by host"))
 }
 
+// alive 在读循环还没记错时返回真。
 func (c *cdpConn) alive() bool {
 	if c == nil {
 		return false
@@ -145,6 +144,7 @@ func (c *cdpConn) alive() bool {
 	return c.err == nil
 }
 
+// findChrome 先看 YOYO_CHROME。否则按 GOOS 在常见的 Chrome、Chromium、Edge 路径里找第一个存在的可执行文件。
 func findChrome() string {
 	if v := os.Getenv("YOYO_CHROME"); v != "" {
 		return v
@@ -184,6 +184,7 @@ func findChrome() string {
 	return ""
 }
 
+// freePort 在 127.0.0.1:0 上听一下，返回系统分配的端口，然后立刻关掉。隔离 Chrome 的调试端口用它，不固定 9222。
 func freePort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -193,6 +194,7 @@ func freePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
+// chromeProfile 返回有头或无头对应的用户目录。
 func (h *Host) chromeProfile(headed bool) string {
 	if h == nil {
 		return ""
@@ -202,12 +204,12 @@ func (h *Host) chromeProfile(headed bool) string {
 	return h.profileDirLocked(headed)
 }
 
+// ensureCDP 用空的起始地址确保 Chrome 已连上，空地址会改走 previewStartURL。
 func (h *Host) ensureCDP() error {
 	return h.ensureChrome("")
 }
 
-// headedForAutomation keeps a live takeover window, but drops a dead headed
-// profile so screenshot/click can relaunch isolated Chrome (session ac0738fbdfb801ac).
+// headedForAutomation 在有头窗口还活着时保持有头。有头但 CDP 已死时返回假，让截图和点击改拉隔离 Chrome。
 func headedForAutomation(headed, cdpAlive bool) bool {
 	if headed && !cdpAlive {
 		return false
@@ -215,6 +217,7 @@ func headedForAutomation(headed, cdpAlive bool) bool {
 	return headed
 }
 
+// ensureChrome 按当前有头状态启动。有头启动失败时再试无头；无头失败时再试有头。
 func (h *Host) ensureChrome(startURL string) error {
 	headed := false
 	alive := false
@@ -249,6 +252,7 @@ func (h *Host) ensureChrome(startURL string) error {
 	return nil
 }
 
+// startChromeCDP 在同一种有头状态的连接还活着时直接返回。否则停掉旧进程，用 freePort 的端口启动 Chrome，等调试端口和 page WebSocket，再 dialWS。找不到浏览器时错误是 browser: no isolated Chromium (set YOYO_CHROME)。
 func (h *Host) startChromeCDP(startURL string, headed bool) error {
 	h.mu.Lock()
 	c := h.cdp
@@ -258,8 +262,7 @@ func (h *Host) startChromeCDP(startURL string, headed bool) error {
 		return nil
 	}
 	if strings.TrimSpace(startURL) == "" {
-		// A relaunch with no URL used to land on about:blank, silently
-		// replacing the game page the agent was operating on.
+		// 以前不带地址的重启会落到 about:blank，把正在操作的页面换掉。
 		startURL = h.previewStartURL()
 	}
 	if h.cdp != nil || h.cmd != nil {
@@ -343,6 +346,7 @@ func (h *Host) startChromeCDP(startURL string, headed bool) error {
 	return nil
 }
 
+// chromeReadyErr 把 stderr 末尾最多 400 个字符附在错误后面。stderr 为空时原样返回。
 func chromeReadyErr(err error, stderr string) error {
 	stderr = strings.TrimSpace(stderr)
 	if stderr == "" {
@@ -354,6 +358,7 @@ func chromeReadyErr(err error, stderr string) error {
 	return fmt.Errorf("%w (%s)", err, stderr)
 }
 
+// readFileTail 返回文件末尾最多 n 个字符。读不到或为空时返回空字符串。
 func readFileTail(path string, n int) string {
 	b, err := os.ReadFile(path)
 	if err != nil || len(b) == 0 {
@@ -366,11 +371,10 @@ func readFileTail(path string, n int) string {
 	return s
 }
 
-// cdpMaxMessage is the CDP websocket read cap. coder/websocket defaults to
-// 32KiB+1, which cannot hold Page.captureScreenshot PNG/JPEG (typically 100KiB–8MiB).
-// Playwright/Puppeteer raise this into the 100–256MiB range; 64MiB covers 4K PNG.
+// cdpMaxMessage 是 CDP WebSocket 的读取上限，64 MiB。coder/websocket 的默认上限装不下 Page.captureScreenshot 的 PNG 或 JPEG。
 const cdpMaxMessage = 64 << 20
 
+// dialWS 连上 WebSocket，把读取上限设成 cdpMaxMessage，换上新的 cdpConn，并启用 Page、Network、Runtime。旧套接字会关掉，避免它的读循环还活着。
 func (h *Host) dialWS(wsURL string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -391,16 +395,16 @@ func (h *Host) dialWS(wsURL string) error {
 		h.tabCount = 1
 	}
 	h.mu.Unlock()
-	old.close() // a replaced socket must not keep its reader or target alive
+	old.close() // 换掉的套接字不能再留着读循环或目标
 	_, _ = conn.call("Page.enable", nil)
 	_, _ = conn.call("Network.enable", nil)
-	// Runtime events carry uncaught exceptions and console.error calls. They
-	// are the only signal a page failure leaves behind; see page_errors.go.
+	// Runtime 事件带上未捕获异常和 console.error。页面失败只留下这个信号，见 page_errors.go。
 	_, _ = conn.call("Runtime.enable", nil)
 	h.applyRecordHooks(conn)
 	return nil
 }
 
+// dropDeadCDP 清掉当前连接和标签计数，并关掉那条 WebSocket。
 func (h *Host) dropDeadCDP() {
 	if h == nil {
 		return
@@ -415,6 +419,7 @@ func (h *Host) dropDeadCDP() {
 	}
 }
 
+// versionWS 读 /json/version 里的 webSocketDebuggerUrl。800 毫秒超时。没有这个字段时返回 no websocket。
 func versionWS(addr string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
@@ -439,12 +444,12 @@ func versionWS(addr string) (string, error) {
 	return doc.WS, nil
 }
 
-// cdpAlive reports whether the connection's reader is still running. It is a
-// local check: no network round trip and no false negatives on idle sockets.
+// cdpAlive 报告读循环是否还在。这是本地检查，不打网络，空闲套接字也不会被误判成断开。
 func cdpAlive(c *cdpConn) bool {
 	return c.alive()
 }
 
+// isCDPMessageTooBig 在错误文本里含有 message too big 时返回真。
 func isCDPMessageTooBig(err error) bool {
 	if err == nil {
 		return false
@@ -452,6 +457,7 @@ func isCDPMessageTooBig(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "message too big")
 }
 
+// isCDPGone 判断套接字是不是已经断了。message too big 返回假，避免因此重启 Chrome。
 func isCDPGone(err error) bool {
 	if err == nil {
 		return false
@@ -479,6 +485,7 @@ func isCDPGone(err error) bool {
 	return false
 }
 
+// previewStartURL 优先返回预览文件的本地服务地址，否则返回当前非空白地址。都没有时返回空字符串。
 func (h *Host) previewStartURL() string {
 	if h == nil {
 		return ""
@@ -498,12 +505,14 @@ func (h *Host) previewStartURL() string {
 	return ""
 }
 
+// reconnectChrome 停掉 Chrome，再用 previewStartURL 重新确保启动。
 func (h *Host) reconnectChrome() error {
 	start := h.previewStartURL()
 	h.stopChrome()
 	return h.ensureChrome(start)
 }
 
+// callCDP 调用一条 CDP 方法。连接已断时先 reconnectChrome 再试一次。没有宿主或没有连接时返回错误。
 func (h *Host) callCDP(method string, params any) (json.RawMessage, error) {
 	if h == nil {
 		return nil, fmt.Errorf("browser: no host")
@@ -530,6 +539,7 @@ func (h *Host) callCDP(method string, params any) (json.RawMessage, error) {
 	return c.call(method, params)
 }
 
+// call 发出一条带 id 的 CDP 消息并等待回复。超时文案带上方法名和 cdpCallTimeout。连接已死时返回 fail 记下的错误。
 func (c *cdpConn) call(method string, params any) (json.RawMessage, error) {
 	if c == nil {
 		return nil, fmt.Errorf("browser: no CDP")
@@ -566,7 +576,7 @@ func (c *cdpConn) call(method string, params any) (json.RawMessage, error) {
 		}
 		return r.result, nil
 	case <-c.done:
-		// fail() sends to every registered waiter, so this receive completes.
+		// fail 会向每个已登记的等待者发送，所以这次接收会完成。
 		r := <-ch
 		if r.err != nil {
 			return nil, r.err
@@ -578,12 +588,14 @@ func (c *cdpConn) call(method string, params any) (json.RawMessage, error) {
 	}
 }
 
+// drop 从等待表里去掉这个 id，用于写失败或超时之后。
 func (c *cdpConn) drop(id int) {
 	c.mu.Lock()
 	delete(c.pending, id)
 	c.mu.Unlock()
 }
 
+// navigateCDP 先 ensureCDP，再 pageNavigate。
 func (h *Host) navigateCDP(raw string) error {
 	if err := h.ensureCDP(); err != nil {
 		return err
@@ -591,6 +603,7 @@ func (h *Host) navigateCDP(raw string) error {
 	return h.pageNavigate(raw)
 }
 
+// pageNavigate 用 Page.navigate 打开地址。空白页被拒绝，错误是 browser: refusing blank navigation。Page.navigate 失败时再试 Target.createTarget。成功后清掉 ref 并记下地址。
 func (h *Host) pageNavigate(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if h.cdp == nil {
@@ -616,6 +629,7 @@ func (h *Host) pageNavigate(raw string) error {
 	}
 }
 
+// evalJS 先确保有连接，再在当前连接上执行表达式。
 func (h *Host) evalJS(expr string) (string, error) {
 	if err := h.ensureCDP(); err != nil {
 		return "", err
@@ -623,6 +637,7 @@ func (h *Host) evalJS(expr string) (string, error) {
 	return h.evalOnConn(expr)
 }
 
+// evalOnConn 用 Runtime.evaluate 执行表达式并返回值的文本。页面抛异常时返回 browser: page script error。
 func (h *Host) evalOnConn(expr string) (string, error) {
 	if h.cdp == nil {
 		return "", fmt.Errorf("browser: no CDP")
@@ -656,6 +671,7 @@ func (h *Host) evalOnConn(expr string) (string, error) {
 	return fmt.Sprint(out.Result.Value), nil
 }
 
+// waitDocumentComplete 在 d 之内轮询 document.readyState，变成 complete 后再等 80 毫秒。d 小于等于 0 或宿主为空时立即返回。
 func (h *Host) waitDocumentComplete(d time.Duration) {
 	if h == nil || d <= 0 {
 		return

@@ -1,11 +1,11 @@
+// 把内部消息收成 OpenAI Chat Completions 的 JSON。
+// 不发 HTTP。OpenAIClient.doChat 调用 wireMessages。
+
 package runtime
 
 import "fmt"
 
-// wireMessages projects the internal transcript into OpenAI Chat Completions
-// JSON. Internal ToolCall is flat {id,name,arguments}; the wire form is
-// {id,type,function:{name,arguments}}. Gateways (DashScope and similar)
-// reject the flat shape with "Field required: …tool_calls.N.function".
+// wireContent 在没有 Parts 时返回 Content 字符串。有 Parts 时收成 text 与 image_url 数组；结果为空则退回 Content。
 func wireContent(m Message) any {
 	if len(m.Parts) == 0 {
 		return m.Content
@@ -32,6 +32,8 @@ func wireContent(m Message) any {
 	return parts
 }
 
+// wireMessages 把内部记录投影成 OpenAI Chat Completions 的 JSON。内部 ToolCall 是扁平的 {id,name,arguments}；线上是 {id,type,function:{name,arguments}}。网关（DashScope 一类）会以 “Field required: …tool_calls.N.function” 拒绝扁平形状。
+// RoleDeveloper 写成 name=developer 的 system。RoleMemory 写成 name=working_memory 的 user。
 func wireMessages(msgs []Message) []map[string]any {
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
@@ -70,6 +72,7 @@ func wireMessages(msgs []Message) []map[string]any {
 	return out
 }
 
+// wireToolCalls 把工具调用嵌进 function。名字为空的条目丢掉。参数为空时写成 {}。ID 为空时用 call_<名字>_<下标>。
 func wireToolCalls(calls []ToolCall) []map[string]any {
 	if len(calls) == 0 {
 		return nil

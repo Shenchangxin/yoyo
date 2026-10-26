@@ -1,13 +1,21 @@
+/**
+ * 拥有：从目录里解析上下文窗口、列出供应商模型，以及作曲栏里的模型分组。
+ * 不拥有：目录的水合。那是 catalog-shape 的事。
+ */
+
 import { providerPreset } from "./providers.ts";
 import type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape.ts";
 import type { ChatProvider } from "./protocol.ts";
 
+/** CatalogEntry、ModelDefinition、ModelsDevCatalog 从 catalog-shape 转出。 */
 export type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape.ts";
+/** hydrateCatalog、overlayCatalog 从 catalog-shape 转出。 */
 export { hydrateCatalog, overlayCatalog } from "./catalog-shape.ts";
 
-/** Chat default when models.dev has no entry for the current model id. */
+/** UNKNOWN_MODEL_WINDOW 当前模型 id 在 models.dev 里没有条目时，聊天用的默认窗口。 */
 export const UNKNOWN_MODEL_WINDOW = 300_000;
 
+/** resolveContextWindow 空 id 返回 0。先精确查找，没有窗口再按折叠后的 id 推断，仍没有则用 UNKNOWN_MODEL_WINDOW。 */
 export function resolveContextWindow(
   catalog: ModelsDevCatalog | null | undefined,
   presetId: string,
@@ -20,11 +28,12 @@ export function resolveContextWindow(
   return inferCatalogWindow(catalog, id) || UNKNOWN_MODEL_WINDOW;
 }
 
-/** Fold dotted generations so AIPC-deepseek-v4.1-flash hits deepseek-v4-flash. */
+/** 把 v 加数字再加点和数字收成 v 加前一个数字，使 AIPC-deepseek-v4.1-flash 对上 deepseek-v4-flash。比较前先小写。 */
 function foldModelId(id: string): string {
   return id.toLowerCase().replace(/v(\d+)\.(\d+)/g, "v$1");
 }
 
+/** 在全部供应商里找最长的、带 contextWindow 的键。折叠后的键等于去掉最后一个斜杠左边之后的 id，或被该 id 包含。 */
 function inferCatalogWindow(catalog: ModelsDevCatalog | null | undefined, modelId: string): number | undefined {
   if (!catalog) return undefined;
   const needle = foldModelId(stripOpenrouter(modelId));
@@ -44,6 +53,7 @@ function inferCatalogWindow(catalog: ModelsDevCatalog | null | undefined, modelI
   return best;
 }
 
+/** 按供应商精确查找。azure 映射到 openai，openrouter 按模型前缀映射。再试最后一个斜杠之后的 id，以及去掉结尾八位日期。不做前缀模糊匹配。 */
 function lookupExactCatalogModel(
   catalog: ModelsDevCatalog | null | undefined,
   presetId: string,
@@ -61,6 +71,7 @@ function lookupExactCatalogModel(
   return undefined;
 }
 
+/** lookupCatalogModel 先按 lookupExactCatalogModel 的规则找。没有则取最长的键：查询以前缀开头，或键以查询开头。 */
 export function lookupCatalogModel(
   catalog: ModelsDevCatalog | null | undefined,
   presetId: string,
@@ -87,11 +98,13 @@ export function lookupCatalogModel(
   return best;
 }
 
+/** 去掉最后一个斜杠及其左边。没有斜杠则原样返回。 */
 function stripOpenrouter(id: string): string {
   const i = id.lastIndexOf("/");
   return i >= 0 ? id.slice(i + 1) : id;
 }
 
+/** 按 openrouter 的供应前缀映射到目录里的供应商标识。对不上则为 openai。 */
 function openrouterPreset(id: string): string {
   if (id.startsWith("anthropic/")) return "claude";
   if (id.startsWith("openai/") || id.startsWith("openai.")) return "openai";
@@ -104,6 +117,7 @@ function openrouterPreset(id: string): string {
   return "openai";
 }
 
+/** modelsForProvider azure 映射到 openai。发布日期早于现在减去 365 天的丢掉。每个家族只留发布日期最新的一条。按名称或 id 排序。 */
 export function modelsForProvider(catalog: ModelsDevCatalog | null | undefined, presetId: string): ModelDefinition[] {
   const mapped = presetId === "azure" ? "openai" : presetId;
   const entries = catalog?.providers[mapped];
@@ -119,7 +133,7 @@ export function modelsForProvider(catalog: ModelsDevCatalog | null | undefined, 
   return [...newest.values()].map((e) => e.model).sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
 }
 
-/** Exact catalog membership — no fuzzy cross-provider matching. */
+/** modelListedForProvider 精确的目录成员，不做跨供应商的模糊匹配。azure 映射到 openai。去掉结尾八位日期后命中也算。 */
 export function modelListedForProvider(
   catalog: ModelsDevCatalog | null | undefined,
   presetId: string,
@@ -135,6 +149,7 @@ export function modelListedForProvider(
   return undated !== id && !!models[undated];
 }
 
+/** encodeChatModel 收成供应商标识、两个冒号、模型。任一侧空白则只返回模型。 */
 export function encodeChatModel(providerId: string, model: string): string {
   const id = (providerId || "").trim();
   const m = (model || "").trim();
@@ -142,6 +157,7 @@ export function encodeChatModel(providerId: string, model: string): string {
   return `${id}::${m}`;
 }
 
+/** decodeChatModel 在第一个 `::` 处切开。没有 `::`，或它在开头时，供应商为空，模型为整段。 */
 export function decodeChatModel(value: string): { providerId: string; model: string } {
   const raw = (value || "").trim();
   const i = raw.indexOf("::");
@@ -149,6 +165,7 @@ export function decodeChatModel(value: string): { providerId: string; model: str
   return { providerId: raw.slice(0, i), model: raw.slice(i + 2) };
 }
 
+/** ChatModelGroup 作曲栏里一个供应商及其模型 id。isDefault 来自连接上的默认标记。 */
 export type ChatModelGroup = {
   providerId: string;
   providerName: string;
@@ -157,6 +174,7 @@ export type ChatModelGroup = {
   models: string[];
 };
 
+/** composerModelGroups 只留有 id 且 active 不为假的连接。当前供应商的组把当前模型并进列表。没有模型的组丢掉。 */
 export function composerModelGroups(
   providers: ChatProvider[] | undefined,
   currentModel?: string,
@@ -176,6 +194,7 @@ export function composerModelGroups(
     .filter((g) => g.models.length > 0);
 }
 
+/** resolveComposerModelValue 供应商和模型都有则直接编码。否则恰好一个组拥有该模型时用它。再否则用默认组，或第一组。 */
 export function resolveComposerModelValue(
   providers: ChatProvider[] | undefined,
   currentModel?: string,
@@ -193,11 +212,7 @@ export function resolveComposerModelValue(
   return model;
 }
 
-/**
- * Models shown in the composer picker: the current session model plus the
- * user's configured list, filtered to the active provider. Never dumps the
- * full models.dev catalog.
- */
+/** composerModelIds 作曲栏显示当前会话模型和用户配置的列表，并滤到当前供应商。不倒出整份 models.dev 目录。没有供应商或为 custom 时，合并当前模型与配置列表，配置为空则用预设。有供应商时只留当前模型、预设里有的，或该供应商目录里有的；一个都不剩则退回预设。 */
 export function composerModelIds(
   catalog: ModelsDevCatalog | null | undefined,
   provider: string | undefined,
@@ -213,6 +228,7 @@ export function composerModelIds(
   return mergeModelIds(now, owned.length ? owned : preset?.models);
 }
 
+/** mergeModelIds 按出现顺序合并，去掉空白和重复。 */
 export function mergeModelIds(...lists: Array<string | string[] | undefined | null>): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -228,6 +244,7 @@ export function mergeModelIds(...lists: Array<string | string[] | undefined | nu
   return out;
 }
 
+/** formatTokens 未给出或为负是破折号。0 显示 0。不少于 1000000 用 M，能整除则不带小数，否则一位。不少于 1000 用四舍五入的 k。 */
 export function formatTokens(n?: number): string {
   if (n === undefined || n === null || n < 0) return "—";
   if (n === 0) return "0";
@@ -236,6 +253,7 @@ export function formatTokens(n?: number): string {
   return String(n);
 }
 
+/** formatUsd 未给出是破折号。小于 0.01 保留三位小数，小于 1 保留两位，不小于 10 则不带小数，其余一位。 */
 export function formatUsd(n?: number): string {
   if (n === undefined || n === null) return "—";
   if (n < 0.01) return `$${n.toFixed(3)}`;

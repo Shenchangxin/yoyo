@@ -1,8 +1,12 @@
+/**
+ * 拥有：设置页哈希和当前页签的同步。旧分组时期的链接会落到现行布局。
+ * 不拥有：表单。改的是地址栏和界面状态，不调用 api。
+ */
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { resolveSettingsTarget } from "./registry";
 import { useUI } from "../../lib/store";
 
-/** Accepts links minted before the current grouping; they resolve onto the new layout. */
+/** 解析地址栏里的设置链接；旧分组时期的链接会落到现行布局。 */
 function parseSettingsHash() {
   const h = location.hash.slice(1);
   const [path, query] = h.split("?");
@@ -12,6 +16,7 @@ function parseSettingsHash() {
   return resolveSettingsTarget(m[1], params.get("section") || "");
 }
 
+/** useSettingsHash 让地址栏和当前设置页签保持一致。 */
 export function useSettingsHash() {
   const surface = useUI((s) => s.surface);
   const tab = useUI((s) => s.settingsTab);
@@ -38,6 +43,7 @@ export function useSettingsHash() {
   }, [surface, tab, section]);
 
   useEffect(() => {
+    /** 地址变了就按哈希打开对应页签。 */
     const apply = () => {
       const parsed = parseSettingsHash();
       if (!parsed) return;

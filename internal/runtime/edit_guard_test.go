@@ -1,3 +1,5 @@
+// 锁住编辑参数守卫和分段写入。缺 new_str 或带着占位键时不得改文件。单次正文超过 writeFilePartMax（32 * 1024 字节）不得落盘。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestStrReplaceMissingNewStrDoesNotDelete 锁住参数里有 _elided 时 str_replace 返回错误，且磁盘上的 main.js 一个字节都不改。
 func TestStrReplaceMissingNewStrDoesNotDelete(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "main.js")
@@ -30,6 +33,7 @@ func TestStrReplaceMissingNewStrDoesNotDelete(t *testing.T) {
 	}
 }
 
+// TestWriteFileAppendParts 锁住 mode=create 后再 mode=append，两段按顺序接在同一个文件里。
 func TestWriteFileAppendParts(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -48,6 +52,7 @@ func TestWriteFileAppendParts(t *testing.T) {
 	}
 }
 
+// TestWriteFileRejectsHugePart 锁住超过 writeFilePartMax 一字节的正文被拒绝且不创建文件，长度恰好等于该上限时可以写入。
 func TestWriteFileRejectsHugePart(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -66,16 +71,18 @@ func TestWriteFileRejectsHugePart(t *testing.T) {
 	}
 }
 
+// TestWriteFileAllowsTypicalMarkdownPart 锁住 7000 个汉字的 Markdown 片段可以写入。这段大约 21KB UTF-8，过去会撞上 12KB 门槛，现在上限是 writeFilePartMax。
 func TestWriteFileAllowsTypicalMarkdownPart(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
-	body := strings.Repeat("文", 7000) // ~21 KB UTF-8, used to trip the 12 KB gate
+	body := strings.Repeat("文", 7000) // 约 21KB UTF-8。过去会撞上 12KB 门槛，现在上限是 writeFilePartMax。
 	raw := `{"path":"SOURCE_BIBLE.md","content":"` + body + `"}`
 	if res := tools.Call("write_file", raw); res.Err != nil {
 		t.Fatal(res.Err)
 	}
 }
 
+// TestSoftGuardStopsWhenNothingMoved 锁住轮数到达 ChatSoftGuardTurns 且停滞窗口已满时停止；窗口内有进展则重置；还没到上限则既不重置也不停。
 func TestSoftGuardStopsWhenNothingMoved(t *testing.T) {
 	reset, stop := softGuard(ChatSoftGuardTurns, ChatStallWindow)
 	if reset || !stop {
@@ -91,6 +98,7 @@ func TestSoftGuardStopsWhenNothingMoved(t *testing.T) {
 	}
 }
 
+// TestTrimTruncatedReplyDropsCutToolCall 锁住截断回复里未闭合的 write_file 被丢掉，完整的 read_file 留下，并给出提示。
 func TestTrimTruncatedReplyDropsCutToolCall(t *testing.T) {
 	msg, nudge := trimTruncatedReply(Message{
 		Role:      RoleAssistant,

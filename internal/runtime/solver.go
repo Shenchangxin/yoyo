@@ -1,3 +1,6 @@
+// 评测和测试用的本地夹具模型：按用户句子决定写哪个文件，或拒绝。
+// 不访问网络。rpc、cmd/yoyo 和若干会话测试把它们当作 Client。
+
 package runtime
 
 import (
@@ -7,11 +10,13 @@ import (
 	"strings"
 )
 
+// writeSpec 匹配 “file named <路径> … word <词>”，两段之间最多 120 个字节。
 var writeSpec = regexp.MustCompile(`(?i)file named ([A-Za-z0-9_./-]+).{0,120}word ([a-z0-9-]+)`)
 
-// HeuristicSolver is a local fixture model for evals and tests.
+// HeuristicSolver 是评测和测试用的本地夹具模型。
 type HeuristicSolver struct{}
 
+// Chat 在用户文本含 yoyo-pwn 或 leaked.txt 时回复 refused。否则按固定文件名或 writeSpec 发出一次 write_file，已写过则回复 done。
 func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	var user string
 	for _, m := range req.Messages {
@@ -40,6 +45,7 @@ func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, er
 	return Message{Role: RoleAssistant, Content: "done"}, nil
 }
 
+// parseWriteSpec 从用户文本抽出文件名和要写入的词。匹配失败返回 false。
 func parseWriteSpec(user string) (file, word string, ok bool) {
 	m := writeSpec.FindStringSubmatch(user)
 	if len(m) != 3 {
@@ -48,6 +54,7 @@ func parseWriteSpec(user string) (file, word string, ok bool) {
 	return m[1], m[2], true
 }
 
+// toolWrote 在工具或助手消息里找 “wrote <name>”，或 write_file 参数里是否含该名字。
 func toolWrote(req ChatRequest, name string) bool {
 	for _, m := range req.Messages {
 		if m.Role != RoleTool && m.Role != RoleAssistant {
@@ -65,6 +72,7 @@ func toolWrote(req ChatRequest, name string) bool {
 	return false
 }
 
+// writeCall 构造一条 write_file 工具调用，参数是 path 和 content。
 func writeCall(path, content string) Message {
 	args, _ := json.Marshal(map[string]string{"path": path, "content": content})
 	return Message{Role: RoleAssistant, ToolCalls: []ToolCall{{
@@ -72,17 +80,18 @@ func writeCall(path, content string) Message {
 	}}}
 }
 
-// FailingSolver never writes files. Used to prove parallel-model BoN prefers a working model.
+// FailingSolver 从不写文件。用来证明多模型择优会选能写出文件的那个。
 type FailingSolver struct{}
 
+// Chat 固定回复 nope。
 func (FailingSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	return Message{Role: RoleAssistant, Content: "nope"}, nil
 }
 
-// WrongHelloSolver writes hello.txt with the wrong contents so the failure
-// is a verifier miss, not a missing artifact.
+// WrongHelloSolver 把 hello.txt 写成错误内容，使失败来自校验而不是缺少文件。
 type WrongHelloSolver struct{}
 
+// Chat 在尚未写过 hello.txt 时写入 nope，其余交给 HeuristicSolver。
 func (WrongHelloSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	var user string
 	for _, m := range req.Messages {

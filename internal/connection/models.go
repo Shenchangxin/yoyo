@@ -1,3 +1,5 @@
+// 从模型 id 的子串推断聊天、图像、视频、语音、音乐、抠图和语音识别能力。
+
 package connection
 
 import (
@@ -5,6 +7,7 @@ import (
 	"strings"
 )
 
+// videoModelNeedles 是视频模型 id 里要匹配的子串。
 var videoModelNeedles = []string{
 	"seedance", "sora", "veo", "kling", "hailuo", "pika", "runway",
 	"gen-3", "gen3", "hunyuan-video", "hunyuanvideo", "cogvideo", "mochi",
@@ -13,6 +16,7 @@ var videoModelNeedles = []string{
 	"jimeng_v", "vgfm", "vidu",
 }
 
+// imageModelNeedles 是图像模型 id 里要匹配的子串。
 var imageModelNeedles = []string{
 	"seedream", "gpt-image", "dall-e", "dalle", "imagen", "flux", "sdxl",
 	"stable-diffusion", "midjourney", "nano-banana", "nanobanana", "ideogram",
@@ -20,26 +24,30 @@ var imageModelNeedles = []string{
 	"qwen-image", "jimeng_t2i", "kolors", "cogview", "hunyuan-image",
 }
 
+// speechModelNeedles 是语音合成模型 id 里要匹配的子串。
 var speechModelNeedles = []string{
 	"tts", "speech", "voice", "seed-tts", "cosyvoice",
 }
 
+// musicModelNeedles 是音乐模型 id 里要匹配的子串。
 var musicModelNeedles = []string{
 	"lyria", "stable-audio", "suno", "udio", "chirp-v", "chirp-auk",
 	"eleven_music", "text_to_sound", "music-1", "music-2", "musicgen", "riffusion",
 	"mureka", "skymusic", "music-3",
 }
 
+// mattingModelNeedles 是抠图模型 id 里要匹配的子串。
 var mattingModelNeedles = []string{
 	"saliency", "removebg", "matting", "matte",
 }
 
+// asrModelNeedles 是语音识别模型 id 里要匹配的子串。
 var asrModelNeedles = []string{
 	"whisper", "transcribe", "stt", "paraformer", "sensevoice", "nova-2", "nova-3",
 	"seed-asr", "spark-asr",
 }
 
-// CapOfModel infers a generation capability from a model id.
+// CapOfModel 按模型名子串返回一种生成能力。空名字返回 CapChat。识别顺序是语音识别、抠图、音乐、语音、视频、图像，其余是聊天。
 func CapOfModel(model string) string {
 	s := strings.ToLower(strings.TrimSpace(model))
 	if s == "" {
@@ -66,6 +74,7 @@ func CapOfModel(model string) string {
 	return CapChat
 }
 
+// isVideoModelName 在名字含 video、svd、视频针或单独的 wan 时返回真。含 qwen 且不含 video 时返回假。
 func isVideoModelName(s string) bool {
 	if strings.Contains(s, "qwen") && !strings.Contains(s, "video") {
 		return false
@@ -84,6 +93,7 @@ func isVideoModelName(s string) bool {
 	return false
 }
 
+// isImageModelName 在已被判成视频、语音、音乐、识别或抠图时返回假。名字含 image 或图像针时返回真。
 func isImageModelName(s string) bool {
 	if isVideoModelName(s) || isSpeechModelName(s) || isMusicModelName(s) || isAsrModelName(s) || isMattingModelName(s) {
 		return false
@@ -99,6 +109,7 @@ func isImageModelName(s string) bool {
 	return false
 }
 
+// isSpeechModelName 在名字含语音针时返回真。
 func isSpeechModelName(s string) bool {
 	for _, n := range speechModelNeedles {
 		if strings.Contains(s, n) {
@@ -108,6 +119,7 @@ func isSpeechModelName(s string) bool {
 	return false
 }
 
+// isMattingModelName 在名字含抠图针时返回真。
 func isMattingModelName(s string) bool {
 	for _, n := range mattingModelNeedles {
 		if strings.Contains(s, n) {
@@ -117,6 +129,7 @@ func isMattingModelName(s string) bool {
 	return false
 }
 
+// isMusicModelName 在名字含音乐针时返回真。
 func isMusicModelName(s string) bool {
 	for _, n := range musicModelNeedles {
 		if strings.Contains(s, n) {
@@ -126,6 +139,7 @@ func isMusicModelName(s string) bool {
 	return false
 }
 
+// isAsrModelName 在名字含语音识别针时返回真。
 func isAsrModelName(s string) bool {
 	for _, n := range asrModelNeedles {
 		if strings.Contains(s, n) {
@@ -135,6 +149,7 @@ func isAsrModelName(s string) bool {
 	return false
 }
 
+// generationCap 报告该能力是不是聊天、图像、视频、语音、音乐、抠图、素材或语音识别。
 func generationCap(cap string) bool {
 	switch NormalizeCap(cap) {
 	case CapChat, CapImage, CapVideo, CapSpeech, CapMusic, CapMatting, CapStock, CapASR:
@@ -144,7 +159,7 @@ func generationCap(cap string) bool {
 	}
 }
 
-// CapsOf is declared capabilities plus those inferred from model names.
+// CapsOf 合并声明的能力，以及从模型名和 DefaultModel 推断出的能力。已声明生成能力时，不把仅被当成聊天的模型名再加成聊天。
 func CapsOf(c Connection) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -177,6 +192,7 @@ func CapsOf(c Connection) []string {
 	return out
 }
 
+// MatchesCap 在 cap 为空时返回真，否则看 CapsOf 里有没有它。
 func MatchesCap(c Connection, cap string) bool {
 	want := NormalizeCap(cap)
 	if want == "" {
@@ -190,6 +206,7 @@ func MatchesCap(c Connection, cap string) bool {
 	return false
 }
 
+// declaredGenerationCaps 返回连接声明过的生成能力，去掉重复。
 func declaredGenerationCaps(c Connection) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -204,7 +221,7 @@ func declaredGenerationCaps(c Connection) []string {
 	return out
 }
 
-// ModelsFor returns the models on c that belong to cap.
+// ModelsFor 返回属于该能力的模型名。cap 为空时返回默认模型和全部 Models。单一生成能力且不是聊天时，聊天名会当作回落。
 func ModelsFor(c Connection, cap string) []string {
 	cap = NormalizeCap(cap)
 	if cap == "" {
@@ -238,6 +255,7 @@ func ModelsFor(c Connection, cap string) []string {
 	return compact(out)
 }
 
+// ModelsExcept 返回 Models 里不属于该能力的名字。
 func ModelsExcept(c Connection, cap string) []string {
 	cap = NormalizeCap(cap)
 	take := map[string]bool{}
@@ -253,6 +271,7 @@ func ModelsExcept(c Connection, cap string) []string {
 	return compact(out)
 }
 
+// ModelForCap 先取 DefaultModel 里的该能力，否则取 ModelsFor 的第一项。
 func ModelForCap(c Connection, cap string) string {
 	cap = NormalizeCap(cap)
 	if c.DefaultModel != nil {
@@ -266,6 +285,7 @@ func ModelForCap(c Connection, cap string) string {
 	return ""
 }
 
+// ModelsJSONFor 把 ModelsFor 的结果编成 JSON 数组。没有模型时返回 []。
 func ModelsJSONFor(c Connection, cap string) string {
 	ms := ModelsFor(c, cap)
 	if len(ms) == 0 {

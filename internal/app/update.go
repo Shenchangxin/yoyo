@@ -1,3 +1,5 @@
+// 桌面更新检查、后台下载和安装入口。检查用 update.PublicKey，长度为 32 才继续。下载完成后仍由 ApplyUpdate 交给人确认安装。keymap.yaml 的读写也在这里。
+
 package app
 
 import (
@@ -17,14 +19,17 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/update"
 )
 
+// isolated 返回 isolation.Status 的 Sandbox 字段。
 func isolated() bool {
 	return isolation.Status().Sandbox
 }
 
+// isolationKind 返回 isolation.Status 的 Kind。
 func isolationKind() string {
 	return isolation.Status().Kind
 }
 
+// loadKeymapFile 在 Config.Keymap 已有内容时不读盘。否则读取家目录 keymap.yaml，解析出非空 map 才写入配置。
 func (a *App) loadKeymapFile() {
 	if len(a.Config.Keymap) > 0 {
 		return
@@ -39,6 +44,7 @@ func (a *App) loadKeymapFile() {
 	}
 }
 
+// writeKeymapFile 把 Config.Keymap 写成家目录 keymap.yaml。Keymap 为 nil 时写成空 map。
 func (a *App) writeKeymapFile() {
 	km := a.Config.Keymap
 	if km == nil {
@@ -51,6 +57,7 @@ func (a *App) writeKeymapFile() {
 	_ = os.WriteFile(filepath.Join(a.Home.Root, "keymap.yaml"), b, 0o644)
 }
 
+// updateState 保存检查阶段、进度、错误、上次检查、校验结果和已下载路径。busy 为真时 CheckUpdate 直接返回快照。notified 记住已经广播过的版本。
 type updateState struct {
 	mu        sync.Mutex
 	phase     string
@@ -65,6 +72,7 @@ type updateState struct {
 	notified  string
 }
 
+// feedURL 用去掉空白的 Config.UpdateURL。该项为空时用 update.FeedURL(update.DefaultChannel)。
 func (a *App) feedURL() string {
 	if a != nil && strings.TrimSpace(a.Config.UpdateURL) != "" {
 		return strings.TrimSpace(a.Config.UpdateURL)
@@ -72,6 +80,7 @@ func (a *App) feedURL() string {
 	return update.FeedURL(update.DefaultChannel)
 }
 
+// startUpdateLoop 只在桌面系统启动 updateLoop。App 为空则返回。
 func (a *App) startUpdateLoop() {
 	if a == nil || !update.DesktopOS() {
 		return
@@ -82,6 +91,7 @@ func (a *App) startUpdateLoop() {
 	go a.updateLoop()
 }
 
+// updateLoop 首次等待 8 秒，之后间隔 6 小时。失败时退避加倍，最长 24 小时。暂停或 UpdateAutoCheck 为假时只重置到 6 小时，不检查。
 func (a *App) updateLoop() {
 	const startDelay = 8 * time.Second
 	const interval = 6 * time.Hour
@@ -114,10 +124,12 @@ func (a *App) updateLoop() {
 	}
 }
 
+// UpdateStatus 返回 updateSnapshot。
 func (a *App) UpdateStatus() map[string]any {
 	return a.updateSnapshot()
 }
 
+// updateSnapshot 汇总当前版本、暂存文件、订阅地址、自动检查和公钥是否为 32 字节。没有 upd 或 phase 为空时 phase 为 idle。暂存路径存在且 phase 为 ready 或 applying 时 downloaded 为真。
 func (a *App) updateSnapshot() map[string]any {
 	p := a.StagingPath()
 	st, err := os.Stat(p)
@@ -172,8 +184,7 @@ func (a *App) updateSnapshot() map[string]any {
 	return out
 }
 
-// CheckUpdate verifies the signed channel JSON and downloads a newer payload
-// in the background. Applying still requires a human.
+// CheckUpdate 校验已签名的频道 JSON。公钥长度不是 32 时错误为 update public key missing。检查超时 30 秒。未通过校验或不是更新版本则回到 idle。桌面系统在后台下载，其他系统当场下载。同一版本已有非空暂存文件则直接标为 ready。
 func (a *App) CheckUpdate() map[string]any {
 	if a.upd == nil {
 		a.upd = &updateState{}
@@ -246,6 +257,7 @@ func (a *App) CheckUpdate() map[string]any {
 	return a.updateSnapshot()
 }
 
+// downloadUpdate 用 25 分钟超时下载。进度百分比在完成前最高写到 99。成功后 MarkPending，phase 改为 ready，并 notifyUpdateReady。
 func (a *App) downloadUpdate(res update.CheckResult) {
 	dir := filepath.Dir(a.StagingPath())
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
@@ -297,6 +309,7 @@ func (a *App) downloadUpdate(res update.CheckResult) {
 	a.notifyUpdateReady(res.Manifest.Version)
 }
 
+// finishUpdateErr 把 phase 设为 error，清掉 busy，并记下错误文本。
 func (a *App) finishUpdateErr(msg string) {
 	a.upd.mu.Lock()
 	a.upd.busy = false
@@ -305,6 +318,7 @@ func (a *App) finishUpdateErr(msg string) {
 	a.upd.mu.Unlock()
 }
 
+// notifyUpdateReady 每个版本只向 Hub 发一次 system 事件。Hub 为空则只记下已通知的版本。
 func (a *App) notifyUpdateReady(ver string) {
 	if a.upd == nil {
 		return
@@ -331,6 +345,7 @@ func (a *App) notifyUpdateReady(ver string) {
 	})
 }
 
+// ApplyUpdate 把 phase 设为 applying，再调用 update.ApplyDownloaded。ErrQuitNeeded 和 ErrOpenedPackage 原样返回。其他错误把 phase 设为 error。
 func (a *App) ApplyUpdate(exe string) error {
 	if a.upd != nil {
 		a.upd.mu.Lock()

@@ -1,3 +1,5 @@
+// 忙时入队、重试不入队，以及回合结束后槽仍占着时继续排队。
+
 package app
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestQueueWhenBusy 在槽还占着时发送，应返回 ErrQueued 且队列里有这一轮。
 func TestQueueWhenBusy(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -29,6 +32,7 @@ func TestQueueWhenBusy(t *testing.T) {
 	}
 }
 
+// TestRetryDoesNotQueue 在会话正忙时重试，应返回正忙，且不入队。
 func TestRetryDoesNotQueue(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -51,6 +55,7 @@ func TestRetryDoesNotQueue(t *testing.T) {
 	}
 }
 
+// TestQueueCancelAndReorder 调整排队顺序后再取消一条，剩下的条数正确。
 func TestQueueCancelAndReorder(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -92,9 +97,7 @@ func TestQueueCancelAndReorder(t *testing.T) {
 	}
 }
 
-// A finished loop must stop reporting Running() even while the slot is still
-// held for post-turn bookkeeping — otherwise the UI's 1.5s poll resurrects the
-// spinner after it already saw turn_end. A second send still queues.
+// TestDoneSlotIsNotRunningButStillQueues 确认 done 的槽不再算正在跑，但槽还在时下一次发送仍然入队。
 func TestDoneSlotIsNotRunningButStillQueues(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -126,6 +129,7 @@ func TestDoneSlotIsNotRunningButStillQueues(t *testing.T) {
 	}
 }
 
+// TestPinArchiveDelete 覆盖置顶、归档、取消置顶，并确认没有 meta 的 jsonl 不会出现在列表里，删除后也不再列出。
 func TestPinArchiveDelete(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -183,6 +187,7 @@ func TestPinArchiveDelete(t *testing.T) {
 	}
 }
 
+// TestInboxEnqueueRecord 确认忙时入队会在轨迹里留下 next-turn 的 enqueue。
 func TestInboxEnqueueRecord(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

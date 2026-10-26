@@ -1,3 +1,5 @@
+// 锁住行的裁剪和去重、增删改配对，以及相对时间本身不算新内容。
+
 package personal
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestPageLinesTrimDedupBound 确认空白被折叠、重复行去掉，并且行数和单行长度有上限。
 func TestPageLinesTrimDedupBound(t *testing.T) {
 	got := pageLines("  Jobs \n\n Siemens   AI\r\nSiemens AI\n", 0)
 	if len(got) != 2 || got[0] != "Jobs" || got[1] != "Siemens AI" {
@@ -18,6 +21,7 @@ func TestPageLinesTrimDedupBound(t *testing.T) {
 	}
 }
 
+// TestDiffPageNewUpdatedRemoved 确认整行相同不算差异，新增、删除和完全相同的两份结果分开。
 func TestDiffPageNewUpdatedRemoved(t *testing.T) {
 	before := []string{
 		"AI jobs in Munich",
@@ -45,6 +49,7 @@ func TestDiffPageNewUpdatedRemoved(t *testing.T) {
 	}
 }
 
+// TestDiffPageNumberUpdates 确认只有数字变化的行算更新，不算新增。
 func TestDiffPageNumberUpdates(t *testing.T) {
 	pairs := [][2]string{
 		{"Price: $399.99", "Price: $279.99"},
@@ -61,6 +66,7 @@ func TestDiffPageNumberUpdates(t *testing.T) {
 	}
 }
 
+// TestDiffPageRemovedNumberedLine 确认消失的带数字行算删除。
 func TestDiffPageRemovedNumberedLine(t *testing.T) {
 	d := diffPage([]string{"Listing 101 · 2 bed", "Listing 102 · 2 bed"}, []string{"Listing 102 · 2 bed"})
 	if len(d.Removed) != 1 || d.Removed[0] != "Listing 101 · 2 bed" || len(d.Added)+len(d.Updated) != 0 {
@@ -72,6 +78,7 @@ func TestDiffPageRemovedNumberedLine(t *testing.T) {
 	}
 }
 
+// TestDescribeAndCountPageDiff 确认描述文本和计数句子的形状，空差异的计数是空串。
 func TestDescribeAndCountPageDiff(t *testing.T) {
 	added := make([]string, 10)
 	for i := range added {
@@ -93,6 +100,7 @@ func TestDescribeAndCountPageDiff(t *testing.T) {
 	}
 }
 
+// TestRelativeTimeIsNotNews 确认只改了相对时间的行不算新增或删除。
 func TestRelativeTimeIsNotNews(t *testing.T) {
 	before := []string{
 		"3 points by ada 58 minutes ago | hide",
@@ -114,6 +122,7 @@ func TestRelativeTimeIsNotNews(t *testing.T) {
 	}
 }
 
+// TestWithoutRelativeTimesKeepsPrice 确认去掉相对时间后仍留下价格数字。
 func TestWithoutRelativeTimesKeepsPrice(t *testing.T) {
 	page := func(time, price string) string { return "Posted " + time + " · Price " + price }
 	if withoutRelativeTimes(page("58 minutes ago", "$399")) != withoutRelativeTimes(page("1 hour ago", "$399")) {

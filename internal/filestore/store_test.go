@@ -1,3 +1,6 @@
+// 本文件锁住 Put、Get、Delete、IDs 和 LoadAll 能对同一条 JSON 往返。
+// 不覆盖锁的并发。由 go test 调用。
+
 package filestore
 
 import (
@@ -5,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestPutGetDelete 写入一条记录后读回标题，列出 id，再用 LoadAll 拿到它，删除后 Exists 为假，文件名是 abc.json。
 func TestPutGetDelete(t *testing.T) {
 	s, err := New(t.TempDir())
 	if err != nil {

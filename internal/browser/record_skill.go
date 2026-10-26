@@ -1,3 +1,6 @@
+// 本文件把录下的步骤写成一份技能草稿。正文里的工具名和英文句子是生成给技能文件的数据，不在注释里改写。
+// 草稿要求先做 interactive 快照，并说明不要记下密码、令牌、一次性验证码和 cookie。
+
 package browser
 
 import (
@@ -5,6 +8,7 @@ import (
 	"strings"
 )
 
+// generateRecordedSkill 按步骤写成带 front matter 的 Markdown。没有技能名时用 recorded-browser-workflow。秘密类输入不写示例。
 func generateRecordedSkill(doc StepsDocument) string {
 	name := doc.SkillName
 	if name == "" {
@@ -54,6 +58,7 @@ func generateRecordedSkill(doc StepsDocument) string {
 	return b.String()
 }
 
+// describeSkillStep 把一步写成草稿里的一句操作说明。不认识的 kind 用步骤自带的 Description。
 func describeSkillStep(st SemanticStep) string {
 	name := targetName(st.Target)
 	switch st.Kind {
@@ -74,6 +79,7 @@ func describeSkillStep(st SemanticStep) string {
 	}
 }
 
+// emptyDash 在 s 空白时返回 fallback。
 func emptyDash(s, fallback string) string {
 	if strings.TrimSpace(s) == "" {
 		return fallback

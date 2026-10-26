@@ -1,3 +1,5 @@
+// 本文件拥有改进工作区的四个页签、总览、谱系和哈希复制。不拥有下一步怎么判定，那一步在 harnessNext。调用方传入 tab、harness、report 和各页 children。
+
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { motion } from "motion/react";
@@ -28,12 +30,14 @@ import { cn } from "../../lib/utils";
 import { LabEyebrow, LabFrame, StoryRow } from "../labs/LabFrame";
 import { MaterialChangeList } from "./Changes";
 
+// 提出、证明、采用带 01、02、03。总览没有序号。
 const STEP_INDEX: Partial<Record<HarnessTab, string>> = {
   propose: "01",
   prove: "02",
   promote: "03",
 };
 
+// HarnessWorkspace 画页签。总览用 HarnessOverview，其余三页直接放 children 里对应的一块。
 export function HarnessWorkspace(props: {
   tab: HarnessTab;
   onTab: (tab: HarnessTab) => void;
@@ -112,6 +116,7 @@ export function HarnessWorkspace(props: {
   );
 }
 
+// 按 next.action 选原因和要去的页：checkout 去采用，eval 和 blocked 去证明，其余去提出。实验室开关打开才多显示 head，谱系上的打开按钮也只在那时传下去。
 function HarnessOverview(props: {
   refs: HarnessRefs;
   harness: unknown;
@@ -242,6 +247,7 @@ function HarnessOverview(props: {
   );
 }
 
+// 没有指针时列出提出、证明、采用三步。第一步用 default 按钮，后两步用 lift。
 function FirstRun({ onTab }: { onTab: (tab: HarnessTab) => void }) {
   const copy = useCopy();
   const steps: { tab: HarnessTab; n: string; hint: string }[] = [
@@ -275,6 +281,7 @@ function FirstRun({ onTab }: { onTab: (tab: HarnessTab) => void }) {
   );
 }
 
+// 种子且没有变更时不画变更列表。有父节点但没有变更时才用空文案。标题依次取 note、proposalId、对照父节点或种子。
 function LineageRow({ node, first, onReveal, showIds }: { node: LineageNode; first: boolean; onReveal?: (hash?: string) => Promise<void> | void; showIds: boolean }) {
   const copy = useCopy();
   const stamp = formatStamp(node.createdAt);
@@ -312,6 +319,7 @@ function LineageRow({ node, first, onReveal, showIds }: { node: LineageNode; fir
   );
 }
 
+// 显示 12 位短哈希。复制成功后勾保持 1200 毫秒，失败时提示复制失败。
 function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
   const copy = useCopy();
   const [done, setDone] = useState(false);
@@ -343,11 +351,12 @@ function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
   );
 }
 
+// 没有回调就返回。出错时不在这里提示，由调用方去弹提示。
 async function reveal(fn: ((hash?: string) => Promise<void> | void) | undefined, hash: string) {
   if (!fn) return;
   try {
     await fn(hash);
   } catch {
-    /* caller toasts */
+    /* 调用方自己提示 */
   }
 }

@@ -1,3 +1,8 @@
+/**
+ * 拥有：提问表单的建议项、空闲答复，以及只显示本会话那一张卡。
+ * 不拥有：卡片的渲染。
+ */
+
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { askCanIdle, chosenAnswer, idleAnswer, parseAskCommand, pendingAsk } from "./ask-form.ts";
@@ -27,6 +32,7 @@ const formJSON = JSON.stringify({
 });
 
 describe("ask form", () => {
+  /** 一份载荷里的每道题都在。没写建议时用第一项。空闲答复带上建议和空闲说明。 */
   it("pages every question in one payload and defaults the suggestion", () => {
     const form = parseAskCommand(formJSON);
     assert.equal(form.questions.length, 2);
@@ -37,6 +43,7 @@ describe("ask form", () => {
     assert.match(idleAnswer(form), /note: operator idle; used recommended/);
   });
 
+  /** 纯文本问题不能空闲。操作者后来的选择写进答复，并注明已作答。 */
   it("keeps an operator's later choice and does not idle a free-text question", () => {
     const form = parseAskCommand("登录完成了吗？");
     assert.equal(askCanIdle(form), false);
@@ -45,6 +52,7 @@ describe("ask form", () => {
     assert.match(answered, /note: operator answered/);
   });
 
+  /** 只取出本会话的 ask_user，shell 和其他会话不算。 */
   it("shows one card for this session only", () => {
     const mine: Approval = { id: "a", action: "ask_user", command: formJSON, path: "", level: "", sessionId: "s1" };
     const other: Approval = { id: "b", action: "ask_user", command: formJSON, path: "", level: "", sessionId: "s2" };

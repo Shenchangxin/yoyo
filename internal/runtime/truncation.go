@@ -1,20 +1,17 @@
+// 输出 token 被截断时的回复修剪。Run 在结算前调用 trimTruncatedReply，丢掉参数不完整的工具调用。
+// 不重试模型。被截断的调用不会执行。
+
 package runtime
 
 import "encoding/json"
 
-// outputCutNudge is sent when a reply stopped at the output-token limit. It
-// names the protocol the model should use instead of retrying the same blob.
+// outputCutNudge 在回复停在输出 token 上限时发给模型。它点名应使用的写文件协议，而不是把同一大段再试一次。
 const outputCutNudge = "Your last reply hit the output limit before it finished, and any tool call cut off at that point was not run. Continue from where it stopped. For a file write, split the body: write_file with mode=create (or overwrite) for the first part and mode=append for each following part, at most 32 KB per call (hard limit)."
 
-// writeFilePartMax is the hard per-call body cap. 12 KB refused complete
-// SOURCE_BIBLE / GAME_DESIGN drafts (~13 KB) that this model's 16k output
-// cap can emit in one shot. 32 KB still splits a truncated 35 KB+ dump.
+// writeFilePartMax 是单次写入正文的硬上限，32KB。12KB 会拒绝大约 13KB、仍能一次写完的完整草稿。32KB 仍会拆开 35KB 以上被截断的转储。
 const writeFilePartMax = 32 * 1024
 
-// trimTruncatedReply keeps only the tool calls whose arguments are complete.
-// A call cut off by the output limit is never executed, and its partial text is
-// dropped so it cannot be mistaken for file content. The returned nudge is
-// empty when the reply finished normally.
+// trimTruncatedReply 只留下参数完整的工具调用。回复未截断时原样返回，催促文案为空。被输出上限切断的调用不执行，半截文本也不当文件内容留下。
 func trimTruncatedReply(msg Message) (Message, string) {
 	if !msg.Truncated {
 		return msg, ""
@@ -30,8 +27,7 @@ func trimTruncatedReply(msg Message) (Message, string) {
 	return msg, outputCutNudge
 }
 
-// isOutputLimitStop reports whether a provider finish reason means the reply
-// was cut at the output-token cap rather than ended by the model.
+// isOutputLimitStop 判断供应商的结束原因是不是输出 token 上限。只有 length 和 max_tokens 返回 true。
 func isOutputLimitStop(reason string) bool {
 	switch reason {
 	case "length", "max_tokens":
@@ -41,8 +37,7 @@ func isOutputLimitStop(reason string) bool {
 	}
 }
 
-// streamFinishReason extracts choices[0].finish_reason from one SSE data
-// payload. Callers only parse chunks that mention finish_reason.
+// streamFinishReason 从一条 SSE data 里取出 choices[0].finish_reason。JSON 解析失败或 choices 为空时返回空串。
 func streamFinishReason(data string) string {
 	var chunk struct {
 		Choices []struct {

@@ -1,3 +1,5 @@
+// 行为：画布技能的列表、安装、标记和文件读取。内置技能正文在技能目录文件里，是数据。
+
 package video
 
 import (
@@ -15,6 +17,7 @@ import (
 	"unicode/utf8"
 )
 
+// handleCanvasSkills 分发技能列表、安装、文件、收藏、同步和删除。从 GitHub 安装会直接拒绝。
 func (e *Engine) handleCanvasSkills(method, path string, query, body map[string]any) canvasEnv {
 	if path == "skills" && method == "GET" {
 		return canvasOK(e.listCanvasSkills(query))
@@ -142,10 +145,12 @@ func (e *Engine) handleCanvasSkills(method, path string, query, body map[string]
 	return canvasOK(map[string]any{"skill": map[string]any{}, "files": []any{}, "results": []any{}, "deleted": true})
 }
 
+// matchSimple 用带冒号的模式匹配一条技能路径。
 func matchSimple(path, pat string) (map[string]string, bool) {
 	return matchPath(splitPath(path), pat)
 }
 
+// listCanvasSkills 按范围、标签和搜索分页列出技能。范围计数按全部技能计算，不受本次搜索影响。
 func (e *Engine) listCanvasSkills(query map[string]any) map[string]any {
 	page := intAny(query["page"])
 	if page < 1 {
@@ -237,6 +242,7 @@ func (e *Engine) listCanvasSkills(query map[string]any) map[string]any {
 	}
 }
 
+// sortSkillMaps 按字段把技能从大到小排序。
 func sortSkillMaps(items []map[string]any, key string) {
 	for i := 0; i < len(items); i++ {
 		for j := i + 1; j < len(items); j++ {
@@ -247,6 +253,7 @@ func sortSkillMaps(items []map[string]any, key string) {
 	}
 }
 
+// skillSortValue 取出排序用的字符串。计数类字段补成定宽数字。
 func skillSortValue(skill map[string]any, key string) string {
 	if key == "addedCount" || key == "likeCount" {
 		return fmt.Sprintf("%010d", intAny(skill[key]))
@@ -254,6 +261,7 @@ func skillSortValue(skill map[string]any, key string) string {
 	return fmt.Sprint(skill[key])
 }
 
+// allCanvasSkills 合并内置技能和未删除的本机技能，相同 id 只留先出现的。
 func (e *Engine) allCanvasSkills() []map[string]any {
 	out := []map[string]any{}
 	seen := map[string]bool{}
@@ -279,6 +287,7 @@ func (e *Engine) allCanvasSkills() []map[string]any {
 	return out
 }
 
+// getCanvasSkill 按技能 id 查找，找不到返回错误。
 func (e *Engine) getCanvasSkill(id string) (map[string]any, error) {
 	id = strings.TrimSpace(id)
 	for _, skill := range e.allCanvasSkills() {
@@ -289,6 +298,7 @@ func (e *Engine) getCanvasSkill(id string) (map[string]any, error) {
 	return nil, fmt.Errorf("skill not found")
 }
 
+// toMap 把内置技能定义收成前端技能对象。
 func (def canvasSkillDef) toMap() map[string]any {
 	now := "2026-03-01T08:00:00Z"
 	sum := sha256.Sum256([]byte(def.Body))
@@ -307,6 +317,7 @@ func (def canvasSkillDef) toMap() map[string]any {
 	}
 }
 
+// skillShowcases 有封面时返回一条图片展示，否则返回空列表。
 func skillShowcases(cover string) []map[string]any {
 	if cover == "" {
 		return []map[string]any{}
@@ -314,6 +325,7 @@ func skillShowcases(cover string) []map[string]any {
 	return []map[string]any{{"type": "image", "showcaseUri": cover, "showcaseUrl": cover}}
 }
 
+// hydrateSkill 套上本机的添加和喜欢标记，并据此调整喜欢数。
 func (e *Engine) hydrateSkill(skill map[string]any) map[string]any {
 	id := fmt.Sprint(skill["skillId"])
 	added := boolAny(skill["isAdded"])
@@ -338,6 +350,7 @@ func (e *Engine) hydrateSkill(skill map[string]any) map[string]any {
 	return skill
 }
 
+// setSkillFlag 更新添加或喜欢标记，并返回套用后的技能。
 func (e *Engine) setSkillFlag(id string, added *bool, liked *bool) map[string]any {
 	skill, err := e.getCanvasSkill(id)
 	if err != nil {
@@ -359,6 +372,7 @@ func (e *Engine) setSkillFlag(id string, added *bool, liked *bool) map[string]an
 	return e.hydrateSkill(skill)
 }
 
+// upsertUserSkill 创建或更新本机技能，并标成已添加。
 func (e *Engine) upsertUserSkill(id string, in map[string]any) map[string]any {
 	if id == "" {
 		id = strAnyMap(in, "skillId", "id")
@@ -410,6 +424,7 @@ func (e *Engine) upsertUserSkill(id string, in map[string]any) map[string]any {
 	return e.hydrateSkill(skill)
 }
 
+// deleteUserSkill 把本机创建的技能标成已删除。内置技能不在这张表里，删不掉。
 func (e *Engine) deleteUserSkill(id string) error {
 	rec, err := getDoc[canvasUserSkillRec](e, colUserSkills, id)
 	if err != nil || rec.DeletedAt != "" {
@@ -419,10 +434,12 @@ func (e *Engine) deleteUserSkill(id string) error {
 	return e.putDoc(colUserSkills, id, rec)
 }
 
+// skillFiles 返回技能唯一的 SKILL.md 文件信息。
 func skillFiles(skill map[string]any) []map[string]any {
 	return []map[string]any{skillFileMeta(skill, "SKILL.md")}
 }
 
+// skillFileMeta 按正文算出路径、大小和 SHA-256。
 func skillFileMeta(skill map[string]any, path string) map[string]any {
 	instruction, _ := skill["instruction"].(string)
 	sum := sha256.Sum256([]byte(instruction))
@@ -432,6 +449,7 @@ func skillFileMeta(skill map[string]any, path string) map[string]any {
 	}
 }
 
+// attachSkillUpload 从上传的 Markdown 或 ZIP 取出技能正文、名称和描述，并写回 body。
 func attachSkillUpload(params, body map[string]any) error {
 	raw, err := decodeB64Any(strAnyMap(params, "file_b64"))
 	if err != nil {
@@ -475,6 +493,7 @@ func attachSkillUpload(params, body map[string]any) error {
 	return nil
 }
 
+// skillMarkdownFromZip 从 ZIP 里读取唯一且层级不深的 SKILL.md。
 func skillMarkdownFromZip(raw []byte) (string, error) {
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
@@ -551,6 +570,7 @@ func skillMarkdownFromZip(raw []byte) (string, error) {
 	return "", fmt.Errorf("无法读取 SKILL.md")
 }
 
+// skillMetaFromMarkdown 从文首 front matter、一级标题或首段取出名称和描述。
 func skillMetaFromMarkdown(text string) (name, desc string) {
 	lines := strings.Split(text, "\n")
 	bodyStart := 0
@@ -610,6 +630,7 @@ func skillMetaFromMarkdown(text string) (name, desc string) {
 	return name, desc
 }
 
+// trimRunes 按符文数截断字符串。不超过上限则原样返回。
 func trimRunes(value string, max int) string {
 	if max <= 0 || utf8.RuneCountInString(value) <= max {
 		return value
@@ -618,6 +639,7 @@ func trimRunes(value string, max int) string {
 	return string(runes[:max])
 }
 
+// skillFileContent 读取 SKILL.md 正文。其他路径返回找不到文件。
 func skillFileContent(skill map[string]any, path string) (string, error) {
 	if path == "" || path == "SKILL.md" {
 		instruction, _ := skill["instruction"].(string)
@@ -626,6 +648,7 @@ func skillFileContent(skill map[string]any, path string) (string, error) {
 	return "", fmt.Errorf("file not found")
 }
 
+// builtinSkillPresets 返回内置的技能组合预设。
 func builtinSkillPresets() []map[string]any {
 	return []map[string]any{
 		{"presetId": "preset-drama-start", "name": "开一部短剧", "scene": "drama",

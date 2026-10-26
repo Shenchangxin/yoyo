@@ -1,3 +1,6 @@
+// Package eval 按 Harbor 布局加载任务、在隔离工作区里跑智能体，并用验证器打分。
+// copyDir 跳过 tests/，智能体工作区拿不到评分脚本。runTask 只把循环副本的 AllowLLMCompact 写成 false；RunRequest 不填 ModelWindow，所以是 0；CompactionTokens 保持调用方循环上的原值。
+// ShouldPromote 要求 held-in 与 held-out 的差值都大于等于 0，且至少一边大于 0，不读 SafetyFail。Promote 在 SafetyFail 大于 0 时先拒绝，然后再调用 ShouldPromote。
 package eval
 
 import (
@@ -18,14 +21,17 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// Task 是一道 Harbor 任务：目录名、说明和可选的 task.toml 时限。
 type Task struct {
 	ID          string
 	Dir         string
 	Instruction string
+	// Timeout 来自 task.toml 的 timeout_minutes，缺省 2 分钟。Engine.Run 不用它，而用套件的 TimeoutSec。
 	Timeout     time.Duration
 	VerifierCmd []string
 }
 
+// RepeatAttempt 记录一次重复的通过、会话编号和这一次相对开跑前的用量。
 type RepeatAttempt struct {
 	Pass      bool    `json:"pass"`
 	SessionID string  `json:"session_id,omitempty"`
@@ -35,22 +41,25 @@ type RepeatAttempt struct {
 	WallMs    int64   `json:"wall_ms,omitempty"`
 }
 
+// TaskResult 是一道题在全部重复之后的汇总。Pass 由通过次数决定，不由运行错误单独决定。
 type TaskResult struct {
-	ID          string          `json:"id"`
-	Pass        bool            `json:"pass"`
-	Output      string          `json:"output"`
-	Error       string          `json:"error,omitempty"`
-	Repeats     int             `json:"repeats,omitempty"`
-	RepeatsPass int             `json:"repeats_pass,omitempty"`
-	Isolate     string          `json:"isolate,omitempty"`
-	Kind        string          `json:"kind,omitempty"` // held_in | held_out | safety
-	TokensIn    int             `json:"tokens_in,omitempty"`
-	TokensOut   int             `json:"tokens_out,omitempty"`
-	USD         float64         `json:"usd,omitempty"`
-	WallMs      int64           `json:"wall_ms,omitempty"`
-	Attempts    []RepeatAttempt `json:"attempts,omitempty"`
+	ID          string `json:"id"`
+	Pass        bool   `json:"pass"`
+	Output      string `json:"output"`
+	Error       string `json:"error,omitempty"`
+	Repeats     int    `json:"repeats,omitempty"`
+	RepeatsPass int    `json:"repeats_pass,omitempty"`
+	Isolate     string `json:"isolate,omitempty"`
+	// Kind 按 safety、held_out、held_in 的顺序取最先命中的一种，都不属于时为空。
+	Kind      string          `json:"kind,omitempty"`
+	TokensIn  int             `json:"tokens_in,omitempty"`
+	TokensOut int             `json:"tokens_out,omitempty"`
+	USD       float64         `json:"usd,omitempty"`
+	WallMs    int64           `json:"wall_ms,omitempty"`
+	Attempts  []RepeatAttempt `json:"attempts,omitempty"`
 }
 
+// RunReport 是一套题的结果。单题失败写在 Results 里，Run 返回的 error 仍是 nil。
 type RunReport struct {
 	Suite            string          `json:"suite"`
 	Snapshot         string          `json:"snapshot"`
@@ -65,14 +74,17 @@ type RunReport struct {
 	WallMs           int64           `json:"wall_ms,omitempty"`
 }
 
+// Engine 从 SuitesRoot 找任务目录。套件自带 TaskDir 时以套件为准。
 type Engine struct {
 	SuitesRoot string
 }
 
+// NewEngine 记下套件根目录。
 func NewEngine(suitesRoot string) *Engine {
 	return &Engine{SuitesRoot: suitesRoot}
 }
 
+// RunOpts 是一次套件运行的材料。AllowShell 和 RevealHeldOut 本包不读。
 type RunOpts struct {
 	Suite         artifact.EvalSuite
 	Snapshot      artifact.HarnessSnapshot
@@ -87,13 +99,16 @@ type RunOpts struct {
 	Model         string
 	AllowShell    bool
 	RevealHeldOut bool
-	// IsolateRoot, when a git repo, makes each task run in a detached
-	// worktree of that repo with the Harbor task overlaid. Eval copies
-	// remain the default when this is empty.
+	// IsolateRoot 非空时，每个任务经 runtime.IsolateWorkspace 进入分离工作区，再盖上 Harbor 任务，隔离标记为 git-worktree。
+	// 为空时用临时复制目录，标记为 copy。两条路径都经 copyDir，智能体都拿不到 tests/。
 	IsolateRoot string
 	Meter       *rt.Meter
 }
 
+// Run 按 held-in、held-out，再补上尚未出现的 safety 编号跑题。
+// Repeats 小于等于 0 时按 1 次。TimeoutSec 小于等于 0 时用 2 分钟，不读 Task.Timeout。
+// 通过次数必须大于 Repeats/2；Repeats 为 1 时还接受最后一轮本身通过。
+// 安全题加载失败或不通过时 SafetyFail 加一。Meter 为 nil 时换成空表。
 func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 	rep := RunReport{
 		Suite:            opts.Suite.ID,
@@ -200,6 +215,7 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 	return rep, nil
 }
 
+// repeatSession 把基会话、题号和重复下标拼成会话编号。基会话为空时用 eval。
 func repeatSession(base, taskID string, i int) string {
 	if base == "" {
 		base = "eval"
@@ -207,6 +223,8 @@ func repeatSession(base, taskID string, i int) string {
 	return fmt.Sprintf("%s~%s~r%d", base, taskID, i)
 }
 
+// runTask 在准备好的工作区里跑一轮，再用验证器决定 Pass。
+// 关掉模型摘要：只把这份循环副本的 AllowLLMCompact 写成 false。下面的 RunRequest 不填 ModelWindow，所以是 0。CompactionTokens 不在这里赋值，调用方循环上是多少就传多少。
 func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, opts RunOpts, sessionID string) TaskResult {
 	work, cleanup, isolate, err := prepareWork(task.Dir, opts.IsolateRoot)
 	if err != nil {
@@ -265,6 +283,8 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 	return res
 }
 
+// LoadHarborTask 读 instruction.md，题号取目录名。
+// task.toml 的 timeout_minutes 大于 0 时写入 Task.Timeout，否则为 2 分钟。Engine.Run 不读这个字段。
 func LoadHarborTask(dir string) (Task, error) {
 	inst, err := os.ReadFile(filepath.Join(dir, "instruction.md"))
 	if err != nil {
@@ -288,6 +308,9 @@ func LoadHarborTask(dir string) (Task, error) {
 	return task, nil
 }
 
+// runVerifier 先问个人验证器。未接手时读任务目录 tests/expect.toml，再按平台顺序找测试脚本。
+// 脚本在智能体工作区里执行，但文件来自任务目录的 tests/，不来自工作区。
+// 存在 environment/Dockerfile 且本机有 docker 时先试容器；容器命令 err 非 nil 时退回本机脚本。
 func runVerifier(work string, task Task) (bool, string, error) {
 	if ok, out, err, handled := runPersonalVerifier(work, task); handled {
 		return ok, out, err
@@ -341,6 +364,7 @@ func runVerifier(work string, task Task) (bool, string, error) {
 	return err == nil, string(out), err
 }
 
+// taskKind 给题目贴种类：安全优先，其次 held-out，再其次 held-in。
 func taskKind(id string, heldOut, safety map[string]bool, heldIn []string) string {
 	if safety[id] {
 		return "safety"
@@ -354,6 +378,8 @@ func taskKind(id string, heldOut, safety map[string]bool, heldIn []string) strin
 	return ""
 }
 
+// runGoishVerifier 在 Windows 上没有 bash、也没有同名 ps1 时，只认脚本里的 test -f 或 [ -f。
+// 命中的相对路径相对工作区检查是否存在。没有这类检查时返回无法在本平台执行。
 func runGoishVerifier(work, script string) (bool, string, error) {
 	b, err := os.ReadFile(script)
 	if err != nil {
@@ -384,6 +410,7 @@ func runGoishVerifier(work, script string) (bool, string, error) {
 	return false, content, fmt.Errorf("cannot execute verifier on this platform")
 }
 
+// copyDir 把任务目录拷进智能体工作区，遇到 tests 目录或其下的路径就跳过。工作区里因此没有 tests/。
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -414,6 +441,7 @@ func copyDir(src, dst string) error {
 	})
 }
 
+// containsID 报告编号是否在列表里。
 func containsID(ids []string, id string) bool {
 	for _, x := range ids {
 		if x == id {
@@ -423,6 +451,9 @@ func containsID(ids []string, id string) bool {
 	return false
 }
 
+// prepareWork 准备智能体工作区。IsolateRoot 非空时调用 runtime.IsolateWorkspace，再盖上任务文件，标记为 git-worktree。
+// git worktree 失败时 IsolateWorkspace 会改成复制该根目录，标记仍然是 git-worktree。
+// IsolateRoot 为空时创建前缀为 yoyo-eval- 的临时目录，标记为 copy。两条路径都经 copyDir，都不会带上 tests/。
 func prepareWork(taskDir, isolateRoot string) (string, func(), string, error) {
 	nop := func() {}
 	if isolateRoot != "" {

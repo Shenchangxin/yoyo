@@ -1,3 +1,4 @@
+/** 拥有一通偶像通话的阶段、麦克风、听写和播放。不拥有立绘绘制。回合、挂断、截断和陪伴窗开关会改服务端状态。 */
 import { useEffect, useRef, useState } from "react";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
@@ -5,8 +6,10 @@ import { str } from "../../lib/normalize";
 import { idolError, type IdolErrors } from "./model";
 import { standMood } from "./stand";
 
+/** CallPhase 是通话阶段：拨号、听、想、说、结束或关掉。 */
 export type CallPhase = "dialing" | "listening" | "thinking" | "speaking" | "ended" | "off";
 
+/** CallWho 是这一通对面的名字、颜色、肖像、种类和服装。 */
 export type CallWho = { name: string; color: string; portrait: string; kind: string; stand: string };
 type Run = {
   stop: boolean;
@@ -38,6 +41,7 @@ type Opts = {
 let primed: AudioContext | null = null;
 let liveAudio: HTMLAudioElement | null = null;
 
+/** primeCallAudio 提前建好并恢复音频上下文，供之后播放使用。 */
 export function primeCallAudio() {
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx) return;
@@ -45,6 +49,7 @@ export function primeCallAudio() {
   void primed.resume();
 }
 
+/** useIdolCall 跑一通通话：听、送回合、播放，并在结束时写回服务端。 */
 export function useIdolCall(opts: Opts) {
   const copy = useCopy();
   const c = copy.idol;
@@ -140,10 +145,11 @@ export function useIdolCall(opts: Opts) {
         stopRun(run, false);
       });
     };
-    // Restart only when the call itself starts or the person changes.
+    // 只在通话开始或对方换人时重跑。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts.active, opts.idolId, opts.companion]);
 
+  /** 接通这一通：陪伴窗先取置顶偶像，再要麦克风，然后进入聆听。 */
   async function boot(run: Run) {
     if (run.stop || run.closed) return;
     tone(440, 180);
@@ -198,6 +204,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
+  /** 在停掉之前反复听或发送已键入的文字。 */
   async function loop(run: Run) {
     while (!run.stop) {
       if (run.hold) {
@@ -223,6 +230,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
+  /** 把一句交给服务端回合，再按段播放；被打断就截断记录。 */
   async function say(run: Run, text: string) {
     if (run.stop) return;
     setPhase("thinking");
@@ -273,6 +281,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
+  /** 等工作会话有话可说，再播一句旁白。 */
   async function pollWork(run: Run, session: string) {
     for (let i = 0; i < 40 && !run.stop; i++) {
       await sleep(2000);
@@ -283,7 +292,7 @@ export function useIdolCall(opts: Opts) {
         if (res?.speak) {
           setCaption(str(res.caption || res.speak));
           if (!textOnlyRef.current && !muteSpkRef.current) {
-            try { await speak(run.idolId, str(res.speak), phoneRef.current); } catch { /* caption is enough */ }
+            try { await speak(run.idolId, str(res.speak), phoneRef.current); } catch { /* 字幕已经够用 */ }
           }
         }
         return;
@@ -293,6 +302,7 @@ export function useIdolCall(opts: Opts) {
     }
   }
 
+  /** 停掉麦克风和播放，并写下通话结束。 */
   async function stopRun(run: Run, notify: boolean) {
     if (run.closed) return;
     run.closed = true;
@@ -308,11 +318,12 @@ export function useIdolCall(opts: Opts) {
     void api.idolCall("cancel").catch(() => {});
     tone(330, 160);
     if (run.companion) {
-      try { await api.setCompanionCall(false); } catch { /* the pet window still returns */ }
+      try { await api.setCompanionCall(false); } catch { /* 陪伴窗仍会回到原处 */ }
     }
     if (notify) onEnded.current?.();
   }
 
+  /** 挂断当前这一通，没有进行中的就直接通知结束。 */
   function hangup() {
     const run = runRef.current;
     if (!run) {
@@ -322,6 +333,7 @@ export function useIdolCall(opts: Opts) {
     stopRun(run, true);
   }
 
+  /** 把输入框里的文字送进循环，并打断正在说的。 */
   function sendDraft() {
     const text = draft.trim();
     if (!text) return;
@@ -340,6 +352,7 @@ export function useIdolCall(opts: Opts) {
   };
 }
 
+/** 向服务端要这一句的音频再播放。 */
 async function speak(idolId: string, text: string, phone: boolean) {
   if (!text.trim()) return;
   const out = await api.idolCall("speak", { idol_id: idolId, text });
@@ -347,6 +360,7 @@ async function speak(idolId: string, text: string, phone: boolean) {
   await play(`data:${out.content_type || "audio/mpeg"};base64,${out.audio}`, phone);
 }
 
+/** 从麦克风录到一段有声音的话，再交给转写。 */
 async function listen(stream: MediaStream | null, stop?: () => boolean): Promise<string> {
   if (!stream) return "";
   const chunks: Blob[] = [];
@@ -399,10 +413,12 @@ async function listen(stream: MediaStream | null, stop?: () => boolean): Promise
   }
 }
 
+/** 播放一段音频；电话音质时走低通。 */
 function play(url: string, phone: boolean): Promise<void> {
   return new Promise((resolve) => {
     const el = new Audio(url);
     liveAudio = el;
+    /** 这段播完或失败就结束等待，并清掉当前播放。 */
     const done = () => { if (liveAudio === el) liveAudio = null; resolve(); };
     if (!phone) {
       el.onended = done;
@@ -423,6 +439,7 @@ function play(url: string, phone: boolean): Promise<void> {
   });
 }
 
+/** 用振荡器响一声提示音。 */
 function tone(freq: number, ms: number) {
   const ctx = primed || new AudioContext();
   const o = ctx.createOscillator();
@@ -436,10 +453,12 @@ function tone(freq: number, ms: number) {
   o.onended = () => { if (ctx !== primed) void ctx.close(); };
 }
 
+/** 等待一段时间。 */
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** 把音频块读成去掉前缀的 base64。 */
 function blobToB64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -452,6 +471,7 @@ function blobToB64(blob: Blob): Promise<string> {
   });
 }
 
+/** phoneFrom 原样交回是否走电话音质。 */
 export function phoneFrom(flag: boolean) {
   return flag;
 }

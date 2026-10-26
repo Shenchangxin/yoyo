@@ -1,3 +1,6 @@
+// 密封题的规格和套件改写。ApplySealed 用 sealedEvolveN 把 SealedHeldIn 切成 EvolveIn 与 HeldIn。
+// 物化落在 materialize.go。本文件不跑循环，也不打分。
+
 package eval
 
 import (
@@ -7,22 +10,19 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
-// TaskSpec is a Harbor-layout task that can be materialized on demand.
-// Smoke tasks (write-hello, write-answer, …) live on disk under evals/.
-// Sealed tasks are derived from this catalog so the 12/8/10 split stays
-// the source of truth rather than a pile of copy-pasted fixtures.
+// TaskSpec 是一条可按需物化的 Harbor 题：编号、要写的文件名、文件里应出现的词。
 type TaskSpec struct {
 	ID       string
 	File     string
 	Contains string
 }
 
+// spec 用编号、文件名和词拼一条规格。
 func spec(id, file, word string) TaskSpec {
 	return TaskSpec{ID: id, File: file, Contains: word}
 }
 
-// SealedHeldIn is the full sealed held-in family. ApplySealed splits it into
-// EvolveIn (proposer / inner trials) and HeldIn (promote-set).
+// SealedHeldIn 是密封的 held-in 全家。ApplySealed 把前 sealedEvolveN 条放进 EvolveIn，其余放进 HeldIn。
 var SealedHeldIn = []TaskSpec{
 	spec("si-01-alpha", "alpha.txt", "alpha"),
 	spec("si-02-bravo", "bravo.txt", "bravo"),
@@ -46,6 +46,7 @@ var SealedHeldIn = []TaskSpec{
 	spec("si-20-tango", "tango.txt", "tango"),
 }
 
+// SealedHeldOut 是密封的 held-out 题，ApplySealed 整表写入 HeldOut。
 var SealedHeldOut = []TaskSpec{
 	spec("so-01-uniform", "uniform.txt", "uniform"),
 	spec("so-02-victor", "victor.txt", "victor"),
@@ -59,6 +60,7 @@ var SealedHeldOut = []TaskSpec{
 	spec("so-10-dune", "dune.txt", "dune"),
 }
 
+// SealedTransfer 是密封的迁移题，ApplySealed 整表写入 Transfer。
 var SealedTransfer = []TaskSpec{
 	spec("st-01-ember", "ember.txt", "ember"),
 	spec("st-02-flint", "flint.txt", "flint"),
@@ -67,16 +69,14 @@ var SealedTransfer = []TaskSpec{
 	spec("st-05-ivory", "ivory.txt", "ivory"),
 }
 
-// IndexTransfer is a Harbor-Index stand-in used only as post-canary transfer.
-// Real Index adapters replace these files; ids never enter EvolveIn or Propose.
+// IndexTransfer 是 Harbor-Index 的占位题。ApplyIndexTransfer 只追加到 Transfer。ApplyIndexTransferOnly 把它们放进 HeldOut，并清空 HeldIn、EvolveIn、Transfer 和 Safety。
 var IndexTransfer = []TaskSpec{
 	spec("hi-01-index", "index-alpha.txt", "index-alpha"),
 	spec("hi-02-index", "index-bravo.txt", "index-bravo"),
 	spec("hi-03-index", "index-charlie.txt", "index-charlie"),
 }
 
-// BehaviorIDs are cheap probes for the evolve lab and CI. They are not the
-// default 89-task promote gate.
+// BehaviorIDs 是演化实验室和 CI 用的探针编号。ApplyBehavior 把它们追加进 Safety，不改写 ApplySealed 的划分。
 var BehaviorIDs = []string{
 	"behavior-claim-complete",
 	"behavior-no-touch-tests",
@@ -87,8 +87,10 @@ var BehaviorIDs = []string{
 	"context-no-rewrite-from-memory",
 }
 
+// sealedEvolveN 是 ApplySealed 从 SealedHeldIn 切给 EvolveIn 的条数。
 const sealedEvolveN = 12
 
+// ReadInstruction 读题目 instruction.md。套件 TaskDir 为空时用 SuitesRoot。读失败时返回空串。
 func (e *Engine) ReadInstruction(suite artifact.EvalSuite, id string) string {
 	root := suite.TaskDir
 	if root == "" {
@@ -101,6 +103,7 @@ func (e *Engine) ReadInstruction(suite artifact.EvalSuite, id string) string {
 	return string(b)
 }
 
+// idsOf 抽出规格里的编号，顺序与输入相同。
 func idsOf(specs []TaskSpec) []string {
 	out := make([]string, len(specs))
 	for i, s := range specs {
@@ -109,10 +112,12 @@ func idsOf(specs []TaskSpec) []string {
 	return out
 }
 
+// SealedHeldOutIDs 返回 SealedHeldOut 的编号。
 func SealedHeldOutIDs() []string {
 	return idsOf(SealedHeldOut)
 }
 
+// lookupSpec 在四张密封表里按编号查找。都没有时返回 false。
 func lookupSpec(id string) (TaskSpec, bool) {
 	for _, s := range SealedHeldIn {
 		if s.ID == id {
@@ -137,8 +142,9 @@ func lookupSpec(id string) (TaskSpec, bool) {
 	return TaskSpec{}, false
 }
 
-// ApplySealed rewrites a suite onto the sealed 20/10 split plus transfer and
-// safety. Repeats is at least 2 so promotion is not a one-shot lottery.
+// ApplySealed 把套件改成 sealed-v1。SealedHeldIn 长于 sealedEvolveN 时，前 sealedEvolveN 条写入 EvolveIn，其余写入 HeldIn；否则两份都是全表。
+// HeldOut 与 Transfer 分别来自 SealedHeldOut、SealedTransfer。Safety 追加 no-escape、logs-no-read 以及办公、连接器、记忆、页面和档案题，已有编号不重复。
+// Repeats 小于 2 时抬到 2。Sealed 写成 true。suite 为 nil 时直接返回。
 func ApplySealed(suite *artifact.EvalSuite) {
 	if suite == nil {
 		return
@@ -172,7 +178,7 @@ func ApplySealed(suite *artifact.EvalSuite) {
 	suite.Sealed = true
 }
 
-// ApplyIndexTransfer appends Harbor-Index stand-in ids to Transfer only.
+// ApplyIndexTransfer 只把 IndexTransfer 的编号追加到 Transfer。suite 为 nil 时直接返回。
 func ApplyIndexTransfer(suite *artifact.EvalSuite) {
 	if suite == nil {
 		return
@@ -182,7 +188,8 @@ func ApplyIndexTransfer(suite *artifact.EvalSuite) {
 	}
 }
 
-// ApplyIndexTransferOnly grades the Index subset as held-out transfer. Not a promote gate.
+// ApplyIndexTransferOnly 把套件改成 harbor-index-transfer：HeldOut 为 IndexTransfer，HeldIn、EvolveIn、Transfer、Safety 都清空。
+// Repeats 小于 2 时抬到 2。suite 为 nil 时直接返回。这组划分不经过 ShouldPromote。
 func ApplyIndexTransferOnly(suite *artifact.EvalSuite) {
 	if suite == nil {
 		return
@@ -198,6 +205,7 @@ func ApplyIndexTransferOnly(suite *artifact.EvalSuite) {
 	}
 }
 
+// ApplyBehavior 把 BehaviorIDs 追加进 Safety，已有编号不重复。suite 为 nil 时直接返回。
 func ApplyBehavior(suite *artifact.EvalSuite) {
 	if suite == nil {
 		return
@@ -207,6 +215,7 @@ func ApplyBehavior(suite *artifact.EvalSuite) {
 	}
 }
 
+// uniqueAppend 在编号尚未出现时追加，已出现则原样返回。
 func uniqueAppend(ids []string, id string) []string {
 	for _, x := range ids {
 		if x == id {

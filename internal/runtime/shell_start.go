@@ -1,3 +1,6 @@
+// 识别会在捕获标准输出时挂住的 cmd start，并改写成 PowerShell 的 Start-Process。
+// 不创建进程，也不做路径 resolve。本文件没有 Windows Job Object。tools.go 的 shell 在 Windows 上调用这里。
+
 package runtime
 
 import (
@@ -6,9 +9,7 @@ import (
 	"strings"
 )
 
-// cmd `start` with captured stdout never reaches EOF: the child keeps the
-// pipe handle. That is a process-lifetime bug, not something to teach in
-// the system prompt. Detach the child so the shell can finish.
+// cmd start 在捕获标准输出时到不了 EOF：子进程握着管道句柄。这是进程生命周期问题，不写进系统提示。把子进程拆出去，shell 才能结束。
 
 const cmdStartHangMsg = "cmd start waits for the child while stdout is captured, and piping it to head/tail never reaches EOF — the tool hangs until timeout. Use Start-Process -WindowStyle Hidden (no pipe to head/tail). Then sleep and Get-Process. PowerShell $ variables are passed as argv and must not be wrapped in Git Bash."
 
@@ -18,10 +19,12 @@ var (
 	reHeadPipe     = regexp.MustCompile(`(?i)\s*(?:2>&1\s*)?(?:\|\s*(?:head|tail)\b[^;|&]*)`)
 )
 
+// cmdStartWouldHang 判断命令里有没有会挂住的 cmd start 或裸 start。
 func cmdStartWouldHang(command string) bool {
 	return cmdStartPattern(command)
 }
 
+// cmdStartPattern 在裸 start 或 cmd /c 后面的 start 载荷会挂住时返回真。Start-Process 不算。
 func cmdStartPattern(command string) bool {
 	if reBareStart.MatchString(command) {
 		return true
@@ -39,6 +42,7 @@ func cmdStartPattern(command string) bool {
 	return startPayloadHangs(inner)
 }
 
+// startPayloadHangs 判断载荷是 start 而不是 Start-Process。
 func startPayloadHangs(inner string) bool {
 	low := strings.ToLower(strings.TrimSpace(inner))
 	if strings.HasPrefix(low, "start-process") {
@@ -47,8 +51,8 @@ func startPayloadHangs(inner string) bool {
 	return strings.HasPrefix(low, "start ") || strings.HasPrefix(low, "start\"") || low == "start"
 }
 
-// rewriteCmdStart replaces `cmd /c start ...` (and a trailing 2>&1 | head/tail)
-// with PowerShell Start-Process, which returns while stdout is captured.
+// rewriteCmdStart 把 `cmd /c start ...` 以及紧跟的 2>&1 | head/tail 换成 PowerShell Start-Process。Start-Process 在标准输出被捕获时仍会返回。
+// 文件名为空或带 /WAIT 时不改写。
 func rewriteCmdStart(command string) (string, bool) {
 	loc := reCmdStartHead.FindStringIndex(command)
 	if loc == nil {
@@ -74,6 +78,7 @@ func rewriteCmdStart(command string) (string, bool) {
 	return strings.TrimSpace(prefix + startProcessCommand(file, args) + after), true
 }
 
+// rewriteAnyStart 先尝试改写 cmd /c start，失败再改写裸 start。
 func rewriteAnyStart(command string) (string, bool) {
 	if next, ok := rewriteCmdStart(command); ok {
 		return next, true
@@ -81,6 +86,7 @@ func rewriteAnyStart(command string) (string, bool) {
 	return rewriteBareStart(command)
 }
 
+// rewriteBareStart 改写不在 cmd /c 里的 start。带 /WAIT 或没有文件名时不改。
 func rewriteBareStart(command string) (string, bool) {
 	loc := reBareStart.FindStringIndex(command)
 	if loc == nil {
@@ -109,6 +115,7 @@ func rewriteBareStart(command string) (string, bool) {
 	return strings.TrimSpace(prefix + startProcessCommand(file, args) + after), true
 }
 
+// stripCmdRedirects 从 start 参数里去掉重定向和 NUL 目标，避免它们进 Start-Process 的参数列表。
 func stripCmdRedirects(args []string) []string {
 	var out []string
 	for i := 0; i < len(args); i++ {
@@ -125,6 +132,7 @@ func stripCmdRedirects(args []string) []string {
 	return out
 }
 
+// takeStartPayload 取出 start 后面的一段。引号外的分号、换行、管道和单独的 & 截断。`>&` 里的 & 不算语句分隔。
 func takeStartPayload(rest string) (inner string, consumed int, ok bool) {
 	if rest == "" {
 		return "", 0, false
@@ -168,6 +176,7 @@ func takeStartPayload(rest string) (inner string, consumed int, ok bool) {
 	return "", 0, false
 }
 
+// parseStartInvocation 从 start 载荷里取出文件、参数，以及是否带 /WAIT。引号里的标题被丢掉。/D 的下一个词是目录，不进参数。
 func parseStartInvocation(inner string) (file string, args []string, wait bool) {
 	s := strings.TrimSpace(inner)
 	if len(s) >= 5 && strings.EqualFold(s[:5], "start") {
@@ -210,6 +219,7 @@ func parseStartInvocation(inner string) (file string, args []string, wait bool) 
 	return file, args, wait
 }
 
+// readQuotedToken 读取引号字符串。成对的 "" 是一个引号，反斜杠吃掉下一个字节。引号未闭合则失败。
 func readQuotedToken(s string) (tok, rest string, ok bool) {
 	if s == "" || s[0] != '"' {
 		return "", s, false
@@ -236,6 +246,7 @@ func readQuotedToken(s string) (tok, rest string, ok bool) {
 	return "", s, false
 }
 
+// nextShellToken 取下一个词。以引号开头且能闭合时返回引号内的内容。
 func nextShellToken(s string) (tok, rest string) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -254,6 +265,7 @@ func nextShellToken(s string) (tok, rest string) {
 	return s[:i], s[i:]
 }
 
+// startProcessCommand 拼出 powershell -NoProfile -Command "Start-Process -WindowStyle Hidden ..."。参数用单引号包住。
 func startProcessCommand(file string, args []string) string {
 	var b strings.Builder
 	b.WriteString(`powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath `)
@@ -271,10 +283,12 @@ func startProcessCommand(file string, args []string) string {
 	return b.String()
 }
 
+// psSingle 用单引号包裹字符串，内部单引号写成两个。
 func psSingle(s string) string {
 	return "'" + strings.ReplaceAll(s, `'`, `''`) + "'"
 }
 
+// cmdStartHangError 返回挂住说明，文案是 cmdStartHangMsg。
 func cmdStartHangError() error {
 	return fmt.Errorf("%s", cmdStartHangMsg)
 }

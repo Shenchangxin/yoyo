@@ -1,3 +1,5 @@
+// 用 Git 树和少量 SKILL.md 前言补全 Work Buddy 条目的图标和脚本标记。
+
 package skillmarket
 
 import (
@@ -19,6 +21,7 @@ type gitTree struct {
 	} `json:"tree"`
 }
 
+// mergeCachedMeta 按 slug 把旧缓存里的图标、显示名、版本和脚本标记补到新条目上。
 func mergeCachedMeta(items, previous []Item) {
 	if len(previous) == 0 {
 		return
@@ -45,6 +48,7 @@ func mergeCachedMeta(items, previous []Item) {
 	}
 }
 
+// enrichFromTree 拉仓库树，补上目录里有而表格没有的技能，并标记 scripts/ 和常见图标文件。
 func enrichFromTree(items []Item) []Item {
 	var tree gitTree
 	if u := derivedTreeURL(Base); u != "" {
@@ -93,6 +97,7 @@ func enrichFromTree(items []Item) []Item {
 	return items
 }
 
+// appendTreeSkills 把树里 skills/<slug>/SKILL.md 对应、但条目里还没有的 slug 追加进去。
 func appendTreeSkills(items []Item, tree gitTree) []Item {
 	idx := map[string]bool{}
 	for _, it := range items {
@@ -115,6 +120,7 @@ func appendTreeSkills(items []Item, tree gitTree) []Item {
 	return items
 }
 
+// skillRel 要求路径以 skills/ 开头，并拆出 slug 和余下部分。slug 净化失败返回 false。
 func skillRel(p string) (slug, rest string, ok bool) {
 	p = strings.Trim(strings.ReplaceAll(p, "\\", "/"), "/")
 	if !strings.HasPrefix(p, "skills/") {
@@ -132,6 +138,7 @@ func skillRel(p string) (slug, rest string, ok bool) {
 	return slug, rest, true
 }
 
+// enrichFrontmatter 优先拉精选条目的 SKILL.md，最多 24 个，并发数是 8。已有图标和显示名的跳过。
 func enrichFrontmatter(items []Item) {
 	order := make([]int, 0, len(items))
 	for i := range items {

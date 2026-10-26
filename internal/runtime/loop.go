@@ -1,3 +1,4 @@
+// Package runtime 是聊天和评测共用的模型循环。两边走同一个 Run，差别在请求标志，不是两套循环。
 package runtime
 
 import (
@@ -15,6 +16,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// RunRequest 是一次 Run 的输入。SoftHorizon 为假时 MaxTurns 和 MaxToolMessages 是硬边界；为真时是桌面或命令行聊天。
 type RunRequest struct {
 	SessionID        string
 	TurnID           string
@@ -48,40 +50,30 @@ type RunRequest struct {
 	Inject           string
 	PullSteer        func() string
 	Checkpoint       string
-	Stop             *StopReason
+	Stop             *StopReason // 非 nil 时 Run 把停止原因写回这里；nil 表示调用方不接收原因
 	StopHooks        []FileHook
 	PreCompactHooks  []FileHook
 	ProfileMemory    string
 	PageContext      string
-	// RoundSeq is the highest assistant round already on this session's
-	// JSONL (rN). The next chat call uses N+1 so live UI keys never collide
-	// with bubbles still on screen after a checkpoint rebuild.
+	// RoundSeq 是这条会话 JSONL 上已经有过的最大助手回合号 rN。下一次模型调用用 N+1，避免检查点重建后和界面上还在的气泡撞号。小于等于 0 时，Run 改按 History 里的助手消息条数起算。
 	RoundSeq int
-	// SoftHorizon is desktop/CLI chat only (I6). Harbor eval and subagents
-	// leave it false so MaxTurns / MaxToolMessages stay hard bounds.
-	// Chat stops on end_turn (with an open-plan continue), cancel, budget,
-	// overflow, an unchanged-observation circuit breaker, or
-	// ChatSoftGuardTurns — not because Harbor MaxTurns ran out while the
-	// observation was still changing. Identical tool arguments only remind.
+	// SoftHorizon 只给桌面和命令行聊天。评测和子代理保持 false，MaxTurns 与 MaxToolMessages 仍是硬边界。
+	// 为真时，停止来自结束回合、取消、预算、溢出、观察没有变化，或 ChatSoftGuardTurns。观察仍在变化时，不会因为评测那档 MaxTurns 用尽而停。相同工具参数只发提醒。
 	SoftHorizon bool
-	// ShowThinking streams provider reasoning into the transcript. Off by
-	// default: many OpenAI-compatible endpoints reject thinking fields.
+	// ShowThinking 为真时把供应商推理流进记录。零值 false：不少 OpenAI 兼容端点会拒绝思考字段。
 	ShowThinking bool
-	// MaxOutputTokens caps one model reply. Zero leaves the provider default.
-	// Desktop chat sets it from the model catalog so a long file body fits one
-	// reply; when a reply is still cut off, the loop refuses the partial tool
-	// call and asks for it in parts (see truncation.go).
+	// MaxOutputTokens 限制一次模型回复的输出 token。零值交给供应商默认。回复仍被切断时，循环拒绝半截工具调用，并要求分段再写，见 truncation.go。
 	MaxOutputTokens int
-	// UserCommitted means the operator row is already on JSONL. seed() still
-	// appends it to the model transcript but must not emit a second TypeUser.
+	// UserCommitted 为真表示操作者那一行已经在 JSONL 上。seed 仍把它放进模型记录，但不能再发第二条 TypeUser。零值 false 时 seed 会发出 TypeUser。
 	UserCommitted bool
-	// RequestID is the compositor's optimistic send id. Seed stamps it on TypeUser
-	// so the renderer can replace the local echo instead of doubling the bubble.
+	// RequestID 是合成器乐观发送的 id。seed 把它盖在 TypeUser 上，渲染器用来替换本地回声，避免气泡出现两次。空串表示没有这张本地回声。
 	RequestID string
 }
 
 var emitSeq atomic.Int64
 
+// Run 跑一轮模型循环。Loop.MaxTurns 小于等于 0 时写成 24，后面的 turnLimit 再小于等于 0 时也写成 24。SoftHorizon 为真时 for 不看 turnLimit。
+// 上下文溢出只重试当前这一步，见下面的溢出分支。Depth 小于 MaxTaskDepth 且 Task 还是 nil 时，把 Task 设为 spawnTask。子代理的循环预设在 tools_task.go。
 func Run(ctx context.Context, req RunRequest) (string, error) {
 	if req.Loop.MaxTurns <= 0 {
 		req.Loop.MaxTurns = 24
@@ -168,15 +160,12 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	if turnLimit <= 0 {
 		turnLimit = 24
 	}
-	// sinceProgress counts model rounds since the last plan step or changed file,
-	// including rounds that produced no tool call. The desktop cap is a
-	// checkpoint while that number stays inside ChatStallWindow, and a stop
-	// once it does not. Counting only tool rounds let a cut-off reply extend
-	// the run forever.
+	// sinceProgress 计的是自上次计划步骤或文件真正变化以来的模型轮数，没有工具调用的轮也算。softGuard 在 turn 到达 192 时才看它：小于 24 就复位并做检查点，不小于 24 就停止。只计工具轮会让被截断的回复把运行拖住不结束。
 	sinceProgress := 0
 	repeats := newRepeatTracker()
 	for turn := 0; req.SoftHorizon || turn < turnLimit; turn++ {
 		if req.SoftHorizon {
+			// stop 时按 ChatSoftGuardTurns 发轮数用尽，原因是 StopMaxTurns。reset 时发出 kind 为 budget_continue 的 compact，并把 turn 置 0；for 在本轮结束时还会加一，下一轮从 1 计。
 			reset, stop := softGuard(turn, sinceProgress)
 			if stop {
 				emit(req, trace.TypeError, "runtime", maxTurnsInfo(ChatSoftGuardTurns).Payload())
@@ -189,9 +178,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 		}
 		if err := ctx.Err(); err != nil {
-			// Interrupt landed between a tool batch and the next model call.
-			// The UI only learns a turn is over from a terminal event, so do
-			// not return silently — same card the mid-stream cancel path shows.
+			// 打断落在一批工具和下一次模型调用之间。界面只从终局事件知道这一轮结束，所以这里不能悄悄返回，卡片和流中途取消是同一张。
 			emit(req, trace.TypeError, "runtime", ClassifyError(err).Payload())
 			setStop(&req, StopCancelled)
 			return last, stopErr(StopCancelled, err.Error(), err)
@@ -222,9 +209,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			req.OnShape(report)
 		}
 		if report.Note != "" {
-			// The per-round projection ledger is sampled. Logging it every round
-			// wrote one record per model call (257 in session facb2e21ba0b31a3)
-			// without adding information. Checkpoints always log.
+			// 每轮投影账本抽样写入。每轮都记会让每次模型调用都落一条，会话 facb2e21ba0b31a3 里有 257 条，并不增加信息。检查点（Trigger 非空）始终写入。roundSeq 能被 shapeLogEvery（16）整除时也写入。
 			if roundSeq%shapeLogEvery == 0 || report.Trigger != "" {
 				emit(req, trace.TypeCompact, "runtime", reportPayload(report, nil))
 			}
@@ -237,6 +222,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
 		emitStepStart(req, turnNo, roundSeq, roundID, roundID)
 		msg, att, err := completeChat(ctx, req, chatReq, roundID, turnNo, roundSeq)
+		// 上下文溢出时 overflowFails 加一。这次调用最终没有错误时，计数清零。
+		// 加一后仍小于 2：做一次 kind 为 overflow 的检查点，再用同一 roundSeq、把 roundID 加上 :retry，重试当前这一步，不进入下一轮 for。这次重试若仍是上下文溢出，改成 StopOverflow。
+		// 加一后已经不小于 2：不再检查点，直接改成 StopOverflow。两种停止的消息都是 context overflow circuit breaker。重试若是别的错误，按那个错误返回，不改成溢出。
 		if err != nil && IsContextOverflow(err) {
 			overflowFails++
 			if overflowFails >= 2 {
@@ -290,8 +278,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			if req.OnShape != nil {
 				req.OnShape(report)
 			}
-			// One record per model call. The turn_end row carries only the last
-			// call, so it cannot show whether the prompt cache held across a turn.
+			// 每次模型调用一条用量。turn_end 只带最后一次调用，看不出提示缓存有没有跨过一整轮保住。
 			emit(req, trace.TypeUsage, "model", map[string]any{
 				"round":             roundID,
 				"prompt_tokens":     msg.PromptTokens,
@@ -325,6 +312,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		msg, cutNudge := trimTruncatedReply(msg)
 		langNudge := ""
+		// SoftHorizon 下可见语言最多改写 2 次。没有工具调用且没有截断催促时，把语言提示追加进消息并进入下一轮，不把这条回复当成结束。
 		if req.SoftHorizon && languageRewrites < 2 {
 			if pin := pinVisibleLanguage(&msg, OperatorVoice(req.User, req.History)); pin != "" {
 				languageRewrites++
@@ -348,8 +336,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		emitSettlement(req, att, msg)
 		if len(msg.ToolCalls) == 0 && cutNudge != "" {
-			// The reply was cut at the output limit. Keep what was said, ask for
-			// the rest, and do not treat the cut as a finished turn.
+			// 回复停在输出上限。留下已经说出的内容并要求续写，不把这次切断当成回合结束。
 			if strings.TrimSpace(msg.Content) != "" {
 				messages = append(messages, msg)
 			}
@@ -360,6 +347,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if len(msg.ToolCalls) == 0 {
 			kernel.notes = persistWorkingMemory(req, messages, kernel.notes)
+			// 计划模式以外，askNudges 还小于 1，且 waitsForNod 为真时，只催这一次并进入下一轮。
 			if !loop.PlanMode && askNudges < 1 && waitsForNod(msg.Content) {
 				askNudges++
 				if strings.TrimSpace(msg.Content) != "" {
@@ -387,11 +375,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				sinceProgress++
 				continue
 			}
-			// The nudge budget is spent, or the model answered in prose after a
-			// nudge. A bare end_turn here reads as a finished task while steps are
-			// still open: the "ghost" stop. Chat turns (SoftHorizon, top level only)
-			// keep the end_turn bookkeeping, tag it, and emit a retryable plan_open
-			// card after it so the operator sees why the run stopped.
+			// 催促次数已经用尽，或催促之后模型改用散文回答。这里若只发普通的 end_turn，步骤还开着，看起来却像任务做完了。聊天回合（SoftHorizon 且 Depth 为 0）仍按结束回合记账，原因改成 plan_open，并在 turn_end 之后再发一张可重试的卡片。
 			var planOpen *ErrorInfo
 			if req.SoftHorizon && !loop.PlanMode && req.Tools != nil && req.Tools.Depth == 0 {
 				if total, open := planSteps(planTextOf(req.Tools)); open > 0 {
@@ -541,6 +525,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	return last, maxTurnsErr()
 }
 
+// middlewareNudge 在本批结果里以前缀 ERROR: 开头的条数达到 MaxRecentToolErrors 时，返回 ToolErrorInstruction。上限小于等于 0 或说明为空时返回空串。计数要求冒号，和诊断日志里的 ERROR 前缀不是同一条规则。
 func middlewareNudge(loop artifact.LoopPreset, results []Message) string {
 	n := loop.MaxRecentToolErrors
 	if n <= 0 || strings.TrimSpace(loop.ToolErrorInstruction) == "" {
@@ -558,6 +543,7 @@ func middlewareNudge(loop artifact.LoopPreset, results []Message) string {
 	return loop.ToolErrorInstruction
 }
 
+// spillOf 返回工具上的 Spill。Tools 为 nil 时返回 nil。
 func spillOf(req RunRequest) *Spill {
 	if req.Tools != nil {
 		return req.Tools.Spill
@@ -565,6 +551,7 @@ func spillOf(req RunRequest) *Spill {
 	return nil
 }
 
+// completeChat 先走 chat。错误文本含 stream 或 sse 时，再改用 Client.Chat 试当前这一步一次。这次成功就用整段回复合成 streamAttempt，不再保留失败的流。
 func completeChat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string, turn, step int) (Message, *streamAttempt, error) {
 	msg, att, err := chat(ctx, req, chatReq, roundID, turn, step)
 	if err != nil && isStreamErr(err) {
@@ -580,6 +567,7 @@ func completeChat(ctx context.Context, req RunRequest, chatReq ChatRequest, roun
 	return msg, att, err
 }
 
+// elapsedMsSince 返回自 started 起的毫秒数。结果小于等于 0 时返回 1。
 func elapsedMsSince(started time.Time) int {
 	n := int(time.Since(started).Milliseconds())
 	if n <= 0 {
@@ -588,6 +576,8 @@ func elapsedMsSince(started time.Time) int {
 	return n
 }
 
+// chat 在 Client 实现 Streamer 时走流。ShowThinking 为假时丢掉推理增量。只读工具的块一结束就在后台预取，recordTrace 为 false，正式 dispatchTools 再发一次轨迹。
+// 上下文取消且已经组装出块时，尝试记为 committed；其他错误记为 abandoned。没有 Streamer 时直接 Client.Chat。
 func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string, turn, step int) (msg Message, att *streamAttempt, err error) {
 	started := time.Now()
 	firstMs := 0
@@ -690,6 +680,10 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 	return msg, att, err
 }
 
+// dispatchTools 执行一批工具调用。调用数大于 1，并且（整批都是只读，或 parallelOK 为真）时并行。parallelOK 从调用数大于 1 起算，任一 exclusiveCall 或任一 parallelizableCall 为假就把它关掉。整批都是只读时，即使调用也标了 exclusive，仍走并行。
+// 信号量容量先取 8。Tools 非空、MaxParallel 大于 0 且小于 8 时，容量改成 MaxParallel。
+// 没进并行时，批次里有 exclusive 就串行。shell 和 run_skill_script 按名字就是 exclusive。web_fetch 和 web_search 的注解 Exclusive 与 OpenWorld 都为真，exclusiveCall 因此为真，而且它们不是只读，所以不能并行。exclusive 只是串行，避免工作目录和环境变量竞态。前面的 shell 失败后，同批后面的写入仍然执行。
+// 其余情况也串行。上下文已取消时，还没执行的调用写成 toolAbortedBeforeDispatch。recordTrace 为 false 时把结果放进 prefetch，不发工具轨迹。
 func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundID string, recordTrace bool) []Message {
 	n := len(calls)
 	out := make([]Message, n)
@@ -829,8 +823,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		}
 		wg.Wait()
 	} else if exclusive {
-		// Exclusive means serial (cwd/env races), not a transaction.
-		// A failed shell must not cancel a sibling write in the same batch.
+		// 串行是为了避开工作目录和环境变量竞态。同批前面的调用失败后，后面的调用仍执行。
 		for i := range jobs {
 			if err := ctx.Err(); err != nil {
 				for j := i; j < n; j++ {
@@ -926,6 +919,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 	return out
 }
 
+// isReadonlyTool 按内置名单判断只读。命中的名字可以并行，也可以在流式块结束时预取。名单之外再看 Extra 和 HostAnn。
 func isReadonlyTool(name string) bool {
 	switch name {
 	case "read_file", "list_dir", "glob", "grep", "load_skill",
@@ -941,6 +935,7 @@ func isReadonlyTool(name string) bool {
 	}
 }
 
+// loadedFrom 返回已加载技能正文，并在有计划或验证提示时附上对应覆盖层。t 为 nil 时返回 nil。
 func loadedFrom(t *WorkspaceTools) []string {
 	if t == nil {
 		return nil
@@ -955,6 +950,7 @@ func loadedFrom(t *WorkspaceTools) []string {
 	return out
 }
 
+// planTextOf 返回当前计划文本。t 为 nil 时返回空串。
 func planTextOf(t *WorkspaceTools) string {
 	if t == nil {
 		return ""
@@ -964,6 +960,7 @@ func planTextOf(t *WorkspaceTools) string {
 	return t.PlanText
 }
 
+// readonlyCall 在内置只读名单、Extra.ReadOnly 或 HostAnn.ReadOnly 任一为真时返回 true。web_fetch 和 web_search 不在此列。
 func readonlyCall(tools *WorkspaceTools, name string) bool {
 	if isReadonlyTool(name) {
 		return true
@@ -977,6 +974,7 @@ func readonlyCall(tools *WorkspaceTools, name string) bool {
 	return ann.ReadOnly
 }
 
+// exclusiveCall 对 shell 和 run_skill_script 按名字返回 true。其他名字再看 Extra 或 HostAnn 的 Exclusive、OpenWorld，有一个为真就是 exclusive。web_fetch 和 web_search 因此返回 true。
 func exclusiveCall(tools *WorkspaceTools, name string) bool {
 	if name == "shell" || name == "run_skill_script" {
 		return true
@@ -990,6 +988,7 @@ func exclusiveCall(tools *WorkspaceTools, name string) bool {
 	return ann.Exclusive || ann.OpenWorld
 }
 
+// parallelizableCall 在 exclusive 时返回 false。否则只读或名字是 task 时返回 true，再不然看 HostAnn.ConcurrencySafe。
 func parallelizableCall(tools *WorkspaceTools, name string) bool {
 	if exclusiveCall(tools, name) {
 		return false
@@ -1000,6 +999,7 @@ func parallelizableCall(tools *WorkspaceTools, name string) bool {
 	return HostAnn(name).ConcurrencySafe
 }
 
+// readOnlySubagentCall 给子代理筛工具。readonlyCall 传入 nil，所以只看内置名单和 HostAnn。此外 web_fetch、web_search、reach_status 也返回 true。这三名在这里算只读，不改变 exclusiveCall：web_fetch 和 web_search 在 dispatchTools 里仍然 exclusive。
 func readOnlySubagentCall(name string) bool {
 	if readonlyCall(nil, name) {
 		return true
@@ -1012,12 +1012,14 @@ func readOnlySubagentCall(name string) bool {
 	}
 }
 
+// setStop 把原因写进 req.Stop。req 或 Stop 指针为 nil 时什么都不做。
 func setStop(req *RunRequest, r StopReason) {
 	if req != nil && req.Stop != nil {
 		*req.Stop = r
 	}
 }
 
+// isStreamErr 在错误文本的小写里含有 stream 或 sse 时返回 true。err 为 nil 时返回 false。
 func isStreamErr(err error) bool {
 	if err == nil {
 		return false
@@ -1026,6 +1028,8 @@ func isStreamErr(err error) bool {
 	return strings.Contains(s, "stream") || strings.Contains(s, "sse")
 }
 
+// applyStopHook 在停止钩子要求继续时返回 true 和一段用户消息。Run 把这段消息追加进记录并进入下一轮，不把原因写成 StopHook。
+// StopHooks 里第一个 Deny 就返回。Reason 为空时用 blocked by .yoyo/hooks.json stop hook。事件总线的 HookStop 出错，或结果 Block 为真，也返回 true。
 func applyStopHook(req RunRequest) (bool, string) {
 	for _, r := range req.StopHooks {
 		if r.Deny {
@@ -1053,8 +1057,10 @@ func applyStopHook(req RunRequest) (bool, string) {
 	return false, ""
 }
 
+// maxPlanContinues 是 6。计划仍开着时，planContinueIfOpen 最多催这么多次。
 const maxPlanContinues = 6
 
+// planContinueIfOpen 在计划模式、没有工具或计划已完成时返回空串。催促次数已经不小于 6，或上次催促之后工具条数没变，也返回空串。否则次数加一，并记下当时的工具条数。
 func planContinueIfOpen(req RunRequest, planMode bool, toolCount int, continues *int, toolsAt *int) string {
 	if planMode || req.Tools == nil {
 		return ""
@@ -1077,12 +1083,13 @@ func planContinueIfOpen(req RunRequest, planMode bool, toolCount int, continues 
 	return voiceNudge(req, planContinueNudge, planContinueNudgeZH)
 }
 
+// PlanOpen 在计划里至少有一条清单、且还有未完成步骤时返回 true。
 func PlanOpen(plan string) bool {
 	total, open := planSteps(plan)
 	return total > 0 && open > 0
 }
 
-// planSteps counts checklist lines in a plan as (total, open).
+// planSteps 把计划里的清单行数成总数和未完成数。认得出的完成状态不计入 open。
 func planSteps(plan string) (total, open int) {
 	for _, line := range strings.Split(plan, "\n") {
 		st, ok := planLineStatus(line)
@@ -1097,6 +1104,7 @@ func planSteps(plan string) (total, open int) {
 	return total, open
 }
 
+// planLineStatus 从清单行取出方括号里的状态。序号点号必须出现在前四个字节内，点号后要有 [status]。对不上时返回空串和 false。
 func planLineStatus(line string) (string, bool) {
 	line = strings.TrimSpace(line)
 	dot := strings.IndexByte(line, '.')
@@ -1114,6 +1122,7 @@ func planLineStatus(line string) (string, bool) {
 	return rest[1:end], true
 }
 
+// planStatusDone 把状态收成小写并把空格、连字符换成下划线。complete、completed、done、finished 返回 true，其余返回 false。
 func planStatusDone(raw string) bool {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	s = strings.ReplaceAll(s, " ", "_")
@@ -1126,6 +1135,7 @@ func planStatusDone(raw string) bool {
 	}
 }
 
+// lastUserIs 在最后一条消息是用户且 Content 与 text 全等时返回 true。text 去掉空白后为空，或消息列表为空，返回 false。比较本身不去掉 Content 的空白。
 func lastUserIs(msgs []Message, text string) bool {
 	if len(msgs) == 0 || strings.TrimSpace(text) == "" {
 		return false
@@ -1134,13 +1144,16 @@ func lastUserIs(msgs []Message, text string) bool {
 	return last.Role == RoleUser && last.Content == text
 }
 
+// lastStopPayload 是发给 HookStop 的空载荷。
 type lastStopPayload struct{}
 
+// StopHookResult 是停止钩子的返回。Block 为真时 Run 把 Message 追加进记录并继续。Message 为空时 applyStopHook 改用英文句 Stop hook asked to continue。
 type StopHookResult struct {
 	Block   bool
 	Message string
 }
 
+// stripSystem 丢掉 system、developer 和 memory 角色，其余原样保留。
 func stripSystem(msgs []Message) []Message {
 	out := make([]Message, 0, len(msgs))
 	for _, m := range msgs {
@@ -1152,6 +1165,8 @@ func stripSystem(msgs []Message) []Message {
 	return out
 }
 
+// emit 写轨迹并通知实时总线。payload 为 nil 时换成空 map。用户、注入、错误、压缩和审批在没有 id 时生成一个。
+// assistant_stream 不落盘。delta 为真的助手、推理和工具结果不落盘。progress 为真的 tool_call 不落盘。OnEvent 不接收 kind 为空或 shape 的压缩、file_change 和 usage，其余先经过 slimLiveEvent。
 func emit(req RunRequest, typ trace.EventType, source string, payload map[string]any) {
 	if payload == nil {
 		payload = map[string]any{}

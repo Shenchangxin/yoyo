@@ -1,3 +1,5 @@
+// source.go 保存短剧原文，并按窗口、章节和空行给出可切的接缝。
+
 package video
 
 import (
@@ -12,22 +14,36 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
+// 这些数值是原文切片和成片时长估算用的窗口。
 const (
+	// sliceWindow 是默认读取窗口，1800 个字符。
 	sliceWindow     = 1800
+	// sliceOverlap 是相邻切片重叠的字符数，200。
 	sliceOverlap    = 200
+	// maxReadWindow 是一次读取的上限，2400 个字符。
 	maxReadWindow   = 2400
+	// seriesRuneMin 是直接当成连续剧的字符数，2000。
 	seriesRuneMin   = 2000
+	// chapterMinRunes 是靠章节标题判定连续剧时的最少字符数，400。
 	chapterMinRunes = 400
+	// episodeWindow 是分集切分窗口，4000 个字符。
 	episodeWindow   = 4000
+	// maxEpisodeRunes 是单集上限，8000 个字符。
 	maxEpisodeRunes = 8000
+	// minEpisodeRunes 是单集下限，600 个字符。
 	minEpisodeRunes = 600
+	// maxFilmSeconds 是单集成片估算的上限，90 秒。
 	maxFilmSeconds  = 90
+	// minFilmSeconds 是单集成片估算的下限，45 秒。
 	minFilmSeconds  = 45
+	// peekRunes 是切片预览的字符数，180。
 	peekRunes       = 180
 )
 
+// chapterRe 匹配「第…章节回部卷」或 Chapter 加数字，忽略大小写。
 var chapterRe = regexp.MustCompile(`(?mi)(?:^|\n)[ \t]*((第[0-9一二三四五六七八九十百千零两]+[章节回部卷])|(Chapter\s+\d+))`)
 
+// LooksLikeSeries 在去掉空白后不少于 2000 字，或至少两个章节标题且不少于 400 字时返回真。
 func LooksLikeSeries(text string) bool {
 	n := utf8.RuneCountInString(strings.TrimSpace(text))
 	if n >= seriesRuneMin {
@@ -36,6 +52,7 @@ func LooksLikeSeries(text string) bool {
 	return len(chapterStarts(text)) >= 2 && n >= chapterMinRunes
 }
 
+// IngestSource 写入原文。剧不存在、文本为空，或方案已经是 committed 时失败。同一剧已有原文时沿用原标识。
 func (e *Engine) IngestSource(dramaID, text, title string) (Source, error) {
 	if _, err := e.GetDrama(dramaID); err != nil {
 		return Source{}, err
@@ -66,6 +83,7 @@ func (e *Engine) IngestSource(dramaID, text, title string) (Source, error) {
 	return src, nil
 }
 
+// IngestSourceFile 读取 txt、md 原文，或用 office.Query 抽出 docx、pdf、pptx、xlsx。其他扩展名在前 800 字节里空字节超过二十分之一时拒绝。标题取文件名去掉扩展名。
 func (e *Engine) IngestSourceFile(dramaID, path string) (Source, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -75,7 +93,7 @@ func (e *Engine) IngestSourceFile(dramaID, path string) (Source, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".txt", ".md", ".markdown":
-		// already text
+		// txt 和 md 本身就是文本。
 	case ".docx", ".pdf", ".pptx", ".xlsx":
 		extracted, err := queryOfficeText(path)
 		if err != nil {
@@ -91,6 +109,7 @@ func (e *Engine) IngestSourceFile(dramaID, path string) (Source, error) {
 	return e.IngestSource(dramaID, text, title)
 }
 
+// GetSource 按剧标识找出原文。没有时返回 source not found。
 func (e *Engine) GetSource(dramaID string) (Source, error) {
 	for _, s := range loadCol[Source](e, colSources) {
 		if s.DramaID == dramaID {
@@ -100,6 +119,7 @@ func (e *Engine) GetSource(dramaID string) (Source, error) {
 	return Source{}, fmt.Errorf("source not found")
 }
 
+// SourceText 先读 sources 目录里的文本，没有再按哈希从内容寻址取出。
 func (e *Engine) SourceText(src Source) (string, error) {
 	p := filepath.Join(e.Dir, "sources", src.ID+".txt")
 	if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
@@ -114,6 +134,7 @@ func (e *Engine) SourceText(src Source) (string, error) {
 	return "", fmt.Errorf("source text missing")
 }
 
+// ReadSource 按偏移、切片序号或查询读一段原文。切片序号从 1 计。长度空着时用 1800，超过 2400 时截断。不是整篇时 truncated 为真。
 func (e *Engine) ReadSource(dramaID string, offset, length, sliceIndex int, query string) (map[string]any, error) {
 	src, err := e.GetSource(dramaID)
 	if err != nil {
@@ -172,6 +193,7 @@ func (e *Engine) ReadSource(dramaID string, offset, length, sliceIndex int, quer
 	}, nil
 }
 
+// putSourceText 把原文写到 sources/<id>.txt。有内容寻址时再放入并返回哈希，没有时返回空哈希。
 func (e *Engine) putSourceText(id, text string) (string, error) {
 	dir := filepath.Join(e.Dir, "sources")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -186,6 +208,7 @@ func (e *Engine) putSourceText(id, text string) (string, error) {
 	return e.CAS.PutRaw([]byte(text))
 }
 
+// buildSlices 按 1800 字开窗、200 字重叠切开，并带上章节标题和 180 字预览。
 func buildSlices(text string) []SourceSlice {
 	runes := []rune(text)
 	n := len(runes)
@@ -217,6 +240,7 @@ func buildSlices(text string) []SourceSlice {
 	return out
 }
 
+// headingAt 在起点之后 80 字的第一行匹配章节标题时返回该行。
 func headingAt(runes []rune, start int) string {
 	if start < 0 || start >= len(runes) {
 		return ""
@@ -232,6 +256,7 @@ func headingAt(runes []rune, start int) string {
 	return ""
 }
 
+// CandidateSeams 收集 0、文末、章节标题、空行，以及每隔 1600 字的位置。正则吃到的行首换行会再记下一字。
 func CandidateSeams(text string) []int {
 	runes := []rune(text)
 	n := len(runes)
@@ -247,7 +272,7 @@ func CandidateSeams(text string) []int {
 	}
 	for _, m := range chapterRe.FindAllStringIndex(text, -1) {
 		add(utf8.RuneCountInString(text[:m[0]]))
-		// skip the leading newline captured by the regex
+		// 正则吃进的行首换行要跳过。
 		if m[0] < len(text) && (text[m[0]] == '\n' || text[m[0]] == '\r') {
 			add(utf8.RuneCountInString(text[:m[0]]) + 1)
 		}
@@ -272,6 +297,7 @@ func CandidateSeams(text string) []int {
 	return out
 }
 
+// chapterStarts 返回去重并排序后的章节起点。行首换行不计入起点。
 func chapterStarts(text string) []int {
 	var out []int
 	seen := map[int]bool{}
@@ -290,6 +316,7 @@ func chapterStarts(text string) []int {
 	return out
 }
 
+// snapToSeam 返回离目标最近的接缝。接缝为空时返回原位置。
 func snapToSeam(seams []int, pos int) int {
 	if len(seams) == 0 {
 		return pos
@@ -304,6 +331,7 @@ func snapToSeam(seams []int, pos int) int {
 	return best
 }
 
+// runeSlice 按字符下标截取，越界时夹到文本两端。
 func runeSlice(text string, start, end int) string {
 	runes := []rune(text)
 	n := len(runes)
@@ -319,6 +347,7 @@ func runeSlice(text string, start, end int) string {
 	return string(runes[start:end])
 }
 
+// filmTarget 按每分钟 500 字再除以 6 估算成片秒数。不足 400 字时返回 30。400 字及以上夹在 45 到 90 秒。空文本返回 45。
 func filmTarget(sourceRunes int) int {
 	if sourceRunes < 1 {
 		return minFilmSeconds
@@ -336,6 +365,7 @@ func filmTarget(sourceRunes int) int {
 	return sec
 }
 
+// minInt 返回两个整数里较小的一个。
 func minInt(a, b int) int {
 	if a < b {
 		return a
@@ -343,6 +373,7 @@ func minInt(a, b int) int {
 	return b
 }
 
+// maxInt 返回两个整数里较大的一个。
 func maxInt(a, b int) int {
 	if a > b {
 		return a
@@ -350,6 +381,7 @@ func maxInt(a, b int) int {
 	return b
 }
 
+// absInt 返回整数的绝对值。
 func absInt(n int) int {
 	if n < 0 {
 		return -n
@@ -357,6 +389,7 @@ func absInt(n int) int {
 	return n
 }
 
+// looksBinary 查看前 800 字节，空字节超过二十分之一时当成二进制。
 func looksBinary(b []byte) bool {
 	n := len(b)
 	if n > 800 {
@@ -371,6 +404,7 @@ func looksBinary(b []byte) bool {
 	return zeros > n/20
 }
 
+// queryOfficeText 调用 office.Query 抽出办公文档里的文本。
 func queryOfficeText(path string) (string, error) {
 	return office.Query(path)
 }

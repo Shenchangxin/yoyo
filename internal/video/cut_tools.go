@@ -1,3 +1,5 @@
+// cut_tools.go 列出剪辑工具和两条路由工具，并按名字调用。
+
 package video
 
 import (
@@ -5,6 +7,7 @@ import (
 	"strings"
 )
 
+// CutToolNames 按 CutToolSpecs 的顺序返回剪辑工具名。
 func CutToolNames() []string {
 	specs := CutToolSpecs()
 	out := make([]string, 0, len(specs))
@@ -14,10 +17,12 @@ func CutToolNames() []string {
 	return out
 }
 
+// ConductorToolNames 返回 video_route 和 provider_menu。
 func ConductorToolNames() []string {
 	return []string{"video_route", "provider_menu"}
 }
 
+// CutToolSpecs 返回剪辑工程从创建、分析、提议、拼接到字幕、配音和调色的工具规格。Desc 是给模型看的说明。
 func CutToolSpecs() []ToolSpec {
 	str := map[string]any{"type": "string"}
 	num := map[string]any{"type": "number"}
@@ -47,6 +52,7 @@ func CutToolSpecs() []ToolSpec {
 	}
 }
 
+// ConductorToolSpecs 返回打开工作台的 video_route，以及列出已启用且有密钥的账号的 provider_menu。
 func ConductorToolSpecs() []ToolSpec {
 	str := map[string]any{"type": "string"}
 	obj := func(props map[string]any, req ...string) map[string]any {
@@ -62,6 +68,7 @@ func ConductorToolSpecs() []ToolSpec {
 	}
 }
 
+// CutTool 按名字调用剪辑或路由。参数里没有工程标识时用会话绑定。cut_mix 在 duck 缺省时为真，字符串 0 或 false 时为假。未知名字返回 unknown cut tool。
 func (e *Engine) CutTool(sessionID, name string, args map[string]any) (string, error) {
 	if args == nil {
 		args = map[string]any{}

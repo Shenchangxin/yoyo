@@ -1,7 +1,10 @@
+// types.go 定义短剧、分集、资产、镜头和排队任务的数据结构。
+
 package video
 
 import "encoding/json"
 
+// Mode 是一种工作台的标识、标题、提示和是否就绪。
 type Mode struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -9,6 +12,7 @@ type Mode struct {
 	Ready bool   `json:"ready"`
 }
 
+// Modes 返回短剧、画布和短片三种工作台，Ready 都为真。
 func Modes() []Mode {
 	return []Mode{
 		{ID: "drama", Title: "Short drama", Hint: "Novel to episode: script, assets, shots, stitch.", Ready: true},
@@ -17,6 +21,7 @@ func Modes() []Mode {
 	}
 }
 
+// Provider 是一条供应商配置，含服务类型、基址、保险库键名和模型。
 type Provider struct {
 	ID          string `json:"id"`
 	ServiceType string `json:"service_type"`
@@ -35,6 +40,7 @@ type Provider struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+// Style 是一条视觉风格的名字、取值和提示词。
 type Style struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -45,6 +51,7 @@ type Style struct {
 	IsActive    bool   `json:"is_active"`
 }
 
+// Job 是一次生成任务，记下供应商、远程标识、结果哈希和所属的剧、集、镜头或资产。
 type Job struct {
 	ID           string `json:"id"`
 	Type         string `json:"type"`
@@ -69,6 +76,7 @@ type Job struct {
 	CompletedAt  string `json:"completed_at"`
 }
 
+// Drama 是一部短剧的标题、类型、画幅和集数。
 type Drama struct {
 	ID            string `json:"id"`
 	Title         string `json:"title"`
@@ -83,6 +91,7 @@ type Drama struct {
 	UpdatedAt     string `json:"updated_at"`
 }
 
+// Episode 是一集的正文、剧本、供应商、分辨率和流水线状态。
 type Episode struct {
 	ID              string `json:"id"`
 	DramaID         string `json:"drama_id"`
@@ -105,6 +114,7 @@ type Episode struct {
 	UpdatedAt       string `json:"updated_at"`
 }
 
+// Character 是短剧里的一个角色，含外形、定妆提示词和静帧哈希。
 type Character struct {
 	ID               string `json:"id"`
 	DramaID          string `json:"drama_id"`
@@ -119,6 +129,7 @@ type Character struct {
 	FirstSeenEpisode int    `json:"first_seen_episode,omitempty"`
 }
 
+// Scene 是一个场景的地点、时段、光线和静帧哈希。
 type Scene struct {
 	ID          string `json:"id"`
 	DramaID     string `json:"drama_id"`
@@ -131,6 +142,7 @@ type Scene struct {
 	Linked      bool   `json:"linked"`
 }
 
+// Prop 是一件道具的名字、类型和静帧哈希。
 type Prop struct {
 	ID          string `json:"id"`
 	DramaID     string `json:"drama_id"`
@@ -142,6 +154,7 @@ type Prop struct {
 	Linked      bool   `json:"linked"`
 }
 
+// Shot 是一个镜头的景别、运动、时长、视频哈希，以及挂上的角色和道具。
 type Shot struct {
 	ID           string   `json:"id"`
 	EpisodeID    string   `json:"episode_id"`
@@ -162,6 +175,7 @@ type Shot struct {
 	PropIDs      []string `json:"prop_ids"`
 }
 
+// EpisodeBundle 把一集和它的剧、资产、镜头、任务、时长计划放在一起。
 type EpisodeBundle struct {
 	Drama      Drama        `json:"drama"`
 	Episode    Episode      `json:"episode"`
@@ -173,6 +187,7 @@ type EpisodeBundle struct {
 	Plan       DurationPlan `json:"plan"`
 }
 
+// SourceSlice 是原文的一段，含起止下标、标题和预览。
 type SourceSlice struct {
 	Index   int    `json:"index"`
 	Start   int    `json:"start"`
@@ -181,6 +196,7 @@ type SourceSlice struct {
 	Peek    string `json:"peek"`
 }
 
+// Source 是一部剧的原文哈希、字数和切片。
 type Source struct {
 	ID        string        `json:"id"`
 	DramaID   string        `json:"drama_id"`
@@ -192,6 +208,7 @@ type Source struct {
 	UpdatedAt string        `json:"updated_at"`
 }
 
+// PlanEpisode 是分集方案里的一集，含钩子、原文区间和目标秒数。
 type PlanEpisode struct {
 	N             int      `json:"n"`
 	Title         string   `json:"title"`
@@ -204,6 +221,7 @@ type PlanEpisode struct {
 	EpisodeID     string   `json:"episode_id,omitempty"`
 }
 
+// EpisodePlan 是一部剧的分集方案及其状态。
 type EpisodePlan struct {
 	ID         string        `json:"id"`
 	DramaID    string        `json:"drama_id"`
@@ -216,6 +234,7 @@ type EpisodePlan struct {
 	UpdatedAt  string        `json:"updated_at"`
 }
 
+// JobParams 是排队任务携带的尺寸、参考、画布节点和重试信息。
 type JobParams struct {
 	Size               string          `json:"size,omitempty"`
 	ReferenceImages    []string        `json:"reference_images,omitempty"`
@@ -253,6 +272,7 @@ type JobParams struct {
 	StudioKind         string          `json:"studio_kind,omitempty"`
 }
 
+// EnqueueImage 是入队一张静帧时的提示词、模型、尺寸和引用。
 type EnqueueImage struct {
 	Prompt          string
 	Model           string
@@ -270,6 +290,7 @@ type EnqueueImage struct {
 	StudioKind      string
 }
 
+// EnqueueVideo 是入队一段视频时的提示词、时长、画幅和引用。
 type EnqueueVideo struct {
 	Prompt      string
 	Model       string

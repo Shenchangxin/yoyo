@@ -1,3 +1,5 @@
+// 本文件拥有单个文件的预览和它的差异。不拥有差异正文怎么来。调用方传入 path、hunks 和 onClose。
+
 import { useEffect, useState, type ReactNode } from "react";
 import { Columns2, ExternalLink, Rows3, TextQuote, X } from "lucide-react";
 import { Tooltip } from "../components/ui/tooltip";
@@ -8,6 +10,7 @@ import type { Hunk } from "../lib/protocol";
 import { normPath } from "./FileTree";
 import { WorkspaceFileView } from "./transcript/FilePreview";
 
+// FilePeek 按路径末段显示名字。换路径时回到文件视图。没有属于这个文件的 hunk 时只能看文件。差异正文截到 8000。Escape 关闭。
 export function FilePeek(props: {
   workspace?: string;
   path: string;
@@ -122,6 +125,7 @@ export function FilePeek(props: {
   );
 }
 
+// 带提示的方形按钮。引用按钮写入 @file: 加当前路径。
 function PeekAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip content={label}>

@@ -1,3 +1,5 @@
+// 锁住多条聊天供应商可以并存、自定义供应商不吃 OPENAI_API_KEY，以及新会话跟随设置里的默认连接。
+
 package app_test
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// TestChatProvidersParallelAndClientFor 锁住后添加的供应商不抢走默认项，ClientFor 指定连接时主路线用该连接，失败转移里仍有原默认连接。
 func TestChatProvidersParallelAndClientFor(t *testing.T) {
 	t.Setenv("YOYO_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
@@ -121,6 +124,7 @@ func TestChatProvidersParallelAndClientFor(t *testing.T) {
 	}
 }
 
+// TestClientForCustomProviderIgnoresOpenAIEnv 锁住自定义默认供应商的密钥是保存的 gw-token，不用环境变量 OPENAI_API_KEY。空 SessionMeta 同样用该密钥。
 func TestClientForCustomProviderIgnoresOpenAIEnv(t *testing.T) {
 	t.Setenv("YOYO_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "env-openai-should-not-leak")
@@ -169,6 +173,7 @@ func TestClientForCustomProviderIgnoresOpenAIEnv(t *testing.T) {
 	}
 }
 
+// TestNewSessionUsesSettingsDefaultNotLastUsed 锁住另一场会话改了模型之后，新建会话仍用设置里的默认连接和它的密钥。
 func TestNewSessionUsesSettingsDefaultNotLastUsed(t *testing.T) {
 	t.Setenv("YOYO_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "env-openai-should-not-leak")

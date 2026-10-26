@@ -15,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 )
 
+// InboxList 在 RPC 非空时调用 inbox.list，否则走 App.InboxList。
 func (s *Service) InboxList() []inbox.Item {
 	if s.RPC != nil {
 		v, _ := s.call("inbox.list", nil)
@@ -24,6 +25,7 @@ func (s *Service) InboxList() []inbox.Item {
 	return s.App.InboxList()
 }
 
+// InboxMarkRead 在 RPC 非空时调用 inbox.read，否则走 App.InboxMarkRead。
 func (s *Service) InboxMarkRead(id string) {
 	if s.RPC != nil {
 		_, _ = s.call("inbox.read", map[string]any{"id": id})
@@ -32,6 +34,7 @@ func (s *Service) InboxMarkRead(id string) {
 	s.App.InboxMarkRead(id)
 }
 
+// InboxDismiss 在 RPC 非空时调用 inbox.dismiss，并读取 ok。否则走 App.InboxDismiss。
 func (s *Service) InboxDismiss(id string) bool {
 	if s.RPC != nil {
 		v, _ := s.call("inbox.dismiss", map[string]any{"id": id})
@@ -42,6 +45,7 @@ func (s *Service) InboxDismiss(id string) bool {
 	return s.App.InboxDismiss(id)
 }
 
+// ProjectsList 在 RPC 非空时调用 projects.list，否则走 App.ProjectsList。
 func (s *Service) ProjectsList() []project.Project {
 	if s.RPC != nil {
 		v, _ := s.call("projects.list", nil)
@@ -51,6 +55,7 @@ func (s *Service) ProjectsList() []project.Project {
 	return s.App.ProjectsList()
 }
 
+// ProjectCreate 在 RPC 非空时调用 projects.create，否则走 App.ProjectCreate。
 func (s *Service) ProjectCreate(p project.Project) project.Project {
 	if s.RPC != nil {
 		v, _ := s.call("projects.create", p)
@@ -60,6 +65,7 @@ func (s *Service) ProjectCreate(p project.Project) project.Project {
 	return s.App.ProjectCreate(p)
 }
 
+// MemoryList 在 RPC 非空时调用 memory.list，否则走 App.MemoryList。
 func (s *Service) MemoryList(q, kind string) []memory.Item {
 	if s.RPC != nil {
 		v, _ := s.call("memory.list", map[string]any{"q": q, "kind": kind})
@@ -69,6 +75,7 @@ func (s *Service) MemoryList(q, kind string) []memory.Item {
 	return s.App.MemoryList(q, kind)
 }
 
+// MemoryPromote 在 RPC 非空时调用 memory.promote。否则走 App.MemoryPromote。
 func (s *Service) MemoryPromote(id string) bool {
 	if s.RPC != nil {
 		v, _ := s.call("memory.promote", map[string]any{"id": id})
@@ -78,6 +85,7 @@ func (s *Service) MemoryPromote(id string) bool {
 	return s.App.MemoryPromote(id)
 }
 
+// MemoryForget 在 RPC 非空时调用 memory.forget。否则走 App.MemoryForget。
 func (s *Service) MemoryForget(id string) bool {
 	if s.RPC != nil {
 		v, _ := s.call("memory.forget", map[string]any{"id": id})
@@ -87,6 +95,7 @@ func (s *Service) MemoryForget(id string) bool {
 	return s.App.MemoryForget(id)
 }
 
+// ScheduleList 在 RPC 非空时调用 schedule.list，否则走 App.ScheduleList。
 func (s *Service) ScheduleList() []schedule.Job {
 	if s.RPC != nil {
 		v, _ := s.call("schedule.list", nil)
@@ -96,6 +105,7 @@ func (s *Service) ScheduleList() []schedule.Job {
 	return s.App.ScheduleList()
 }
 
+// ScheduleCreate 在 RPC 非空时调用 schedule.create，否则走 App.ScheduleCreate。
 func (s *Service) ScheduleCreate(j schedule.Job) schedule.Job {
 	if s.RPC != nil {
 		v, _ := s.call("schedule.create", j)
@@ -105,6 +115,7 @@ func (s *Service) ScheduleCreate(j schedule.Job) schedule.Job {
 	return s.App.ScheduleCreate(j)
 }
 
+// ScheduleCancel 在 RPC 非空时调用 schedule.cancel。否则走 App.ScheduleCancel。
 func (s *Service) ScheduleCancel(id string) bool {
 	if s.RPC != nil {
 		v, _ := s.call("schedule.cancel", map[string]any{"id": id})
@@ -114,6 +125,7 @@ func (s *Service) ScheduleCancel(id string) bool {
 	return s.App.ScheduleCancel(id)
 }
 
+// TriggerWebhook 在 RPC 非空时调用 schedule.trigger，否则走 App.TriggerWebhook。
 func (s *Service) TriggerWebhook(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("schedule.trigger", map[string]any{"id": id})
@@ -122,6 +134,7 @@ func (s *Service) TriggerWebhook(id string) error {
 	return s.App.TriggerWebhook(id)
 }
 
+// SetSessionConnectors 在 RPC 非空时调用 thread.connectors.set，否则走 App.SetSessionConnectors。
 func (s *Service) SetSessionConnectors(id string, accounts []string) (app.SessionMeta, error) {
 	if s.RPC != nil {
 		v, err := s.call("thread.connectors.set", map[string]any{"session": id, "accounts": accounts})
@@ -130,6 +143,7 @@ func (s *Service) SetSessionConnectors(id string, accounts []string) (app.Sessio
 	return s.App.SetSessionConnectors(id, accounts)
 }
 
+// ConnectorsList 在 RPC 非空时调用 connectors.list，否则走 App.ConnectorsList。
 func (s *Service) ConnectorsList() []connector.Account {
 	if s.RPC != nil {
 		v, _ := s.call("connectors.list", nil)
@@ -139,6 +153,7 @@ func (s *Service) ConnectorsList() []connector.Account {
 	return s.App.ConnectorsList()
 }
 
+// ConnectorCatalog 在 RPC 非空时调用 connectors.catalog，否则走 App.ConnectorCatalog。
 func (s *Service) ConnectorCatalog() []connector.CatalogEntry {
 	if s.RPC != nil {
 		v, _ := s.call("connectors.catalog", nil)
@@ -148,6 +163,7 @@ func (s *Service) ConnectorCatalog() []connector.CatalogEntry {
 	return s.App.ConnectorCatalog()
 }
 
+// ConnectorConnect 在 RPC 非空时调用 connectors.connect，否则走 App.ConnectorConnect。
 func (s *Service) ConnectorConnect(acct connector.Account) connector.Account {
 	if s.RPC != nil {
 		v, _ := s.call("connectors.connect", acct)
@@ -157,6 +173,7 @@ func (s *Service) ConnectorConnect(acct connector.Account) connector.Account {
 	return s.App.ConnectorConnect(acct)
 }
 
+// IsolationReport 在 RPC 非空时调用 isolation.report，否则走 App.IsolationReport。
 func (s *Service) IsolationReport() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("isolation.report", nil)
@@ -166,6 +183,7 @@ func (s *Service) IsolationReport() map[string]any {
 	return s.App.IsolationReport()
 }
 
+// ReviewQueue 在 RPC 非空时调用 review.queue，否则走 App.ReviewQueue。
 func (s *Service) ReviewQueue() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("review.queue", nil)
@@ -175,6 +193,7 @@ func (s *Service) ReviewQueue() map[string]any {
 	return s.App.ReviewQueue()
 }
 
+// BrowserView 在 RPC 非空时调用 browser.view。没有 App 时返回 lane 为 isolated、live 为假、log 为空切片。否则走 App.BrowserView。
 func (s *Service) BrowserView() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("browser.view", nil)
@@ -187,10 +206,12 @@ func (s *Service) BrowserView() map[string]any {
 	return s.App.BrowserView()
 }
 
+// BrowserTakeover 调用 BrowserTakeoverAt，路径为空。
 func (s *Service) BrowserTakeover() error {
 	return s.BrowserTakeoverAt("")
 }
 
+// BrowserTakeoverAt 在 RPC 非空时调用 browser.takeover。没有 App 时返回 nil。否则走 App.BrowserTakeoverAt。
 func (s *Service) BrowserTakeoverAt(path string) error {
 	if s.RPC != nil {
 		_, err := s.call("browser.takeover", map[string]any{"path": path})
@@ -202,6 +223,7 @@ func (s *Service) BrowserTakeoverAt(path string) error {
 	return s.App.BrowserTakeoverAt(path)
 }
 
+// PhoneStatus 在 RPC 非空时调用 phone.status，否则走 App.PhoneStatus。
 func (s *Service) PhoneStatus() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("phone.status", nil)
@@ -211,6 +233,7 @@ func (s *Service) PhoneStatus() map[string]any {
 	return s.App.PhoneStatus()
 }
 
+// StartMCPHTTP 在 RPC 非空时调用 mcp.start_http，否则走 App.StartMCPHTTP。
 func (s *Service) StartMCPHTTP(name, endpoint string) error {
 	if s.RPC != nil {
 		_, err := s.call("mcp.start_http", map[string]any{"name": name, "endpoint": endpoint})
@@ -219,6 +242,7 @@ func (s *Service) StartMCPHTTP(name, endpoint string) error {
 	return s.App.StartMCPHTTP(name, endpoint)
 }
 
+// AdmitExpert 在 RPC 非空时调用 expert.admit，否则走 App.AdmitExpert。
 func (s *Service) AdmitExpert(dir string) (expert.Pack, error) {
 	if s.RPC != nil {
 		return decode[expert.Pack](s.call("expert.admit", map[string]any{"dir": dir}))
@@ -226,6 +250,7 @@ func (s *Service) AdmitExpert(dir string) (expert.Pack, error) {
 	return s.App.AdmitExpert(dir)
 }
 
+// DistillExpert 在 RPC 非空时调用 expert.distill，并返回 path。否则走 App.DistillExpert。
 func (s *Service) DistillExpert(name, description, body string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("expert.distill", map[string]any{"name": name, "description": description, "body": body})
@@ -236,10 +261,12 @@ func (s *Service) DistillExpert(name, description, body string) (string, error) 
 	return s.App.DistillExpert(name, description, body)
 }
 
+// ClipboardRead 读取本机剪贴板，不经过 RPC。
 func (s *Service) ClipboardRead() (string, error) {
 	return osutil.ClipboardRead()
 }
 
+// Screenshot 把去掉空白并 Clean 过的路径交给本机截图。路径为空时返回 screenshot path required。不经过 RPC。
 func (s *Service) Screenshot(path string) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -248,10 +275,12 @@ func (s *Service) Screenshot(path string) error {
 	return osutil.Screenshot(filepath.Clean(path))
 }
 
+// RaiseWindow 对主窗口调用 Raise。
 func (s *Service) RaiseWindow() {
 	Raise(s.win)
 }
 
+// RaiseSession 先 RaiseWindow。gui 非空且 id 去掉空白后非空时，发出 yoyo:focus，载荷是这个 id。
 func (s *Service) RaiseSession(id string) {
 	s.RaiseWindow()
 	if s.gui != nil && strings.TrimSpace(id) != "" {
@@ -259,6 +288,7 @@ func (s *Service) RaiseSession(id string) {
 	}
 }
 
+// ComputerAllow 在 RPC 非空时调用 computer.allow，字段名是 app。否则走 App.ComputerAllow。
 func (s *Service) ComputerAllow(name string) {
 	if s.RPC != nil {
 		_, _ = s.call("computer.allow", map[string]any{"app": name})
@@ -267,6 +297,7 @@ func (s *Service) ComputerAllow(name string) {
 	s.App.ComputerAllow(name)
 }
 
+// ConnectorAuthURL 在 RPC 非空时调用 connectors.auth_url。同进程忽略 ConnectorAuthURL 的错误，只返回 map。
 func (s *Service) ConnectorAuthURL(provider, clientID, redirect string) map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("connectors.auth_url", map[string]any{"provider": provider, "client_id": clientID, "redirect": redirect})
@@ -277,6 +308,7 @@ func (s *Service) ConnectorAuthURL(provider, clientID, redirect string) map[stri
 	return m
 }
 
+// ConnectorStoreToken 在 RPC 非空时调用 connectors.token，否则走 App.ConnectorStoreToken。
 func (s *Service) ConnectorStoreToken(id, token string) error {
 	if s.RPC != nil {
 		_, err := s.call("connectors.token", map[string]any{"id": id, "token": token})
@@ -285,6 +317,7 @@ func (s *Service) ConnectorStoreToken(id, token string) error {
 	return s.App.ConnectorStoreToken(id, token)
 }
 
+// ConnectorComplete 在 RPC 非空时调用 connectors.complete，否则走 App.ConnectorComplete。
 func (s *Service) ConnectorComplete(provider, code, clientID, secret, redirect string) (connector.Account, error) {
 	if s.RPC != nil {
 		v, err := s.call("connectors.complete", map[string]any{
@@ -295,6 +328,7 @@ func (s *Service) ConnectorComplete(provider, code, clientID, secret, redirect s
 	return s.App.ConnectorComplete(provider, code, clientID, secret, redirect)
 }
 
+// ConnectorDisconnect 在 RPC 非空时调用 connectors.disconnect，并读取 ok。否则走 App.ConnectorDisconnect。
 func (s *Service) ConnectorDisconnect(id string) bool {
 	if s.RPC != nil {
 		v, _ := s.call("connectors.disconnect", map[string]any{"id": id})
@@ -305,6 +339,7 @@ func (s *Service) ConnectorDisconnect(id string) bool {
 	return s.App.ConnectorDisconnect(id)
 }
 
+// PersonalSnapshot 在 RPC 非空时调用 personal.snapshot，否则走 App.PersonalSnapshot。
 func (s *Service) PersonalSnapshot() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("personal.snapshot", nil)
@@ -314,6 +349,7 @@ func (s *Service) PersonalSnapshot() map[string]any {
 	return s.App.PersonalSnapshot()
 }
 
+// PersonalAnswer 在 RPC 非空时调用 personal.answer，否则走 App.PersonalAnswer。
 func (s *Service) PersonalAnswer(id, text string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.answer", map[string]any{"id": id, "text": text})
@@ -321,6 +357,7 @@ func (s *Service) PersonalAnswer(id, text string) (any, error) {
 	return s.App.PersonalAnswer(id, text)
 }
 
+// PersonalDecide 在 RPC 非空时调用 personal.decide，否则走 App.PersonalDecide。
 func (s *Service) PersonalDecide(id, hash string, approve bool) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.decide", map[string]any{"id": id, "hash": hash, "approve": approve})
@@ -328,6 +365,7 @@ func (s *Service) PersonalDecide(id, hash string, approve bool) (any, error) {
 	return s.App.PersonalDecide(id, hash, approve)
 }
 
+// PersonalIdea 在 RPC 非空时调用 personal.idea，否则走 App.PersonalIdea。
 func (s *Service) PersonalIdea(id, action string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.idea", map[string]any{"id": id, "action": action})
@@ -335,6 +373,7 @@ func (s *Service) PersonalIdea(id, action string) (any, error) {
 	return s.App.PersonalIdea(id, action)
 }
 
+// PersonalGoal 在 RPC 非空时调用 personal.goal，否则走 App.PersonalGoal。
 func (s *Service) PersonalGoal(title, description string, milestones []string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.goal", map[string]any{"title": title, "description": description, "milestones": milestones})
@@ -342,6 +381,7 @@ func (s *Service) PersonalGoal(title, description string, milestones []string) (
 	return s.App.PersonalGoal(title, description, milestones)
 }
 
+// PersonalWatch 在 RPC 非空时调用 personal.watch，间隔字段是 interval_minutes。否则走 App.PersonalWatch。
 func (s *Service) PersonalWatch(title, url, condition, value string, interval int) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.watch", map[string]any{"title": title, "url": url, "condition": condition, "value": value, "interval_minutes": interval})
@@ -349,6 +389,7 @@ func (s *Service) PersonalWatch(title, url, condition, value string, interval in
 	return s.App.PersonalWatch(title, url, condition, value, interval)
 }
 
+// PersonalCancel 在 RPC 非空时调用 personal.cancel，否则走 App.PersonalCancel。
 func (s *Service) PersonalCancel(id string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.cancel", map[string]any{"id": id})
@@ -356,6 +397,7 @@ func (s *Service) PersonalCancel(id string) (any, error) {
 	return s.App.PersonalCancel(id)
 }
 
+// PersonalChoice 在 RPC 非空时调用 personal.choice，否则走 App.PersonalChoice。
 func (s *Service) PersonalChoice(id, option string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.choice", map[string]any{"id": id, "option": option})
@@ -363,6 +405,7 @@ func (s *Service) PersonalChoice(id, option string) (any, error) {
 	return s.App.PersonalChoice(id, option)
 }
 
+// PersonalPause 在 RPC 非空时调用 personal.pause，否则走 App.PersonalPause。
 func (s *Service) PersonalPause(id string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.pause", map[string]any{"id": id})
@@ -370,6 +413,7 @@ func (s *Service) PersonalPause(id string) (any, error) {
 	return s.App.PersonalPause(id)
 }
 
+// PersonalResume 在 RPC 非空时调用 personal.resume，否则走 App.PersonalResume。
 func (s *Service) PersonalResume(id string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.resume", map[string]any{"id": id})
@@ -377,6 +421,7 @@ func (s *Service) PersonalResume(id string) (any, error) {
 	return s.App.PersonalResume(id)
 }
 
+// PersonalRetry 在 RPC 非空时调用 personal.retry，否则走 App.PersonalRetry。
 func (s *Service) PersonalRetry(id string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.retry", map[string]any{"id": id})
@@ -384,6 +429,7 @@ func (s *Service) PersonalRetry(id string) (any, error) {
 	return s.App.PersonalRetry(id)
 }
 
+// PersonalGoalStatus 在 RPC 非空时调用 personal.goal.status，否则走 App.PersonalGoalStatus。
 func (s *Service) PersonalGoalStatus(id, status string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.goal.status", map[string]any{"id": id, "status": status})
@@ -391,6 +437,7 @@ func (s *Service) PersonalGoalStatus(id, status string) (any, error) {
 	return s.App.PersonalGoalStatus(id, status)
 }
 
+// PersonalMilestone 在 RPC 非空时调用 personal.milestone，否则走 App.PersonalMilestone。
 func (s *Service) PersonalMilestone(goalID, milestoneID string, done bool) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.milestone", map[string]any{"goal_id": goalID, "milestone_id": milestoneID, "done": done})
@@ -398,6 +445,7 @@ func (s *Service) PersonalMilestone(goalID, milestoneID string, done bool) (any,
 	return s.App.PersonalMilestone(goalID, milestoneID, done)
 }
 
+// PersonalMonitorStatus 在 RPC 非空时调用 personal.monitor.status，否则走 App.PersonalMonitorStatus。
 func (s *Service) PersonalMonitorStatus(id, status string) (any, error) {
 	if s.RPC != nil {
 		return s.call("personal.monitor.status", map[string]any{"id": id, "status": status})
@@ -405,6 +453,7 @@ func (s *Service) PersonalMonitorStatus(id, status string) (any, error) {
 	return s.App.PersonalMonitorStatus(id, status)
 }
 
+// MemoryWrite 在 RPC 非空时调用 memory.write，否则走 App.MemoryWrite。
 func (s *Service) MemoryWrite(kind, text, project string) memory.Item {
 	if s.RPC != nil {
 		v, _ := s.call("memory.write", map[string]any{"kind": kind, "text": text, "project": project})

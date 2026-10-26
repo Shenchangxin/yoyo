@@ -1,3 +1,5 @@
+// 锁住供应商探测的错误文案，以及无密钥和 chat/completions 两条路径。
+
 package app
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/vault"
 )
 
+// TestProviderProbeErrorReadsGatewayMsg 锁住 401 网关 JSON 的 msg 被收成 HTTP 401: Authorization header is required。
 func TestProviderProbeErrorReadsGatewayMsg(t *testing.T) {
 	got := providerProbeError(401, `{"code":401,"msg":"Authorization header is required","error_key":"error.auth.authorization_required"}`)
 	if got != "HTTP 401: Authorization header is required" {
@@ -16,6 +19,7 @@ func TestProviderProbeErrorReadsGatewayMsg(t *testing.T) {
 	}
 }
 
+// TestNormalizeAppearanceTrimsBaseURL 锁住 NormalizeAppearance 去掉 BaseURL 末尾空白。
 func TestNormalizeAppearanceTrimsBaseURL(t *testing.T) {
 	c := Config{BaseURL: "https://server.flowyaipc.com/claw/v1 ", Theme: "dark"}
 	c.NormalizeAppearance()
@@ -24,6 +28,7 @@ func TestNormalizeAppearanceTrimsBaseURL(t *testing.T) {
 	}
 }
 
+// TestTestProviderRequiresKey 锁住没有 vault 密钥时 ok 为 false，错误文案是 missing API key — paste the token and Save。
 func TestTestProviderRequiresKey(t *testing.T) {
 	a := &App{Config: Config{BaseURL: "https://server.flowyaipc.com/claw/v1"}}
 	out := a.TestProvider()
@@ -36,6 +41,7 @@ func TestTestProviderRequiresKey(t *testing.T) {
 	}
 }
 
+// TestTestProviderUsesChatCompletions 锁住探测走 POST /chat/completions，不把 /models 的 401 当成结果。
 func TestTestProviderUsesChatCompletions(t *testing.T) {
 	var gotPath, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

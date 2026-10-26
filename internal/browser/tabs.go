@@ -1,3 +1,6 @@
+// 本文件列出、切换、新建和关闭隔离 Chrome 里的 page 标签。
+// 列表来自调试端口的 /json。切换时 dialWS 到那个目标。不调用 runtime.Run。
+
 package browser
 
 import (
@@ -8,7 +11,7 @@ import (
 	"time"
 )
 
-// TabInfo is one page target the isolated Chrome currently has open.
+// TabInfo 是隔离 Chrome 当前打开的一个 page 目标。Active 表示它是宿主正在用的 targetID。
 type TabInfo struct {
 	ID     string `json:"id"`
 	URL    string `json:"url"`
@@ -16,6 +19,7 @@ type TabInfo struct {
 	Active bool   `json:"active"`
 }
 
+// debugAddr 返回 127.0.0.1 加当前端口。端口还没分配时返回空字符串。
 func (h *Host) debugAddr() string {
 	if h == nil {
 		return ""
@@ -29,6 +33,7 @@ func (h *Host) debugAddr() string {
 	return "127.0.0.1:" + strconv.Itoa(port)
 }
 
+// currentTargetID 返回当前 WebSocket 对应的目标 id。
 func (h *Host) currentTargetID() string {
 	if h == nil {
 		return ""
@@ -38,6 +43,7 @@ func (h *Host) currentTargetID() string {
 	return h.targetID
 }
 
+// targetIDFromWS 取 WebSocket 地址最后一个斜杠后面的那段。
 func targetIDFromWS(ws string) string {
 	ws = strings.TrimSpace(ws)
 	if i := strings.LastIndex(ws, "/"); i >= 0 && i+1 < len(ws) {
@@ -46,6 +52,7 @@ func targetIDFromWS(ws string) string {
 	return ""
 }
 
+// ListTabs 确保 Chrome 已启动，再列出 type 为 page 的目标。没有 page 时返回错误。成功后把 tabCount 写成列表长度。
 func (h *Host) ListTabs() ([]TabInfo, error) {
 	if h == nil {
 		return nil, fmt.Errorf("browser: no host")
@@ -87,6 +94,7 @@ func (h *Host) ListTabs() ([]TabInfo, error) {
 	return out, nil
 }
 
+// SwitchTab 按完整 id 或前缀找到 page，dialWS 过去，并同步视图和控件。找不到时返回 no tab matching。
 func (h *Host) SwitchTab(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -134,6 +142,7 @@ func (h *Host) SwitchTab(id string) error {
 	return nil
 }
 
+// NewTab 用 Target.createTarget 开一个标签。raw 空白时用 about:blank。然后在 3 秒内 SwitchTab 到新目标。
 func (h *Host) NewTab(raw string) error {
 	if err := h.ensureCDP(); err != nil {
 		return err
@@ -179,6 +188,7 @@ func (h *Host) NewTab(raw string) error {
 	return fmt.Errorf("browser: created tab but could not switch to it")
 }
 
+// CloseTab 关掉一个标签。id 空白时关当前这个。正在关当前标签且还有别的标签时，先切过去再关。没有别的标签时只清掉 ref。
 func (h *Host) CloseTab(id string) error {
 	if err := h.ensureCDP(); err != nil {
 		return err

@@ -1,7 +1,13 @@
+/**
+ * 本文件拥有短片工作台下一步该去哪一栏的纯判断，以及按钮文案的取词。
+ * 不拥有工作台界面。它不请求服务端，也不改服务端状态。
+ */
 import { projectShots, shotReady, type StudioGate, type StudioProject } from "./studio-model.ts";
 
+/** StudioPane 是雷达、选题、制作、发布四栏。 */
 export type StudioPane = "radar" | "topics" | "assemble" | "publish";
 
+/** StudioNextKey 是下一步按钮可能用到的动作名。 */
 export type StudioNextKey =
   | "collect"
   | "produce"
@@ -14,12 +20,14 @@ export type StudioNextKey =
   | "open"
   | "watch";
 
+/** StudioNext 是下一步的动作名、要去的栏，以及可选的工序。 */
 export type StudioNext = {
   key: StudioNextKey;
   pane: StudioPane;
   gate?: StudioGate;
 };
 
+/** studioNext 按当前短片和所在栏决定下一步。没绑短片时雷达去收集，其他栏去选题开拍。 */
 export function studioNext(current: StudioProject | null | undefined, pane: StudioPane): StudioNext {
   if (!current) {
     if (pane === "topics" || pane === "assemble" || pane === "publish") return { key: "produce", pane: "topics" };
@@ -76,6 +84,7 @@ type NextCopy = {
   promptWatch: string;
 };
 
+/** studioNextCopy 按动作名取下一步按钮的短文案。 */
 export function studioNextCopy(s: NextCopy, key: StudioNextKey) {
   const map: Record<StudioNextKey, string> = {
     collect: s.nextCollect,
@@ -92,6 +101,7 @@ export function studioNextCopy(s: NextCopy, key: StudioNextKey) {
   return map[key];
 }
 
+/** studioNextPrompt 按动作名取下一步要填进输入框的长文案。 */
 export function studioNextPrompt(s: NextCopy, key: StudioNextKey) {
   const map: Record<StudioNextKey, string> = {
     collect: s.promptCollect,

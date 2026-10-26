@@ -1,3 +1,8 @@
+/**
+ * 拥有：转录折叠、计划芯片和过程轨的纯函数用例，不打开浏览器。
+ * 不拥有：这些函数的实现。每条 test 的标题就是这则用例在断言什么。
+ */
+
 import { expect, test } from "@playwright/test";
 import { dropTurnErrors, eventFingerprint, eventText, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount, withLiveTail } from "../src/lib/stream-fold";
 import { layoutRows, processGroupLive, tailProcessPairs, type AgentPart } from "../src/lib/transcript-layout";
@@ -8,10 +13,12 @@ import { structureSig } from "../src/lib/stream-live";
 import type { Item } from "../src/lib/protocol";
 import { itemMatchesTurn, isOutlineActive, itemTurnKey, neighborTurn, outlineTitle, outlineTurnKey, pendingOutline, pickActiveTurnKey, rowMatchesJump, turnJumpAliases } from "../src/lib/turn-outline";
 
+/** visibleParts 把工作组拆成里面的片段，其余片段原样留下。 */
 function visibleParts(parts: AgentPart[]): AgentPart[] {
   return parts.flatMap((p) => (p.kind === "work" ? p.parts : [p]));
 }
 
+/** liveUser 用一条用户事件造出实时转录条目。extra 并进 payload。 */
 function liveUser(text: string, extra?: Record<string, any>): Item {
   return itemFromEvent({
     type: "user",
@@ -21,6 +28,7 @@ function liveUser(text: string, extra?: Record<string, any>): Item {
   });
 }
 
+/** uiUser 造一条界面先画出来的用户条目，source 是 ui。 */
 function uiUser(text: string): Item {
   return {
     key: `ui:s:${text}:1`,

@@ -1,3 +1,5 @@
+// Package connector 把账号和草稿写进目录下的 connectors.json。账号上的 VaultKey 是钥匙名字，为空时 Connect 写成 connector.<id>。
+// SaveToken 把令牌 JSON 交给 TokenStore，不写入这份 JSON。草稿的正文会写进 JSON。
 package connector
 
 import (
@@ -11,15 +13,21 @@ import (
 	"time"
 )
 
+// Kind 是账号种类。
 type Kind string
 
 const (
-	KindMail     Kind = "mail"
+	// KindMail 是邮件，值为 mail。
+	KindMail Kind = "mail"
+	// KindCalendar 是日历，值为 calendar。
 	KindCalendar Kind = "calendar"
-	KindDrive    Kind = "drive"
-	KindIM       Kind = "im"
+	// KindDrive 是网盘或文档，值为 drive。
+	KindDrive Kind = "drive"
+	// KindIM 是即时消息，值为 im。
+	KindIM Kind = "im"
 )
 
+// Account 是一个已连接账号。VaultKey 是钥匙名字，不是令牌原文。
 type Account struct {
 	ID        string    `json:"id"`
 	Kind      Kind      `json:"kind"`
@@ -30,6 +38,7 @@ type Account struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Draft 是一封待发邮件或一条待写日程。正文保存在连接器 JSON 里。
 type Draft struct {
 	ID            string   `json:"id"`
 	Account       string   `json:"account"`
@@ -55,6 +64,7 @@ type Draft struct {
 	Op            string   `json:"op,omitempty"`
 }
 
+// Broker 保存账号、草稿和本地样例。令牌放在 tokens，不放进 path 指向的 JSON。
 type Broker struct {
 	mu     sync.Mutex
 	path   string
@@ -65,6 +75,7 @@ type Broker struct {
 	http   *http.Client
 }
 
+// Open 按 0o755 创建目录，路径为 dir/connectors.json。读文件失败时仍返回空的 Broker。
 func Open(dir string) (*Broker, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -74,6 +85,7 @@ func Open(dir string) (*Broker, error) {
 	return b, nil
 }
 
+// Connect 追加账号。ID 为空时用供应商、种类和时分秒拼出。VaultKey 为空时写成 connector.<id>。
 func (b *Broker) Connect(a Account) Account {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -91,12 +103,14 @@ func (b *Broker) Connect(a Account) Account {
 	return a
 }
 
+// List 返回账号切片的副本。
 func (b *Broker) List() []Account {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]Account(nil), b.acct...)
 }
 
+// Disconnect 按 ID 删掉账号并 flush。找到则返回真。它不清理 TokenStore。
 func (b *Broker) Disconnect(id string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -114,6 +128,7 @@ func (b *Broker) Disconnect(id string) bool {
 	return ok
 }
 
+// Read 先尝试 liveRead。失败则在本地样例里按查询做子串匹配。仍没有则返回一条说明没有令牌也没有本地项的占位记录。
 func (b *Broker) Read(id, query string) ([]map[string]string, error) {
 	b.mu.Lock()
 	a, ok := b.find(id)
@@ -144,6 +159,7 @@ func (b *Broker) Read(id, query string) ([]map[string]string, error) {
 	return out, nil
 }
 
+// Draft 追加一条未发送草稿并 flush。ID 用当前 UTC 时间拼出。
 func (b *Broker) Draft(account, to, subject, body string) Draft {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -159,6 +175,7 @@ func (b *Broker) Draft(account, to, subject, body string) Draft {
 	return d
 }
 
+// Send 在 LooksExfilDraft 命中时返回错误，不标记已发送。带 recurrence 时返回错误。供应商不是 local 且非空时调用 liveSend。
 func (b *Broker) Send(id string) (Draft, error) {
 	b.mu.Lock()
 	var d Draft
@@ -200,6 +217,7 @@ func (b *Broker) Send(id string) (Draft, error) {
 	return d, nil
 }
 
+// PutDraft 按 ID 替换草稿，没有则追加。ID 为空时新生成一个。
 func (b *Broker) PutDraft(d Draft) Draft {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -218,6 +236,7 @@ func (b *Broker) PutDraft(d Draft) Draft {
 	return d
 }
 
+// GetDraft 按 ID 查找草稿。
 func (b *Broker) GetDraft(id string) (Draft, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -229,18 +248,21 @@ func (b *Broker) GetDraft(id string) (Draft, bool) {
 	return Draft{}, false
 }
 
+// Drafts 返回草稿切片的副本。
 func (b *Broker) Drafts() []Draft {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]Draft(nil), b.drafts...)
 }
 
+// Seed 替换该账号的本地样例，不写进 JSON。
 func (b *Broker) Seed(id string, items []map[string]string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.local[id] = items
 }
 
+// find 按 ID 在内存账号里查找。调用方需已处理锁。
 func (b *Broker) find(id string) (Account, bool) {
 	for _, a := range b.acct {
 		if a.ID == id {
@@ -250,6 +272,7 @@ func (b *Broker) find(id string) (Account, bool) {
 	return Account{}, false
 }
 
+// load 从 connectors.json 读出账号和草稿。
 func (b *Broker) load() error {
 	raw, err := os.ReadFile(b.path)
 	if err != nil {
@@ -267,6 +290,7 @@ func (b *Broker) load() error {
 	return nil
 }
 
+// flush 把账号和草稿写成缩进 JSON，先写临时文件，权限 0o600，再改名替换。
 func (b *Broker) flush() error {
 	doc := struct {
 		Acct   []Account `json:"accounts"`

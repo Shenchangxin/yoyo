@@ -1,6 +1,9 @@
+// 本文件拥有启动时的侧栏和输入框占位。不拥有真正的会话列表。App 在还没 boot 完时盖上它。
+
 import { YoyoMark } from "./shell/YoyoMark";
 import { PresenceAnchor } from "./presence";
 
+// BootSkeleton 标成 aria-busy，侧栏宽 60，中间放 boot 锚点，尺寸 148。
 export function BootSkeleton() {
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-background" aria-busy="true" aria-label="Loading">

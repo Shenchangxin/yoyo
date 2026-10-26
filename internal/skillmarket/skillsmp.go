@@ -1,3 +1,5 @@
+// SkillsMP 只支持搜索。安装时按记录的 GitHub 路径取文件。
+
 package skillmarket
 
 import (
@@ -7,8 +9,10 @@ import (
 	"strings"
 )
 
+// SkillsMPBase 是 SkillsMP 根地址。测试可以改它。
 var SkillsMPBase = "https://skillsmp.com"
 
+// listSkillsMP 在查询为空时返回 SearchOnly，不发请求。有查询时按每页最多 50 条翻页，最多 40 页，按 stars 排序。
 func listSkillsMP(query string, limit int) (Catalog, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -58,6 +62,7 @@ type skillsMPRow struct {
 	Stars       int    `json:"stars"`
 }
 
+// fetchSkillsMPPage 请求 /api/v1/skills/search。page 大于 1 时同时带 page 和 offset。
 func fetchSkillsMPPage(query string, page, pageSize int) ([]Item, error) {
 	vals := url.Values{
 		"q":      {query},
@@ -90,6 +95,7 @@ func fetchSkillsMPPage(query string, page, pageSize int) ([]Item, error) {
 	return items, nil
 }
 
+// itemFromSkillsMP 用名字做 slug。能解析 githubUrl 时 ID 带上仓库和目录。名字净化失败返回 false。
 func itemFromSkillsMP(row skillsMPRow) (Item, bool) {
 	slug := SanitizeSlug(row.Name)
 	if slug == "" {
@@ -124,11 +130,12 @@ func itemFromSkillsMP(row skillsMPRow) (Item, bool) {
 	}, true
 }
 
+// fetchSkillsMP 在 remote 是 GitHub 地址时直接下载。否则要求至少 owner/repo/dir 三段，ref 用 main。都不是时返回 "skillsmp: need a GitHub skill path"。
 func fetchSkillsMP(remote string) (PackResult, error) {
 	if gh, ok := parseGitHubURL(remote); ok {
 		return fetchGitHubSkill(gh.Repo, gh.Ref, gh.Dir, remote)
 	}
-	// remote is owner/repo/dir or owner/repo/skill
+	// remote 形如 owner/repo/dir，或 owner/repo/skill。
 	parts := strings.Split(strings.Trim(strings.ReplaceAll(remote, "\\", "/"), "/"), "/")
 	if len(parts) >= 3 && parts[0] != "" && parts[1] != "" {
 		repo := parts[0] + "/" + parts[1]

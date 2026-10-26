@@ -1,5 +1,8 @@
+// 数据：黑神话短片的静帧、提示词和实体种子。seedBlackMythShortAssets 把尚未存在的条目写入黑神话文件夹。
+
 package video
 
+// seedBlackMythShortAssets 把尚未存在的黑神话静帧、提示词和实体写入黑神话文件夹。
 func (e *Engine) seedBlackMythShortAssets(now string, existing map[string]bool) error {
 	const folder = "studio-folder-black-myth"
 	const pub = "/black-myth-shorts/"

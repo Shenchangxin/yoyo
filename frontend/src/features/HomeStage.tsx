@@ -1,3 +1,5 @@
+// 本文件拥有空会话的问候、标题和起步按钮。不拥有输入框，输入框是旁边的兄弟节点，从首页进到会话时那块 DOM 还是同一个。App 在没有消息时使用它。
+
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import type { Copy } from "../lib/copy";
@@ -8,6 +10,7 @@ import { useCutDesk, useCutReadiness } from "./video/cut-desk";
 import { cn } from "../lib/utils";
 import { useMedia } from "../lib/media";
 
+// 12 点前用早上，18 点前用下午，否则用晚上。
 function hello(copy: Copy): string {
   const h = new Date().getHours();
   if (h < 12) return copy.transcript.helloMorning;
@@ -15,6 +18,7 @@ function hello(copy: Copy): string {
   return copy.transcript.helloEvening;
 }
 
+// 已加载且没有 ffmpeg 时剪辑按钮禁用；已加载且没有语音时配音禁用。提示里的 {id} 和 {hash} 换成当前工程。
 function CreateBoundActions(props: {
   projectId: string;
   sourceHash: string;
@@ -52,6 +56,7 @@ function CreateBoundActions(props: {
   );
 }
 
+// 创作桌没有起步句。不在视频面用普通起步，画布和创作各用自己的，其余视频面用视频起步。
 function startersOf(copy: Copy, videoing: boolean, videoMode: string, createDesk: boolean) {
   if (createDesk) return [];
   if (!videoing) return copy.transcript.starters;
@@ -60,6 +65,7 @@ function startersOf(copy: Copy, videoing: boolean, videoMode: string, createDesk
   return copy.transcript.videoStarters;
 }
 
+// 和起步句同一套分支，换成对应的就绪标题。创作桌用 conductorReady。
 function readyOf(copy: Copy, videoing: boolean, videoMode: string, createDesk: boolean) {
   if (createDesk) return copy.transcript.conductorReady;
   if (!videoing) return copy.transcript.ready;
@@ -68,6 +74,7 @@ function readyOf(copy: Copy, videoing: boolean, videoMode: string, createDesk: b
   return copy.transcript.videoReady;
 }
 
+// 从界面状态取出是否在视频面、视频模式，以及是不是创作桌。
 function useHomeCopy() {
   const copy = useCopy();
   const surface = useUI((s) => s.surface);
@@ -78,7 +85,7 @@ function useHomeCopy() {
   return { copy, videoing, videoMode, createDesk };
 }
 
-/** Empty-session brand block. Composer stays a sibling so Hero→active keeps the same input DOM. */
+// HomeHero 是空会话的字标块。workspace 和 onBrowseWorkspace 当前不使用。创作桌还没绑定时不画锚点和问候。锚点尺寸在创作桌是 72，窄于 799px 是 96，否则 148。
 export function HomeHero(_props: {
   workspace?: string;
   onBrowseWorkspace?: () => void;
@@ -124,6 +131,7 @@ export function HomeHero(_props: {
   );
 }
 
+// HomeStarters 在创作桌、未绑定且导入、翻拍、成片、交接、打开剪辑都传入时才挂 CreateHome。案例只在创作桌未绑定且有 onPrompt 时出现。按钮延迟从 80 毫秒起，每个再加 50。
 export function HomeStarters(props: {
   onPrompt?: (text: string) => void;
   onContinueLast?: () => void;

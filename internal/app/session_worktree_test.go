@@ -1,3 +1,5 @@
+// 打开工作区副本、把副本应用回项目根，以及收件箱关闭。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 )
 
+// TestSessionIsolateAndPins 确认打开 Isolate 后工具根是工作区副本，关掉后指回项目根，只钉住存在的技能，删除会话后副本目录也不留。
 func TestSessionIsolateAndPins(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -66,6 +69,7 @@ func TestSessionIsolateAndPins(t *testing.T) {
 	}
 }
 
+// TestApplySessionWorktree 确认副本里改过的文件会应用回项目根。
 func TestApplySessionWorktree(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -96,6 +100,7 @@ func TestApplySessionWorktree(t *testing.T) {
 	}
 }
 
+// TestInboxDismiss 确认收件箱项被关闭后不再出现在列表里。
 func TestInboxDismiss(t *testing.T) {
 	dir := t.TempDir()
 	box, err := inbox.Open(dir)

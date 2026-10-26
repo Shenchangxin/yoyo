@@ -1,3 +1,8 @@
+/**
+ * 拥有：立绘目录地址、通话前的服装预热，以及把 StandEngine 投影到画布。
+ * 不拥有：片段选择、通话状态和对话模型。预热只拉取服装文件和运行时脚本。绘制循环在 StandEngine。不改服务端。
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../../lib/utils";
 import type { StandDirection } from "./animations";
@@ -6,6 +11,7 @@ import { loadSpineRuntime } from "./spineRuntime";
 
 const OUTFIT_ID = /^(stand|stand_costume)\/\d+$/;
 
+/** standURL 把 stand 或 stand_costume 加数字的 id 收成立绘目录。格式不符则空。 */
 export function standURL(id: string): string | null {
   if (!OUTFIT_ID.test(id)) return null;
   return `/idol-stand/${id}/`;
@@ -13,7 +19,7 @@ export function standURL(id: string): string | null {
 
 const warming = new Set<string>();
 
-/** Fetch the outfit and the Spine runtime before a call, so the body can show without a portrait first. */
+/** warmStand 通话前拉取服装和 Spine 运行时，让身体不必先等头像。同一目录只预热一次，某个文件失败则允许再试。 */
 export function warmStand(id: string) {
   const base = standURL(id);
   if (!base || warming.has(base)) return;
@@ -26,6 +32,7 @@ export function warmStand(id: string) {
   }
 }
 
+/** StandView 把指定立绘画到画布上。加载失败或地址无效时不渲染。阶段通过 onPhase 报出。 */
 export function StandView(props: {
   stand: string;
   framing: Framing;

@@ -1,3 +1,14 @@
+/*
+ * 桌面和手机共用的请求门。
+ * 原生窗口走 Wails 生成的 Service，或 Call.ByName。
+ * 浏览器门（onBrowserDoor）为真时 wailsService 返回空，请求走 /api。
+ * 桌面 webview 不提供这些 HTTP 路由。绑定模块缺失时不能靠退回 /api。
+ * Vite 必须看见 boundService 的 glob，生产构建才会把生成的 Service 打进包。
+ * 对运行时路径使用 @vite-ignore 会在安装包里 404（资源服务器上没有 /bindings/*.js），
+ * 于是每次调用都落到 /api/*，而桌面 webview 并不提供这些路由。
+ * 手机页是同一份包，必须向电脑上的 /api 发请求。生成的 Service 只跟桌面窗口说话。
+ */
+
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
 import { browserSurface } from "./chrome";
@@ -6,9 +17,11 @@ import type { AppConfig, Approval, Attachment, AuthMode, ChatProvider, ContextIn
 import { defaultMaterials, type SkinInfo, type SkinResolved, type TokenMap } from "./skin/schema";
 import { outlineOfRaw, type OutlineTurn } from "./turn-outline";
 
+/** ApiError 是 HTTP 失败，身上带着状态码和响应体。 */
 export class ApiError extends Error {
   status: number;
   body: any;
+  /** constructor 记下状态码、响应体和消息。 */
   constructor(status: number, body: any, message: string) {
     super(message);
     this.status = status;
@@ -16,25 +29,26 @@ export class ApiError extends Error {
   }
 }
 
-// Vite must see this glob so production builds embed the generated Service.
-// `@vite-ignore` of a runtime path 404s in the installer (no /bindings/*.js on the asset server),
-// then every call falls through to `/api/*` which the desktop webview does not serve.
+// Vite 必须在构建时看见这个 glob，生成的 Service 才会打进生产包。
+// 对运行时路径使用 `@vite-ignore` 时，安装包的资源服务上没有 /bindings/*.js，会 404，
+// 随后每次调用落到 `/api/*`，而桌面 webview 不提供这些 HTTP 路由。绑定模块缺失时不能靠退回 /api。
 const boundService = import.meta.glob("../../bindings/**/internal/desktop/service.ts");
 
+/** unwrapService 从生成模块里取出带有会话列表或健康检查的 Service。 */
 function unwrapService(mod: any): any | null {
   const svc = mod?.Service ?? mod?.default ?? mod;
   if (svc && typeof (svc.ListSessions || svc.Health || svc.listSessions) === "function") return svc;
   return null;
 }
 
+/** nativeDesktop 窗口带桌面标记或 Wails 环境时，视为原生桌面。 */
 function nativeDesktop(): boolean {
   if (typeof window === "undefined") return false;
   const w = window as any;
   return !!(w.__YOYO_DESKTOP__ || w._wails?.environment?.OS);
 }
 
-// The phone page is this same bundle. It must call /api on the computer.
-// The generated Service talks to the desktop window only.
+/** onBrowserDoor 手机页是同一套包，必须打到电脑上的 /api。生成的 Service 只跟桌面窗口说话。文档标了 browser，或会话存储里有 yoyo_browser，就算浏览器门。 */
 function onBrowserDoor(): boolean {
   if (typeof document !== "undefined" && document.documentElement.dataset.browser === "1") return true;
   try {
@@ -44,6 +58,7 @@ function onBrowserDoor(): boolean {
   }
 }
 
+/** browserToken 取出浏览器门放在会话存储里的令牌。读不到就空。 */
 function browserToken(): string {
   try {
     return sessionStorage.getItem("yoyo_browser") || "";
@@ -52,6 +67,7 @@ function browserToken(): string {
   }
 }
 
+/** browserFetchInit 补上 JSON 类型、会话令牌和携带凭据。 */
 function browserFetchInit(init?: RequestInit): RequestInit {
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -60,7 +76,9 @@ function browserFetchInit(init?: RequestInit): RequestInit {
   return { ...init, credentials: "include", headers };
 }
 
+/** namedDesktopService 用代理把每次调用交给 Wails 的 Call.ByName，名字是桌面 Service 的全名。 */
 function namedDesktopService(): any {
+  /** name 拼出桌面 Service 某一个方法的全名。 */
   const name = (method: string) => `github.com/Shenchangxin/yoyo/internal/desktop.Service.${method}`;
   return new Proxy(
     {},
@@ -78,6 +96,13 @@ function namedDesktopService(): any {
   );
 }
 
+/**
+ * wailsService 解析这一次调用该用的宿主绑定。
+ * 原生窗口优先走 Wails 生成的 Service；生成模块没有可用导出时改走 Call.ByName。
+ * 浏览器门 onBrowserDoor 为真时返回空，调用方的请求走 /api。
+ * 端到端开关 VITE_E2E 打开时同样返回空。
+ * 桌面 webview 不提供这些 HTTP 路由，绑定模块缺失时不能靠退回 /api。
+ */
 async function wailsService(): Promise<any | null> {
   if (import.meta.env.VITE_E2E) return null;
   if (onBrowserDoor()) return null;
@@ -87,13 +112,14 @@ async function wailsService(): Promise<any | null> {
       const svc = unwrapService(await loaders[0]!());
       if (svc) return svc;
     } catch {
-      /* generated module missing at runtime */
+      /* 运行时没有生成出来的模块 */
     }
   }
   if (nativeDesktop()) return namedDesktopService();
   return null;
 }
 
+/** svcMethod 在绑定对象上按候选名找一个可调用的方法。 */
 function svcMethod(s: any, ...names: string[]): ((...args: any[]) => any) | null {
   if (!s) return null;
   for (const n of names) {
@@ -102,6 +128,7 @@ function svcMethod(s: any, ...names: string[]): ((...args: any[]) => any) | null
   return null;
 }
 
+/** timedSignal 做出到时中止的信号。宿主有 AbortSignal.timeout 就用它。 */
 function timedSignal(ms: number): AbortSignal {
   const timeout = (AbortSignal as { timeout?: (n: number) => AbortSignal }).timeout;
   if (typeof timeout === "function") return timeout(ms);
@@ -110,6 +137,7 @@ function timedSignal(ms: number): AbortSignal {
   return ctrl.signal;
 }
 
+/** http 按浏览器门的头去拉 JSON。失败抛 ApiError。解析不了的响应体保留原文。 */
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -126,7 +154,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
-    /* keep text */
+    /* 保留原文 */
   }
   if (!res.ok) {
     const raw = typeof body === "object" && body?.error ? body.error : text || res.statusText;
@@ -135,6 +163,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** parseAuthMode 收成 ask、auto_edit 或 full，对不上就用 default。 */
 export function parseAuthMode(v: any): AuthMode {
   const s = str(v).toLowerCase().replace(/[-\s]/g, "_");
   if (s === "ask" || s === "ask_every_time" || s === "strict") return "ask";
@@ -144,6 +173,7 @@ export function parseAuthMode(v: any): AuthMode {
   return "default";
 }
 
+/** threadOf 把宿主的会话收成线程。隔离时工具根用 worktree。 */
 export function threadOf(v: any): Thread {
   const workspace = str(pick(v, "origin_workspace", "OriginWorkspace", "workspace", "Workspace"));
   const worktree = str(pick(v, "worktree", "Worktree"));
@@ -180,6 +210,7 @@ export function threadOf(v: any): Thread {
   };
 }
 
+/** healthOf 把宿主的健康载荷收成 Health。 */
 export function healthOf(v: any): Health {
   const usage = pick(v, "usage") || {};
   return {
@@ -199,6 +230,7 @@ export function healthOf(v: any): Health {
   };
 }
 
+/** chatProviderOf 把一条聊天供应商收成 ChatProvider，并保证当前模型在列表里。 */
 export function chatProviderOf(v: any): ChatProvider {
   const models = asArray(pick(v, "models", "Models")).map(String).filter(Boolean);
   const model = str(pick(v, "model", "Model"));
@@ -216,6 +248,7 @@ export function chatProviderOf(v: any): ChatProvider {
   };
 }
 
+/** configOf 把宿主的配置收成 AppConfig。 */
 export function configOf(v: any): AppConfig {
   return {
     provider: str(pick(v, "provider"), "openai"),
@@ -254,6 +287,7 @@ export function configOf(v: any): AppConfig {
   };
 }
 
+/** approvalOf 把一条待审批收成 Approval。 */
 export function approvalOf(v: any): Approval {
   const req = pick(v, "request", "Request") || v;
   return {
@@ -266,11 +300,13 @@ export function approvalOf(v: any): Approval {
   };
 }
 
+/** hasOwnNum 这些键里是否至少有一个非空值。 */
 function hasOwnNum(v: any, ...keys: string[]): boolean {
   if (!v || typeof v !== "object") return false;
   return keys.some((k) => v[k] != null && v[k] !== "");
 }
 
+/** contextOf 把宿主的用量收成 ContextUsage。对话或身份词元字段出现时记下分片已知。 */
 export function contextOf(v: any): ContextUsage {
   const slicesKnown = hasOwnNum(v, "chat_tokens", "ChatTokens", "identity_tokens", "IdentityTokens");
   return {
@@ -303,6 +339,7 @@ export function contextOf(v: any): ContextUsage {
   };
 }
 
+/** hunkOf 把一条差异块收成 Hunk。 */
 export function hunkOf(v: any): Hunk {
   return {
     id: str(pick(v, "id", "ID")),
@@ -312,16 +349,19 @@ export function hunkOf(v: any): Hunk {
   };
 }
 
+/** health 走 Health 或 /api/health。 */
 export async function health(): Promise<Health> {
   const s = await wailsService();
   return healthOf(s?.Health ? await s.Health() : await http("/api/health"));
 }
 
+/** getConfig 走 GetConfig 或 /api/config。 */
 export async function getConfig(): Promise<AppConfig> {
   const s = await wailsService();
   return configOf(s?.GetConfig ? await s.GetConfig() : await http("/api/config"));
 }
 
+/** setConfig 提交配置，更新通道固定为 latest。有 SetConfig 时走它，并在有 locale 时再走 SetLocale；否则 POST /api/config。 */
 export async function setConfig(cfg: AppConfig): Promise<void> {
   const body = {
     provider: cfg.provider,
@@ -369,6 +409,7 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
   await http("/api/config", { method: "POST", body: JSON.stringify(body) });
 }
 
+/** tokenMapOrUndef 非空对象才当成色板，否则空。 */
 function tokenMapOrUndef(v: any): TokenMap | undefined {
   if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
   const keys = Object.keys(v);
@@ -376,6 +417,7 @@ function tokenMapOrUndef(v: any): TokenMap | undefined {
   return v as TokenMap;
 }
 
+/** skinInfoOf 把宿主的皮肤摘要收成 SkinInfo。 */
 function skinInfoOf(v: any): SkinInfo {
   return {
     id: str(pick(v, "id", "ID")),
@@ -407,6 +449,7 @@ function skinInfoOf(v: any): SkinInfo {
   };
 }
 
+/** skinResolvedOf 把解析后的皮肤收成 SkinResolved。 */
 function skinResolvedOf(v: any): SkinResolved {
   const tokens = (pick(v, "tokens", "Tokens") || {}) as TokenMap;
   const mats = pick(v, "materials", "Materials") || {};
@@ -445,6 +488,7 @@ function skinResolvedOf(v: any): SkinResolved {
   };
 }
 
+/** listSkins 走 ListSkins 或 /api/skins。 */
 export async function listSkins(): Promise<SkinInfo[]> {
   const s = await wailsService();
   const fn = svcMethod(s, "ListSkins", "listSkins");
@@ -452,6 +496,7 @@ export async function listSkins(): Promise<SkinInfo[]> {
   return asArray(raw).map(skinInfoOf);
 }
 
+/** getSkin 走 GetSkin 或 /api/skins?id=。 */
 export async function getSkin(id: string): Promise<{ info: SkinInfo; dark: TokenMap; light: TokenMap }> {
   const s = await wailsService();
   const fn = svcMethod(s, "GetSkin", "getSkin");
@@ -463,6 +508,7 @@ export async function getSkin(id: string): Promise<{ info: SkinInfo; dark: Token
   };
 }
 
+/** importSkinB64 走 ImportSkin，或 POST /api/skins 且 op 为 import。 */
 export async function importSkinB64(bytesB64: string): Promise<SkinInfo> {
   const s = await wailsService();
   const fn = svcMethod(s, "ImportSkin", "importSkin");
@@ -472,6 +518,7 @@ export async function importSkinB64(bytesB64: string): Promise<SkinInfo> {
   return skinInfoOf(raw);
 }
 
+/** importSkinPath 走 ImportSkinPath，或 POST /api/skins 且 op 为 import。 */
 export async function importSkinPath(path: string): Promise<SkinInfo> {
   const s = await wailsService();
   const fn = svcMethod(s, "ImportSkinPath", "importSkinPath");
@@ -481,6 +528,7 @@ export async function importSkinPath(path: string): Promise<SkinInfo> {
   return skinInfoOf(raw);
 }
 
+/** exportSkin 走 ExportSkin，或 POST /api/skins 且 op 为 export。 */
 export async function exportSkin(id: string): Promise<{ filename: string; bytesB64: string }> {
   const s = await wailsService();
   const fn = svcMethod(s, "ExportSkin", "exportSkin");
@@ -493,6 +541,7 @@ export async function exportSkin(id: string): Promise<{ filename: string; bytesB
   };
 }
 
+/** deleteSkin 走 DeleteSkin，或 POST /api/skins 且 op 为 delete。 */
 export async function deleteSkin(id: string): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "DeleteSkin", "deleteSkin");
@@ -503,6 +552,7 @@ export async function deleteSkin(id: string): Promise<void> {
   await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "delete", id }) });
 }
 
+/** activateSkin 走 ActivateSkin，或 POST /api/skins 且 op 为 activate。 */
 export async function activateSkin(id: string): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "ActivateSkin", "activateSkin");
@@ -513,6 +563,7 @@ export async function activateSkin(id: string): Promise<void> {
   await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "activate", id }) });
 }
 
+/** resolveSkin 走 ResolveSkin，或 /api/skins?id= 且带 resolve=1。 */
 export async function resolveSkin(id: string, mode: "dark" | "light"): Promise<SkinResolved> {
   const s = await wailsService();
   const fn = svcMethod(s, "ResolveSkin", "resolveSkin");
@@ -522,6 +573,7 @@ export async function resolveSkin(id: string, mode: "dark" | "light"): Promise<S
   return skinResolvedOf(raw);
 }
 
+/** SkinSaveIn 是保存皮肤时交给宿主的字段。 */
 export type SkinSaveIn = {
   id?: string;
   name: string;
@@ -538,6 +590,7 @@ export type SkinSaveIn = {
   preview_b64?: string;
 };
 
+/** saveSkin 走 SaveSkin，或 POST /api/skins 且 op 为 save。 */
 export async function saveSkin(in_: SkinSaveIn): Promise<SkinInfo> {
   const s = await wailsService();
   const fn = svcMethod(s, "SaveSkin", "saveSkin");
@@ -547,6 +600,7 @@ export async function saveSkin(in_: SkinSaveIn): Promise<SkinInfo> {
   return skinInfoOf(raw);
 }
 
+/** raiseSession 走 RaiseSession；没有该方法则改走 raiseWindow。 */
 export async function raiseSession(id: string): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "RaiseSession", "raiseSession");
@@ -557,48 +611,56 @@ export async function raiseSession(id: string): Promise<void> {
   await raiseWindow();
 }
 
+/** raiseWindow 走 RaiseWindow。 */
 export async function raiseWindow(): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "RaiseWindow", "raiseWindow");
   if (fn) await fn();
 }
 
+/** showCompanion 走 ShowCompanion。 */
 export async function showCompanion(): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "ShowCompanion", "showCompanion");
   if (fn) await fn();
 }
 
+/** dismissCompanion 先走 HideCompanion，没有再走 DismissCompanion。 */
 export async function dismissCompanion(): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "HideCompanion", "hideCompanion") || svcMethod(s, "DismissCompanion", "dismissCompanion");
   if (fn) await fn();
 }
 
+/** setCompanionCaption 走 SetCompanionCaption。 */
 export async function setCompanionCaption(on: boolean): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "SetCompanionCaption", "setCompanionCaption");
   if (fn) await fn(on);
 }
 
+/** setCompanionCaptionSize 走 SetCompanionCaptionSize。 */
 export async function setCompanionCaptionSize(w: number, h: number): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "SetCompanionCaptionSize", "setCompanionCaptionSize");
   if (fn) await fn(Math.round(w), Math.round(h));
 }
 
+/** placeCompanion 走 PlaceCompanion。 */
 export async function placeCompanion(x: number, y: number): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "PlaceCompanion", "placeCompanion");
   if (fn) await fn(Math.round(x), Math.round(y));
 }
 
+/** setAPIKey 只提交密钥，走 SetAPIKey 或 POST /api/key。 */
 export async function setAPIKey(value: string): Promise<void> {
   const s = await wailsService();
   if (s?.SetAPIKey) return s.SetAPIKey(value);
   await http("/api/key", { method: "POST", body: JSON.stringify({ value }) });
 }
 
+/** createSession 优先走 CreateSessionOn；否则走 CreateSession，agent 时直接返回，video 且有 SetSessionChannel 时再走它；对不上则 POST /api/sessions。 */
 export async function createSession(workspace: string, channel: ThreadChannel = "agent"): Promise<Thread> {
   const s = await wailsService();
   if (s?.CreateSessionOn) {
@@ -615,12 +677,14 @@ export async function createSession(workspace: string, channel: ThreadChannel = 
   return threadOf(raw);
 }
 
+/** listSessions 走 ListSessions 或 /api/sessions。 */
 export async function listSessions(): Promise<Thread[]> {
   const s = await wailsService();
   const raw = s?.ListSessions ? await s.ListSessions() : await http("/api/sessions");
   return asArray(raw).map(threadOf).filter((t) => t.id);
 }
 
+/** searchSessions 查询为空时改走 listSessions；否则走 SearchSessions 或 /api/sessions?q=。 */
 export async function searchSessions(query: string, includeArchived = false): Promise<Thread[]> {
   const s = await wailsService();
   const q = query.trim();
@@ -631,12 +695,14 @@ export async function searchSessions(query: string, includeArchived = false): Pr
   return asArray(raw).map(threadOf).filter((t) => t.id);
 }
 
+/** trajectory 走 Trajectory 或 /api/sessions/{id}/trajectory。 */
 export async function trajectory(id: string): Promise<any[]> {
   const s = await wailsService();
   if (s?.Trajectory) return asArray(await s.Trajectory(id));
   return asArray(await http(`/api/sessions/${id}/trajectory`));
 }
 
+/** TrajectoryPage 是一页轨迹，带事件和前后序号。 */
 export type TrajectoryPage = {
   events: any[];
   headSeq: number;
@@ -645,6 +711,7 @@ export type TrajectoryPage = {
   hubSeq: number;
 };
 
+/** trajectoryPageOf 把宿主的一页轨迹收成 TrajectoryPage。 */
 function trajectoryPageOf(v: any): TrajectoryPage {
   if (v && typeof v === "object" && !Array.isArray(v) && v.result && typeof v.result === "object" && !Array.isArray(v.result)) {
     const inner = v.result;
@@ -661,6 +728,7 @@ function trajectoryPageOf(v: any): TrajectoryPage {
   };
 }
 
+/** trajectoryPage 走 TrajectoryPage 或 /api/sessions/{id}/trajectory/page。 */
 export async function trajectoryPage(id: string, opts?: { before?: number; turns?: number }): Promise<TrajectoryPage> {
   const s = await wailsService();
   const fn = svcMethod(s, "TrajectoryPage", "trajectoryPage");
@@ -672,11 +740,13 @@ export async function trajectoryPage(id: string, opts?: { before?: number; turns
   return trajectoryPageOf(await http(`/api/sessions/${id}/trajectory/page${qs ? `?${qs}` : ""}`));
 }
 
+/** unwrapResult 宿主把结果包在 result 里时拆出来。 */
 function unwrapResult(v: any): any {
   if (v && typeof v === "object" && !Array.isArray(v) && v.result != null) return v.result;
   return v;
 }
 
+/** trajectoryOutline 走 TrajectoryOutline 或 /api/sessions/{id}/trajectory/outline。 */
 export async function trajectoryOutline(id: string): Promise<OutlineTurn[]> {
   const s = await wailsService();
   const fn = svcMethod(s, "TrajectoryOutline", "trajectoryOutline");
@@ -684,6 +754,7 @@ export async function trajectoryOutline(id: string): Promise<OutlineTurn[]> {
   return asArray(unwrapResult(raw)).map(outlineOfRaw).filter((t) => t.seq > 0 || t.id || t.key);
 }
 
+/** trajectoryAround 走 TrajectoryAround 或 /api/sessions/{id}/trajectory/around。 */
 export async function trajectoryAround(id: string, seq: number, turns?: number): Promise<TrajectoryPage> {
   const s = await wailsService();
   const fn = svcMethod(s, "TrajectoryAround", "trajectoryAround");
@@ -695,12 +766,10 @@ export async function trajectoryAround(id: string, seq: number, turns?: number):
   return trajectoryPageOf(await http(`/api/sessions/${id}/trajectory/around${qs ? `?${qs}` : ""}`));
 }
 
-/**
- * One pull from the hub ring after a global seq. `gap` is a hole (reload).
- * `more` is a page: apply `events` in order, then pull again.
- */
+/** LiveBatch 是按全局序号从中心环拉的一页。gap 是空洞，要重新加载。more 表示先按顺序应用 events，再拉下一页。 */
 export type LiveBatch = { events: any[]; head: number; gap: boolean; more: boolean };
 
+/** liveSync 走 LiveSync 或 /api/sessions/{id}/live/sync。 */
 export async function liveSync(id: string, after: number): Promise<LiveBatch> {
   const s = await wailsService();
   const fn = svcMethod(s, "LiveSync", "liveSync");
@@ -715,6 +784,7 @@ export async function liveSync(id: string, after: number): Promise<LiveBatch> {
   };
 }
 
+/** setRendererMemory 走 SetRendererMemory，失败也被吞掉；没有该方法则不发请求。 */
 export async function setRendererMemory(level: "low" | "normal"): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "SetRendererMemory", "setRendererMemory");
@@ -724,6 +794,7 @@ export async function setRendererMemory(level: "low" | "normal"): Promise<void> 
   }
 }
 
+/** sessionTraceOf 把宿主的会话轨迹收成 SessionTrace。 */
 export function sessionTraceOf(v: any): SessionTrace {
   if (v && typeof v === "object" && v.result && typeof v.result === "object" && !Array.isArray(v.result)) {
     v = v.result;
@@ -786,6 +857,7 @@ export function sessionTraceOf(v: any): SessionTrace {
   };
 }
 
+/** spillBlobOf 把溢出正文收成 SpillBlob。 */
 export function spillBlobOf(v: any): SpillBlob {
   if (v && typeof v === "object" && v.result && typeof v.result === "object" && !Array.isArray(v.result)) {
     v = v.result;
@@ -798,12 +870,14 @@ export function spillBlobOf(v: any): SpillBlob {
   };
 }
 
+/** sessionTrace 走 SessionTrace 或 /api/sessions/{id}/trace。 */
 export async function sessionTrace(id: string): Promise<SessionTrace> {
   const s = await wailsService();
   const raw = s?.SessionTrace ? await s.SessionTrace(id) : await http(`/api/sessions/${id}/trace`);
   return sessionTraceOf(raw);
 }
 
+/** spillBlob 走 SpillBlob 或 /api/sessions/{id}/spill/{blob}。 */
 export async function spillBlob(sessionID: string, blobID: string): Promise<SpillBlob> {
   const s = await wailsService();
   const raw = s?.SpillBlob
@@ -812,6 +886,7 @@ export async function spillBlob(sessionID: string, blobID: string): Promise<Spil
   return spillBlobOf(raw);
 }
 
+/** retry 优先走 RetrySession；否则用 StartSendOpts 带上 __resume__；再否则 POST /api/sessions/{id}/retry，状态 404 时改走 send。 */
 export async function retry(sessionID: string): Promise<void> {
   const s = await wailsService();
   const bound = svcMethod(s, "RetrySession", "retrySession");
@@ -836,6 +911,7 @@ export async function retry(sessionID: string): Promise<void> {
 
 const REQUEST_ID_NAME = "__request_id__";
 
+/** withRequestId 把请求 id 收进附件，并去掉旧的同名附件。 */
 function withRequestId(atts: Attachment[], requestId?: string): Attachment[] {
   const id = String(requestId || "").trim();
   const kept = (atts || []).filter((a) => a.name !== REQUEST_ID_NAME);
@@ -843,6 +919,7 @@ function withRequestId(atts: Attachment[], requestId?: string): Attachment[] {
   return [...kept, { name: REQUEST_ID_NAME, path: id }];
 }
 
+/** send 优先走 StartSendOpts，否则 StartSend，再否则 POST /api/sessions/{id}/messages；报错含 queued 则当作已排队。 */
 export async function send(sessionID: string, text: string, opts?: { plan?: boolean; attachments?: Attachment[]; requestId?: string }): Promise<{ queued?: boolean }> {
   const s = await wailsService();
   const atts = withRequestId(opts?.attachments || [], opts?.requestId);
@@ -867,6 +944,7 @@ export async function send(sessionID: string, text: string, opts?: { plan?: bool
   }
 }
 
+/** isQueuedResult 返回值或文本表示这次发送进了队列。 */
 function isQueuedResult(raw: any): boolean {
   if (raw == null) return false;
   if (typeof raw === "string") return /queued/i.test(raw);
@@ -874,6 +952,7 @@ function isQueuedResult(raw: any): boolean {
   return false;
 }
 
+/** queueList 走 QueueList；服务对象在但没有该方法则返回空数组，没有服务才走 /api/sessions/{id}/queue。 */
 export async function queueList(sessionID: string): Promise<{ id?: string; text?: string; plan?: boolean }[]> {
   const s = await wailsService();
   if (s?.QueueList) return asArray(await s.QueueList(sessionID));
@@ -881,6 +960,7 @@ export async function queueList(sessionID: string): Promise<{ id?: string; text?
   return asArray(await http(`/api/sessions/${sessionID}/queue`));
 }
 
+/** queueCancel 走 QueueCancel；服务对象在但没有该方法则返回假，没有服务才 DELETE /api/sessions/{id}/queue。 */
 export async function queueCancel(sessionID: string, itemID: string): Promise<boolean> {
   const s = await wailsService();
   if (s?.QueueCancel) return asBool(await s.QueueCancel(sessionID, itemID));
@@ -889,6 +969,7 @@ export async function queueCancel(sessionID: string, itemID: string): Promise<bo
   return asBool(pick(r, "ok", "Ok") ?? r);
 }
 
+/** queueReorder 走 QueueReorder；服务对象在但没有该方法则返回假，没有服务才 POST /api/sessions/{id}/queue。 */
 export async function queueReorder(sessionID: string, itemID: string, delta: number): Promise<boolean> {
   const s = await wailsService();
   if (s?.QueueReorder) return asBool(await s.QueueReorder(sessionID, itemID, delta));
@@ -900,6 +981,7 @@ export async function queueReorder(sessionID: string, itemID: string, delta: num
   return asBool(pick(r, "ok", "Ok") ?? r);
 }
 
+/** applySessionWorktree 走 ApplySessionWorktree 或 POST /api/sessions/{id}/worktree。 */
 export async function applySessionWorktree(sessionID: string): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.ApplySessionWorktree
@@ -908,6 +990,7 @@ export async function applySessionWorktree(sessionID: string): Promise<Thread> {
   return threadOf(raw);
 }
 
+/** running 走 Running 或 /api/sessions/{id}/running。 */
 export async function running(sessionID: string): Promise<boolean> {
   const s = await wailsService();
   if (s?.Running) {
@@ -918,6 +1001,7 @@ export async function running(sessionID: string): Promise<boolean> {
   return asBool(r);
 }
 
+/** runningIDs 走 RunningIDs；服务对象在但没有该方法则返回空数组，没有服务才走 /api/running。 */
 export async function runningIDs(): Promise<string[]> {
   const s = await wailsService();
   if (s?.RunningIDs) {
@@ -929,6 +1013,7 @@ export async function runningIDs(): Promise<string[]> {
   return asArray(pick(r, "ids", "IDs") ?? r).map(String).filter(Boolean);
 }
 
+/** runningStatus 走 RunningStatus；服务对象在但没有该方法则返回空列表，没有服务才读 /api/running 的 runs。 */
 export async function runningStatus(): Promise<RunStatus[]> {
   const s = await wailsService();
   const raw = s?.RunningStatus ? await s.RunningStatus() : s ? [] : pick(await http<any>("/api/running"), "runs", "Runs") ?? [];
@@ -939,12 +1024,14 @@ export async function runningStatus(): Promise<RunStatus[]> {
   })).filter((x) => x.id);
 }
 
+/** contextUsage 走 ContextUsage 或 /api/sessions/{id}/context。 */
 export async function contextUsage(sessionID: string): Promise<ContextUsage> {
   const s = await wailsService();
   const raw = s?.ContextUsage ? await s.ContextUsage(sessionID) : await http(`/api/sessions/${sessionID}/context`);
   return contextOf(raw);
 }
 
+/** interrupt 走 Interrupt，并最多等 1500 毫秒；没有该方法则 POST /api/sessions/{id}/interrupt。 */
 export async function interrupt(sessionID: string): Promise<void> {
   const s = await wailsService();
   if (s?.Interrupt) {
@@ -957,12 +1044,14 @@ export async function interrupt(sessionID: string): Promise<void> {
   await http(`/api/sessions/${sessionID}/interrupt`, { method: "POST" });
 }
 
+/** approvals 走 PendingApprovals 或 /api/approvals。 */
 export async function approvals(): Promise<Approval[]> {
   const s = await wailsService();
   const raw = s?.PendingApprovals ? await s.PendingApprovals() : await http("/api/approvals");
   return asArray(raw).map(approvalOf).filter((a) => a.id);
 }
 
+/** resolveApproval 优先走 ResolveApprovalAnswer；否则走 ResolveApproval，有 answer 且 length 不少于 3 才把 answer 传入；再否则 POST /api/approvals。 */
 export async function resolveApproval(id: string, decision: string, answer = ""): Promise<void> {
   const s = await wailsService();
   if (s?.ResolveApprovalAnswer) return s.ResolveApprovalAnswer(id, decision, answer);
@@ -973,12 +1062,14 @@ export async function resolveApproval(id: string, decision: string, answer = "")
   await http("/api/approvals", { method: "POST", body: JSON.stringify({ id, decision, answer }) });
 }
 
+/** harness 走 Harness 或 /api/harness。 */
 export async function harness(): Promise<any> {
   const s = await wailsService();
   if (s?.Harness) return s.Harness();
   return http("/api/harness");
 }
 
+/** checkout l3 时走 CheckoutL3，否则走 Checkout；都没有则 POST /api/harness/checkout。 */
 export async function checkout(hash: string, l3 = false): Promise<void> {
   const s = await wailsService();
   if (l3 && s?.CheckoutL3) return s.CheckoutL3(hash);
@@ -986,24 +1077,28 @@ export async function checkout(hash: string, l3 = false): Promise<void> {
   await http("/api/harness/checkout", { method: "POST", body: JSON.stringify({ hash, l3 }) });
 }
 
+/** rollback 走 Rollback 或 POST /api/harness/rollback。 */
 export async function rollback(): Promise<void> {
   const s = await wailsService();
   if (s?.Rollback) return s.Rollback();
   await http("/api/harness/rollback", { method: "POST" });
 }
 
+/** revealHarness 走 RevealHarness 或 POST /api/harness/reveal。 */
 export async function revealHarness(hash = ""): Promise<void> {
   const s = await wailsService();
   if (s?.RevealHarness) return s.RevealHarness(hash);
   await http("/api/harness/reveal", { method: "POST", body: JSON.stringify({ hash }) });
 }
 
+/** diff 走 DiffDetail 或 /api/harness/diff。 */
 export async function diff(a: string, b: string): Promise<any> {
   const s = await wailsService();
   if (s?.DiffDetail) return s.DiffDetail(a, b);
   return http(`/api/harness/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
 }
 
+/** runEval 有 snapshot 时走 RunEvalAt，没有该方法则 rpcJSON 调 eval.run；没有 snapshot 时走 RunEval 或 POST /api/eval。 */
 export async function runEval(opts?: { snapshot?: string }): Promise<any> {
   const snapshot = String(opts?.snapshot || "").trim();
   const s = await wailsService();
@@ -1016,12 +1111,14 @@ export async function runEval(opts?: { snapshot?: string }): Promise<any> {
   return http("/api/eval", { method: "POST" });
 }
 
+/** bestOfN 走 BestOfN 或 POST /api/eval/best。 */
 export async function bestOfN(n: number): Promise<any> {
   const s = await wailsService();
   if (s?.BestOfN) return s.BestOfN(n);
   return http("/api/eval/best", { method: "POST", body: JSON.stringify({ n }) });
 }
 
+/** evolve 优先走 EvolveLab，其次 EvolveRun；没有 rounds、sealed、promote 时才走 EvolveK，并且 k 为 3 才走 Evolve；否则 POST /api/evolve。 */
 export async function evolve(k = 3, opts?: {
   rounds?: number;
   sealed?: boolean;
@@ -1051,6 +1148,7 @@ export async function evolve(k = 3, opts?: {
   return http("/api/evolve", { method: "POST", body: JSON.stringify(body) });
 }
 
+/** evolveOverlay 走 OverlaySession；没有该方法则 rpcJSON 调 evolve.overlay。 */
 export async function evolveOverlay(opts: {
   session: string;
   task?: string;
@@ -1078,6 +1176,7 @@ export async function evolveOverlay(opts: {
   }, Math.min(60, 15 * overlayK) * 60 * 1000);
 }
 
+/** overlayLibrary 走 OverlayLibrary；没有该方法则 rpcJSON 调 evolve.library。 */
 export async function overlayLibrary(session: string): Promise<any> {
   const id = String(session || "").trim();
   const s = await wailsService();
@@ -1086,23 +1185,27 @@ export async function overlayLibrary(session: string): Promise<any> {
   return rpcJSON("evolve.library", { session: id });
 }
 
+/** archive 走 Archive 或 /api/archive。 */
 export async function archive(): Promise<any[]> {
   const s = await wailsService();
   if (s?.Archive) return asArray(await s.Archive());
   return asArray(await http("/api/archive"));
 }
 
+/** plugins 走 Plugins 或 /api/plugins。 */
 export async function plugins(): Promise<any> {
   const s = await wailsService();
   if (s?.Plugins) return s.Plugins();
   return http("/api/plugins");
 }
 
+/** unloadFiber 走 UnloadFiber。 */
 export async function unloadFiber(name: string): Promise<void> {
   const s = await wailsService();
   if (s?.UnloadFiber) return s.UnloadFiber(name);
 }
 
+/** forkSession 有 from 且有 ForkSessionFrom 时走它，没有 from 且有 ForkSession 时走它，否则 POST /api/sessions/{id}/fork。 */
 export async function forkSession(id: string, from = ""): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.ForkSessionFrom && from
@@ -1113,6 +1216,7 @@ export async function forkSession(id: string, from = ""): Promise<Thread> {
   return threadOf(raw);
 }
 
+/** dumpSession 走 DumpSession 或 /api/sessions/{id}/dump。 */
 export async function dumpSession(id: string): Promise<{ id: string; path: string }> {
   const s = await wailsService();
   const raw = s?.DumpSession
@@ -1125,6 +1229,7 @@ export async function dumpSession(id: string): Promise<{ id: string; path: strin
   };
 }
 
+/** renameSession 走 RenameSession 或 POST /api/sessions/{id}/title。 */
 export async function renameSession(id: string, title: string): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "RenameSession", "renameSession");
@@ -1135,18 +1240,21 @@ export async function renameSession(id: string, title: string): Promise<void> {
   await http(`/api/sessions/${id}/title`, { method: "POST", body: JSON.stringify({ title }) });
 }
 
+/** playbook 走 Playbook 或 /api/playbook。 */
 export async function playbook(): Promise<any> {
   const s = await wailsService();
   if (s?.Playbook) return s.Playbook();
   return http("/api/playbook");
 }
 
+/** ratePlaybook 走 RatePlaybook 或 POST /api/playbook。 */
 export async function ratePlaybook(id: string, helpful: boolean): Promise<any> {
   const s = await wailsService();
   if (s?.RatePlaybook) return s.RatePlaybook(id, helpful);
   return http("/api/playbook", { method: "POST", body: JSON.stringify({ id, helpful }) });
 }
 
+/** workspaceHunks 走 WorkspaceHunks 或 /api/workspace/hunks。 */
 export async function workspaceHunks(workspace: string): Promise<{ diff: string; hunks: Hunk[] }> {
   const s = await wailsService();
   const raw = s?.WorkspaceHunks
@@ -1158,6 +1266,7 @@ export async function workspaceHunks(workspace: string): Promise<{ diff: string;
   };
 }
 
+/** FilePreview 是工作区文件预览的正文、语言和种类。 */
 export type FilePreview = {
   path: string;
   text: string;
@@ -1171,6 +1280,7 @@ export type FilePreview = {
   office: boolean;
 };
 
+/** previewWorkspaceFile 走 PreviewWorkspaceFile 或 /api/workspace/file。 */
 export async function previewWorkspaceFile(workspace: string, path: string): Promise<FilePreview> {
   const s = await wailsService();
   const raw = s?.PreviewWorkspaceFile
@@ -1190,6 +1300,7 @@ export async function previewWorkspaceFile(workspace: string, path: string): Pro
   };
 }
 
+/** FileBlob 是工作区二进制文件的种类和 base64。 */
 export type FileBlob = {
   path: string;
   kind: string;
@@ -1199,6 +1310,7 @@ export type FileBlob = {
   base64: string;
 };
 
+/** readWorkspaceBlob 走 ReadWorkspaceBlob 或 /api/workspace/blob。 */
 export async function readWorkspaceBlob(workspace: string, path: string): Promise<FileBlob> {
   const s = await wailsService();
   const raw = s?.ReadWorkspaceBlob
@@ -1216,78 +1328,91 @@ export async function readWorkspaceBlob(workspace: string, path: string): Promis
   };
 }
 
+/** applyHunks 走 ApplyHunks 或 POST /api/workspace/hunks。 */
 export async function applyHunks(workspace: string, ids: string[]): Promise<void> {
   const s = await wailsService();
   if (s?.ApplyHunks) return s.ApplyHunks(workspace, ids);
   await http("/api/workspace/hunks", { method: "POST", body: JSON.stringify({ workspace, ids }) });
 }
 
+/** reverseHunks 走 ReverseHunks，或 POST /api/workspace/hunks 并带上 reverse。 */
 export async function reverseHunks(workspace: string, ids: string[], snapshot: string): Promise<void> {
   const s = await wailsService();
   if (s?.ReverseHunks) return s.ReverseHunks(workspace, ids, snapshot);
   await http("/api/workspace/hunks", { method: "POST", body: JSON.stringify({ workspace, ids, snapshot, reverse: true }) });
 }
 
+/** runEvalSafety 走 RunEvalSafety 或 POST /api/eval/safety。 */
 export async function runEvalSafety(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalSafety) return s.RunEvalSafety();
   return http("/api/eval/safety", { method: "POST" });
 }
 
+/** runEvalTB 走 RunEvalTB 或 POST /api/eval/tb。 */
 export async function runEvalTB(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalTB) return s.RunEvalTB();
   return http("/api/eval/tb", { method: "POST" });
 }
 
+/** runEvalSealed 走 RunEvalSealed 或 POST /api/eval/sealed。 */
 export async function runEvalSealed(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalSealed) return s.RunEvalSealed();
   return http("/api/eval/sealed", { method: "POST" });
 }
 
+/** runEvalTransfer 走 RunEvalTransfer 或 POST /api/eval/transfer。 */
 export async function runEvalTransfer(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalTransfer) return s.RunEvalTransfer();
   return http("/api/eval/transfer", { method: "POST" });
 }
 
+/** runEvalIndex 走 RunEvalIndex 或 POST /api/eval/index。 */
 export async function runEvalIndex(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalIndex) return s.RunEvalIndex();
   return http("/api/eval/index", { method: "POST" });
 }
 
+/** runEvalBehavior 走 RunEvalBehavior 或 POST /api/eval/behavior。 */
 export async function runEvalBehavior(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalBehavior) return s.RunEvalBehavior();
   return http("/api/eval/behavior", { method: "POST" });
 }
 
+/** lastEval 走 LastEval 或 /api/eval/last。 */
 export async function lastEval(): Promise<any> {
   const s = await wailsService();
   if (s?.LastEval) return s.LastEval();
   return http("/api/eval/last");
 }
 
+/** lastEvolve 走 LastEvolve 或 /api/evolve/last。 */
 export async function lastEvolve(): Promise<any> {
   const s = await wailsService();
   if (s?.LastEvolve) return s.LastEvolve();
   return http("/api/evolve/last");
 }
 
+/** bestOfModels 走 BestOfModels 或 POST /api/eval/best。 */
 export async function bestOfModels(models: string[]): Promise<any> {
   const s = await wailsService();
   if (s?.BestOfModels) return s.BestOfModels(models);
   return http("/api/eval/best", { method: "POST", body: JSON.stringify({ models }) });
 }
 
+/** applyUpdate 走 ApplyUpdate 或 POST /api/update。 */
 export async function applyUpdate(): Promise<void> {
   const s = await wailsService();
   if (s?.ApplyUpdate) return s.ApplyUpdate();
   await http("/api/update", { method: "POST", body: JSON.stringify({}) });
 }
 
+/** checkoutSafe 先调用 checkout；确认信息里出现 L3 时，同意后再用 l3 调用 checkout。 */
 export async function checkoutSafe(hash: string): Promise<void> {
   try {
     await checkout(hash, false);
@@ -1304,6 +1429,7 @@ export async function checkoutSafe(hash: string): Promise<void> {
   }
 }
 
+/** deleteSession 走 DeleteSession 或 DELETE /api/sessions/{id}。 */
 export async function deleteSession(id: string): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "DeleteSession", "deleteSession");
@@ -1314,6 +1440,7 @@ export async function deleteSession(id: string): Promise<void> {
   await http(`/api/sessions/${id}`, { method: "DELETE" });
 }
 
+/** archiveSession 走 ArchiveSession 或 POST /api/sessions/{id}/archive。 */
 export async function archiveSession(id: string, archived: boolean): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.ArchiveSession
@@ -1322,6 +1449,7 @@ export async function archiveSession(id: string, archived: boolean): Promise<Thr
   return threadOf(raw);
 }
 
+/** pinSession 走 PinSession 或 POST /api/sessions/{id}/pin。 */
 export async function pinSession(id: string, pinned: boolean): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.PinSession
@@ -1330,6 +1458,7 @@ export async function pinSession(id: string, pinned: boolean): Promise<Thread> {
   return threadOf(raw);
 }
 
+/** exportSession 走 ExportSession 或 /api/sessions/{id}/export。 */
 export async function exportSession(id: string): Promise<string> {
   const s = await wailsService();
   if (s?.ExportSession) return String(await s.ExportSession(id) || "");
@@ -1337,6 +1466,7 @@ export async function exportSession(id: string): Promise<string> {
   return str(pick(raw, "markdown"));
 }
 
+/** setSessionModel 走 SetSessionModel 或 POST /api/sessions/{id}/model。 */
 export async function setSessionModel(id: string, model: string): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.SetSessionModel
@@ -1345,6 +1475,7 @@ export async function setSessionModel(id: string, model: string): Promise<Thread
   return threadOf(raw);
 }
 
+/** setSessionAuthMode 走 SetSessionAuthMode 或 POST /api/sessions/{id}/auth。 */
 export async function setSessionAuthMode(id: string, mode: string): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.SetSessionAuthMode
@@ -1353,6 +1484,7 @@ export async function setSessionAuthMode(id: string, mode: string): Promise<Thre
   return threadOf(raw);
 }
 
+/** setSessionWorkspace 走 SetSessionWorkspace 或 POST /api/sessions/{id}/workspace。 */
 export async function setSessionWorkspace(id: string, workspace: string): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.SetSessionWorkspace
@@ -1361,6 +1493,7 @@ export async function setSessionWorkspace(id: string, workspace: string): Promis
   return threadOf(raw);
 }
 
+/** setSessionIsolate 走 SetSessionIsolate 或 POST /api/sessions/{id}/isolate。 */
 export async function setSessionIsolate(id: string, isolate: boolean): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.SetSessionIsolate
@@ -1369,6 +1502,7 @@ export async function setSessionIsolate(id: string, isolate: boolean): Promise<T
   return threadOf(raw);
 }
 
+/** setSessionPinnedSkills 走 SetSessionPinnedSkills 或 POST /api/sessions/{id}/skills。 */
 export async function setSessionPinnedSkills(id: string, names: string[]): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.SetSessionPinnedSkills
@@ -1377,6 +1511,7 @@ export async function setSessionPinnedSkills(id: string, names: string[]): Promi
   return threadOf(raw);
 }
 
+/** contextInventoryOf 把上下文清单收成 ContextInventory。 */
 export function contextInventoryOf(v: any): ContextInventory {
   const shape = contextOf(pick(v, "shape", "Shape") || v);
   const objects: ContextObject[] = asArray(pick(v, "objects", "Objects")).map((o) => ({
@@ -1398,12 +1533,14 @@ export function contextInventoryOf(v: any): ContextInventory {
   };
 }
 
+/** contextInventory 走 ContextInventory 或 /api/sessions/{id}/inventory。 */
 export async function contextInventory(sessionID: string): Promise<ContextInventory> {
   const s = await wailsService();
   const raw = s?.ContextInventory ? await s.ContextInventory(sessionID) : await http(`/api/sessions/${sessionID}/inventory`);
   return contextInventoryOf(raw);
 }
 
+/** setSessionPlan 走 SetSessionPlan 或 POST /api/sessions/{id}/plan。 */
 export async function setSessionPlan(id: string, text: string): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.SetSessionPlan
@@ -1412,6 +1549,7 @@ export async function setSessionPlan(id: string, text: string): Promise<Thread> 
   return threadOf(raw);
 }
 
+/** restoreSessionFiles 走 RestoreSessionFiles 或 POST /api/sessions/{id}/restore。 */
 export async function restoreSessionFiles(id: string, from = ""): Promise<string> {
   const s = await wailsService();
   if (s?.RestoreSessionFiles) return String(await s.RestoreSessionFiles(id, from) || "");
@@ -1419,6 +1557,7 @@ export async function restoreSessionFiles(id: string, from = ""): Promise<string
   return str(pick(raw, "note"));
 }
 
+/** contextPin 走 ContextPin 或 POST /api/sessions/{id}/pin。 */
 export async function contextPin(id: string, kind: string, key: string, pinned: boolean): Promise<Thread> {
   const s = await wailsService();
   const raw = s?.ContextPin
@@ -1427,6 +1566,7 @@ export async function contextPin(id: string, kind: string, key: string, pinned: 
   return threadOf(raw);
 }
 
+/** compactSession 有 CompactSessionFocus 就走它；否则仅在没有 focus 时走 CompactSession；再否则 POST /api/sessions/{id}/compact。 */
 export async function compactSession(id: string, focus?: string): Promise<string> {
   const s = await wailsService();
   if (s?.CompactSessionFocus) return String(await s.CompactSessionFocus(id, focus || "") || "");
@@ -1435,12 +1575,14 @@ export async function compactSession(id: string, focus?: string): Promise<string
   return str(pick(raw, "note"));
 }
 
+/** steer 走 Steer 或 POST /api/sessions/{id}/steer。 */
 export async function steer(id: string, text: string): Promise<void> {
   const s = await wailsService();
   if (s?.Steer) return s.Steer(id, text);
   await http(`/api/sessions/${id}/steer`, { method: "POST", body: JSON.stringify({ text }) });
 }
 
+/** workspaceTree 走 WorkspaceTree 或 /api/workspace/tree。 */
 export async function workspaceTree(workspace: string): Promise<FileHit[]> {
   const s = await wailsService();
   const raw = s?.WorkspaceTree
@@ -1449,6 +1591,7 @@ export async function workspaceTree(workspace: string): Promise<FileHit[]> {
   return asArray(raw).map((v) => ({ path: str(pick(v, "path", "Path")), kind: str(pick(v, "kind", "Kind"), "file") })).filter((h) => h.path);
 }
 
+/** searchFiles 走 SearchFiles 或 /api/fs/search。 */
 export async function searchFiles(workspace: string, query: string): Promise<FileHit[]> {
   const s = await wailsService();
   const raw = s?.SearchFiles
@@ -1457,6 +1600,7 @@ export async function searchFiles(workspace: string, query: string): Promise<Fil
   return asArray(raw).map((v) => ({ path: str(pick(v, "path", "Path")), kind: str(pick(v, "kind", "Kind"), "file") })).filter((h) => h.path);
 }
 
+/** listSkills 优先走 ListSkillsFor，否则 ListSkills，再否则 /api/skills。 */
 export async function listSkills(workspace?: string): Promise<SkillInfo[]> {
   const s = await wailsService();
   const raw = s?.ListSkillsFor
@@ -1480,6 +1624,7 @@ export async function listSkills(workspace?: string): Promise<SkillInfo[]> {
   })).filter((x) => x.name);
 }
 
+/** getSkill 走 GetSkill 或 /api/skills。 */
 export async function getSkill(workspace: string, name: string): Promise<SkillInfo | null> {
   const s = await wailsService();
   const raw = s?.GetSkill
@@ -1502,6 +1647,7 @@ export async function getSkill(workspace: string, name: string): Promise<SkillIn
   return info.name ? info : null;
 }
 
+/** SkillMarketHub 是技能市场的一个来源。 */
 export type SkillMarketHub = {
   id: string;
   name: string;
@@ -1511,6 +1657,7 @@ export type SkillMarketHub = {
   search: boolean;
 };
 
+/** SkillMarketItem 是市场上的一个技能条目。 */
 export type SkillMarketItem = {
   slug: string;
   name: string;
@@ -1531,6 +1678,7 @@ export type SkillMarketItem = {
   stars?: number;
 };
 
+/** SkillMarketCatalog 是一次技能市场查询的结果。 */
 export type SkillMarketCatalog = {
   source: string;
   fetchedAt: string;
@@ -1545,6 +1693,7 @@ export type SkillMarketCatalog = {
   truncated?: boolean;
 };
 
+/** skillMarket 走 SkillMarket 或 /api/skills/market。 */
 export async function skillMarket(refresh = false, hub = "", query = ""): Promise<SkillMarketCatalog> {
   const s = await wailsService();
   const qs = new URLSearchParams();
@@ -1594,6 +1743,7 @@ export async function skillMarket(refresh = false, hub = "", query = ""): Promis
   };
 }
 
+/** modelsCatalog 走 ModelCatalog 或 /api/models/catalog。 */
 export async function modelsCatalog(refresh = false): Promise<unknown> {
   const s = await wailsService();
   const fn = svcMethod(s, "ModelCatalog");
@@ -1601,12 +1751,14 @@ export async function modelsCatalog(refresh = false): Promise<unknown> {
   return http(`/api/models/catalog${refresh ? "?refresh=1" : ""}`);
 }
 
+/** SkillInstallResult 是安装市场技能的结果。 */
 export type SkillInstallResult = {
   ok: boolean;
   warning?: string;
   files?: string[];
 };
 
+/** installMarketSkill 走 InstallMarketSkill 或 POST /api/skills/market。 */
 export async function installMarketSkill(slug: string): Promise<SkillInstallResult> {
   const s = await wailsService();
   const raw = s?.InstallMarketSkill
@@ -1619,6 +1771,7 @@ export async function installMarketSkill(slug: string): Promise<SkillInstallResu
   };
 }
 
+/** uninstallMarketSkill 走 UninstallMarketSkill，或 POST /api/skills/market 且 op 为 uninstall。 */
 export async function uninstallMarketSkill(slug: string): Promise<void> {
   const s = await wailsService();
   if (s?.UninstallMarketSkill) {
@@ -1628,6 +1781,7 @@ export async function uninstallMarketSkill(slug: string): Promise<void> {
   await http("/api/skills/market", { method: "POST", body: JSON.stringify({ slug, op: "uninstall" }) });
 }
 
+/** asPackStatus 把一条载荷收成包状态，对不上就空。 */
 function asPackStatus(v: any): PackStatus | null {
   const id = str(pick(v, "id", "ID"));
   if (!id) return null;
@@ -1665,6 +1819,7 @@ function asPackStatus(v: any): PackStatus | null {
   };
 }
 
+/** listPacks 走 ListPacks 或 /api/packs。 */
 export async function listPacks(workspace?: string): Promise<PackStatus[]> {
   const s = await wailsService();
   const raw = s?.ListPacks
@@ -1673,6 +1828,7 @@ export async function listPacks(workspace?: string): Promise<PackStatus[]> {
   return asArray(raw).map(asPackStatus).filter((x): x is PackStatus => !!x);
 }
 
+/** installPack 走 InstallPack，或 POST /api/packs 且 op 为 install。 */
 export async function installPack(id: string, path = ""): Promise<PackStatus | Record<string, unknown>> {
   const s = await wailsService();
   const raw = s?.InstallPack
@@ -1681,6 +1837,7 @@ export async function installPack(id: string, path = ""): Promise<PackStatus | R
   return asPackStatus(raw) || (raw as Record<string, unknown>);
 }
 
+/** uninstallPack 走 UninstallPack，或 POST /api/packs 且 op 为 uninstall。 */
 export async function uninstallPack(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.UninstallPack) {
@@ -1690,6 +1847,7 @@ export async function uninstallPack(id: string): Promise<void> {
   await http("/api/packs", { method: "POST", body: JSON.stringify({ id, op: "uninstall" }) });
 }
 
+/** enablePack 走 EnablePack，或 POST /api/packs 且 op 为 enable。 */
 export async function enablePack(id: string, scope: "workspace" | "global" | "inherit", enabled = true): Promise<void> {
   const s = await wailsService();
   if (s?.EnablePack) {
@@ -1699,6 +1857,7 @@ export async function enablePack(id: string, scope: "workspace" | "global" | "in
   await http("/api/packs", { method: "POST", body: JSON.stringify({ id, op: "enable", scope, enabled }) });
 }
 
+/** updatePack 走 UpdatePack，或 POST /api/packs 且 op 为 update。 */
 export async function updatePack(id: string): Promise<PackStatus | Record<string, unknown>> {
   const s = await wailsService();
   const raw = s?.UpdatePack
@@ -1707,35 +1866,41 @@ export async function updatePack(id: string): Promise<PackStatus | Record<string
   return asPackStatus(raw) || (raw as Record<string, unknown>);
 }
 
+/** openPath 走 OpenPath，或 POST /api/open 且 kind 为 path。 */
 export async function openPath(path: string): Promise<void> {
   const s = await wailsService();
   if (s?.OpenPath) return s.OpenPath(path);
   await http("/api/open", { method: "POST", body: JSON.stringify({ path, kind: "path" }) });
 }
 
+/** openURL 走 OpenURL，或 POST /api/open 且 kind 为 url。 */
 export async function openURL(raw: string): Promise<void> {
   const s = await wailsService();
   if (s?.OpenURL) return s.OpenURL(raw);
   await http("/api/open", { method: "POST", body: JSON.stringify({ path: raw, kind: "url" }) });
 }
 
+/** openInEditor 走 OpenInEditor，或 POST /api/open 且 kind 为 editor。 */
 export async function openInEditor(path: string): Promise<void> {
   const s = await wailsService();
   if (s?.OpenInEditor) return s.OpenInEditor(path);
   await http("/api/open", { method: "POST", body: JSON.stringify({ path, kind: "editor" }) });
 }
 
+/** openWorkspaceTerminal 走 OpenWorkspaceTerminal，或 POST /api/open 且 kind 为 terminal。 */
 export async function openWorkspaceTerminal(dir: string): Promise<void> {
   const s = await wailsService();
   if (s?.OpenWorkspaceTerminal) return s.OpenWorkspaceTerminal(dir);
   await http("/api/open", { method: "POST", body: JSON.stringify({ path: dir, kind: "terminal" }) });
 }
 
+/** popOutThread 走 PopOutThread。 */
 export async function popOutThread(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.PopOutThread) return s.PopOutThread(id);
 }
 
+/** pickFolder 走 PickFolder；没有该方法时，browserSurface 为真则用 prompt 问路径，否则返回空串。 */
 export async function pickFolder(): Promise<string> {
   const s = await wailsService();
   if (s?.PickFolder) return str(await s.PickFolder());
@@ -1744,48 +1909,56 @@ export async function pickFolder(): Promise<string> {
   return (typed || "").trim();
 }
 
+/** pickFiles 走 PickFiles；没有该方法则返回空数组。 */
 export async function pickFiles(): Promise<string[]> {
   const s = await wailsService();
   if (s?.PickFiles) return asArray(await s.PickFiles()).map(String).filter(Boolean);
   return [];
 }
 
+/** startMCP 走 StartMCP 或 POST /api/mcp/start。 */
 export async function startMCP(name: string, command: string, args: string[]): Promise<void> {
   const s = await wailsService();
   if (s?.StartMCP) return s.StartMCP(name, command, args);
   await http("/api/mcp/start", { method: "POST", body: JSON.stringify({ name, command, args }) });
 }
 
+/** startMCPHTTP 走 StartMCPHTTP 或 POST /api/mcp/http。 */
 export async function startMCPHTTP(name: string, endpoint: string): Promise<void> {
   const s = await wailsService();
   if (s?.StartMCPHTTP) return s.StartMCPHTTP(name, endpoint);
   await http("/api/mcp/http", { method: "POST", body: JSON.stringify({ name, endpoint }) });
 }
 
+/** inboxList 走 InboxList 或 /api/inbox。 */
 export async function inboxList(): Promise<any[]> {
   const s = await wailsService();
   if (s?.InboxList) return asArray(await s.InboxList());
   return asArray(await http("/api/inbox"));
 }
 
+/** inboxRead 走 InboxMarkRead 或 POST /api/inbox。 */
 export async function inboxRead(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.InboxMarkRead) return s.InboxMarkRead(id);
   await http("/api/inbox", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+/** inboxDismiss 走 InboxDismiss，或 POST /api/inbox 且 op 为 dismiss。 */
 export async function inboxDismiss(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.InboxDismiss) { await s.InboxDismiss(id); return; }
   await http("/api/inbox", { method: "POST", body: JSON.stringify({ id, op: "dismiss" }) });
 }
 
+/** isolationReport 走 IsolationReport 或 /api/isolation。 */
 export async function isolationReport(): Promise<any> {
   const s = await wailsService();
   if (s?.IsolationReport) return s.IsolationReport();
   return http("/api/isolation");
 }
 
+/** connectors 走 ConnectorsList，有 ConnectorCatalog 时一并读取；否则走 /api/connectors。 */
 export async function connectors(): Promise<any> {
   const s = await wailsService();
   if (s?.ConnectorsList) {
@@ -1794,18 +1967,21 @@ export async function connectors(): Promise<any> {
   return http("/api/connectors");
 }
 
+/** connectorConnect 走 ConnectorConnect 或 POST /api/connectors。 */
 export async function connectorConnect(row: any): Promise<any> {
   const s = await wailsService();
   if (s?.ConnectorConnect) return s.ConnectorConnect(row);
   return http("/api/connectors", { method: "POST", body: JSON.stringify(row) });
 }
 
+/** connectorAuthURL 走 ConnectorAuthURL 或 POST /api/connectors/oauth。 */
 export async function connectorAuthURL(provider: string, clientId: string, redirect: string): Promise<any> {
   const s = await wailsService();
   if (s?.ConnectorAuthURL) return s.ConnectorAuthURL(provider, clientId, redirect);
   return http("/api/connectors/oauth", { method: "POST", body: JSON.stringify({ provider, client_id: clientId, redirect }) });
 }
 
+/** connectorComplete 走 ConnectorComplete 或 POST /api/connectors/oauth。 */
 export async function connectorComplete(provider: string, code: string, clientId = "", secret = "", redirect = "http://127.0.0.1:3080/oauth"): Promise<any> {
   const s = await wailsService();
   if (s?.ConnectorComplete) return s.ConnectorComplete(provider, code, clientId, secret, redirect);
@@ -1815,6 +1991,7 @@ export async function connectorComplete(provider: string, code: string, clientId
   });
 }
 
+/** connectorDisconnect 走 ConnectorDisconnect；服务对象在但没有该方法则返回假，没有服务才 DELETE /api/connectors。 */
 export async function connectorDisconnect(id: string): Promise<boolean> {
   const s = await wailsService();
   if (s?.ConnectorDisconnect) return asBool(await s.ConnectorDisconnect(id));
@@ -1823,12 +2000,14 @@ export async function connectorDisconnect(id: string): Promise<boolean> {
   return asBool(pick(r, "ok", "Ok") ?? true);
 }
 
+/** triggerWebhook 走 TriggerWebhook 或 POST /api/hooks/{id}。 */
 export async function triggerWebhook(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.TriggerWebhook) { await s.TriggerWebhook(id); return; }
   await http(`/api/hooks/${encodeURIComponent(id)}`, { method: "POST" });
 }
 
+/** memoryList 走 MemoryList 或 /api/memory。 */
 export async function memoryList(q = "", kind = ""): Promise<any[]> {
   const s = await wailsService();
   if (s?.MemoryList) return asArray(await s.MemoryList(q, kind));
@@ -1836,132 +2015,154 @@ export async function memoryList(q = "", kind = ""): Promise<any[]> {
   return asArray(await http(`/api/memory?${qs}`));
 }
 
+/** memoryPromote 走 MemoryPromote，或 POST /api/memory 且 op 为 promote。 */
 export async function memoryPromote(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.MemoryPromote) { await s.MemoryPromote(id); return; }
   await http("/api/memory", { method: "POST", body: JSON.stringify({ op: "promote", id }) });
 }
 
+/** memoryForget 走 MemoryForget，或 POST /api/memory 且 op 为 forget。 */
 export async function memoryForget(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.MemoryForget) { await s.MemoryForget(id); return; }
   await http("/api/memory", { method: "POST", body: JSON.stringify({ op: "forget", id }) });
 }
 
+/** memoryWrite 走 MemoryWrite 或 POST /api/memory。 */
 export async function memoryWrite(kind: string, text: string, project = ""): Promise<any> {
   const s = await wailsService();
   if (s?.MemoryWrite) return s.MemoryWrite(kind, text, project);
   return http("/api/memory", { method: "POST", body: JSON.stringify({ kind, text, project }) });
 }
 
+/** personalSnapshot 走 PersonalSnapshot 或 /api/personal。 */
 export async function personalSnapshot(): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalSnapshot) return s.PersonalSnapshot();
   return http("/api/personal");
 }
 
+/** personalAnswer 走 PersonalAnswer，或 POST /api/personal 且 op 为 answer。 */
 export async function personalAnswer(id: string, text: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalAnswer) return s.PersonalAnswer(id, text);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "answer", id, text }) });
 }
 
+/** personalDecide 走 PersonalDecide，或 POST /api/personal 且 op 为 decide。 */
 export async function personalDecide(id: string, hash: string, approve: boolean): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalDecide) return s.PersonalDecide(id, hash, approve);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "decide", id, hash, approve }) });
 }
 
+/** personalIdea 走 PersonalIdea，或 POST /api/personal 且 op 为 idea。 */
 export async function personalIdea(id: string, action: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalIdea) return s.PersonalIdea(id, action);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "idea", id, action }) });
 }
 
+/** personalGoal 走 PersonalGoal，或 POST /api/personal 且 op 为 goal。 */
 export async function personalGoal(title: string, description: string, milestones: string[] = []): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalGoal) return s.PersonalGoal(title, description, milestones);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "goal", title, description, milestones }) });
 }
 
+/** personalWatch 走 PersonalWatch，或 POST /api/personal 且 op 为 watch。 */
 export async function personalWatch(title: string, url: string, condition: string, value: string, interval = 15): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalWatch) return s.PersonalWatch(title, url, condition, value, interval);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "watch", title, url, condition, value, interval_minutes: interval }) });
 }
 
+/** personalCancel 走 PersonalCancel，或 POST /api/personal 且 op 为 cancel。 */
 export async function personalCancel(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalCancel) return s.PersonalCancel(id);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "cancel", id }) });
 }
 
+/** personalPause 走 PersonalPause，或 POST /api/personal 且 op 为 pause。 */
 export async function personalPause(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalPause) return s.PersonalPause(id);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "pause", id }) });
 }
 
+/** personalResume 走 PersonalResume，或 POST /api/personal 且 op 为 resume。 */
 export async function personalResume(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalResume) return s.PersonalResume(id);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "resume", id }) });
 }
 
+/** personalRetry 走 PersonalRetry，或 POST /api/personal 且 op 为 retry。 */
 export async function personalRetry(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalRetry) return s.PersonalRetry(id);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "retry", id }) });
 }
 
+/** personalGoalStatus 走 PersonalGoalStatus，或 POST /api/personal 且 op 为 goal_status。 */
 export async function personalGoalStatus(id: string, status: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalGoalStatus) return s.PersonalGoalStatus(id, status);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "goal_status", id, status }) });
 }
 
+/** personalMilestone 走 PersonalMilestone，或 POST /api/personal 且 op 为 milestone。 */
 export async function personalMilestone(goalId: string, milestoneId: string, done: boolean): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalMilestone) return s.PersonalMilestone(goalId, milestoneId, done);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "milestone", goal_id: goalId, milestone_id: milestoneId, done }) });
 }
 
+/** personalMonitorStatus 走 PersonalMonitorStatus，或 POST /api/personal 且 op 为 monitor_status。 */
 export async function personalMonitorStatus(id: string, status: string): Promise<any> {
   const s = await wailsService();
   if (s?.PersonalMonitorStatus) return s.PersonalMonitorStatus(id, status);
   return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "monitor_status", id, status }) });
 }
 
+/** scheduleList 走 ScheduleList 或 /api/schedule。 */
 export async function scheduleList(): Promise<any[]> {
   const s = await wailsService();
   if (s?.ScheduleList) return asArray(await s.ScheduleList());
   return asArray(await http("/api/schedule"));
 }
 
+/** scheduleCreate 走 ScheduleCreate 或 POST /api/schedule。 */
 export async function scheduleCreate(job: any): Promise<any> {
   const s = await wailsService();
   if (s?.ScheduleCreate) return s.ScheduleCreate(job);
   return http("/api/schedule", { method: "POST", body: JSON.stringify(job) });
 }
 
+/** scheduleCancel 走 ScheduleCancel 或 DELETE /api/schedule。 */
 export async function scheduleCancel(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.ScheduleCancel) { await s.ScheduleCancel(id); return; }
   await http(`/api/schedule?id=${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+/** scheduleRetry 走 ScheduleRetry 或 POST /api/schedule/retry。 */
 export async function scheduleRetry(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.ScheduleRetry) return s.ScheduleRetry(id);
   return http("/api/schedule/retry", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+/** setPaused 走 SetPaused 或 POST /api/pause。 */
 export async function setPaused(paused: boolean): Promise<void> {
   const s = await wailsService();
   if (s?.SetPaused) { await s.SetPaused(paused); return; }
   await http("/api/pause", { method: "POST", body: JSON.stringify({ paused }) });
 }
 
+/** pagesList 走 PagesList 或 /api/pages。 */
 export async function pagesList(q = "", spaceId = ""): Promise<any[]> {
   const s = await wailsService();
   if (s?.PagesList) return asArray(await s.PagesList(q, spaceId));
@@ -1969,6 +2170,7 @@ export async function pagesList(q = "", spaceId = ""): Promise<any[]> {
   return asArray(await http(`/api/pages?${qs}`));
 }
 
+/** pagesGet 走 PagesGet 或 /api/pages/{id}。 */
 export async function pagesGet(id: string, spaceId = ""): Promise<any> {
   const s = await wailsService();
   if (s?.PagesGet) return s.PagesGet(spaceId, id);
@@ -1976,6 +2178,7 @@ export async function pagesGet(id: string, spaceId = ""): Promise<any> {
   return http(`/api/pages/${encodeURIComponent(id)}${qs}`);
 }
 
+/** pagesSave 走 PagesSave 或 POST /api/pages。 */
 export async function pagesSave(p: any): Promise<any> {
   const s = await wailsService();
   const expected = Number(p.expected_revision || p.revision || 0);
@@ -1983,6 +2186,7 @@ export async function pagesSave(p: any): Promise<any> {
   return http("/api/pages", { method: "POST", body: JSON.stringify({ ...p, expected_revision: expected }) });
 }
 
+/** pagesDelete 走 PagesDelete 或 DELETE /api/pages/{id}。 */
 export async function pagesDelete(id: string, spaceId = ""): Promise<void> {
   const s = await wailsService();
   if (s?.PagesDelete) { await s.PagesDelete(spaceId, id); return; }
@@ -1990,48 +2194,56 @@ export async function pagesDelete(id: string, spaceId = ""): Promise<void> {
   await http(`/api/pages/${encodeURIComponent(id)}${qs}`, { method: "DELETE" });
 }
 
+/** pagesReviews 走 PagesReviews 或 /api/pages/reviews。 */
 export async function pagesReviews(): Promise<any[]> {
   const s = await wailsService();
   if (s?.PagesReviews) return asArray(await s.PagesReviews());
   return asArray(await http("/api/pages/reviews"));
 }
 
+/** pagesPropose 走 PagesPropose 或 POST /api/pages/propose。 */
 export async function pagesPropose(session: string, title: string, content: string, pageId = ""): Promise<any> {
   const s = await wailsService();
   if (s?.PagesPropose) return s.PagesPropose(session, title, content, pageId, "", "", 0);
   return http("/api/pages/propose", { method: "POST", body: JSON.stringify({ session, title, content, id: pageId }) });
 }
 
+/** pagesDecide 走 PagesDecide 或 POST /api/pages/reviews。 */
 export async function pagesDecide(id: string, hash: string, approve: boolean): Promise<any> {
   const s = await wailsService();
   if (s?.PagesDecide) return s.PagesDecide(id, hash, approve);
   return http("/api/pages/reviews", { method: "POST", body: JSON.stringify({ id, hash, approve }) });
 }
 
+/** profilesList 走 ProfilesList 或 /api/profiles。 */
 export async function profilesList(): Promise<any[]> {
   const s = await wailsService();
   if (s?.ProfilesList) return asArray(await s.ProfilesList());
   return asArray(await http("/api/profiles"));
 }
 
+/** profilesSave 走 ProfilesSave 或 POST /api/profiles。 */
 export async function profilesSave(p: any): Promise<any> {
   const s = await wailsService();
   if (s?.ProfilesSave) return s.ProfilesSave(p);
   return http("/api/profiles", { method: "POST", body: JSON.stringify(p) });
 }
 
+/** setSessionProfile 走 SetSessionProfile 或 POST /api/sessions/{id}/profile。 */
 export async function setSessionProfile(id: string, profileId: string): Promise<any> {
   const s = await wailsService();
   if (s?.SetSessionProfile) return threadOf(await s.SetSessionProfile(id, profileId));
   return threadOf(await http(`/api/sessions/${encodeURIComponent(id)}/profile`, { method: "POST", body: JSON.stringify({ profile_id: profileId }) }));
 }
 
+/** setSessionPage 走 SetSessionPage 或 POST /api/sessions/{id}/page。 */
 export async function setSessionPage(id: string, pageId: string): Promise<any> {
   const s = await wailsService();
   if (s?.SetSessionPage) return threadOf(await s.SetSessionPage(id, pageId));
   return threadOf(await http(`/api/sessions/${encodeURIComponent(id)}/page`, { method: "POST", body: JSON.stringify({ page_id: pageId }) }));
 }
 
+/** voiceTranscribe 走 VoiceTranscribe，或用 fetch POST /api/voice/transcribe。 */
 export async function voiceTranscribe(filename: string, audio: string): Promise<string> {
   const s = await wailsService();
   if (s?.VoiceTranscribe) return String(await s.VoiceTranscribe(filename, audio) || "");
@@ -2045,6 +2257,7 @@ export async function voiceTranscribe(filename: string, audio: string): Promise<
   return String(body.text || "");
 }
 
+/** voiceSpeak 走 VoiceSpeak，或用 fetch POST /api/voice/speak。 */
 export async function voiceSpeak(text: string): Promise<{ audio: string; contentType: string }> {
   const s = await wailsService();
   if (s?.VoiceSpeak) {
@@ -2061,18 +2274,21 @@ export async function voiceSpeak(text: string): Promise<{ audio: string; content
   return { audio: String(body.audio || ""), contentType: String(body.content_type || "audio/mpeg") };
 }
 
+/** voiceReceipt 走 VoiceReceipt 或 POST /api/voice/receipt。 */
 export async function voiceReceipt(session: string, durationSec: number, transcript: string): Promise<void> {
   const s = await wailsService();
   if (s?.VoiceReceipt) { s.VoiceReceipt(session, durationSec, transcript); return; }
   await http("/api/voice/receipt", { method: "POST", body: JSON.stringify({ session, duration_sec: durationSec, transcript }) });
 }
 
+/** setCompanionCall 走 SetCompanionCall。 */
 export async function setCompanionCall(on: boolean): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "SetCompanionCall", "setCompanionCall");
   if (fn) await fn(on);
 }
 
+/** placeIdol 有 PlaceIdol 就走它并返回；否则 idolCall 使用 pin，再 SetConfig 或 POST /api/config 写入 companion_enabled，然后 showCompanion。 */
 export async function placeIdol(id: string): Promise<void> {
   const s = await wailsService();
   const place = svcMethod(s, "PlaceIdol", "placeIdol");
@@ -2087,6 +2303,7 @@ export async function placeIdol(id: string): Promise<void> {
   await showCompanion();
 }
 
+/** idolCall 走 IdolCall 或 POST /api/idol。 */
 export async function idolCall(op: string, payload: Record<string, unknown> = {}): Promise<any> {
   const body = JSON.stringify(payload ?? {});
   const s = await wailsService();
@@ -2106,30 +2323,35 @@ export async function idolCall(op: string, payload: Record<string, unknown> = {}
   });
 }
 
+/** connectorMention 走 ConnectorMention 或 POST /api/connectors/mention。 */
 export async function connectorMention(account: string, text: string): Promise<void> {
   const s = await wailsService();
   if (s?.ConnectorMention) { await s.ConnectorMention(account, text); return; }
   await http("/api/connectors/mention", { method: "POST", body: JSON.stringify({ account, text }) });
 }
 
+/** projectsList 走 ProjectsList 或 /api/projects。 */
 export async function projectsList(): Promise<any[]> {
   const s = await wailsService();
   if (s?.ProjectsList) return asArray(await s.ProjectsList());
   return asArray(await http("/api/projects"));
 }
 
+/** projectCreate 走 ProjectCreate 或 POST /api/projects。 */
 export async function projectCreate(p: any): Promise<any> {
   const s = await wailsService();
   if (s?.ProjectCreate) return s.ProjectCreate(p);
   return http("/api/projects", { method: "POST", body: JSON.stringify(p) });
 }
 
+/** reviewQueue 走 ReviewQueue 或 /api/review/queue。 */
 export async function reviewQueue(): Promise<any> {
   const s = await wailsService();
   if (s?.ReviewQueue) return s.ReviewQueue();
   return http("/api/review/queue");
 }
 
+/** BrowserView 是浏览器车道当前的地址、画面和日志。 */
 export type BrowserView = {
   url: string;
   title: string;
@@ -2146,6 +2368,7 @@ export type BrowserView = {
   log: { op?: string; detail?: string; url?: string; ts?: string }[];
 };
 
+/** browserView 走 BrowserView 或 /api/browser/view。 */
 export async function browserView(): Promise<BrowserView> {
   const s = await wailsService();
   const raw = s?.BrowserView ? await s.BrowserView() : await http("/api/browser/view");
@@ -2171,6 +2394,7 @@ export async function browserView(): Promise<BrowserView> {
   };
 }
 
+/** browserTakeover 有路径且有 BrowserTakeoverAt 时走它，否则走 BrowserTakeover，再否则 POST /api/browser/takeover。 */
 export async function browserTakeover(path?: string): Promise<void> {
   const s = await wailsService();
   const rel = (path || "").trim();
@@ -2185,17 +2409,19 @@ export async function browserTakeover(path?: string): Promise<void> {
   await http("/api/browser/takeover", { method: "POST", body: JSON.stringify({ path: rel }) });
 }
 
+/** clipboardRead 走 ClipboardRead；没有该方法则读 navigator.clipboard，失败则返回空串。 */
 export async function clipboardRead(): Promise<string> {
   const s = await wailsService();
   if (s?.ClipboardRead) return String(await s.ClipboardRead() || "");
   try {
     if (navigator.clipboard?.readText) return (await navigator.clipboard.readText()) || "";
   } catch {
-    /* the page did not get clipboard permission */
+    /* 页面没有拿到剪贴板权限 */
   }
   return "";
 }
 
+/** captureScreenshot 有工作区且有 Screenshot 时把图写到 .yoyo/captures/shot.png 并返回该相对路径；否则返回空串。 */
 export async function captureScreenshot(workspace = ""): Promise<string> {
   const rel = ".yoyo/captures/shot.png";
   if (!workspace.trim()) return "";
@@ -2208,48 +2434,56 @@ export async function captureScreenshot(workspace = ""): Promise<string> {
   return "";
 }
 
+/** admitExpert 走 AdmitExpert 或 POST /api/expert/admit。 */
 export async function admitExpert(dir: string): Promise<any> {
   const s = await wailsService();
   if (s?.AdmitExpert) return s.AdmitExpert(dir);
   return http("/api/expert/admit", { method: "POST", body: JSON.stringify({ dir }) });
 }
 
+/** distillExpert 走 DistillExpert 或 POST /api/expert/distill。 */
 export async function distillExpert(name: string, description: string, body: string): Promise<any> {
   const s = await wailsService();
   if (s?.DistillExpert) return s.DistillExpert(name, description, body);
   return http("/api/expert/distill", { method: "POST", body: JSON.stringify({ name, description, body }) });
 }
 
+/** stopMCP 走 StopMCP 或 POST /api/mcp/stop。 */
 export async function stopMCP(name: string): Promise<void> {
   const s = await wailsService();
   if (s?.StopMCP) return s.StopMCP(name);
   await http("/api/mcp/stop", { method: "POST", body: JSON.stringify({ name }) });
 }
 
+/** about 走 About 或 /api/about。 */
 export async function about(): Promise<any> {
   const s = await wailsService();
   if (s?.About) return s.About();
   return http("/api/about");
 }
 
+/** doctor 走 Doctor 或 /api/doctor。 */
 export async function doctor(): Promise<any> {
   const s = await wailsService();
   if (s?.Doctor) return s.Doctor();
   return http("/api/doctor");
 }
 
+/** logs 走 Logs 或 /api/logs。 */
 export async function logs(limit = 80): Promise<any> {
   const s = await wailsService();
   if (s?.Logs) return s.Logs(limit);
   return http("/api/logs");
 }
 
+/** journal 走 Journal 或 /api/journal。 */
 export async function journal(limit = 80): Promise<any> {
   const s = await wailsService();
   if (s?.Journal) return s.Journal(limit);
   return http("/api/journal");
 }
 
+/** exportDiagnostics 走 ExportDiagnostics 或 POST /api/logs/export。 */
 export async function exportDiagnostics(): Promise<string> {
   const s = await wailsService();
   if (s?.ExportDiagnostics) {
@@ -2260,6 +2494,7 @@ export async function exportDiagnostics(): Promise<string> {
   return String(r?.path || "");
 }
 
+/** diagnoseSession 走 DiagnoseSession 或 POST /api/logs/diagnose。 */
 export async function diagnoseSession(session: string): Promise<string> {
   const s = await wailsService();
   if (s?.DiagnoseSession) return String((await s.DiagnoseSession(session)) || "");
@@ -2267,6 +2502,7 @@ export async function diagnoseSession(session: string): Promise<string> {
   return String(r?.text || "");
 }
 
+/** reportFrontend events 为空时直接返回；否则走 FrontendLogs 或 POST /api/logs。 */
 export async function reportFrontend(events: { ts?: string; level: string; msg: string; stack?: string; source?: string; session_id?: string }[]): Promise<void> {
   if (!events.length) return;
   const s = await wailsService();
@@ -2277,54 +2513,63 @@ export async function reportFrontend(events: { ts?: string; level: string; msg: 
   await http("/api/logs", { method: "POST", body: JSON.stringify({ events }) });
 }
 
+/** checkUpdate 走 CheckUpdate 或 /api/update。 */
 export async function checkUpdate(): Promise<any> {
   const s = await wailsService();
   if (s?.CheckUpdate) return s.CheckUpdate();
   return http("/api/update");
 }
 
+/** updateStatus 走 UpdateStatus 或 /api/update/status。 */
 export async function updateStatus(): Promise<any> {
   const s = await wailsService();
   if (s?.UpdateStatus) return s.UpdateStatus();
   return http("/api/update/status");
 }
 
+/** remoteStatus 走 RemoteStatus 或 /api/remote/status。 */
 export async function remoteStatus(): Promise<any> {
   const s = await wailsService();
   if (s?.RemoteStatus) return s.RemoteStatus();
   return http("/api/remote/status");
 }
 
+/** remotePair 走 RemotePair 或 POST /api/remote/pair。 */
 export async function remotePair(): Promise<any> {
   const s = await wailsService();
   if (s?.RemotePair) return s.RemotePair();
   return http("/api/remote/pair", { method: "POST", body: "{}" });
 }
 
+/** remoteApprove 走 RemoteApprove 或 POST /api/remote/approve。 */
 export async function remoteApprove(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.RemoteApprove) return s.RemoteApprove(id);
   return http("/api/remote/approve", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+/** remoteDeny 走 RemoteDeny 或 POST /api/remote/deny。 */
 export async function remoteDeny(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.RemoteDeny) return s.RemoteDeny(id);
   return http("/api/remote/deny", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+/** remoteRevoke 走 RemoteRevoke 或 POST /api/remote/revoke。 */
 export async function remoteRevoke(id: string): Promise<any> {
   const s = await wailsService();
   if (s?.RemoteRevoke) return s.RemoteRevoke(id);
   return http("/api/remote/revoke", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+/** remoteDisable 走 RemoteDisable 或 POST /api/remote/disable。 */
 export async function remoteDisable(): Promise<any> {
   const s = await wailsService();
   if (s?.RemoteDisable) return s.RemoteDisable();
   return http("/api/remote/disable", { method: "POST", body: "{}" });
 }
 
+/** testProvider 有 id 且有 TestChatProvider 时走它，否则走 TestProvider，再否则 POST /api/provider/test。 */
 export async function testProvider(id = ""): Promise<any> {
   const s = await wailsService();
   if (id && s?.TestChatProvider) return s.TestChatProvider(id);
@@ -2332,12 +2577,14 @@ export async function testProvider(id = ""): Promise<any> {
   return http("/api/provider/test", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+/** listChatProviders 走 ListChatProviders 或 /api/providers。 */
 export async function listChatProviders(): Promise<ChatProvider[]> {
   const s = await wailsService();
   if (s?.ListChatProviders) return asArray(await s.ListChatProviders()).map(chatProviderOf);
   return asArray(await http("/api/providers")).map(chatProviderOf);
 }
 
+/** upsertChatProvider 走 UpsertChatProvider 或 POST /api/providers。 */
 export async function upsertChatProvider(
   provider: Partial<ChatProvider> & { make_default?: boolean; makeDefault?: boolean; active?: boolean },
   apiKey = "",
@@ -2357,6 +2604,7 @@ export async function upsertChatProvider(
   return chatProviderOf(await http("/api/providers", { method: "POST", body: JSON.stringify({ ...body, api_key: apiKey }) }));
 }
 
+/** deleteChatProvider 走 DeleteChatProvider 或 DELETE /api/providers/{id}。 */
 export async function deleteChatProvider(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.DeleteChatProvider) {
@@ -2366,6 +2614,7 @@ export async function deleteChatProvider(id: string): Promise<void> {
   await http(`/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+/** setDefaultChatProvider 走 SetDefaultChatProvider 或 POST /api/providers/{id}/default。 */
 export async function setDefaultChatProvider(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.SetDefaultChatProvider) {
@@ -2375,28 +2624,33 @@ export async function setDefaultChatProvider(id: string): Promise<void> {
   await http(`/api/providers/${encodeURIComponent(id)}/default`, { method: "POST", body: "{}" });
 }
 
+/** replaceMCP 走 ReplaceMCP 或 POST /api/mcp/replace。 */
 export async function replaceMCP(servers: { name: string; command: string; args: string[]; endpoint?: string }[]): Promise<void> {
   const s = await wailsService();
   if (s?.ReplaceMCP) return s.ReplaceMCP(servers);
   await http("/api/mcp/replace", { method: "POST", body: JSON.stringify({ servers }) });
 }
 
+/** revealLogs 走 RevealLogs。 */
 export async function revealLogs(): Promise<void> {
   const s = await wailsService();
   if (s?.RevealLogs) return s.RevealLogs();
 }
 
+/** revealJournal 走 RevealJournal。 */
 export async function revealJournal(): Promise<void> {
   const s = await wailsService();
   if (s?.RevealJournal) return s.RevealJournal();
 }
 
+/** keyStatus 走 KeyStatus 或 /api/key/status。 */
 export async function keyStatus(): Promise<any> {
   const s = await wailsService();
   if (s?.KeyStatus) return s.KeyStatus();
   return http("/api/key/status");
 }
 
+/** quit 在 VITE_E2E 时直接返回；否则发出 yoyo:do-quit，发不出就调用 window.close。 */
 export async function quit(): Promise<void> {
   if (import.meta.env.VITE_E2E) return;
   try {
@@ -2406,13 +2660,15 @@ export async function quit(): Promise<void> {
       return;
     }
   } catch {
-    /* browser */
+    /* 浏览器里没有 Wails 事件 */
   }
   window.close();
 }
 
+/** errMessage 再导出错误文本的取出。定义在 normalize。 */
 export { errMessage };
 
+/** videoCall 走 VideoCall；没有该方法则走 rpcJSON，也就是 POST /api/rpc。 */
 export async function videoCall(method: string, params: Record<string, any> = {}): Promise<any> {
   const s = await wailsService();
   const fn = svcMethod(s, "VideoCall", "videoCall");
@@ -2420,6 +2676,7 @@ export async function videoCall(method: string, params: Record<string, any> = {}
   return rpcJSON(method, params, 120000);
 }
 
+/** rpcJSON 向 /api/rpc 发 JSON-RPC。解析失败保留原文。响应里的 error 抛成 ApiError。 */
 async function rpcJSON(method: string, params: Record<string, any> = {}, timeoutMs = 120000): Promise<any> {
   let res: Response;
   try {
@@ -2436,183 +2693,352 @@ async function rpcJSON(method: string, params: Record<string, any> = {}, timeout
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
-    /* keep */
+    /* 保留原文 */
   }
   if (!res.ok) throw new ApiError(res.status, body, `${method}: ${typeof body === "object" && body?.error ? body.error : text || res.statusText}`);
   if (body?.error) throw new ApiError(500, body, String(body.error.message || body.error));
   return body?.result ?? body;
 }
 
+/** runtime 把 PowerShell 运行时的状态和安装转到 videoCall。 */
 export const runtime = {
+  /** pwshStatus 走 videoCall("runtime.pwsh.status")。 */
   pwshStatus: () => videoCall("runtime.pwsh.status"),
+  /** pwshInstall 走 videoCall("runtime.pwsh.install")。 */
   pwshInstall: () => videoCall("runtime.pwsh.install"),
 };
 
+/** video 把短剧、剪辑和工作室调用转到 videoCall，不在这里实现画面。 */
 export const video = {
+  /** status 走 videoCall("video.status")。 */
   status: () => videoCall("video.status"),
+  /** installFFmpeg 走 videoCall("video.ffmpeg.install")。 */
   installFFmpeg: () => videoCall("video.ffmpeg.install"),
+  /** installYTDLP 走 videoCall("video.ytdlp.install")。 */
   installYTDLP: () => videoCall("video.ytdlp.install"),
+  /** modes 走 videoCall("video.modes")。 */
   modes: () => videoCall("video.modes"),
+  /** templates 走 videoCall("video.templates")。 */
   templates: () => videoCall("video.templates"),
+  /** providers 走 videoCall("video.providers.list")。 */
   providers: (serviceType = "") => videoCall("video.providers.list", { service_type: serviceType }),
+  /** upsertProvider 走 videoCall("video.providers.upsert")。 */
   upsertProvider: (provider: any, apiKey = "") => videoCall("video.providers.upsert", { provider, api_key: apiKey }),
+  /** deleteProvider 走 videoCall("video.providers.delete")。 */
   deleteProvider: (id: string) => videoCall("video.providers.delete", { id }),
+  /** testProvider 走 videoCall("video.providers.test")。 */
   testProvider: (id: string) => videoCall("video.providers.test", { id }),
+  /** connections 走 videoCall("connections.list")。 */
   connections: (capability = "") => videoCall("connections.list", { capability }),
+  /** upsertConnection 走 videoCall("connections.upsert")。 */
   upsertConnection: (connection: any, apiKey = "") => videoCall("connections.upsert", { connection, api_key: apiKey }),
+  /** deleteConnection 走 videoCall("connections.delete")。 */
   deleteConnection: (id: string) => videoCall("connections.delete", { id }),
+  /** testConnection 走 videoCall("connections.test")。 */
   testConnection: (id: string) => videoCall("connections.test", { id }),
+  /** connectionDefaults 走 videoCall("connections.defaults")。 */
   connectionDefaults: () => videoCall("connections.defaults"),
+  /** setConnectionDefault 走 videoCall("connections.setDefault")。 */
   setConnectionDefault: (capability: string, id: string) => videoCall("connections.setDefault", { capability, id }),
+  /** connectionTemplates 走 videoCall("connections.templates")。 */
   connectionTemplates: () => videoCall("connections.templates"),
+  /** styles 走 videoCall("video.styles")。 */
   styles: () => videoCall("video.styles"),
+  /** allStyles 走 videoCall("video.styles.all")。 */
   allStyles: () => videoCall("video.styles.all"),
+  /** upsertStyle 走 videoCall("video.styles.upsert")。 */
   upsertStyle: (s: Record<string, any>) => videoCall("video.styles.upsert", s),
+  /** deleteStyle 走 videoCall("video.styles.delete")。 */
   deleteStyle: (id: string) => videoCall("video.styles.delete", { id }),
+  /** settings 走 videoCall("video.settings.get")。 */
   settings: () => videoCall("video.settings.get"),
+  /** setSetting 走 videoCall("video.settings.set")。 */
   setSetting: (key: string, value: string) => videoCall("video.settings.set", { key, value }),
+  /** jobs 走 videoCall("video.jobs.list")。 */
   jobs: (episodeId = "") => videoCall("video.jobs.list", { episode_id: episodeId }),
+  /** cancelJob 走 videoCall("video.jobs.cancel")。 */
   cancelJob: (id: string) => videoCall("video.jobs.cancel", { id }),
+  /** retryJob 走 videoCall("video.jobs.retry")。 */
   retryJob: (id: string) => videoCall("video.jobs.retry", { id }),
+  /** applyJob 走 videoCall("video.jobs.apply")。 */
   applyJob: (id: string) => videoCall("video.jobs.apply", { id }),
+  /** listDramas 走 videoCall("drama.list")。 */
   listDramas: () => videoCall("drama.list"),
+  /** createDrama 走 videoCall("drama.create")。 */
   createDrama: (d: Record<string, any>) => videoCall("drama.create", d),
+  /** getDrama 走 videoCall("drama.get")。 */
   getDrama: (id: string) => videoCall("drama.get", { id }),
+  /** updateDrama 走 videoCall("drama.update")。 */
   updateDrama: (d: Record<string, any>) => videoCall("drama.update", d),
+  /** deleteDrama 走 videoCall("drama.delete")。 */
   deleteDrama: (id: string) => videoCall("drama.delete", { id }),
+  /** episodes 走 videoCall("drama.episodes")。 */
   episodes: (dramaId: string) => videoCall("drama.episodes", { drama_id: dramaId }),
+  /** createEpisode 走 videoCall("drama.episode.create")。 */
   createEpisode: (dramaId: string, title: string, content: string) => videoCall("drama.episode.create", { drama_id: dramaId, title, content }),
+  /** getEpisode 走 videoCall("drama.episode.get")。 */
   getEpisode: (id: string) => videoCall("drama.episode.get", { id }),
+  /** updateEpisode 走 videoCall("drama.episode.update")。 */
   updateEpisode: (ep: Record<string, any>) => videoCall("drama.episode.update", ep),
+  /** deleteEpisode 走 videoCall("drama.episode.delete")。 */
   deleteEpisode: (id: string) => videoCall("drama.episode.delete", { id }),
+  /** bundle 走 videoCall("drama.bundle")。 */
   bundle: (episodeId: string) => videoCall("drama.bundle", { episode_id: episodeId }),
+  /** bind 走 videoCall("drama.bind")。 */
   bind: (sessionId: string, episodeId = "", dramaId = "") => videoCall("drama.bind", { session_id: sessionId, episode_id: episodeId, drama_id: dramaId }),
+  /** stage 走 videoCall("drama.stage.run")。 */
   stage: (sessionId: string, episodeId: string, stage: string, dramaId = "") => videoCall("drama.stage.run", { session_id: sessionId, episode_id: episodeId, stage, drama_id: dramaId }),
+  /** ingestSource 走 videoCall("drama.source.ingest")。 */
   ingestSource: (dramaId: string, text: string, title = "") => videoCall("drama.source.ingest", { drama_id: dramaId, text, title }),
+  /** ingestSourceFile 走 videoCall("drama.source.ingest_file")。 */
   ingestSourceFile: (dramaId: string, path: string) => videoCall("drama.source.ingest_file", { drama_id: dramaId, path }),
+  /** getSource 走 videoCall("drama.source.get")。 */
   getSource: (dramaId: string) => videoCall("drama.source.get", { drama_id: dramaId }),
+  /** getPlan 走 videoCall("drama.plan.get")。 */
   getPlan: (dramaId: string) => videoCall("drama.plan.get", { drama_id: dramaId }),
+  /** proposeEpisodes 走 videoCall("drama.plan.propose")。 */
   proposeEpisodes: (dramaId: string, episodes: any[] = []) => videoCall("drama.plan.propose", { drama_id: dramaId, episodes }),
+  /** patchPlan 走 videoCall("drama.plan.patch")。 */
   patchPlan: (dramaId: string, episodes: any[]) => videoCall("drama.plan.patch", { drama_id: dramaId, episodes }),
+  /** splitPlanEpisode 走 videoCall("drama.plan.split")。 */
   splitPlanEpisode: (dramaId: string, n: number) => videoCall("drama.plan.split", { drama_id: dramaId, n }),
+  /** mergePlanEpisodes 走 videoCall("drama.plan.merge")。 */
   mergePlanEpisodes: (dramaId: string, n: number) => videoCall("drama.plan.merge", { drama_id: dramaId, n }),
+  /** commitEpisodes 走 videoCall("drama.plan.commit")。 */
   commitEpisodes: (dramaId: string) => videoCall("drama.plan.commit", { drama_id: dramaId }),
+  /** queueScripts 走 videoCall("drama.plan.queue_scripts")。 */
   queueScripts: (dramaId: string, sessionId: string) => videoCall("drama.plan.queue_scripts", { drama_id: dramaId, session_id: sessionId }),
+  /** dramaJobs 走 videoCall("drama.jobs")。 */
   dramaJobs: (dramaId: string) => videoCall("drama.jobs", { drama_id: dramaId }),
+  /** bible 走 videoCall("drama.bible")。 */
   bible: (dramaId: string) => videoCall("drama.bible", { drama_id: dramaId }),
+  /** saveAsset 走 videoCall("drama.assets.save")。 */
   saveAsset: (kind: string, id: string, fields: Record<string, any>) => videoCall("drama.assets.save", { kind, id, ...fields }),
+  /** createAsset 走 videoCall("drama.assets.create")。 */
   createAsset: (kind: string, episodeId: string, fields: Record<string, any>) => videoCall("drama.assets.create", { kind, episode_id: episodeId, ...fields }),
+  /** deleteAsset 走 videoCall("drama.assets.delete")。 */
   deleteAsset: (kind: string, id: string) => videoCall("drama.assets.delete", { kind, id }),
+  /** generateAsset 走 videoCall("drama.assets.generate")。 */
   generateAsset: (kind: string, id: string, episodeId = "") => videoCall("drama.assets.generate", { kind, id, episode_id: episodeId }),
+  /** generateMissingAssets 走 videoCall("drama.assets.generate_missing")。 */
   generateMissingAssets: (episodeId: string) => videoCall("drama.assets.generate_missing", { episode_id: episodeId }),
+  /** uploadAsset 走 videoCall("drama.assets.upload")。 */
   uploadAsset: (kind: string, id: string, dataB64: string) => videoCall("drama.assets.upload", { kind, id, data_b64: dataB64 }),
+  /** saveShots 走 videoCall("drama.shots.save")。 */
   saveShots: (episodeId: string, shots: any[], replace = false) => videoCall("drama.shots.save", { episode_id: episodeId, shots, replace }),
+  /** updateShot 走 videoCall("drama.shots.update")。 */
   updateShot: (s: Record<string, any>) => videoCall("drama.shots.update", s),
+  /** deleteShot 走 videoCall("drama.shots.delete")。 */
   deleteShot: (id: string) => videoCall("drama.shots.delete", { id }),
+  /** generateShot 走 videoCall("drama.shots.generate")。 */
   generateShot: (id: string) => videoCall("drama.shots.generate", { id }),
+  /** generateMissingShots 走 videoCall("drama.shots.generate_missing")。 */
   generateMissingShots: (episodeId: string) => videoCall("drama.shots.generate_missing", { episode_id: episodeId }),
+  /** merge 走 videoCall("drama.merge")。 */
   merge: (episodeId: string, shotIds: string[]) => videoCall("drama.merge", { episode_id: episodeId, shot_ids: shotIds }),
+  /** importHuobao 走 videoCall("drama.import")。 */
   importHuobao: (dbPath: string, staticDir = "") => videoCall("drama.import", { db_path: dbPath, static_dir: staticDir }),
+  /** skipRewrite 走 videoCall("drama.skip_rewrite")。 */
   skipRewrite: (episodeId: string) => videoCall("drama.skip_rewrite", { episode_id: episodeId }),
+  /** canvasHttp 走 videoCall("canvas.http")。 */
   canvasHttp: (method: string, path: string, extra: Record<string, any> = {}) => videoCall("canvas.http", { method, path, ...extra }),
+  /** canvasBind 走 videoCall("canvas.bind")。 */
   canvasBind: (sessionId: string, projectId: string) => videoCall("canvas.bind", { session_id: sessionId, project_id: projectId }),
+  /** history 走 videoCall("video.history")。 */
   history: () => videoCall("video.history"),
+  /** sessionProject 走 videoCall("video.session.project")。 */
   sessionProject: (sessionId: string) => videoCall("video.session.project", { session_id: sessionId }),
+  /** mediaUrl 走 videoCall("media.url")。 */
   mediaUrl: (hash: string) => videoCall("media.url", { hash }),
+  /** fetchTrends 走 videoCall("video.trends.fetch")。 */
   fetchTrends: (platforms = "", limit = 15) => videoCall("video.trends.fetch", { platforms, limit }),
+  /** listTopics 走 videoCall("video.topic.list")。 */
   listTopics: (status = "") => videoCall("video.topic.list", { status }),
+  /** getTopic 走 videoCall("video.topic.get")。 */
   getTopic: (id: string) => videoCall("video.topic.get", { id }),
+  /** saveTopic 走 videoCall("video.topic.save")。 */
   saveTopic: (topic: Record<string, any>) => videoCall("video.topic.save", topic),
+  /** deleteTopic 走 videoCall("video.topic.delete")。 */
   deleteTopic: (id: string) => videoCall("video.topic.delete", { id }),
+  /** topicFromTrend 走 videoCall("video.topic.from_trend")。 */
   topicFromTrend: (platform: string, title: string, hot = "") => videoCall("video.topic.from_trend", { platform, title, hot }),
+  /** scheduleTopic 走 videoCall("video.topic.schedule")。 */
   scheduleTopic: (id: string, sessionId = "", aspect = "") => videoCall("video.topic.schedule", { id, session_id: sessionId, aspect }),
+  /** unscheduleTopic 走 videoCall("video.topic.unschedule")。 */
   unscheduleTopic: (id: string) => videoCall("video.topic.unschedule", { id }),
+  /** listStudio 走 videoCall("video.studio.list")。 */
   listStudio: () => videoCall("video.studio.list"),
+  /** createStudio 走 videoCall("video.studio.create")。 */
   createStudio: (p: Record<string, any> = {}) => videoCall("video.studio.create", p),
+  /** getStudio 走 videoCall("video.studio.get")。 */
   getStudio: (id: string) => videoCall("video.studio.get", { id }),
+  /** updateStudio 走 videoCall("video.studio.update")。 */
   updateStudio: (p: Record<string, any>) => videoCall("video.studio.update", p),
+  /** deleteStudio 走 videoCall("video.studio.delete")。 */
   deleteStudio: (id: string) => videoCall("video.studio.delete", { id }),
+  /** studioBind 走 videoCall("video.studio.bind")。 */
   studioBind: (sessionId: string, projectId: string) => videoCall("video.studio.bind", { session_id: sessionId, id: projectId, project_id: projectId }),
+  /** assembleStudio 走 videoCall("video.studio.assemble")。 */
   assembleStudio: (id: string) => videoCall("video.studio.assemble", { id }),
+  /** autoStudio 走 videoCall("video.studio.auto")。 */
   autoStudio: (id: string) => videoCall("video.studio.auto", { id }),
+  /** autoTopics 走 videoCall("video.studio.auto.topics")。 */
   autoTopics: (topicIds: string[]) => videoCall("video.studio.auto.topics", { topic_ids: topicIds }),
+  /** listStudioBGM 走 videoCall("video.studio.bgm.list")。 */
   listStudioBGM: () => videoCall("video.studio.bgm.list"),
+  /** useStudioBGM 走 videoCall("video.studio.bgm.use")。 */
   useStudioBGM: (id: string, name = "random") => videoCall("video.studio.bgm.use", { id, name }),
+  /** clearStudioBGM 走 videoCall("video.studio.bgm.clear")。 */
   clearStudioBGM: (id: string) => videoCall("video.studio.bgm.clear", { id }),
+  /** speakStudio 走 videoCall("video.studio.speak")。 */
   speakStudio: (id: string, text = "") => videoCall("video.studio.speak", { id, text }),
+  /** studioReframe 走 videoCall("video.studio.ops.reframe")。 */
   studioReframe: (hash: string, aspect = "9:16") => videoCall("video.studio.ops.reframe", { hash, aspect }),
+  /** studioBurnin 走 videoCall("video.studio.ops.burnin")。 */
   studioBurnin: (hash: string, subtitleHash: string) => videoCall("video.studio.ops.burnin", { hash, subtitle_hash: subtitleHash }),
+  /** studioSlideshow 走 videoCall("video.studio.ops.slideshow")。 */
   studioSlideshow: (hashes: string[], aspect = "9:16", duration = 3) => videoCall("video.studio.ops.slideshow", { hashes, aspect, duration }),
+  /** studioWrap 走 videoCall("video.studio.ops.wrap")。 */
   studioWrap: (hash: string, title: string) => videoCall("video.studio.ops.wrap", { hash, title }),
+  /** putStudioMedia 走 videoCall("video.studio.media.put")。 */
   putStudioMedia: (dataB64: string, mime = "", kind = "") => videoCall("video.studio.media.put", { data_b64: dataB64, mime, kind }),
+  /** putStudioMediaPath 走 videoCall("video.studio.media.put")。 */
   putStudioMediaPath: (path: string, kind = "video") => videoCall("video.studio.media.put", { path, kind }),
+  /** publishPlatforms 走 videoCall("video.studio.publish.platforms")。 */
   publishPlatforms: () => videoCall("video.studio.publish.platforms"),
+  /** listPublishes 走 videoCall("video.studio.publish.list")。 */
   listPublishes: (projectId = "", platform = "") => videoCall("video.studio.publish.list", { project_id: projectId, platform }),
+  /** draftPublish 走 videoCall("video.studio.publish.draft")。 */
   draftPublish: (p: Record<string, any>) => videoCall("video.studio.publish.draft", p),
+  /** exportPublish 走 videoCall("video.studio.publish.export")。 */
   exportPublish: (id: string) => videoCall("video.studio.publish.export", { id }),
+  /** openPublish 走 videoCall("video.studio.publish.open")。 */
   openPublish: (id: string) => videoCall("video.studio.publish.open", { id }),
+  /** openPublishAnalytics 走 videoCall("video.studio.publish.analytics")。 */
   openPublishAnalytics: (id: string) => videoCall("video.studio.publish.analytics", { id }),
+  /** markPublish 走 videoCall("video.studio.publish.mark")。 */
   markPublish: (id: string, status: string, extra: Record<string, any> = {}) => videoCall("video.studio.publish.mark", { id, status, ...extra }),
+  /** remotionStatus 走 videoCall("video.studio.remotion.status")。 */
   remotionStatus: () => videoCall("video.studio.remotion.status"),
+  /** installRemotion 走 videoCall("video.studio.remotion.install")。 */
   installRemotion: () => videoCall("video.studio.remotion.install"),
+  /** personaTemplate 走 videoCall("video.studio.persona.template")。 */
   personaTemplate: (name = "") => videoCall("video.studio.persona.template", { name }),
+  /** createPersona 走 videoCall("video.studio.persona.create")。 */
   createPersona: (name = "", topicId = "") => videoCall("video.studio.persona.create", { name, topic_id: topicId }),
+  /** studioCatalog 走 videoCall("video.studio.catalog")。 */
   studioCatalog: () => videoCall("video.studio.catalog"),
+  /** studioPreflight 走 videoCall("video.studio.preflight")。 */
   studioPreflight: (id: string, gate = "") => videoCall("video.studio.preflight", { id, gate }),
+  /** approveStudio 走 videoCall("video.studio.approve")。 */
   approveStudio: (id: string) => videoCall("video.studio.approve", { id }),
+  /** skipStudioAudio 走 videoCall("video.studio.skip_audio")。 */
   skipStudioAudio: (id: string) => videoCall("video.studio.skip_audio", { id }),
+  /** applyStudioPreset 走 videoCall("video.studio.preset")。 */
   applyStudioPreset: (id: string, presetId: string) => videoCall("video.studio.preset", { id, preset_id: presetId }),
+  /** applyStudioTemplate 走 videoCall("video.studio.template")。 */
   applyStudioTemplate: (id: string, templateId: string) => videoCall("video.studio.template", { id, template_id: templateId }),
+  /** setStudioIdentity 走 videoCall("video.studio.identity")。 */
   setStudioIdentity: (id: string, characterId: string, styleId: string) => videoCall("video.studio.identity", { id, character_id: characterId, style_id: styleId }),
+  /** generateStudioShot 走 videoCall("video.studio.generate.shot")。 */
   generateStudioShot: (id: string, shotId = "") => videoCall("video.studio.generate.shot", { id, shot_id: shotId }),
+  /** generateStudioMissing 走 videoCall("video.studio.generate.missing")。 */
   generateStudioMissing: (id: string) => videoCall("video.studio.generate.missing", { id }),
+  /** generateStudioCover 走 videoCall("video.studio.cover")。 */
   generateStudioCover: (id: string) => videoCall("video.studio.cover", { id }),
+  /** pickStudioCover 走 videoCall("video.studio.cover.pick")。 */
   pickStudioCover: (id: string, hash: string) => videoCall("video.studio.cover.pick", { id, hash }),
+  /** writeStudioCopy 走 videoCall("video.studio.copy")。 */
   writeStudioCopy: (id: string, platform = "") => videoCall("video.studio.copy", { id, platform }),
+  /** packageStudio 走 videoCall("video.studio.package")。 */
   packageStudio: (id: string) => videoCall("video.studio.package", { id }),
+  /** restoreStudio 走 videoCall("video.studio.restore")。 */
   restoreStudio: (id: string, n: number) => videoCall("video.studio.restore", { id, n }),
+  /** studioTiming 走 videoCall("video.studio.timing")。 */
   studioTiming: (id: string) => videoCall("video.studio.timing", { id }),
+  /** ingestStudio 走 videoCall("video.studio.ingest")。 */
   ingestStudio: (id: string, url: string) => videoCall("video.studio.ingest", { id, url }),
+  /** autoClip 走 videoCall("video.studio.autoclip")。 */
   autoClip: (hash: string, count = 3, duration = "30-60") => videoCall("video.studio.autoclip", { hash, count, duration }),
+  /** studioJobs 走 videoCall("video.studio.jobs")。 */
   studioJobs: (id: string) => videoCall("video.studio.jobs", { id }),
+  /** expandTopic 走 videoCall("video.topic.expand")。 */
   expandTopic: (id: string) => videoCall("video.topic.expand", { id }),
+  /** chooseTopicOption 走 videoCall("video.topic.choose")。 */
   chooseTopicOption: (id: string, optionId: string) => videoCall("video.topic.choose", { id, option_id: optionId }),
+  /** cutList 走 videoCall("video.cut.list")。 */
   cutList: () => videoCall("video.cut.list"),
+  /** cutOpen 走 videoCall("video.cut.open")。 */
   cutOpen: (p: { title?: string; hash?: string; resource_id?: string; session_id?: string } = {}) =>
     videoCall("video.cut.open", p),
+  /** cutCreate 走 videoCall("video.cut.create")。 */
   cutCreate: (title = "", hash = "", sessionId = "") => videoCall("video.cut.create", { title, hash, session_id: sessionId }),
+  /** remakeDraft 走 videoCall("video.remake.draft")。 */
   remakeDraft: (hash: string, title = "") => videoCall("video.remake.draft", { hash, title }),
+  /** remakeReplace 走 videoCall("video.remake.replace")。 */
   remakeReplace: (id: string, hash: string) => videoCall("video.remake.replace", { id, hash }),
+  /** filmOpen 走 videoCall("video.film.open")。 */
   filmOpen: (p: { hash?: string; title?: string; structure?: string; description?: string; url?: string }) => videoCall("video.film.open", p),
+  /** filmDescribe 走 videoCall("video.film.describe")。 */
   filmDescribe: (structure: string, title = "", description = "") => videoCall("video.film.describe", { structure, title, description }),
+  /** filmGet 走 videoCall("video.film.get")。 */
   filmGet: (id: string) => videoCall("video.film.get", { id }),
+  /** filmList 走 videoCall("video.film.list")。 */
   filmList: () => videoCall("video.film.list"),
+  /** filmPlan 走 videoCall("video.film.plan")。 */
   filmPlan: (id: string) => videoCall("video.film.plan", { id }),
+  /** filmBuild 走 videoCall("video.film.build")。 */
   filmBuild: (id: string) => videoCall("video.film.build", { id }),
+  /** filmSwap 走 videoCall("video.film.swap")。 */
   filmSwap: (id: string, patch: { host?: string; product?: string; language?: string; aspect?: string; hook?: string; price?: string; cta?: string }) => videoCall("video.film.swap", { id, ...patch }),
+  /** filmFork 走 videoCall("video.film.fork")。 */
   filmFork: (id: string, patch: { host?: string; product?: string; language?: string; aspect?: string; hook?: string; price?: string; cta?: string }) => videoCall("video.film.fork", { id, ...patch }),
+  /** filmBed 走 videoCall("video.film.bed")。 */
   filmBed: (id: string, hash: string) => videoCall("video.film.bed", { id, hash }),
+  /** filmRewrite 走 videoCall("video.film.rewrite")。 */
   filmRewrite: (id: string, lineId: string, text: string) => videoCall("video.film.rewrite", { id, line_id: lineId, text }),
+  /** filmHandoff 走 videoCall("video.film.handoff")。 */
   filmHandoff: (id: string, title = "") => videoCall("video.film.handoff", { id, title }),
+  /** cutGet 走 videoCall("video.cut.get")。 */
   cutGet: (id: string) => videoCall("video.cut.get", { id }),
+  /** cutBind 走 videoCall("video.cut.bind")。 */
   cutBind: (sessionId: string, id: string) => videoCall("video.cut.bind", { session_id: sessionId, id }),
+  /** cutRelease 走 videoCall("video.cut.release")。 */
   cutRelease: (sessionId: string) => videoCall("video.cut.release", { session_id: sessionId }),
+  /** cutSession 走 videoCall("video.cut.session")。 */
   cutSession: (sessionId: string) => videoCall("video.cut.session", { session_id: sessionId }),
+  /** cutIngest 走 videoCall("video.cut.ingest")。 */
   cutIngest: (id: string, hash: string, title = "") => videoCall("video.cut.ingest", { id, hash, title }),
+  /** cutAnalyze 走 videoCall("video.cut.analyze")。 */
   cutAnalyze: (id: string) => videoCall("video.cut.analyze", { id }),
+  /** cutPropose 走 videoCall("video.cut.propose")。 */
   cutPropose: (id: string, count = 3, window = "15-30") => videoCall("video.cut.propose", { id, count, window }),
+  /** cutApply 走 videoCall("video.cut.apply")。 */
   cutApply: (id: string) => videoCall("video.cut.apply", { id }),
+  /** cutExtract 走 videoCall("video.cut.extract")。 */
   cutExtract: (id: string) => videoCall("video.cut.extract", { id }),
+  /** cutEnhance 走 videoCall("video.cut.enhance")。 */
   cutEnhance: (id: string, preset = "voice") => videoCall("video.cut.enhance", { id, preset }),
+  /** cutMix 走 videoCall("video.cut.mix")。 */
   cutMix: (id: string, duck = true) => videoCall("video.cut.mix", { id, duck }),
+  /** cutTranscribe 走 videoCall("video.cut.transcribe")。 */
   cutTranscribe: (id: string) => videoCall("video.cut.transcribe", { id }),
+  /** cutCaptions 走 videoCall("video.cut.captions")。 */
   cutCaptions: (id: string, text = "", language = "") => videoCall("video.cut.captions", { id, text, language }),
+  /** cutBurnin 走 videoCall("video.cut.burnin")。 */
   cutBurnin: (id: string) => videoCall("video.cut.burnin", { id }),
+  /** cutDub 走 videoCall("video.cut.dub")。 */
   cutDub: (id: string, text = "", voice = "") => videoCall("video.cut.dub", { id, text, voice }),
+  /** cutGrade 走 videoCall("video.cut.grade")。 */
   cutGrade: (id: string, preset = "warm") => videoCall("video.cut.grade", { id, preset }),
+  /** cutStem 走 videoCall("video.cut.stem")。 */
   cutStem: (id: string, kind: string, hash: string) => videoCall("video.cut.stem", { id, kind, hash }),
+  /** cutKeep 走 videoCall("video.cut.keep")。 */
   cutKeep: (id: string, clipIds: string[]) => videoCall("video.cut.keep", { id, clip_ids: clipIds }),
+  /** cutOmit 走 videoCall("video.cut.omit")。 */
   cutOmit: (id: string, index: number) => videoCall("video.cut.omit", { id, index }),
+  /** route 走 videoCall("video.route")。 */
   route: (sessionId: string, dest: string, id = "", title = "") => videoCall("video.route", { session_id: sessionId, dest, id, title }),
+  /** providerMenu 走 videoCall("video.providers.menu")。 */
   providerMenu: (capability = "") => videoCall("video.providers.menu", { capability }),
 };

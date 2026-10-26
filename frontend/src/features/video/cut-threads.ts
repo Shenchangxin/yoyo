@@ -1,5 +1,10 @@
+/**
+ * 本文件拥有剪辑工程和聊天会话在 localStorage 里的对照。不拥有聊天内容。
+ * 它只改本机存储，不改服务端。
+ */
 const KEY = "yoyo-cut-threads";
 
+/** 读出工程 id 到会话 id 的对照，坏数据当成空。 */
 function read(): Record<string, string> {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || "{}");
@@ -15,17 +20,19 @@ function read(): Record<string, string> {
   }
 }
 
+/** cutThreadId 返回这个剪辑工程记下的会话，没有就是空字符串。 */
 export function cutThreadId(projectId: string): string {
   return read()[(projectId || "").trim()] || "";
 }
 
+/** isCutThread 判断这个会话是不是某条剪辑记下的。 */
 export function isCutThread(sessionId: string): boolean {
   const id = (sessionId || "").trim();
   if (!id) return false;
   return Object.values(read()).includes(id);
 }
 
-/** One chat per cut. A session that moves to a new cut leaves the previous one. */
+/** rememberCutThread 一条剪辑记一条聊天。会话挪到新剪辑时离开上一条。 */
 export function rememberCutThread(projectId: string, sessionId: string) {
   const id = (projectId || "").trim();
   const sid = (sessionId || "").trim();
@@ -39,6 +46,6 @@ export function rememberCutThread(projectId: string, sessionId: string) {
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }

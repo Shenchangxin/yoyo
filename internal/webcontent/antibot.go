@@ -1,3 +1,5 @@
+// 本文件判断验证码页和过薄的正文。抽样只看前 4000 个 rune。
+
 package webcontent
 
 import (
@@ -5,7 +7,9 @@ import (
 	"unicode/utf8"
 )
 
-// LooksAntibot reports high-confidence challenge pages (Cloudflare / Jina captcha).
+// LooksAntibot 判断正文是不是高置信度的拦截页。只检查前 4000 个 rune 的小写文本。
+// 同时含 warning: 和 requiring captcha 为真。同时含 just a moment 以及 cloudflare、cf- 或 challenge 为真。
+// 含 attention required! | cloudflare、/cdn-cgi/challenge-platform/，或 enable javascript and cookies to continue 也为真。
 func LooksAntibot(body string) bool {
 	sample := body
 	if utf8.RuneCountInString(sample) > 4000 {
@@ -30,7 +34,8 @@ func LooksAntibot(body string) bool {
 	return false
 }
 
-// ThinExtract reports that stripped HTML is not enough article text.
+// ThinExtract 判断去掉标签后的文本够不够当文章。LooksAntibot(raw) 为真、stripped 空白，或 stripped 少于 200 个 rune 时为真。
+// raw 长于 4000 字节且 stripped 少于 400 个 rune 时也为真。
 func ThinExtract(stripped, raw string) bool {
 	if LooksAntibot(raw) {
 		return true

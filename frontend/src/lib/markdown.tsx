@@ -1,3 +1,8 @@
+/**
+ * 拥有：把助手正文画成 markdown。流式时冻住已定稿的块，定稿后再交给 Streamdown 和高亮。
+ * 不拥有：增量解析和 mdast 节点的绘制。
+ */
+
 import { Component, memo, useEffect, useRef, useState, type ErrorInfo, type HTMLAttributes, type ReactNode } from "react";
 import { Streamdown, TableCopyDropdown, type Components, type ExtraProps } from "streamdown";
 import { useCopy } from "./i18n";
@@ -11,14 +16,9 @@ type MdProps<T extends HTMLElement> = HTMLAttributes<T> & ExtraProps & { childre
 
 const SHIKI_SETTLE_MS = 400;
 
-/**
- * Streamdown ships ChatGPT-scale headings (`text-3xl` / `mt-6`) and
- * `list-inside`. Replace those nodes so the letter stays desk-sized.
- * Tables keep Streamdown's copy dropdown but drop its `bg-muted/80`
- * chrome (`--muted` is ink, not a fill). Do not override `code` —
- * Streamdown uses it for both inline and fences.
- */
+/** 换成桌面尺寸的标题。Streamdown 自带的是 text-3xl 和 mt-6，列表是 list-inside。表格留它的复制菜单，去掉 bg-muted/80，因为 --muted 是墨色不是填充。不要覆盖 code，Streamdown 用它同时画行内和围栏。 */
 function heading(tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6", name: string) {
+  /** 去掉 node，其余属性和 className 原样交回。 */
   return function MdHeading({ children, className, node: _node, ...props }: MdProps<HTMLHeadingElement>) {
     const Tag = tag;
     return (
@@ -29,18 +29,26 @@ function heading(tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6", name: string) {
   };
 }
 
+/** 取表格第一行的单元格数。没有则 0。 */
 function tableColumnCount(node: unknown): number {
   const row = (node as { children?: Array<{ children?: unknown[] }> } | undefined)?.children?.[0];
   return Array.isArray(row?.children) ? row.children.length : 0;
 }
 
 const mdComponents: Components = {
+  /** h1 用桌面字号渲染一级标题。 */
   h1: heading("h1", "heading-1"),
+  /** h2 用桌面字号渲染二级标题。 */
   h2: heading("h2", "heading-2"),
+  /** h3 用桌面字号渲染三级标题。 */
   h3: heading("h3", "heading-3"),
+  /** h4 用桌面字号渲染四级标题。 */
   h4: heading("h4", "heading-4"),
+  /** h5 用桌面字号渲染五级标题。 */
   h5: heading("h5", "heading-5"),
+  /** h6 用桌面字号渲染六级标题。 */
   h6: heading("h6", "heading-6"),
+  /** 无序列表用外置圆点。嵌在列表项里时再缩进。 */
   ul: ({ children, className, node: _node, ...props }: MdProps<HTMLUListElement>) => (
     <ul
       {...props}
@@ -50,6 +58,7 @@ const mdComponents: Components = {
       {children}
     </ul>
   ),
+  /** 有序列表用外置数字。嵌在列表项里时再缩进。 */
   ol: ({ children, className, node: _node, ...props }: MdProps<HTMLOListElement>) => (
     <ol
       {...props}
@@ -59,24 +68,29 @@ const mdComponents: Components = {
       {children}
     </ol>
   ),
+  /** 列表项里的段落保持行内。 */
   li: ({ children, className, node: _node, ...props }: MdProps<HTMLLIElement>) => (
     <li {...props} data-streamdown="list-item" className={cn("[&>p]:inline", className)}>
       {children}
     </li>
   ),
+  /** 引用块只去掉 node。 */
   blockquote: ({ children, className, node: _node, ...props }: MdProps<HTMLQuoteElement>) => (
     <blockquote {...props} data-streamdown="blockquote" className={className}>
       {children}
     </blockquote>
   ),
+  /** 分隔线只去掉 node。 */
   hr: ({ className, node: _node, ...props }: MdProps<HTMLHRElement>) => (
     <hr {...props} data-streamdown="horizontal-rule" className={className} />
   ),
+  /** 链接加上文件提及的类名。 */
   a: ({ children, className, node: _node, ...props }: MdProps<HTMLAnchorElement>) => (
     <a {...props} data-streamdown="link" className={cn("md-file-mention", className)}>
       {children}
     </a>
   ),
+  /** 表格留复制菜单。不少于四列时加宽并可以聚焦。 */
   table: ({ children, className, node, ...props }: MdProps<HTMLTableElement>) => {
     const cols = tableColumnCount(node);
     const wide = cols >= 4;
@@ -97,26 +111,31 @@ const mdComponents: Components = {
       </div>
     );
   },
+  /** 表头只去掉 node。 */
   thead: ({ children, className, node: _node, ...props }: MdProps<HTMLTableSectionElement>) => (
     <thead {...props} data-streamdown="table-header" className={className}>
       {children}
     </thead>
   ),
+  /** 表体只去掉 node。 */
   tbody: ({ children, className, node: _node, ...props }: MdProps<HTMLTableSectionElement>) => (
     <tbody {...props} data-streamdown="table-body" className={className}>
       {children}
     </tbody>
   ),
+  /** 表行只去掉 node。 */
   tr: ({ children, className, node: _node, ...props }: MdProps<HTMLTableRowElement>) => (
     <tr {...props} data-streamdown="table-row" className={className}>
       {children}
     </tr>
   ),
+  /** 表头单元格只去掉 node。 */
   th: ({ children, className, node: _node, ...props }: MdProps<HTMLTableCellElement>) => (
     <th {...props} data-streamdown="table-header-cell" className={className}>
       {children}
     </th>
   ),
+  /** 单元格只去掉 node。 */
   td: ({ children, className, node: _node, ...props }: MdProps<HTMLTableCellElement>) => (
     <td {...props} data-streamdown="table-cell" className={className}>
       {children}
@@ -124,17 +143,21 @@ const mdComponents: Components = {
   ),
 };
 
+/** 渲染抛错时改显示原文和一句失败说明。 */
 class MarkdownBoundary extends Component<{ text: string; fallback: string; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
+  /** 出错后进入失败状态。 */
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
   }
 
+  /** 把错误和组件栈打到控制台。 */
   componentDidCatch(err: Error, info: ErrorInfo) {
     console.warn("[markdown]", err.message, info.componentStack);
   }
 
+  /** 失败时显示回退说明和原文，否则显示子节点。 */
   render() {
     if (this.state.failed) {
       return (
@@ -152,6 +175,7 @@ class MarkdownBoundary extends Component<{ text: string; fallback: string; child
 
 const UI_MARKDOWN_CAP = 24_000;
 
+/** Markdown 一条助手正文。流式走增量渲染。定稿后等 400 毫秒再打开高亮。超过 24000 字截断并加省略号。 */
 export const Markdown = memo(function Markdown({
   text,
   streaming,
@@ -161,7 +185,7 @@ export const Markdown = memo(function Markdown({
   text: string;
   streaming?: boolean;
   quiet?: boolean;
-  /** Streamdown+Shiki. Historical turns pass false so WebView2 does not keep a highlighter per letter. */
+  /** 为真时用 Streamdown 加 Shiki。历史回合传假，避免 WebView2 按每封信留一个高亮器。 */
   rich?: boolean;
 }) {
   const copy = useCopy();
@@ -230,6 +254,7 @@ const streamControls = {
   image: { download: false },
 } as const;
 
+/** 不稳定尾部。空文本不渲染。走流式模式且不复制、不下载。 */
 const TailMarkdown = memo(function TailMarkdown({ text }: { text: string }) {
   if (!text) return null;
   return (
@@ -250,6 +275,7 @@ const TailMarkdown = memo(function TailMarkdown({ text }: { text: string }) {
   );
 });
 
+/** 按代缓存已冻结块的元素。代变了就清空。解析失败时尾部从 0 开始。 */
 class StreamingRenderer {
   private readonly parser = new IncrementalMarkdownParser(parseGfm);
   private generation = -1;
@@ -258,6 +284,7 @@ class StreamingRenderer {
   private lastText: string | null = null;
   private lastRendered: { frozen: ReactNode[]; tail: string; generation: number } | null = null;
 
+  /** 相同文本返回上一次结果。冻结块变长时只补画新增的。尾部是 tailStart 之后的源码。 */
   render(text: string): { frozen: ReactNode[]; tail: string; generation: number } {
     if (text === this.lastText && this.lastRendered) return this.lastRendered;
     let frozen: readonly PositionedBlock[] = [];
@@ -289,6 +316,7 @@ class StreamingRenderer {
   }
 }
 
+/** 流式正文：冻结块按代挂上，尾部交给 TailMarkdown，末尾一个光标。 */
 function StreamingMarkdown({ text, quiet }: { text: string; quiet?: boolean }) {
   const renderer = useRef<StreamingRenderer | null>(null);
   if (!renderer.current) renderer.current = new StreamingRenderer();

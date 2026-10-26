@@ -1,14 +1,12 @@
+// 把投影整理成 OpenAI 聊天补全能接受的消息序列。kernel.prompt、projectChat、MeasureContext 和 retainKeepTokens 会调用。
+// 只返回新切片。不改入参，也不写 JSONL。
+
 package runtime
 
 import "strings"
 
-// Legalize makes an OpenAI Chat Completions transcript valid:
-// every assistant.tool_calls id has a following role=tool message, empty
-// tool bodies get an explicit anchor, and orphan tool messages are kept as
-// user text so stubbed bytes are not dropped from a projection.
-//
-// User/orphan rows are never inserted between an assistant.tool_calls set
-// and its matching role=tool messages.
+// Legalize 整理发给模型的投影。每个 assistant.tool_calls 的 id 后面都要有 role=tool；缺结果时补 toolOutcomeUnknown，空正文换成 emptyToolAnchor。对不上调用的 tool 改成用户文本，占位字节不会从投影里丢掉。
+// 一组 tool_calls 还没配齐时，用户消息和孤立 tool 先暂存，配齐后再追加，避免插进配对中间。空的 tool call id 写成 tc 加序号。返回新切片，不修改入参，也不写 JSONL。
 func Legalize(msgs []Message) []Message {
 	if len(msgs) == 0 {
 		return msgs
@@ -111,6 +109,7 @@ func Legalize(msgs []Message) []Message {
 	return out
 }
 
+// pairingBoundary 把剪切点退到不拆开 assistant.tool_calls 和紧随的 role=tool。cut 小于 1 时返回 1，达到或超过长度时返回长度。
 func pairingBoundary(msgs []Message, cut int) int {
 	if cut < 1 {
 		return 1
@@ -130,6 +129,7 @@ func pairingBoundary(msgs []Message, cut int) int {
 	return cut
 }
 
+// emptyToolAnchor 给空的工具正文一个明确句子，避免投影里出现空的 role=tool。
 func emptyToolAnchor(name string) string {
 	if name == "" {
 		name = "tool"
@@ -137,8 +137,8 @@ func emptyToolAnchor(name string) string {
 	return "(" + name + " completed with no output)"
 }
 
-// A recorded call with no result may have started. Say so, and do not invent
-// a successful empty completion. A call that never started uses the abort text.
+// toolOutcomeUnknown 用于调用已经记下、但结果还不知道的情况。不把它说成成功的空完成。尚未派发的调用用 toolAbortedBeforeDispatch。
 const toolOutcomeUnknown = "ERROR: TOOL_OUTCOME_UNKNOWN: this call was recorded but its outcome is unknown. Retry only if it is read-only or idempotent. If it may have changed files or state, check that state or ask the user before retrying."
 
+// toolAbortedBeforeDispatch 表示调用在派发前被中止。
 const toolAbortedBeforeDispatch = "ERROR: ABORTED_BEFORE_DISPATCH: tool call aborted before dispatch. Retry it if it is still needed."

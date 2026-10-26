@@ -1,7 +1,10 @@
+// 锁住空模型名、未知名字、目录覆盖和若干家族的窗口数字。
+
 package runtime
 
 import "testing"
 
+// TestModelContextWindowUnknownDefaults300k 确认空模型返回 0，对不上的名字用 UnknownModelWindow，点名的家族用各自的窗口。
 func TestModelContextWindowUnknownDefaults300k(t *testing.T) {
 	if got := ModelContextWindow(""); got != 0 {
 		t.Fatalf("empty: %d", got)
@@ -26,6 +29,7 @@ func TestModelContextWindowUnknownDefaults300k(t *testing.T) {
 	}
 }
 
+// TestModelContextWindowDeepSeekV4Is1M 确认带 deepseek 的名字，包括自定义前缀，窗口是 100 万。接入点参数不改变结果。
 func TestModelContextWindowDeepSeekV4Is1M(t *testing.T) {
 	for _, id := range []string{
 		"deepseek-v4-flash",
@@ -44,6 +48,7 @@ func TestModelContextWindowDeepSeekV4Is1M(t *testing.T) {
 	}
 }
 
+// TestCatalogWindowOverridesHeuristic 确认 CatalogWindow 大于 0 时盖过启发式，返回 0 的名字仍用 UnknownModelWindow。
 func TestCatalogWindowOverridesHeuristic(t *testing.T) {
 	CatalogWindow = func(model string) int {
 		if model == "gpt-4o" {

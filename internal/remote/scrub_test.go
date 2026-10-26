@@ -1,7 +1,11 @@
+// 锁住 api_key、search_key、嵌套的 token，以及数组里的 password 被丢掉。has_key 和普通名字留着。
+// 不覆盖编码失败时原样返回。
+
 package remote
 
 import "testing"
 
+// TestScrubDropsSecretsKeepsPresence 锁住密钥字段被丢掉，has_key 和嵌套里的 name 留下来。
 func TestScrubDropsSecretsKeepsPresence(t *testing.T) {
 	in := map[string]any{
 		"model":      "gpt",

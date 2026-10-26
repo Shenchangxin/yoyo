@@ -1,3 +1,5 @@
+// 本文件拥有回合目录和跳转。不拥有回合怎么切分。调用方传入 turns、activeKey 和 onJump。少于 MIN_OUTLINE_TURNS 时不渲染。
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListTree, PanelLeftClose } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -13,6 +15,7 @@ import {
   type OutlineTurn,
 } from "../lib/turn-outline";
 
+// TurnOutline 在视口窄于 719px 或已收起时只留刻度。搜索框要在展开且回合数达到 OUTLINE_SEARCH_AT 时才出现。过滤按标题或从 1 开始的序号。
 export function TurnOutline(props: {
   turns: OutlineTurn[];
   activeKey: string;

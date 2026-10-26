@@ -1,3 +1,5 @@
+// 过期归档的清理，以及有队列时列表标成中断。
+
 package app
 
 import (
@@ -6,6 +8,7 @@ import (
 	"time"
 )
 
+// TestSweepExpiredSessionsDeletesOldArchive 确认超过保留天数的已归档会话会被删掉。
 func TestSweepExpiredSessionsDeletesOldArchive(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -37,6 +40,7 @@ func TestSweepExpiredSessionsDeletesOldArchive(t *testing.T) {
 	}
 }
 
+// TestListSessionsMarksInterruptedQueue 确认没在跑但队列里有一轮时，列表把该会话标成中断。
 func TestListSessionsMarksInterruptedQueue(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

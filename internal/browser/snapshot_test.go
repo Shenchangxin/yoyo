@@ -1,3 +1,6 @@
+// 本文件锁住空档位对远程页面用 interactive、对本机页面用 full，以及四档快照各自包含和排除的内容。
+// 由 go test 调用。
+
 package browser
 
 import (
@@ -5,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestNormalizeSnapshotLevel 锁住远程默认 interactive、127.0.0.1 默认 full，以及写明的 MINIMAL 会收成 minimal。
 func TestNormalizeSnapshotLevel(t *testing.T) {
 	if got := NormalizeSnapshotLevel("", "https://example.com"); got != SnapshotInteractive {
 		t.Fatalf("remote default %s", got)
@@ -17,6 +21,7 @@ func TestNormalizeSnapshotLevel(t *testing.T) {
 	}
 }
 
+// TestFormatSnapshotTiers 锁住 minimal 只计元素个数，interactive 带 ref 不带正文，full 两者都有，structured 写出 ref 字段。
 func TestFormatSnapshotTiers(t *testing.T) {
 	snap := Snapshot{
 		URL:      "https://example.com",

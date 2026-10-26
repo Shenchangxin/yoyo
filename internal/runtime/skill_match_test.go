@@ -1,3 +1,5 @@
+// 锁住技能匹配的自动加载只给领先的领域编排技能，流程技能在没有方法论包时不出现，Depth 大于 0、mode 为 off 或 hint、以及要求跳过技能时都不自动加载。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestMatchSkillsAutoloadDomainOrchestrator 锁住「把这本小说做成游戏」在 mode 为 on 且包已启用时，第一条是 novel-to-game 且动作为 autoload。
 func TestMatchSkillsAutoloadDomainOrchestrator(t *testing.T) {
 	skills := []artifact.Skill{
 		{Name: "plan-first", Description: "Keep a visible task plan with update_plan. Use for multi-step work."},
@@ -28,6 +31,7 @@ func TestMatchSkillsAutoloadDomainOrchestrator(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsHintOnlyForBundled 锁住没有领域包的周报技能只给 hint，不自动加载。
 func TestMatchSkillsHintOnlyForBundled(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice:  "帮我写周报",
@@ -39,6 +43,7 @@ func TestMatchSkillsHintOnlyForBundled(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsOffAndSkip 锁住 mode 为 off、原话要求跳过技能，或 Depth 为 1 时，匹配结果为空。
 func TestMatchSkillsOffAndSkip(t *testing.T) {
 	sk := []artifact.Skill{{Name: "novel-to-game", Description: "Turn a novel into a playable game."}}
 	packs := []PackSession{{ID: "novel-to-game"}}
@@ -53,6 +58,7 @@ func TestMatchSkillsOffAndSkip(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsIgnoresProcessSkillsWithoutMethodology 锁住没有方法论包时 brainstorming 不进入建议。
 func TestMatchSkillsIgnoresProcessSkillsWithoutMethodology(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice:  "brainstorm a plan for this bug",
@@ -64,6 +70,7 @@ func TestMatchSkillsIgnoresProcessSkillsWithoutMethodology(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsRespectsDisableModelInvocation 锁住 DisableModelInvocation 为真的技能不会被匹配出来。
 func TestMatchSkillsRespectsDisableModelInvocation(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice: "把这本小说做成游戏",
@@ -80,6 +87,7 @@ func TestMatchSkillsRespectsDisableModelInvocation(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsHintsInternetReach 锁住调研原话能提示 internet-reach，动作为 hint。
 func TestMatchSkillsHintsInternetReach(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice:  "帮我调研一下这个开源项目",
@@ -91,6 +99,7 @@ func TestMatchSkillsHintsInternetReach(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsHintModeNeverAutoloads 锁住 mode 为 hint 时，即使是已启用的领域包也只给 hint。
 func TestMatchSkillsHintModeNeverAutoloads(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice:  "把这本小说做成游戏",
@@ -103,6 +112,7 @@ func TestMatchSkillsHintModeNeverAutoloads(t *testing.T) {
 	}
 }
 
+// TestApplySkillMatchInjectsAutoload 锁住自动加载的技能名会进入注入块，正文里有该技能的内容。
 func TestApplySkillMatchInjectsAutoload(t *testing.T) {
 	sk := []artifact.Skill{{Name: "novel-to-game", Description: "Turn a novel into a playable game.", Body: "Follow the pipeline."}}
 	bodies, dirs, _ := MapSkills(sk)
@@ -120,6 +130,7 @@ func TestApplySkillMatchInjectsAutoload(t *testing.T) {
 	}
 }
 
+// TestFormatSkillHintsOmitsAutoload 锁住动作为 autoload 的名字不出现在提示里，hint 保留。
 func TestFormatSkillHintsOmitsAutoload(t *testing.T) {
 	s := FormatSkillHints([]SkillSuggestion{
 		{Name: "novel-to-game", Action: SkillActionAutoload, Reason: "named"},
@@ -133,6 +144,7 @@ func TestFormatSkillHintsOmitsAutoload(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsPrefersYoyoGameWorldOverNovel 锁住空间游戏原话把 yoyo-game 排在 novel-to-game 前面。
 func TestMatchSkillsPrefersYoyoGameWorldOverNovel(t *testing.T) {
 	skills := []artifact.Skill{
 		{Name: "novel-to-game", Description: "Turn a novel into a playable game. Use when adapting a book into a game."},
@@ -151,6 +163,7 @@ func TestMatchSkillsPrefersYoyoGameWorldOverNovel(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsDoesNotAutoloadNovelOnSpatialGame 锁住 Lane 为 game 且已加载空间游戏技能时，建议里没有 novel-to-game。
 func TestMatchSkillsDoesNotAutoloadNovelOnSpatialGame(t *testing.T) {
 	skills := []artifact.Skill{
 		{Name: "novel-to-game", Description: "Turn a novel into a playable game. Use when adapting a book into a game."},
@@ -171,6 +184,7 @@ func TestMatchSkillsDoesNotAutoloadNovelOnSpatialGame(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsDoesNotAutoloadNovelWithoutNovelVoice 锁住没有小说措辞的玩法原话不会把 novel-to-game 标成 autoload。
 func TestMatchSkillsDoesNotAutoloadNovelWithoutNovelVoice(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice:  "按这个玩法生成世界：神庙逃亡主题的第三人称3D跑酷小游戏",
@@ -185,6 +199,7 @@ func TestMatchSkillsDoesNotAutoloadNovelWithoutNovelVoice(t *testing.T) {
 	}
 }
 
+// TestMatchSkillsStillAutoloadsNovelAdapt 锁住「把这本小说做成游戏」仍会自动加载 novel-to-game。
 func TestMatchSkillsStillAutoloadsNovelAdapt(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice:  "把这本小说做成游戏",
@@ -197,8 +212,9 @@ func TestMatchSkillsStillAutoloadsNovelAdapt(t *testing.T) {
 	}
 }
 
+// TestHarborDoesNotCallMatcher 锁住新建的 WorkspaceTools 没有 SkillHints，FormatSkillHints 得到空串。
 func TestHarborDoesNotCallMatcher(t *testing.T) {
-	// Matcher is session-path only. Harbor tools have no SkillHints unless set.
+	// 本测试不调用匹配器。新建的工具没有 SkillHints。
 	tools := &WorkspaceTools{}
 	if FormatSkillHints(tools.SkillHints) != "" {
 		t.Fatal("harbor tools must not start with hints")

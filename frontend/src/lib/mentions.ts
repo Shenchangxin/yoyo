@@ -1,5 +1,12 @@
+/**
+ * 拥有：从光标处识别 @ 提及，把草稿收成标记，并按词法提示技能。
+ * 不拥有：提及菜单的渲染，以及宿主如何展开标记。
+ */
+
+/** MentionKind 文件、文件夹、技能、harness 或会话。 */
 export type MentionKind = "file" | "folder" | "skill" | "harness" | "session";
 
+/** MentionPin 一枚提及。token 写进草稿，detail 是路径或 id。 */
 export type MentionPin = {
   token: string;
   kind: MentionKind;
@@ -7,12 +14,14 @@ export type MentionPin = {
   detail: string;
 };
 
+/** MentionQuery 光标处的查询。kind 为 any 时还没选定种类。quoted 表示用了引号。 */
 export type MentionQuery = {
   kind: "any" | MentionKind;
   query: string;
   quoted: boolean;
 };
 
+/** MentionSessionRef 可提及的一段会话。 */
 export type MentionSessionRef = {
   id: string;
   title: string;
@@ -20,6 +29,7 @@ export type MentionSessionRef = {
   parentId?: string;
 };
 
+/** MentionFileHit 文件搜索的一条命中。kind 区分文件和目录。 */
 export type MentionFileHit = {
   path: string;
   kind: string;
@@ -27,7 +37,7 @@ export type MentionFileHit = {
 
 const COMPLETE_RE = /@(?:file|folder|skill|session):\S+|@harness\b/g;
 
-/** Active `@` token at the end of `before`, including `@"quoted` paths. */
+/** activeAtTail `before` 末尾正在输入的 `@`，含未闭合的 `@"。行首或空白之后才算。没有则空。 */
 export function activeAtTail(before: string): string | null {
   const quoted = /(?:^|\s)(@"([^"]*))$/u.exec(before);
   if (quoted?.[1]) return quoted[1];
@@ -35,10 +45,12 @@ export function activeAtTail(before: string): string | null {
   return plain?.[1] ?? null;
 }
 
+/** keepMentionOpen 正好是 `@file:`、`@folder:`、`@skill:` 或 `@session:` 时菜单保持打开。 */
 export function keepMentionOpen(token: string) {
   return token === "@file:" || token === "@folder:" || token === "@skill:" || token === "@session:";
 }
 
+/** mentionKind 从标记前缀认出种类。只有整词 `@harness` 才是 harness，其余返回空。 */
 export function mentionKind(token: string): MentionKind | null {
   if (token.startsWith("@file:")) return "file";
   if (token.startsWith("@folder:")) return "folder";
@@ -48,6 +60,7 @@ export function mentionKind(token: string): MentionKind | null {
   return null;
 }
 
+/** mentionLabel harness 显示 harness。会话显示冒号后的原文。文件和技能显示最后一段，文件夹末尾加斜杠。没有引用时退回种类或标记本身。 */
 export function mentionLabel(token: string): string {
   const kind = mentionKind(token);
   if (kind === "harness") return "harness";
@@ -59,6 +72,7 @@ export function mentionLabel(token: string): string {
   return kind === "folder" ? `${name}/` : name;
 }
 
+/** mentionDetail 文件和文件夹是路径，技能和会话是冒号后的部分，其余空串。 */
 export function mentionDetail(token: string): string {
   if (token.startsWith("@file:") || token.startsWith("@folder:")) {
     return token.replace(/^@(?:file|folder):/, "");
@@ -68,15 +82,18 @@ export function mentionDetail(token: string): string {
   return "";
 }
 
+/** pinFromToken 由标记做成一枚。认不出种类时当文件。 */
 export function pinFromToken(token: string, label?: string): MentionPin {
   const kind = mentionKind(token) || "file";
   return { token, kind, label: label || mentionLabel(token), detail: mentionDetail(token) };
 }
 
+/** isCompleteMention 带非空白引用的 file、folder、skill、session，或正好是 `@harness`。 */
 export function isCompleteMention(token: string): boolean {
   return /@(?:file|folder|skill|session):\S+/.test(token) || token === "@harness";
 }
 
+/** mentionQueryOf 按前缀拆出种类和查询。`@harness` 的查询是 harness。`@"` 开头为引号查询并去掉结尾引号。其余去掉一个 `@` 后当作 any。 */
 export function mentionQueryOf(token: string): MentionQuery {
   if (token.startsWith("@file:")) return { kind: "file", query: token.slice("@file:".length), quoted: false };
   if (token.startsWith("@folder:")) return { kind: "folder", query: token.slice("@folder:".length), quoted: false };
@@ -91,7 +108,7 @@ export function mentionQueryOf(token: string): MentionQuery {
   return { kind: "any", query: token.startsWith("@") ? token.slice(1) : token, quoted: false };
 }
 
-/** Descent text left in the draft while browsing a folder (`@src/` or `@"src/`). */
+/** formatTriggerPath 浏览文件夹时留在草稿里的文本，形如 `@src/` 或 `@"src/`。目录去掉多余结尾斜杠后再加一个。含空白或已要求引号时加引号，目录不加闭合引号。 */
 export function formatTriggerPath(path: string, quoted: boolean, directory: boolean): string {
   const body = directory ? `${path.replace(/\/+$/, "")}/` : path;
   const needQuote = quoted || /\s/.test(body);
@@ -100,7 +117,7 @@ export function formatTriggerPath(path: string, quoted: boolean, directory: bool
   return `@"${body}"`;
 }
 
-/** Immediate children of `dir/` from a fuzzy hit list. */
+/** childPaths 模糊命中里该目录的直接子项。目录前缀为 `/` 时原样返回。路径里还含斜杠的更深项排除。 */
 export function childPaths<T extends MentionFileHit>(hits: T[], dir: string): T[] {
   const prefix = `${dir.replace(/\/+$/, "")}/`;
   if (prefix === "/") return hits;
@@ -110,13 +127,14 @@ export function childPaths<T extends MentionFileHit>(hits: T[], dir: string): T[
   });
 }
 
+/** MentionCrumb 一层面包屑。current 表示当前这一层。 */
 export type MentionCrumb = {
   label: string;
   query: string;
   current?: boolean;
 };
 
-/** Breadcrumb of a drilled directory listing (typed paths carry their own context). */
+/** mentionCrumbs 钻进目录后的面包屑。没钻进去，或查询里没有斜杠，则没有。第一层用根标签，查询为 `@` 或 `@"`。 */
 export function mentionCrumbs(query: string, quoted: boolean, drilled: boolean, rootLabel: string): MentionCrumb[] | undefined {
   if (!drilled) return undefined;
   const slash = query.lastIndexOf("/");
@@ -137,7 +155,7 @@ export function mentionCrumbs(query: string, quoted: boolean, drilled: boolean, 
   return crumbs;
 }
 
-/** Token the caret is inside, including incomplete `@` / `@file:` prefixes. */
+/** mentionTokenAt 光标所在的标记，含未完成的 `@` 和 `@file:`。引号形式只取光标左侧。普通形式把右侧同一段非空白也算进去。没有则空。 */
 export function mentionTokenAt(value: string, caret: number): { start: number; end: number; token: string } | null {
   const pos = Math.max(0, Math.min(caret, value.length));
   const left = value.slice(0, pos);
@@ -152,6 +170,7 @@ export function mentionTokenAt(value: string, caret: number): { start: number; e
   return { start: pos - head.length, end: pos + extra.length, token: head + extra };
 }
 
+/** peelCompletedMentions 把已完成的标记拆成芯片，正文里去掉它们，并按去掉的长度回退光标。连续的非换行空白收成一个空格。 */
 export function peelCompletedMentions(text: string, caret = text.length): { text: string; chips: MentionPin[]; caret: number } {
   const chips: MentionPin[] = [];
   let out = "";
@@ -178,6 +197,7 @@ export function peelCompletedMentions(text: string, caret = text.length): { text
   return { text: collapsed, chips, caret: caretNext };
 }
 
+/** composeDraft 标记在前，正文在后。会话钉的标签收成一行 sessions，给模型看标题。 */
 export function composeDraft(pins: MentionPin[], prose: string): string {
   const head = pins.map((p) => p.token).join(" ");
   const sessionNotes = pins
@@ -190,11 +210,7 @@ export function composeDraft(pins: MentionPin[], prose: string): string {
   return head || body;
 }
 
-/**
- * Turn leftover harness-style `@path` text into wire tokens the host expands.
- * Only exact hits from the current file list are rewritten; Go still Stats
- * unmatched paths on send.
- */
+/** settleBareAtPaths 把剩下的 `@path` 收成宿主会展开的标记。只改写当前文件列表里的精确命中。对不上的路径在发送时仍由 Go 统计。目录或查询以斜杠结尾写成 `@folder:`。已经带种类的标记不动。 */
 export function settleBareAtPaths(text: string, files: MentionFileHit[]): string {
   if (!text || !files.length) return text;
   const byPath = new Map(files.map((f) => [f.path.replace(/\\/g, "/"), f]));
@@ -212,6 +228,7 @@ export function settleBareAtPaths(text: string, files: MentionFileHit[]): string
 
 type AttachmentPin = { name?: string; path?: string; mime?: string };
 
+/** isImageAttachment mime 以 image/ 开头，或名字、路径以 png、jpg、jpeg、gif、webp 结尾。 */
 export function isImageAttachment(a: AttachmentPin): boolean {
   const mime = (a.mime || "").toLowerCase();
   if (mime.startsWith("image/")) return true;
@@ -219,6 +236,7 @@ export function isImageAttachment(a: AttachmentPin): boolean {
   return /\.(png|jpe?g|gif|webp)(?:$|\?)/i.test(n);
 }
 
+/** pinsFromAttachments 非图片附件收成文件钉。标签用文件名。没有路径则用名字。同一标记只留一次。 */
 export function pinsFromAttachments(atts: AttachmentPin[] | undefined | null): MentionPin[] {
   if (!atts?.length) return [];
   const out: MentionPin[] = [];
@@ -235,6 +253,7 @@ export function pinsFromAttachments(atts: AttachmentPin[] | undefined | null): M
   return out;
 }
 
+/** mergeMentionPins 按 token 合并。已经在 a 里的不再从 b 加入。 */
 export function mergeMentionPins(a: MentionPin[], b: MentionPin[]): MentionPin[] {
   const seen = new Set(a.map((p) => p.token));
   const out = a.slice();
@@ -246,13 +265,14 @@ export function mergeMentionPins(a: MentionPin[], b: MentionPin[]): MentionPin[]
   return out;
 }
 
-/** Extra suffix/prefix on a live user event is only @file/@folder/@skill tokens. */
+/** extraIsMentions 多出来的前缀或后缀去掉空白后，每一段都是完整提及。空白本身算是。 */
 export function extraIsMentions(s: string): boolean {
   const t = s.trim();
   if (!t) return true;
   return t.split(/\s+/).every((tok) => isCompleteMention(tok));
 }
 
+/** fuller 以 base 开头，多出来的部分全是提及。base 为空时，fuller 里还要有 `@file:`。 */
 function mentionAugmented(base: string, fuller: string): boolean {
   if (!base) return extraIsMentions(fuller) && /@file:/.test(fuller);
   if (fuller.startsWith(base) && extraIsMentions(fuller.slice(base.length))) return true;
@@ -260,6 +280,7 @@ function mentionAugmented(base: string, fuller: string): boolean {
   return false;
 }
 
+/** sameUserTurnText 两端去空白后相等，或一边只是在另一边外面多了提及。 */
 export function sameUserTurnText(a: string, b: string): boolean {
   const left = a.trim();
   const right = b.trim();
@@ -275,17 +296,19 @@ type MentionSkill = {
   source?: string;
 };
 
+/** 名字、显示名、slug 和说明拼成小写，供匹配。 */
 function skillHaystack(s: MentionSkill): string {
   return [s.name, s.displayName, s.slug, s.description].filter(Boolean).join(" ").toLowerCase();
 }
 
+/** market、home、workspace 排在前面，其余靠后。 */
 function skillRank(s: MentionSkill): number {
   const src = s.source || "";
   if (src === "market" || src === "home" || src === "workspace") return 0;
   return 1;
 }
 
-/** Installed / workspace packs first. Bundled catalog stays below so @skill is usable. */
+/** mentionableSkills 已安装和工作区包在前，捆绑目录留在下面，这样 @skill 还能用。查询不区分大小写，空查询留全部。先按来源再按名字排序。 */
 export function mentionableSkills<T extends MentionSkill>(skills: T[], query: string): T[] {
   const q = query.trim().toLowerCase();
   return skills
@@ -307,6 +330,7 @@ const ROUTE_LEX: [string, string][] = [
   ["script", "剧本"],
 ];
 
+/** 切出长度至少为 2 的片段。英文词若在词表里，连同对应中文一起放进集合。 */
 function suggestTokens(text: string): Set<string> {
   const out = new Set<string>();
   const fold = text.toLowerCase();
@@ -322,7 +346,7 @@ function suggestTokens(text: string): Set<string> {
   return out;
 }
 
-/** Cheap composer hint — mirrors host lexical match, not embeddings. */
+/** suggestSkills 作曲提示，对齐宿主的词法匹配，不是嵌入。正文去掉空白后短于 2 则没有。名字或 slug 被包含加 80。词长度至少 3 的命中加 12，长度为 2 的加 6。分数低于 24 丢掉。同名只留一次，最多 limit 条。 */
 export function suggestSkills<T extends MentionSkill>(skills: T[], voice: string, limit = 3): T[] {
   const q = voice.trim();
   if (q.length < 2) return [];
@@ -351,7 +375,7 @@ export function suggestSkills<T extends MentionSkill>(skills: T[], voice: string
   return out;
 }
 
-/** Keep overlay highlight on the same token when the list refreshes. */
+/** overlayActiveIndex 列表刷新后高亮留在同一个 token。找不到或列表为空时为 0。 */
 export function overlayActiveIndex(items: { token: string }[], token: string): number {
   if (!items.length) return 0;
   const i = token ? items.findIndex((x) => x.token === token) : -1;

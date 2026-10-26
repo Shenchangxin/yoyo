@@ -1,3 +1,6 @@
+// 本文件锁住点击加输入并成 fill、空白点击并成导航、连续滚动只留一次，以及技能草稿会提到 ref。
+// 由 go test 调用。
+
 package browser
 
 import (
@@ -5,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestCollapseClickInputBecomesFill 锁住点进邮箱框再输入会收成带 {{email}} 的 fill。
 func TestCollapseClickInputBecomesFill(t *testing.T) {
 	doc := collapseRecordEvents([]RecordEvent{
 		{Kind: "click", URL: "https://ex.test/login", Target: RecordTarget{Tag: "input", ID: "email", Name: "Email", NameAttr: "email"}},
@@ -21,6 +25,7 @@ func TestCollapseClickInputBecomesFill(t *testing.T) {
 	}
 }
 
+// TestCollapseBlankClickBecomesNavigate 锁住 about:blank 上点 body 再导航会收成 navigate。
 func TestCollapseBlankClickBecomesNavigate(t *testing.T) {
 	doc := collapseRecordEvents([]RecordEvent{
 		{Kind: "click", URL: "about:blank", Target: RecordTarget{Tag: "body"}},
@@ -37,6 +42,7 @@ func TestCollapseBlankClickBecomesNavigate(t *testing.T) {
 	}
 }
 
+// TestCollapseLastScrollWins 锁住两次滚动再点击时只留下一步 scroll。
 func TestCollapseLastScrollWins(t *testing.T) {
 	doc := collapseRecordEvents([]RecordEvent{
 		{Kind: "scroll", DeltaY: 10},
@@ -54,6 +60,7 @@ func TestCollapseLastScrollWins(t *testing.T) {
 	}
 }
 
+// TestGenerateRecordedSkillMentionsRefs 锁住草稿里有 browser_snapshot、ref= 和输入名 email。
 func TestGenerateRecordedSkillMentionsRefs(t *testing.T) {
 	body := generateRecordedSkill(StepsDocument{
 		StartURL:  "https://ex.test",
@@ -66,6 +73,7 @@ func TestGenerateRecordedSkillMentionsRefs(t *testing.T) {
 	}
 }
 
+// TestRedactRecordValueAndURL 锁住密码字段变成 {{sensitive_value}}，地址里的 token 被打码。
 func TestRedactRecordValueAndURL(t *testing.T) {
 	if got := redactRecordValue(RecordTarget{Type: "password"}, "hunter2"); got != "{{sensitive_value}}" {
 		t.Fatalf("password field: %s", got)

@@ -2,6 +2,7 @@ package desktop
 
 import "testing"
 
+// TestCompanionPulseKind 锁住用户消息和工具调用是 loading，steer、assistant、reasoning 不产生脉冲，turn_end 是 done，system 且 source 为 update 时是 update。
 func TestCompanionPulseKind(t *testing.T) {
 	if companionPulseKind("user", "user") != "loading" {
 		t.Fatal("user turn should light the pet immediately")
@@ -26,6 +27,7 @@ func TestCompanionPulseKind(t *testing.T) {
 	}
 }
 
+// TestCompanionPulseTitleClipsUserText 锁住用户 loading 标题截断后不是 Working，且不超过 43 个字；工具名 web_search 原样作为标题。
 func TestCompanionPulseTitleClipsUserText(t *testing.T) {
 	title := companionPulseTitle("loading", "user", "Working", "please look at the weekly report and also the inbox", "", "")
 	if title == "Working" || len([]rune(title)) > 43 {
@@ -36,6 +38,7 @@ func TestCompanionPulseTitleClipsUserText(t *testing.T) {
 	}
 }
 
+// TestCompanionPulseTitleShowsSkillName 锁住 load_skill 的标题是技能 id，参数为空时退回工具名，read_skill_file 的标题带技能和路径。
 func TestCompanionPulseTitleShowsSkillName(t *testing.T) {
 	if companionPulseTitle("loading", "tool_call", "Working", "", "load_skill", `{"name":"brainstorming"}`) != "brainstorming" {
 		t.Fatal("load_skill must title the pet with the skill id")
@@ -48,6 +51,7 @@ func TestCompanionPulseTitleShowsSkillName(t *testing.T) {
 	}
 }
 
+// TestAnsweredOrAskSkipsRepeats 锁住已有 decision 的审批和 action 为 ask_user 的审批不再通知，待决的 shell 审批仍要通知，ask_user 条目本身不走这条重复判断。
 func TestAnsweredOrAskSkipsRepeats(t *testing.T) {
 	if !answeredOrAsk("approval", map[string]any{"id": "a1", "decision": "once"}) {
 		t.Fatal("a decision event answers an approval; it must not notify again")
@@ -63,6 +67,7 @@ func TestAnsweredOrAskSkipsRepeats(t *testing.T) {
 	}
 }
 
+// TestQuietOutcomeKeepsStopAndPlanOpenOutOfToasts 锁住 canceled 的 error 和 stop 为 plan_open 的 turn_end 不发系统通知，provider 错误和 end_turn 仍要通知。
 func TestQuietOutcomeKeepsStopAndPlanOpenOutOfToasts(t *testing.T) {
 	if !quietOutcome("error", map[string]any{"kind": "canceled", "error": "Stopped"}) {
 		t.Fatal("a Stop is not news")
@@ -78,6 +83,7 @@ func TestQuietOutcomeKeepsStopAndPlanOpenOutOfToasts(t *testing.T) {
 	}
 }
 
+// TestToastLinesStayReadable 锁住审批行把动作和命令或路径拼在一起，lineJoin 丢掉空白并用中点连接，空的 oneLine 仍是空字符串。
 func TestToastLinesStayReadable(t *testing.T) {
 	if got := approvalLine(map[string]any{"action": "shell", "command": "npm   test\n --watch"}); got != "shell: npm test --watch" {
 		t.Fatalf("got %q", got)

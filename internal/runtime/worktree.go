@@ -1,3 +1,5 @@
+// 子代理用的工作区隔离：临时目录上的 git worktree，失败则整树复制。持久隔离和把改动拷回原树也在这里。hunk 级 git apply 在 hunks.go。
+
 package runtime
 
 import (
@@ -8,15 +10,13 @@ import (
 	"strings"
 )
 
-// IsolateWorkspace copies the workspace (or git worktree) so a subagent
-// cannot mutate the user's tree. Eval Harbor already isolates; this is the
-// same idea for live agent tasks.
+// IsolateWorkspace 把 src 隔到临时目录，避免子代理改用户的树。Eval Harbor 已经自行隔离；这里给实时代理任务用同一做法。优先 git worktree add --detach；失败则 copyTree。返回的清理函数会删掉临时目录，worktree 成功时还会 git worktree remove --force。
 func IsolateWorkspace(src string) (string, func(), error) {
 	dst, err := os.MkdirTemp("", "yoyo-wt-*")
 	if err != nil {
 		return "", nil, err
 	}
-	// git worktree add refuses an existing dest.
+	// git worktree add 拒绝已存在的目标目录，所以先删掉 MkdirTemp 创建的空目录。
 	_ = os.Remove(dst)
 	cleanup := func() { _ = os.RemoveAll(dst) }
 	if gitWorktree(src, dst) == nil {
@@ -35,8 +35,7 @@ func IsolateWorkspace(src string) (string, func(), error) {
 	return dst, cleanup, nil
 }
 
-// PersistWorktree creates a durable isolate at dest (git worktree or copy).
-// Unlike IsolateWorkspace, dest is operator-owned and is not cleaned up here.
+// PersistWorktree 在 dest 做持久隔离，优先 git worktree，失败则复制。dest 已是目录时直接返回，不在这里清理。src 与 dest 为空或相同则返回错误。
 func PersistWorktree(src, dest string) error {
 	src = filepath.Clean(src)
 	dest = filepath.Clean(dest)
@@ -63,7 +62,7 @@ func PersistWorktree(src, dest string) error {
 	return nil
 }
 
-// RemoveWorktree drops a persist isolate. src is the origin git repo when known.
+// RemoveWorktree 去掉持久隔离。dest 为空、为 . 或为路径分隔符时直接返回。src 非空时先 git worktree remove --force，再删除 dest。
 func RemoveWorktree(src, dest string) {
 	dest = filepath.Clean(dest)
 	if dest == "" || dest == "." || dest == string(filepath.Separator) {
@@ -75,6 +74,7 @@ func RemoveWorktree(src, dest string) {
 	_ = os.RemoveAll(dest)
 }
 
+// gitWorktree 先确认 src 在 git 工作树里，再执行 git worktree add --detach。
 func gitWorktree(src, dst string) error {
 	cmd := gitCmd("-C", src, "rev-parse", "--is-inside-work-tree")
 	if err := cmd.Run(); err != nil {
@@ -83,8 +83,7 @@ func gitWorktree(src, dst string) error {
 	return gitCmd("-C", src, "worktree", "add", "--detach", dst).Run()
 }
 
-// ApplyWorktree copies isolate dest back onto origin. Git worktrees are
-// synced with a checkout of dest's files; non-git isolates are a tree copy.
+// ApplyWorktree 把隔离目录 dest 的改动写回 origin。gitApply 成功就返回；否则 copyTree 从 dest 覆盖 origin。
 func ApplyWorktree(origin, dest string) error {
 	origin = filepath.Clean(origin)
 	dest = filepath.Clean(dest)
@@ -100,6 +99,7 @@ func ApplyWorktree(origin, dest string) error {
 	return copyTree(dest, origin)
 }
 
+// gitApply 在两边都是 git 工作树时，用 dest 的 git diff --binary 对 origin 执行 git apply --binary。diff 为空则返回。apply 失败则改为 copyTree。
 func gitApply(origin, dest string) error {
 	if err := gitCmd("-C", origin, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
 		return err
@@ -123,6 +123,7 @@ func gitApply(origin, dest string) error {
 	return nil
 }
 
+// copyTree 用 filepath.Walk 复制文件。目录名在 skipDirNames 里且不是源根时跳过。文件按原模式覆盖写入。
 func copyTree(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

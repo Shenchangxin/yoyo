@@ -6,7 +6,13 @@ import { ClientAssistantStream } from "./assistant-stream.ts";
 import { itemFromEvent, mergeItem } from "./stream-fold.ts";
 import type { Item } from "./protocol.ts";
 
+/**
+ * 拥有：块组装、对话折叠、条目合并和客户端助手流在这些用例上的约定。
+ * 不拥有：这些类型的实现。
+ */
+
 describe("BlockAssembler", () => {
+  /** 只有文本增量时拼成一整段正文。 */
   it("assembles delta-only text", () => {
     const a = new BlockAssembler();
     a.push({ type: "text-delta", index: 0, text: "he" });
@@ -14,6 +20,7 @@ describe("BlockAssembler", () => {
     assert.equal(textFromBlocks(a.blocks()), "hello");
   });
 
+  /** 结束原因为 max-tokens 时丢掉工具调用，只留正文。 */
   it("drops tools on max-tokens", () => {
     const a = new BlockAssembler();
     a.push({ type: "text-delta", index: 0, text: "cut" });
@@ -22,6 +29,7 @@ describe("BlockAssembler", () => {
     assert.deepEqual(a.blocks(), [{ type: "text", text: "cut" }]);
   });
 
+  /** 打包的文本块按 dt 展开成带时间的片段。 */
   it("expands packed text chunks", () => {
     const got = expandAssistantStream([
       { type: "text-chunks", time0: 1, index: 0, dt: [1], texts: ["he", "llo"] },
@@ -31,6 +39,7 @@ describe("BlockAssembler", () => {
   });
 });
 
+/** 补齐转录条目的缺省字段。 */
 function item(partial: Partial<Item> & Pick<Item, "type" | "key">): Item {
   return {
     sessionId: "s",
@@ -45,6 +54,7 @@ function item(partial: Partial<Item> & Pick<Item, "type" | "key">): Item {
 }
 
 describe("ConversationFold", () => {
+  /** 流帧先把助手正文长出来，收束后再换成最终正文。 */
   it("grows assistant text from stream frames then settles", () => {
     const f = new ConversationFold();
     f.accept(item({
@@ -75,6 +85,7 @@ describe("ConversationFold", () => {
     assert.equal(settled?.delta, false);
   });
 
+  /** 各自 from 出来的列表也能把文本增量接上。 */
   it("mergeItem grows text across independent from() calls", () => {
     let list: Item[] = [];
     list = mergeItem(list, item({
@@ -103,6 +114,7 @@ describe("ConversationFold", () => {
     assert.equal(live?.payload?.stream_index, 1);
   });
 
+  /** 同一 request_id 的正式用户消息替换乐观气泡。 */
   it("replaces optimistic user by request_id", () => {
     const f = new ConversationFold();
     f.accept(item({
@@ -124,6 +136,7 @@ describe("ConversationFold", () => {
     assert.equal(users[0].source, "user");
   });
 
+  /** 助手已经开始之后，作曲回声仍在原位被正式用户消息替换。 */
   it("replaces the composer echo in place after a live assistant has started", () => {
     const f = new ConversationFold();
     f.accept(item({
@@ -153,6 +166,7 @@ describe("ConversationFold", () => {
     assert.deepEqual(types, ["user", "assistant"]);
   });
 
+  /** 旧式助手切片一直拼到收束，重复的同一序号不再加一次。 */
   it("concatenates legacy assistant token slices until settlement", () => {
     const f = new ConversationFold();
     f.accept(item({
@@ -190,6 +204,7 @@ describe("ConversationFold", () => {
     assert.equal(settled?.delta, false);
   });
 
+  /** 收束后的条目不再带着流磁带。 */
   it("drops the settlement stream tape from the live seat", () => {
     const f = new ConversationFold();
     f.accept(item({
@@ -210,6 +225,7 @@ describe("ConversationFold", () => {
 });
 
 describe("itemFromEvent", () => {
+  /** 事件收成条目时，收束用的流磁带在进 React 之前就丢掉。 */
   it("drops the settlement stream tape before React sees it", () => {
     const it = itemFromEvent({
       type: "assistant",
@@ -226,6 +242,7 @@ describe("itemFromEvent", () => {
 });
 
 describe("ClientAssistantStream", () => {
+  /** 合并过的 index_from 到 index 整段收下，下一序号跟着前进。 */
   it("accepts coalesced index_from..index and advances nextIndex", () => {
     const s = new ClientAssistantStream();
     const start = s.acceptFrame({ kind: "start", attemptId: "a1", revision: 1, index: 0, indexFrom: 0, turn: 1, step: 1 });
@@ -242,6 +259,7 @@ describe("ClientAssistantStream", () => {
     assert.equal(s.activeAttempt?.nextIndex, 3);
   });
 
+  /** 重复的开始帧和已经应用过的前缀不再收下。 */
   it("ignores a duplicate start and already-applied prefix", () => {
     const s = new ClientAssistantStream();
     s.acceptFrame({ kind: "start", attemptId: "a1", revision: 1, index: 0, indexFrom: 0, turn: 1, step: 1 });
@@ -254,6 +272,7 @@ describe("ClientAssistantStream", () => {
     assert.equal(s.activeAttempt?.nextIndex, 1);
   });
 
+  /** 已提交的尝试留到 retire 才丢掉。 */
   it("keeps a committed attempt until retire", () => {
     const s = new ClientAssistantStream();
     s.acceptFrame({ kind: "start", attemptId: "a1", revision: 1, index: 0, indexFrom: 0, turn: 1, step: 1 });

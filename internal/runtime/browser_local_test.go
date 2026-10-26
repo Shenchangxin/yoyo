@@ -1,3 +1,5 @@
+// 工作区预览走 resolve。http(s) 与 data: 不是工作区预览。打开工作区页面不要求真的 Chrome。
+
 package runtime
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/browser"
 )
 
+// TestWorkspacePreviewRelAcceptsRelativeAndFileURL 确认相对路径、workspace:// 和 Windows file:/// 经 resolve 成功，https、data 和缺失文件失败。
 func TestWorkspacePreviewRelAcceptsRelativeAndFileURL(t *testing.T) {
 	dir := t.TempDir()
 	rel := "games/pelican-bicycle.html"
@@ -47,6 +50,7 @@ func TestWorkspacePreviewRelAcceptsRelativeAndFileURL(t *testing.T) {
 	}
 }
 
+// TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome 确认工作区 HTML 在 Chrome 可执行文件不存在时仍打开，结果含 workstation Browser pane，且不要求 browser_screenshot。
 func TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome(t *testing.T) {
 	dir := t.TempDir()
 	rel := "index.html"
@@ -78,6 +82,7 @@ func TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome(t *testing.T) {
 	}
 }
 
+// TestBrowserOpenPathBeatsLocalhostURL 确认同时给出 path 和 localhost url 时采用 path。
 func TestBrowserOpenPathBeatsLocalhostURL(t *testing.T) {
 	dir := t.TempDir()
 	rel := filepath.Join(dir, "pelican-bike")
@@ -97,6 +102,7 @@ func TestBrowserOpenPathBeatsLocalhostURL(t *testing.T) {
 	}
 }
 
+// TestBrowserOpenRejectsDataURL 确认 data: 被拒绝。
 func TestBrowserOpenRejectsDataURL(t *testing.T) {
 	tools := &WorkspaceTools{Workspace: t.TempDir()}
 	res := tools.Call("browser_open", `{"url":"data:text/html,<h1>x</h1>"}`)
@@ -105,6 +111,7 @@ func TestBrowserOpenRejectsDataURL(t *testing.T) {
 	}
 }
 
+// TestParseBrowserOpenStripsLane 确认 lane=attached 与 profile=github 从目标文本里剥掉。
 func TestParseBrowserOpenStripsLane(t *testing.T) {
 	target, lane, profile := parseBrowserOpen("https://example.com lane=attached profile=github")
 	if lane != "attached" || profile != "github" || strings.Contains(target, "lane=") || strings.Contains(target, "profile=") {
@@ -112,6 +119,7 @@ func TestParseBrowserOpenStripsLane(t *testing.T) {
 	}
 }
 
+// TestBrowserHandlePrefersRef 确认 ref 优先于 selector，并补上 ref=。
 func TestBrowserHandlePrefersRef(t *testing.T) {
 	got := browserHandle(map[string]any{"ref": "btn_0", "selector": "#old"})
 	if got != "ref=btn_0" {
@@ -123,6 +131,7 @@ func TestBrowserHandlePrefersRef(t *testing.T) {
 	}
 }
 
+// TestPersistRecordedSkillWritesWorkspace 确认录制技能写到 .yoyo/skills/login-github/SKILL.md，并装进 Skills。
 func TestPersistRecordedSkillWritesWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir, Skills: map[string]string{}}

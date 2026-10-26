@@ -1,3 +1,5 @@
+// 锁住笔记不把控制行、steer 和「继续」写进目标，合并后旧目标还在。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestNotesSkipControlUsers 确认催促、检查点、提及和 steer 不替换已经记下的目标。
 func TestNotesSkipControlUsers(t *testing.T) {
 	msgs := []Message{
 		{Role: RoleUser, Content: "fix the parser in loop.go"},
@@ -34,6 +37,7 @@ func TestNotesSkipControlUsers(t *testing.T) {
 	}
 }
 
+// TestAttachMentionPutsOperatorFirst 确认操作者原话在提及正文前面，空注入则原样返回。
 func TestAttachMentionPutsOperatorFirst(t *testing.T) {
 	got := AttachMention("帮我查论文", "## @skill:arxiv-watcher\nUse scripts")
 	if !strings.HasPrefix(got, "帮我查论文") {
@@ -47,6 +51,7 @@ func TestAttachMentionPutsOperatorFirst(t *testing.T) {
 	}
 }
 
+// TestWriteNotesKeepsOldObjective 确认后一次目标为空时，旧目标和两边的文件都还在。
 func TestWriteNotesKeepsOldObjective(t *testing.T) {
 	sp := NewSpill(t.TempDir())
 	WriteNotes(sp, SessionNotes{Objective: "ship the patch", Files: []string{"a.go"}})
@@ -61,6 +66,7 @@ func TestWriteNotesKeepsOldObjective(t *testing.T) {
 	}
 }
 
+// TestResumeDoesNotReplaceObjective 确认「继续」不替换已有目标。
 func TestResumeDoesNotReplaceObjective(t *testing.T) {
 	sp := NewSpill(t.TempDir())
 	WriteNotes(sp, SessionNotes{Objective: "完善 RBAC 控制台"})
@@ -81,6 +87,7 @@ func TestResumeDoesNotReplaceObjective(t *testing.T) {
 	}
 }
 
+// TestObjectiveStickyAcrossFollowUps 确认第一句是目标，后一句进决定。
 func TestObjectiveStickyAcrossFollowUps(t *testing.T) {
 	n := NotesFromMessages([]Message{
 		{Role: RoleUser, Content: "ship the parser"},
@@ -95,6 +102,7 @@ func TestObjectiveStickyAcrossFollowUps(t *testing.T) {
 	}
 }
 
+// TestCollapseDoubledObjective 确认整段重复收成一半，短文本 haha 保持原样。
 func TestCollapseDoubledObjective(t *testing.T) {
 	once := "本项目是一个基于golang开发的RBAC权限管理系统，请完善前端界面。"
 	n := NotesFromMessages([]Message{{Role: RoleUser, Content: once + once}})
@@ -106,6 +114,7 @@ func TestCollapseDoubledObjective(t *testing.T) {
 	}
 }
 
+// TestNotePathsSkipGlobs 确认通配和当前目录不进文件列表，普通路径会进。
 func TestNotePathsSkipGlobs(t *testing.T) {
 	n := NotesFromMessages([]Message{
 		{Role: RoleAssistant, ToolCalls: []ToolCall{

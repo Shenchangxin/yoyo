@@ -1,3 +1,7 @@
+/**
+ * 拥有：生成服务商、画布通道和本机工具的设置。
+ * 不拥有：偶像服务。保存、安装和探测会调用 api 改状态。
+ */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Download, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -99,10 +103,12 @@ const VENDOR_LABEL: Record<string, string> = {
   metaso: "Metaso",
 };
 
+/** 这种服务要不要填模型列表。 */
 function usesModels(kind: Kind): boolean {
   return kind === "image" || kind === "video" || kind === "tts" || kind === "music" || kind === "matting" || kind === "asr";
 }
 
+/** 把服务种类收成面板用的名字。 */
 function serviceKind(p: { service_type?: string; serviceType?: string } | string): string {
   const raw = typeof p === "string" ? p : String(p.service_type || p.serviceType || "");
   const s = raw.toLowerCase().trim();
@@ -115,6 +121,7 @@ function serviceKind(p: { service_type?: string; serviceType?: string } | string
   return s;
 }
 
+/** 把设置字符串收成对象，失败就当空。 */
 function parseSettings(raw?: string): Record<string, any> {
   if (!raw) return {};
   try {
@@ -125,6 +132,7 @@ function parseSettings(raw?: string): Record<string, any> {
   }
 }
 
+/** 把草稿里的存储字段收成要保存的字符串。 */
 function settingsJSON(d: Draft): string {
   const st: Record<string, unknown> = {};
   if (d.bucket) st.bucket = d.bucket;
@@ -134,6 +142,7 @@ function settingsJSON(d: Draft): string {
   return JSON.stringify(st);
 }
 
+/** 把模型字符串收成列表。 */
 function parseModels(raw: string): string[] {
   const s = (raw || "").trim();
   if (!s) return [];
@@ -142,12 +151,13 @@ function parseModels(raw: string): string[] {
       const v = JSON.parse(s);
       if (Array.isArray(v)) return v.map(String).filter(Boolean);
     } catch {
-      /* fall through */
+      /* 解析失败就按逗号拆 */
     }
   }
   return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
+/** 取出地址里的主机。 */
 function hostOf(url: string): string {
   const raw = (url || "").trim();
   if (!raw) return "";
@@ -158,6 +168,7 @@ function hostOf(url: string): string {
   }
 }
 
+/** 取出主机，路径不是根时再带上路径。 */
 function hostPath(url: string): string {
   const raw = (url || "").trim();
   if (!raw) return "";
@@ -170,10 +181,12 @@ function hostPath(url: string): string {
   }
 }
 
+/** 给一条模板一个稳定的键。 */
 function templateKey(t: MediaProvider): string {
   return [t.provider, t.service_type, t.name, t.base_url, t.model].join(":");
 }
 
+/** 按服务种类取出地址提示。 */
 function adapterUrlHint(kind: Kind, v: ReturnType<typeof useCopy>["video"]): string | undefined {
   if (kind === "music") return v.musicUrlHint;
   if (kind === "matting") return v.mattingUrlHint;
@@ -182,10 +195,12 @@ function adapterUrlHint(kind: Kind, v: ReturnType<typeof useCopy>["video"]): str
   return v.adapterUrlHint;
 }
 
+/** 把厂商编号换成显示名，没有就留编号。 */
 function vendorLabel(id: string): string {
   return VENDOR_LABEL[id] || id || "Custom";
 }
 
+/** 造一份这种服务的空草稿。 */
 function emptyDraft(kind: Kind): Draft {
   return {
     service_type: kind,
@@ -200,6 +215,7 @@ function emptyDraft(kind: Kind): Draft {
   };
 }
 
+/** 把已保存的服务商收成草稿。 */
 function fromRow(p: MediaProvider): Draft {
   const st = parseSettings(p.settings);
   return {
@@ -221,6 +237,7 @@ function fromRow(p: MediaProvider): Draft {
   };
 }
 
+/** 把一条模板收成草稿。 */
 function fromTemplate(kind: Kind, t: MediaProvider): Draft {
   const st = parseSettings(t.settings);
   return {
@@ -237,6 +254,7 @@ function fromTemplate(kind: Kind, t: MediaProvider): Draft {
   };
 }
 
+/** 画一带说明的字段。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="flex w-full flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
@@ -249,6 +267,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
+/** 画成功、进行或失败的状态。 */
 function StatusPill({ ok, busy, label }: { ok: boolean; busy?: boolean; label: string }) {
   return (
     <span
@@ -263,10 +282,12 @@ function StatusPill({ ok, busy, label }: { ok: boolean; busy?: boolean; label: s
   );
 }
 
+/** 安装还在解析、下载、解压或校验时为真。 */
 function ffmpegBusy(phase?: string) {
   return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
 }
 
+/** 安装还在准备、安装或校验时为真。 */
 function remotionBusyPhase(phase?: string) {
   return phase === "preparing" || phase === "installing" || phase === "verifying";
 }
@@ -279,6 +300,7 @@ type FFmpegInstall = {
   archive?: string;
 };
 
+/** GenerationSettings 管工作室、服务商和画布通道。 */
 export function GenerationSettings() {
   const copy = useCopy();
   const v = copy.video;
@@ -305,10 +327,12 @@ export function GenerationSettings() {
   const [browserCap, setBrowserCap] = useState(false);
   const [tick, setTick] = useState(0);
 
+  /** 让列表再拉一次。 */
   function refresh() {
     setTick((n) => n + 1);
   }
 
+  /** 把本机工具的状态写进界面。 */
   function applyFFmpegStatus(s: any) {
     setFfmpeg(!!s?.ffmpeg);
     setFfmpegInstall(s?.ffmpeg_install && typeof s.ffmpeg_install === "object" ? s.ffmpeg_install : {});
@@ -349,6 +373,7 @@ export function GenerationSettings() {
     return () => window.clearInterval(t);
   }, [ffmpegWorking, remotionWorking]);
 
+  /** 安装 FFmpeg。 */
   async function installFFmpeg() {
     try {
       const s = await api.video.installFFmpeg();
@@ -358,6 +383,7 @@ export function GenerationSettings() {
     }
   }
 
+  /** 安装 yt-dlp。 */
   async function installYTDLP() {
     setYtdlpBusy(true);
     try {
@@ -372,6 +398,7 @@ export function GenerationSettings() {
 
   const langChoice = lang === "zh" || lang === "zh-CN" ? "zh" : lang === "en" || lang === "en-US" ? "en" : "other";
 
+  /** 保存内容语言。 */
   async function setLanguage(next: string) {
     setLang(next);
     try {
@@ -381,6 +408,7 @@ export function GenerationSettings() {
     }
   }
 
+  /** 保存一项工作室设置。 */
   async function patchStudioSetting(key: string, value: string) {
     try {
       await api.video.setSetting(key, value);
@@ -389,6 +417,7 @@ export function GenerationSettings() {
     }
   }
 
+  /** 再查一次 Remotion 的状态。 */
   async function detectRemotion() {
     setRemotionBusy(true);
     try {
@@ -401,6 +430,7 @@ export function GenerationSettings() {
     }
   }
 
+  /** 安装 Remotion。 */
   async function installRemotion() {
     setRemotionBusy(true);
     try {
@@ -691,6 +721,7 @@ export function GenerationSettings() {
   );
 }
 
+/** 编辑某一种服务的适配器列表。 */
 function AdapterSection(props: {
   id: string;
   title: string;
@@ -717,6 +748,7 @@ function AdapterSection(props: {
   const [busy, setBusy] = useState("");
   const [pending, setPending] = useState<MediaProvider | null>(null);
 
+  /** 保存一条服务商。 */
   async function save(d: Draft) {
     setBusy("save");
     try {
@@ -747,6 +779,7 @@ function AdapterSection(props: {
     }
   }
 
+  /** 改一条服务商的启用、默认或模型。 */
   async function patchRow(p: MediaProvider, extra: { is_active?: boolean; is_default?: boolean; model?: string }) {
     try {
       const model = extra.model ?? p.model;
@@ -773,6 +806,7 @@ function AdapterSection(props: {
     }
   }
 
+  /** 探测一条服务商。 */
   async function test(id: string) {
     setBusy("test:" + id);
     try {
@@ -956,6 +990,7 @@ function AdapterSection(props: {
   );
 }
 
+/** 画一行可选的适配器。 */
 function AdapterPickRow({
   mark,
   title,
@@ -990,6 +1025,7 @@ function AdapterPickRow({
   );
 }
 
+/** 画适配器的表单和保存。 */
 function AdapterForm({
   draft,
   setDraft,
@@ -1009,6 +1045,8 @@ function AdapterForm({
 }) {
   const v = copy.video;
   const models = parseModels(draft.models);
+  /** 把局部字段写回当前草稿。 */
+  /** patch 把局部字段写进当前草稿。 */
   const patch = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
   const canSave = !!draft.name.trim() && (draft.provider === "cas" || !!draft.base_url.trim());
   return (
@@ -1095,10 +1133,12 @@ function AdapterForm({
   );
 }
 
+/** 取出响应里的 data，没有就用响应本身。 */
 function envelopeData(env: any) {
   return env?.data ?? env ?? {};
 }
 
+/** 编辑画布通道。 */
 function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
   const copy = props.copy;
   const [channels, setChannels] = useState<any[]>([]);
@@ -1107,6 +1147,7 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
   const [busy, setBusy] = useState(false);
   const [exposeMcp, setExposeMcp] = useState(false);
 
+  /** 拉取通道、插件目录和是否暴露 MCP。 */
   async function load() {
     try {
       const ch = envelopeData(await api.video.canvasHttp("GET", "channels"));
@@ -1134,6 +1175,7 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
     void load();
   }, []);
 
+  /** 保存一条画布通道。 */
   async function save() {
     setBusy(true);
     try {
@@ -1156,6 +1198,7 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
     }
   }
 
+  /** 探测一条画布通道。 */
   async function test(id: string) {
     try {
       await api.video.canvasHttp("POST", `channels/${id}/test`);

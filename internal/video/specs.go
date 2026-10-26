@@ -1,5 +1,8 @@
+// specs.go 列出短剧桌面交给模型的工具规格。各条 Desc 是给模型看的说明，原样保留。
+
 package video
 
+// ToolSpec 是一条工具的名字、说明、是否只读和参数形状。
 type ToolSpec struct {
 	Name     string
 	Desc     string
@@ -7,6 +10,7 @@ type ToolSpec struct {
 	Params   map[string]any
 }
 
+// DramaToolNames 按 DramaToolSpecs 的顺序返回工具名。
 func DramaToolNames() []string {
 	specs := DramaToolSpecs()
 	out := make([]string, 0, len(specs))
@@ -16,6 +20,7 @@ func DramaToolNames() []string {
 	return out
 }
 
+// DramaToolSpecs 返回短剧摄入、分集、设定、剧本、资产、分镜和定稿提示词这些工具的规格。
 func DramaToolSpecs() []ToolSpec {
 	str := map[string]any{"type": "string"}
 	obj := func(props map[string]any, req ...string) map[string]any {

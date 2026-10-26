@@ -1,3 +1,6 @@
+// browser_verify 在隔离 Chrome 上跑检查，并把宿主算出的结论写到 qa/evidence/run.json 和 qa/verification.json。
+// 模型给出的 status 和 checks 被丢掉。计划文件和 root 经 WorkspaceTools.resolve。不在本文件创建 Windows Job。
+
 package runtime
 
 import (
@@ -12,14 +15,18 @@ import (
 )
 
 const (
+	// maxBrowserVerifySteps 是验证计划一次最多接受的步数。
 	maxBrowserVerifySteps = 48
-	qaEvidenceRel         = "qa/evidence/run.json"
-	qaVerificationRel     = "qa/verification.json"
+	// qaEvidenceRel 是运行记录相对项目根的路径。
+	qaEvidenceRel = "qa/evidence/run.json"
+	// qaVerificationRel 是验证结论相对项目根的路径。
+	qaVerificationRel = "qa/verification.json"
 )
 
+// qaCheckNames 是六项检查的固定顺序。
 var qaCheckNames = []string{"launch", "render", "input", "coreLoop", "outcome", "restart"}
 
-// VerifyPlan is the agent-supplied path. Status is never taken from the model.
+// VerifyPlan 是代理提供的路径。Status 从不采用模型给的值。
 type VerifyPlan struct {
 	Open         string            `json:"open"`
 	Root         string            `json:"root"`
@@ -32,11 +39,14 @@ type VerifyPlan struct {
 	Checks       map[string]string `json:"checks,omitempty"`
 }
 
+// qaLimitation 是一条范围和原因，写入 verification.json 的 limitations。
 type qaLimitation struct {
 	Scope  string `json:"scope"`
 	Reason string `json:"reason"`
 }
 
+// parseVerifyPlan 从 path 或参数读计划。模型给的 Status 和 Checks 被清空。看起来像 CSS 选择器的 root、terminal、restart 被丢掉。
+// terminal 空则用 designed-outcome，restart 空则用 initial-state。既没有步骤也没有 open 则失败。文件步骤超过 48 步失败。
 func parseVerifyPlan(args map[string]any, readFile func(rel string) ([]byte, error)) (VerifyPlan, error) {
 	var plan VerifyPlan
 	path := strings.TrimSpace(str(args["path"]))
@@ -87,7 +97,7 @@ func parseVerifyPlan(args map[string]any, readFile func(rel string) ([]byte, err
 	plan.Root = strings.TrimSpace(plan.Root)
 	plan.Terminal = strings.TrimSpace(plan.Terminal)
 	plan.Restart = strings.TrimSpace(plan.Restart)
-	// Agent-supplied verdicts are ignored. The host computes them.
+	// 代理给的结论被忽略。由宿主计算。
 	plan.Status = ""
 	plan.Checks = nil
 	if looksLikeCSSSelector(plan.Root) {
@@ -111,6 +121,7 @@ func parseVerifyPlan(args map[string]any, readFile func(rel string) ([]byte, err
 	return plan, nil
 }
 
+// parseLimitations 解析对象数组，或 scope=reason 形式的字符串。解析失败返回 nil。
 func parseLimitations(v any) []qaLimitation {
 	raw, err := coerceJSONArray(v)
 	if err != nil {
@@ -137,6 +148,8 @@ func parseLimitations(v any) []qaLimitation {
 	return out
 }
 
+// browserVerify 跑验证并写出两份 JSON。计划文件和 root 都走 resolve。CleanContext 未给出时视为干净。没有 open 但预览能起来时，chrome 算可用且 clean 被改成假。
+// root 若是 CSS 选择器，结果里会说明已忽略，并写到推断出的项目目录下。
 func (t *WorkspaceTools) browserVerify(args map[string]any) ToolResult {
 	if msg, ok := t.repeatVerifyBlocked(); ok {
 		return ToolResult{Content: msg}
@@ -197,7 +210,7 @@ func (t *WorkspaceTools) browserVerify(args map[string]any) ToolResult {
 
 	if chromeOK && len(plan.Steps) > 0 {
 		stepRes, _ := t.runBrowserSteps(plan.Steps, true)
-		// Reindex after the optional open.
+		// 可选的 open 占了前面的序号，后面的步骤接着编。
 		base := len(results)
 		for i := range stepRes {
 			stepRes[i].Index = base + i + 1
@@ -230,8 +243,8 @@ func (t *WorkspaceTools) browserVerify(args map[string]any) ToolResult {
 	}
 }
 
-// looksLikeCSSSelector reports a CSS selector the model mistook for a
-// filesystem path (session 9e69d099da9e65e6 passed root="#stage").
+// looksLikeCSSSelector 判断模型是不是把 CSS 选择器当成了文件系统路径（会话 9e69d099da9e65e6 传过 root="#stage"）。
+// 含斜杠、反斜杠或冒号的字符串不是选择器。以 #、. 或 [ 开头，或含 []:>+~ 的才是。
 func looksLikeCSSSelector(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" || strings.ContainsAny(s, `/\:`) {
@@ -244,6 +257,7 @@ func looksLikeCSSSelector(s string) bool {
 	return strings.ContainsAny(s, "[]:>+~")
 }
 
+// normalizeVerifyRoot 把 root 收成项目目录。CSS 选择器被丢掉。resolve 失败、或解析结果不是目录且路径里没有斜杠时，改用从 open 推断的目录。
 func normalizeVerifyRoot(t *WorkspaceTools, root, open string) string {
 	inferred := inferVerifyRoot(open)
 	if looksLikeCSSSelector(root) {
@@ -275,6 +289,7 @@ func normalizeVerifyRoot(t *WorkspaceTools, root, open string) string {
 	return root
 }
 
+// inferVerifyRoot 从 open 往上找 build/app、build 或 playable，返回其项目目录。找不到返回空串。
 func inferVerifyRoot(open string) string {
 	open = strings.ReplaceAll(strings.TrimSpace(open), "\\", "/")
 	if open == "" {
@@ -301,6 +316,7 @@ func inferVerifyRoot(open string) string {
 	return ""
 }
 
+// pathDir 返回最后一个斜杠之前的部分。没有斜杠或斜杠在开头则返回空串。
 func pathDir(p string) string {
 	p = strings.ReplaceAll(p, "\\", "/")
 	i := strings.LastIndex(p, "/")
@@ -310,6 +326,7 @@ func pathDir(p string) string {
 	return p[:i]
 }
 
+// qaPath 把相对路径接到 rootRel 下。rootRel 为空时原样返回。
 func qaPath(rootRel, rel string) string {
 	if rootRel == "" {
 		return rel
@@ -317,6 +334,7 @@ func qaPath(rootRel, rel string) string {
 	return filepath.ToSlash(filepath.Join(rootRel, rel))
 }
 
+// deriveVerification 由宿主计算六项检查和总状态。Chrome 没跑是 NOT_RUN。任一步失败是 FAIL。不是干净上下文时，本可 PASS 的总状态改成 NOT_RUN。任一检查不是 PASS 时，FAIL 优先，否则降为 NOT_RUN。
 func deriveVerification(rootRel string, plan VerifyPlan, results []browserStepResult, chromeOK, clean bool) (runDoc, verifyDoc map[string]any) {
 	observations := map[string]any{}
 	inputsByCheck := map[string][]string{}
@@ -467,6 +485,7 @@ func deriveVerification(rootRel string, plan VerifyPlan, results []browserStepRe
 	return runDoc, verifyDoc
 }
 
+// judgeQACheck 给一项检查定 PASS、FAIL 或 NOT_RUN。没看到是 NOT_RUN。步骤失败是 FAIL。没有输入记录是 NOT_RUN。render 没有 visual 是 NOT_RUN。outcome 或 restart 缺少标记是 FAIL。
 func judgeQACheck(name string, saw, ok bool, inputs []string, visual string, plan VerifyPlan) (status, reason string) {
 	if !saw {
 		return "NOT_RUN", "no observation recorded"
@@ -489,6 +508,7 @@ func judgeQACheck(name string, saw, ok bool, inputs []string, visual string, pla
 	return "PASS", ""
 }
 
+// nonEmpty 在列表为空时返回只含 fallback 的一段。
 func nonEmpty(in []string, fallback string) []string {
 	if len(in) == 0 {
 		return []string{fallback}
@@ -496,6 +516,7 @@ func nonEmpty(in []string, fallback string) []string {
 	return in
 }
 
+// writeQAFiles 原子写入 run.json 和 verification.json。
 func writeQAFiles(rootAbs string, runDoc, verifyDoc map[string]any) error {
 	if err := atomicWriteJSON(filepath.Join(rootAbs, filepath.FromSlash(qaEvidenceRel)), runDoc); err != nil {
 		return err
@@ -503,6 +524,7 @@ func writeQAFiles(rootAbs string, runDoc, verifyDoc map[string]any) error {
 	return atomicWriteJSON(filepath.Join(rootAbs, filepath.FromSlash(qaVerificationRel)), verifyDoc)
 }
 
+// atomicWriteJSON 先写同目录临时文件再改名。改名失败时删掉目标再改一次，仍失败则删掉临时文件。
 func atomicWriteJSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -537,6 +559,7 @@ func atomicWriteJSON(path string, v any) error {
 	return nil
 }
 
+// formatVerifyResult 写出宿主计算的状态、六项检查和失败步骤。六项都是 PASS 但后面还有失败步骤时，说明总状态仍是 FAIL。
 func formatVerifyResult(status string, verifyDoc map[string]any, results []browserStepResult, evidenceRel, verifyRel string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "browser_verify status=%s (host-computed; do not rewrite qa/verification.json)\n", status)

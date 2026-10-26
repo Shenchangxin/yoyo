@@ -1,7 +1,10 @@
+// 配置 JSON 对 locale 键和缺省字段的合并。
+
 package app
 
 import "testing"
 
+// TestConfigUnmarshalLocaleKeys 接受小写 locale，也接受 Pascal 的 Locale。
 func TestConfigUnmarshalLocaleKeys(t *testing.T) {
 	var a Config
 	if err := a.UnmarshalJSON([]byte(`{"locale":"zh-CN","model":"x"}`)); err != nil {
@@ -19,6 +22,7 @@ func TestConfigUnmarshalLocaleKeys(t *testing.T) {
 	}
 }
 
+// TestConfigUnmarshalKeepsOtherFields 确认 provider、base_url 和 locale 一起被读入。
 func TestConfigUnmarshalKeepsOtherFields(t *testing.T) {
 	var c Config
 	if err := c.UnmarshalJSON([]byte(`{"provider":"deepseek","base_url":"https://api.deepseek.com","locale":"zh-CN"}`)); err != nil {
@@ -29,6 +33,7 @@ func TestConfigUnmarshalKeepsOtherFields(t *testing.T) {
 	}
 }
 
+// TestConfigUnmarshalMergesOmitted 确认补丁没写到的 SearchURL 和 CrashResume 还在。
 func TestConfigUnmarshalMergesOmitted(t *testing.T) {
 	c := Config{SearchURL: "https://keep.example/{q}", CrashResume: true, Model: "old"}
 	if err := c.UnmarshalJSON([]byte(`{"model":"new","theme":"dark"}`)); err != nil {

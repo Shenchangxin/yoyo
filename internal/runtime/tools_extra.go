@@ -1,3 +1,5 @@
+// ask_user、run_skill_script 的入口。脚本路径收在技能目录里，再交给 shell。不解析 SKILL.md，那在 skill_file.go 和 skill_script.go。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+// askUser 把一句问题收成单题表单，再交给 askForm。空白问题返回错误。
 func (t *WorkspaceTools) askUser(question string) ToolResult {
 	question = strings.TrimSpace(question)
 	if question == "" {
@@ -17,10 +20,12 @@ func (t *WorkspaceTools) askUser(question string) ToolResult {
 	return t.askForm(AskForm{Questions: []AskQuestion{{ID: "q1", Prompt: question}}})
 }
 
+// askUserArgs 用 parseAskForm 解析参数后交给 askForm。
 func (t *WorkspaceTools) askUserArgs(args map[string]any) ToolResult {
 	return t.askForm(parseAskForm(args))
 }
 
+// runSkillScript 在技能目录里找脚本并执行。路径经 normalizeSkillScript，再用 WithinWorkspace 限制在该目录内。找不到目录时用 noSkillDirError。解释器缺失则拒绝。超时 30 秒，交给 shell。
 func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 	if t == nil {
 		return ToolResult{Err: fmt.Errorf("no tools")}
@@ -64,5 +69,6 @@ func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 	return t.shell(joinShellArgv(argv), 30)
 }
 
+// applyAllowedFromSkills 是空函数，不改已加载技能的允许列表。
 func (t *WorkspaceTools) applyAllowedFromSkills() {
 }

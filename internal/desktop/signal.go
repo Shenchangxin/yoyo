@@ -9,8 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// WatchSignals makes Ctrl+C / SIGTERM actually leave the process.
-// Wails' default handler only calls Quit(), and Close-to-tray cancels that.
+// WatchSignals 监听 Ctrl+C 和 SIGTERM。收到后停止监听并 forceQuit。Wails 默认只调用 Quit，关到托盘会把那次退出取消掉，所以这里自己收尾。
 func WatchSignals(gui *application.App, svc *Service, win application.Window) {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
@@ -21,6 +20,7 @@ func WatchSignals(gui *application.App, svc *Service, win application.Window) {
 	}()
 }
 
+// forceQuit 先 BeginQuit，保存窗口几何，销毁托盘，再 gui.Quit。1200 毫秒后若进程还在，os.Exit(0)。
 func forceQuit(gui *application.App, svc *Service, win application.Window) {
 	if svc != nil {
 		svc.BeginQuit()

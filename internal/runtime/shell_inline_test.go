@@ -1,3 +1,5 @@
+// 内联脚本物化到工作区临时文件。只解开外层引号。指向工作区的 cd 被剥掉。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestRewriteInlineUnescapesOnlyWrappingQuotes 确认只解开外层引号，使脚本里是 print("hi")。
 func TestRewriteInlineUnescapesOnlyWrappingQuotes(t *testing.T) {
 	dir := t.TempDir()
 	_, cleanup := rewriteInlineInterpreters(`python -c "print(\"hi\")"`, dir)
@@ -25,6 +28,7 @@ func TestRewriteInlineUnescapesOnlyWrappingQuotes(t *testing.T) {
 	}
 }
 
+// TestRewriteInlinePythonMaterializesDashC 确认 python -c 落成 .py，命令改成跑该文件。
 func TestRewriteInlinePythonMaterializesDashC(t *testing.T) {
 	dir := t.TempDir()
 	cmd, cleanup := rewriteInlineInterpreters(`python -c "import glob,os;print(len(glob.glob('*.txt')))"`, dir)
@@ -48,6 +52,7 @@ func TestRewriteInlinePythonMaterializesDashC(t *testing.T) {
 	}
 }
 
+// TestRewriteInlinePythonKeepsOrChain 确认 || 链上的两段脚本都物化。
 func TestRewriteInlinePythonKeepsOrChain(t *testing.T) {
 	dir := t.TempDir()
 	in := `python -c "import pypdf; print(pypdf.__version__)" 2>&1 || python -c "import fitz; print('ok')" 2>&1`
@@ -64,6 +69,7 @@ func TestRewriteInlinePythonKeepsOrChain(t *testing.T) {
 	}
 }
 
+// TestRewriteInlinePythonLeavesPlainScripts 确认普通 .py 路径不被改写。
 func TestRewriteInlinePythonLeavesPlainScripts(t *testing.T) {
 	in := `python tools/extract_pdf.py`
 	cmd, cleanup := rewriteInlineInterpreters(in, t.TempDir())
@@ -73,6 +79,7 @@ func TestRewriteInlinePythonLeavesPlainScripts(t *testing.T) {
 	}
 }
 
+// TestRewriteInlineNodeKeepsRegexEscapes 确认 [\s\S] 和 <\/script> 保留，不收成 [sS] 或 </script>。
 func TestRewriteInlineNodeKeepsRegexEscapes(t *testing.T) {
 	dir := t.TempDir()
 	in := `node -e "const m=html.match(/<script>([\s\S]*?)<\/script>/);"`
@@ -98,6 +105,7 @@ func TestRewriteInlineNodeKeepsRegexEscapes(t *testing.T) {
 	}
 }
 
+// TestRewriteInlineNodeEval 确认 node -e 落成 .js。
 func TestRewriteInlineNodeEval(t *testing.T) {
 	dir := t.TempDir()
 	cmd, cleanup := rewriteInlineInterpreters("node -e \"const fs=require('fs');console.log(fs.readFileSync('x','utf8').length)\"", dir)
@@ -122,6 +130,7 @@ func TestRewriteInlineNodeEval(t *testing.T) {
 	}
 }
 
+// TestRewriteInlinePythonLauncherVersion 确认 py -3 -c 去掉版本和 -c。
 func TestRewriteInlinePythonLauncherVersion(t *testing.T) {
 	dir := t.TempDir()
 	cmd, cleanup := rewriteInlineInterpreters(`py -3 -c "print(1)"`, dir)
@@ -134,6 +143,7 @@ func TestRewriteInlinePythonLauncherVersion(t *testing.T) {
 	}
 }
 
+// TestStripRedundantWorkspaceCd 确认 cd 到工作区、被制表符弄坏的工作区路径，以及 cd . 被剥掉。
 func TestStripRedundantWorkspaceCd(t *testing.T) {
 	ws := `C:\Users\scx\Desktop\test`
 	in := `cd "C:\Users\scx\Desktop\test" && node -e "console.log(1)"`
@@ -152,6 +162,7 @@ func TestStripRedundantWorkspaceCd(t *testing.T) {
 	}
 }
 
+// TestRepairWorkspacePathEscapes 确认制表符被换回原始工作区路径。
 func TestRepairWorkspacePathEscapes(t *testing.T) {
 	ws := `C:\Users\scx\Desktop\test`
 	broken := unescapeWinPathEscapes(ws)
@@ -168,6 +179,7 @@ func TestRepairWorkspacePathEscapes(t *testing.T) {
 	}
 }
 
+// TestRewriteInlineNodeAfterWorkspaceCd 确认先剥掉指向工作区的 cd，再物化 node -e。
 func TestRewriteInlineNodeAfterWorkspaceCd(t *testing.T) {
 	dir := t.TempDir()
 	ws := `C:\Users\scx\Desktop\test`
@@ -183,6 +195,7 @@ func TestRewriteInlineNodeAfterWorkspaceCd(t *testing.T) {
 	}
 }
 
+// TestRelaxRedundantShellQuotes 确认去掉无空格相对路径的引号，保留带空格的引号。
 func TestRelaxRedundantShellQuotes(t *testing.T) {
 	in := `node "game-adaptations\xiyou-tianming-guiling\qa\verify.mjs" && echo "ok done"`
 	got := relaxRedundantShellQuotes(in)

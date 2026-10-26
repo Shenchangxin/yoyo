@@ -1,3 +1,5 @@
+// 本文件拥有一次提问的翻页、选项和空闲倒计时。不拥有问题怎么解析，那一步在 parseAskCommand。调用方传入 approval 和 onResolve。
+
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Approval } from "../lib/protocol";
@@ -12,6 +14,7 @@ import {
 import { useCopy } from "../lib/i18n";
 import { cn } from "../lib/utils";
 
+// AskDeck 没有当前问题时不渲染。指针或键盘一碰上就停住倒计时。秒数至少显示 1。
 export function AskDeck({
   approval,
   onResolve,
@@ -35,12 +38,14 @@ export function AskDeck({
   const question = form.questions[page];
   const seconds = Math.max(1, Math.ceil(remain / 1000));
 
+  // 已经交过就不再交。决策固定为 once。
   function finish(answer: string) {
     if (done.current) return;
     done.current = true;
     onResolve(approval.id, "once", answer);
   }
 
+  // 没按住且允许空闲时，每 200 毫秒减一次。减到 0 就用 idleAnswer 交卷。
   useEffect(() => {
     if (held || !canIdle) return;
     const start = Date.now();

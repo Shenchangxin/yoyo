@@ -1,3 +1,6 @@
+// 本文件锁住 Validate 会拒绝前缀不是 http 的 URL。
+// 不覆盖哈希截断长度。由 go test 调用。
+
 package cite
 
 import (
@@ -6,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestValidateRequiresURL 先用来源通过校验，再把 URL 写成 not-a-url，要求 Validate 返回错误。
 func TestValidateRequiresURL(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "citations.json")

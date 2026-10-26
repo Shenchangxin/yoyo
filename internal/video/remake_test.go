@@ -1,3 +1,5 @@
+// remake_test.go 检查翻拍草稿保留参考哈希，以及替换画面时丢掉旧片段字节。
+
 package video
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
+// TestRemakeDraftKeepsTheReference 确认草稿的种类、参考哈希、源哈希和标题被写进剪辑工程。
 func TestRemakeDraftKeepsTheReference(t *testing.T) {
 	e := testEngine(t)
 	hash, err := e.PutBytes([]byte("reference-bytes"))
@@ -29,6 +32,7 @@ func TestRemakeDraftKeepsTheReference(t *testing.T) {
 	}
 }
 
+// TestRemakeDraftRejectsAnEmptyReference 确认空白参考哈希返回 reference hash required。
 func TestRemakeDraftRejectsAnEmptyReference(t *testing.T) {
 	e := testEngine(t)
 	if _, err := e.RemakeDraft("  ", "", ""); err == nil || !strings.Contains(err.Error(), "reference hash required") {
@@ -36,6 +40,7 @@ func TestRemakeDraftRejectsAnEmptyReference(t *testing.T) {
 	}
 }
 
+// TestRemakeReplaceKeepsTheReferenceAndDropsClipBytes 确认参考哈希不变，源哈希换成新画面，原片段哈希不再是 from-reference，起止仍是 0 到 4。
 func TestRemakeReplaceKeepsTheReferenceAndDropsClipBytes(t *testing.T) {
 	e := testEngine(t)
 	ref, err := e.PutBytes([]byte("reference-bytes"))
@@ -76,6 +81,7 @@ func TestRemakeReplaceKeepsTheReferenceAndDropsClipBytes(t *testing.T) {
 	}
 }
 
+// TestRemakeReplaceRejectsAnOrdinaryCut 确认普通剪辑工程替换时返回 only a remake draft。
 func TestRemakeReplaceRejectsAnOrdinaryCut(t *testing.T) {
 	e := testEngine(t)
 	hash, err := e.PutBytes([]byte("picture"))

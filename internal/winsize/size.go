@@ -1,16 +1,28 @@
+// Package winsize 按工作区计算窗口大小，并把物理像素换成 DIP。
+// Fit 在比例小于等于 0 或大于 1 时用 DefaultFrac 0.82。工作区宽或高小于等于 0 时返回 FallbackW 1600、FallbackH 900。
+// 下限是 MinW 1080、MinH 680，但不会大于工作区。Overflows 的容差 overflowSlop 是 16。
+// CurrentFitRev 是 3。ShouldRefit 在溢出时为真；fitRev 大于等于 3 时为假；更旧的 fitRev 为真。第四、第五个参数没有使用。
 package winsize
 
 const (
-	MinW          = 1080
-	MinH          = 680
-	FallbackW     = 1600
-	FallbackH     = 900
-	DefaultFrac   = 0.82
+	// MinW 是 Fit 在工作区够大时采用的最小宽度 1080。工作区更窄时会被压到工作区宽度。
+	MinW = 1080
+	// MinH 是 Fit 在工作区够高时采用的最小高度 680。工作区更矮时会被压到工作区高度。
+	MinH = 680
+	// FallbackW 是工作区宽或高无效时的宽度 1600。
+	FallbackW = 1600
+	// FallbackH 是工作区宽或高无效时的高度 900。
+	FallbackH = 900
+	// DefaultFrac 是默认相对工作区的比例 0.82。Fit 在传入比例无效时用它。
+	DefaultFrac = 0.82
+	// CurrentFitRev 是当前适配版本 3。ShouldRefit 见到大于等于它的 fitRev 就保留已保存尺寸，溢出除外。
 	CurrentFitRev = 3
-	overflowSlop  = 16
+	// overflowSlop 是 Overflows 允许超出工作区的像素，值是 16。
+	overflowSlop = 16
 )
 
-// Fit returns a first-launch window size as a fraction of the work area.
+// Fit 返回首次启动窗口的宽高，取工作区的 frac 比例。frac 小于等于 0 或大于 1 时改用 DefaultFrac。
+// aw 或 ah 小于等于 0 时返回 FallbackW 和 FallbackH。结果不低于 MinW、MinH，也不大于工作区。
 func Fit(aw, ah int, frac float64) (w, h int) {
 	if frac <= 0 || frac > 1 {
 		frac = DefaultFrac
@@ -35,7 +47,7 @@ func Fit(aw, ah int, frac float64) (w, h int) {
 	return w, h
 }
 
-// Overflows reports that a window is larger than the work area (DIP).
+// Overflows 报告窗口是否比工作区更大。aw 大于 0 且 w 大于 aw 加 16，或 ah 大于 0 且 h 大于 ah 加 16 时为真。
 func Overflows(w, h, aw, ah int) bool {
 	if aw > 0 && w > aw+overflowSlop {
 		return true
@@ -46,8 +58,7 @@ func Overflows(w, h, aw, ah int) bool {
 	return false
 }
 
-// ToDIP converts physical pixels to device-independent pixels.
-// Negative values are kept (Windows uses ~-32000 when a window is hidden).
+// ToDIP 把物理像素换成设备无关像素。dpi 小于等于 96 时原样返回，负数也保留。否则按 px * 96 / dpi 取整。
 func ToDIP(px, dpi int) int {
 	if dpi <= 96 {
 		return px
@@ -55,16 +66,17 @@ func ToDIP(px, dpi int) int {
 	return int(float64(px) * 96 / float64(dpi))
 }
 
+// hideSentinel 是 HiddenSentinel 的阈值，坐标小于等于 -10000 就算藏到桌面外。
 const hideSentinel = -10000
 
-// HiddenSentinel is the off-desktop coordinate Windows reports for a hidden HWND.
+// HiddenSentinel 在 x 或 y 小于等于 -10000 时返回 true。
 func HiddenSentinel(x, y int) bool {
 	return x <= hideSentinel || y <= hideSentinel
 }
 
-// LostOffscreen reports that a saved window rect is not visibly on the virtual
-// desktop. vw/vh <= 0 means the virtual screen is unknown: only the hide
-// sentinel is treated as lost, so a window on a second monitor is kept.
+// LostOffscreen 报告保存的窗口矩形是否看不清落在虚拟桌面上。
+// HiddenSentinel 为真，或宽、高小于等于 0，返回 true。vw 或 vh 小于等于 0 时只认隐藏哨兵，返回 false，从而留住第二块显示器上的窗口。
+// 否则与虚拟桌面相交的宽小于 80 或高小于 40 就返回 true。
 func LostOffscreen(x, y, w, h, vx, vy, vw, vh int) bool {
 	if HiddenSentinel(x, y) {
 		return true
@@ -82,8 +94,8 @@ func LostOffscreen(x, y, w, h, vx, vy, vw, vh int) bool {
 	return ix2-ix1 < 80 || iy2-iy1 < 40
 }
 
-// KeepInside pins a rectangle inside a box. If the box is smaller than the
-// rectangle, it pins to the box origin plus pad.
+// KeepInside 把矩形夹进盒子。盒子宽或高小于等于 0 时原样返回。pad 小于 0 当成 0。
+// 盒子比矩形还小的一边，把可移动范围收成盒子原点加 pad。
 func KeepInside(x, y, w, h, boxX, boxY, boxW, boxH, pad int) (int, int) {
 	if boxW <= 0 || boxH <= 0 {
 		return x, y
@@ -116,7 +128,7 @@ func KeepInside(x, y, w, h, boxX, boxY, boxW, boxH, pad int) (int, int) {
 	return x, y
 }
 
-// FullyInside reports that the rectangle sits entirely within the box.
+// FullyInside 报告矩形是否整个落在盒子里，边对齐也算在内。盒子或矩形的宽高有小于等于 0 的就返回 false。
 func FullyInside(x, y, w, h, boxX, boxY, boxW, boxH int) bool {
 	if boxW <= 0 || boxH <= 0 || w <= 0 || h <= 0 {
 		return false
@@ -124,10 +136,8 @@ func FullyInside(x, y, w, h, boxX, boxY, boxW, boxH int) bool {
 	return x >= boxX && y >= boxY && x+w <= boxX+boxW && y+h <= boxY+boxH
 }
 
-// ShouldRefit reports whether a saved size should be replaced by the current
-// screen-relative default. Overflow always refits. A stored fit_rev below
-// CurrentFitRev migrates once (including shrink). After CurrentFitRev is
-// persisted, an on-screen operator resize is kept.
+// ShouldRefit 报告已保存尺寸是否该换成当前相对屏幕的默认值。溢出时为真。
+// fitRev 大于等于 CurrentFitRev 时为假。更小的 fitRev 为真。第四、第五个参数没有读取。
 func ShouldRefit(savedW, savedH, fitRev, _, _, aw, ah int) bool {
 	if Overflows(savedW, savedH, aw, ah) {
 		return true

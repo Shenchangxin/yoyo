@@ -1,11 +1,14 @@
+// 本文件拥有带描边勾的复选框外观。不拥有勾选代表的业务。调用方传入 checked，需要半选时再传 indeterminate。
+
 import { useEffect, useRef, type InputHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
+// indeterminate 为真时走混合态。它不是原生 checked，要写到 DOM 的 indeterminate 上。
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "size"> & {
   indeterminate?: boolean;
 };
 
-/** Native checkbox with a stroke-draw tick. State is the motion; idle is still. */
+// Checkbox 用原生复选框加描边勾。状态变化才动，空闲时静止。
 export function Checkbox({ className, checked, indeterminate, ...props }: Props) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {

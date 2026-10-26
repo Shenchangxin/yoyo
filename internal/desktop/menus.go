@@ -6,28 +6,32 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
+// companionContextMenuID 是 yoyo-companion，前端用这个 id 认宠物右键菜单。
 const companionContextMenuID = "yoyo-companion"
 
+// RebuildMenus 在锁内重建应用菜单、托盘和宠物菜单。
 func (s *Service) RebuildMenus() {
-	// Do not use application.InvokeSync here: InstallChrome runs before gui.Run,
-	// when App.impl is still nil and dispatchOnMainThread panics.
+	// 这里不能用 application.InvokeSync。InstallChrome 在 gui.Run 之前运行，那时 App.impl 还是 nil，dispatchOnMainThread 会 panic。
 	s.chromeMu.Lock()
 	defer s.chromeMu.Unlock()
 	s.rebuildAppMenu()
 	s.rebuildTrayAndCompanion()
 }
 
+// refreshChrome 在锁内重建托盘提示、托盘菜单和宠物菜单，不重建应用菜单。
 func (s *Service) refreshChrome() {
 	s.chromeMu.Lock()
 	defer s.chromeMu.Unlock()
 	s.rebuildTrayAndCompanion()
 }
 
+// showMainWindow 显示主窗口并 refreshChrome。
 func (s *Service) showMainWindow() {
 	showWindow(s.win)
 	s.refreshChrome()
 }
 
+// strings 按 menuLocale 取文案。menuLocale 为空时用配置里的 locale。
 func (s *Service) strings() nativeStrings {
 	locale := s.menuLocale
 	if locale == "" {
@@ -36,6 +40,7 @@ func (s *Service) strings() nativeStrings {
 	return nativeCopy(locale)
 }
 
+// rebuildAppMenu 重建应用菜单。darwin 上加应用菜单和编辑菜单。文件菜单发出 yoyo:sessions、yoyo:workspace 和 yoyo:quit。查看菜单的 yoyo:command 是 sidebar、review、dock、harness、video、palette、control。会话菜单是 stop、compact、export、rename、fork、archive。Harness 菜单是 harness、run-eval、run-evolve。帮助菜单发出 yoyo:about、yoyo:doctor 和 yoyo:logs。关窗口在 CloseToTray 或宠物开着时改为隐藏。
 func (s *Service) rebuildAppMenu() {
 	gui := s.gui
 	win := s.win
@@ -47,9 +52,7 @@ func (s *Service) rebuildAppMenu() {
 	menu := gui.NewMenu()
 	if runtime.GOOS == "darwin" {
 		menu.AddRole(application.AppMenu)
-		// WKWebView has no clipboard shortcuts without this menu. WebView2 and
-		// GTK already paste in inputs; Wails EditMenu also runs insertText/paste,
-		// so Ctrl+V inserts the clipboard twice.
+		// 没有这份菜单时 WKWebView 没有剪贴板快捷键。WebView2 和 GTK 在输入框里已经能粘贴；Wails 的 EditMenu 还会再执行 insertText 或 paste，Ctrl+V 会把剪贴板插入两遍。
 		menu.AddRole(application.EditMenu)
 	}
 	file := menu.AddSubmenu(n.File)
@@ -154,12 +157,14 @@ func (s *Service) rebuildAppMenu() {
 	gui.Menu.Set(menu)
 }
 
+// rebuildTrayAndCompanion 依次更新托盘提示、托盘菜单和宠物右键菜单。
 func (s *Service) rebuildTrayAndCompanion() {
 	s.applyTrayTooltip()
 	s.rebuildTrayMenu()
 	s.rebuildCompanionMenu()
 }
 
+// applyTrayTooltip 按当前托盘状态和是否显示唤醒提示设置工具提示。darwin 上标签固定为 Yoyo。
 func (s *Service) applyTrayTooltip() {
 	if s.tray == nil {
 		return
@@ -172,6 +177,7 @@ func (s *Service) applyTrayTooltip() {
 	}
 }
 
+// rebuildTrayMenu 按窗口是否可见放显示或隐藏，按配置放宠物开关。停止项直接 Interrupt 空会话，没有正在跑的回合时禁用。新对话发出 yoyo:command 且值为 new。有待审批时放审阅项并打开宠物对话。设置发出 yoyo:command 且值为 control。退出发出 yoyo:quit。
 func (s *Service) rebuildTrayMenu() {
 	gui := s.gui
 	win := s.win
@@ -234,6 +240,7 @@ func (s *Service) rebuildTrayMenu() {
 	tmenu.Update()
 }
 
+// rebuildCompanionMenu 重建 id 为 yoyo-companion 的右键菜单：打开对话、通话中才有的挂断、停止、重置位置、隐藏宠物。停止在没有正在跑的回合时禁用。
 func (s *Service) rebuildCompanionMenu() {
 	gui := s.gui
 	if gui == nil {
@@ -271,6 +278,7 @@ func (s *Service) rebuildCompanionMenu() {
 	menu.Menu.Update()
 }
 
+// noteDesktopPulse 记下非空的会话 id。loading 把 agentBusy 设成真，第一次时重建菜单，已经在忙则只改托盘提示。approval、done、error、eval、evolve、update 把 agentBusy 设成假并重建菜单。
 func (s *Service) noteDesktopPulse(kind, session string) {
 	if session != "" {
 		s.lastPulseSession.Store(session)

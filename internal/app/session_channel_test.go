@@ -1,3 +1,5 @@
+// 视频频道与代理频道各自独立，并使用自己的工作区。
+
 package app
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
+// TestVideoChannelIndependentOfAgent 确认视频会话和代理会话 id 不同，分叉后仍是视频车道。
 func TestVideoChannelIndependentOfAgent(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -50,6 +53,7 @@ func TestVideoChannelIndependentOfAgent(t *testing.T) {
 	}
 }
 
+// TestVideoSessionUsesOwnWorkspace 确认空工作区的视频会话用视频工作区，并和代理会话的工作区分开。
 func TestVideoSessionUsesOwnWorkspace(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

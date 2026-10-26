@@ -1,3 +1,5 @@
+// 快照的写入、读回，以及按哈希和名字做的字段对照。不解开载荷。内容差异为空时，会话对比会改用这里的文本。
+
 package artifact
 
 import (
@@ -6,6 +8,7 @@ import (
 	"strings"
 )
 
+// PutSnapshot 以 KindHarnessSnapshot 写入。ID 为空时用 harness，只影响这一次写入，不改调用方手里的值。
 func (s *Store) PutSnapshot(snap HarnessSnapshot) (string, error) {
 	if snap.ID == "" {
 		snap.ID = "harness"
@@ -13,11 +16,13 @@ func (s *Store) PutSnapshot(snap HarnessSnapshot) (string, error) {
 	return s.Put(KindHarnessSnapshot, snap.ID, snap)
 }
 
+// GetSnapshot 按哈希解出 HarnessSnapshot。读取或 JSON 解码失败时返回错误，不另查信封的 Kind。
 func (s *Store) GetSnapshot(hash string) (HarnessSnapshot, error) {
 	snap, _, err := Decode[HarnessSnapshot](s, hash)
 	return snap, err
 }
 
+// DiffField 是 SnapshotDiffFields 的一行。From 和 To 是哈希或名字的原文，不是解开的正文。Changed 为零表示这一面相同。
 type DiffField struct {
 	Field   string `json:"field"`
 	From    string `json:"from"`
@@ -25,6 +30,7 @@ type DiffField struct {
 	Changed bool   `json:"changed"`
 }
 
+// SnapshotDiffFields 逐面比较两份快照，始终返回全部面，包含没变的。切片按逗号拼起来比，顺序不同算有变化。这里不读对象库。
 func SnapshotDiffFields(a, b HarnessSnapshot) []DiffField {
 	join := func(xs []string) string { return strings.Join(xs, ",") }
 	rows := []DiffField{
@@ -44,6 +50,7 @@ func SnapshotDiffFields(a, b HarnessSnapshot) []DiffField {
 	return rows
 }
 
+// SnapshotDiff 把 SnapshotDiffFields 打成多行文本。没变的面只写当前值，变了的面写成 from -> to。
 func SnapshotDiff(a, b HarnessSnapshot) string {
 	var buf bytes.Buffer
 	for _, f := range SnapshotDiffFields(a, b) {
@@ -56,6 +63,7 @@ func SnapshotDiff(a, b HarnessSnapshot) string {
 	return buf.String()
 }
 
+// CloneSnapshot 复制五份切片，避免改到原来的快照。没有元素时得到 nil。标量按值拷贝。
 func CloneSnapshot(s HarnessSnapshot) HarnessSnapshot {
 	s.PromptFragments = append([]string(nil), s.PromptFragments...)
 	s.Skills = append([]string(nil), s.Skills...)

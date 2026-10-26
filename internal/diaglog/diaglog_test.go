@@ -1,3 +1,6 @@
+// 本文件锁住 JSON 字段和脱敏、worker 不写 stdout、滚动产生 gz、调试分类、支持包不含密钥，以及 GUI 控制台镜像。
+// 不连接外部服务。由 go test 调用。
+
 package diaglog
 
 import (
@@ -11,6 +14,7 @@ import (
 	"testing"
 )
 
+// TestJSONSchemaAndRedact 要求日志行含 ts、level、msg、process、pid、goos、version 和 component=boot，并且不含 sk-live 或 secretvalue。
 func TestJSONSchemaAndRedact(t *testing.T) {
 	dir := t.TempDir()
 	l, err := Open(Options{Dir: dir, Process: ProcessCLI, Version: "test", Level: slog.LevelInfo, Console: io.Discard})
@@ -44,6 +48,7 @@ func TestJSONSchemaAndRedact(t *testing.T) {
 	}
 }
 
+// TestWorkerStdoutUnpolluted 要求 worker 的 Open 不往 stdout 写字节，并且 worker.log 里有 worker boot。
 func TestWorkerStdoutUnpolluted(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -74,6 +79,7 @@ func TestWorkerStdoutUnpolluted(t *testing.T) {
 	}
 }
 
+// TestRedactPatterns 要求 Bearer 密钥、OPENAI_API_KEY 的值和 PEM 正文都被抹掉。
 func TestRedactPatterns(t *testing.T) {
 	in := "Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz token=x OPENAI_API_KEY=abc -----BEGIN KEY-----\nabc\n-----END KEY-----"
 	out := Redact(in)
@@ -82,6 +88,7 @@ func TestRedactPatterns(t *testing.T) {
 	}
 }
 
+// TestRotator 用 64 字节的 MaxSize 和 3 个备份写 20 行，要求目录里出现 .gz。
 func TestRotator(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "yoyo.log")
@@ -107,6 +114,7 @@ func TestRotator(t *testing.T) {
 	}
 }
 
+// TestDebugCategoryFilter 要求只放行 cat 为 rpc 的调试行，mcp 的 hidden 不落盘。
 func TestDebugCategoryFilter(t *testing.T) {
 	dir := t.TempDir()
 	l, err := Open(Options{Dir: dir, Process: ProcessCLI, Level: slog.LevelInfo, DebugCats: []string{"rpc"}, Console: io.Discard})
@@ -127,6 +135,7 @@ func TestDebugCategoryFilter(t *testing.T) {
 	}
 }
 
+// TestBundleOmitsVaultAndHeldOut 要求支持包里没有 sk-live-supersecret、super-search-secret 和 held-out body。
 func TestBundleOmitsVaultAndHeldOut(t *testing.T) {
 	dir := t.TempDir()
 	l, err := Open(Options{Dir: dir, Process: ProcessCLI, Console: io.Discard})
@@ -159,6 +168,7 @@ func TestBundleOmitsVaultAndHeldOut(t *testing.T) {
 	}
 }
 
+// names 收集目录项名字，供失败信息打印。
 func names(ents []os.DirEntry) []string {
 	var out []string
 	for _, e := range ents {
@@ -167,6 +177,7 @@ func names(ents []os.DirEntry) []string {
 	return out
 }
 
+// TestConsoleMirrorsGUI 要求 GUI 的控制台里有 boot，不含 sk-，并且文件里有 JSON 的 msg boot。
 func TestConsoleMirrorsGUI(t *testing.T) {
 	var buf bytes.Buffer
 	dir := t.TempDir()

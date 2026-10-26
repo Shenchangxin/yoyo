@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短片工作台的雷达、选题、制作和交付切换。不拥有每一步的表单细节。
+ * 收集、开拍、保存、打包和发布草稿会改服务端。成片进行中每 2000 毫秒重读，不是另一条模型循环。
+ */
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Clapperboard, List, MoreHorizontal, Plus, Radio, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -100,10 +104,12 @@ type StudioProject = {
 const TREND_PLATFORMS = ["weibo", "douyin", "zhihu", "bilibili", "toutiao", "baidu"] as const;
 const ASPECTS = ["9:16", "16:9", "1:1"] as const;
 
+/** 把未知值收成数组。 */
 function asList<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
+/** 留下有成片或正在自动阶段里的短片，最多 12 条，当前这条不在里面就放到最前。 */
 function shelfFilms(projects: StudioProject[], current: StudioProject | null) {
   const live = new Set(["queued", "script", "voice", "visuals", "compose", "done", "failed"]);
   const rows = projects.filter((p) => !!p.result_hash || live.has(p.auto_phase || ""));
@@ -112,6 +118,7 @@ function shelfFilms(projects: StudioProject[], current: StudioProject | null) {
   return top;
 }
 
+/** StudioWorkbench 在雷达、选题、制作和发布之间切换当前短片。 */
 export function StudioWorkbench(props: {
   sessionId?: string;
   projects?: VideoProject[];
@@ -157,6 +164,7 @@ export function StudioWorkbench(props: {
   const current = (project && project.id === studioId ? project : null) || projects.find((p) => p.id === studioId) || null;
   const copilotSessionId = studioSessionId(studioId, props.projects || []);
 
+  /** 让父级打开这条短片的副驾。没有打开回调就返回。 */
   async function attachCopilot(p: { id: string; title?: string; status?: string; gate?: string }) {
     if (!p?.id || !props.onOpenProject) return;
     await props.onOpenProject(asStudioProject({
@@ -168,17 +176,20 @@ export function StudioWorkbench(props: {
     }));
   }
 
+  /** 按状态读取选题。 */
   const loadTopics = useCallback(async (status = topicStatus) => {
     const list = await api.video.listTopics(status);
     setTopics(asList<Topic>(list));
   }, [topicStatus]);
 
+  /** 读取短片列表。 */
   const loadProjects = useCallback(async () => {
     const list = await api.video.listStudio();
     const rows = asList<StudioProject>(list);
     setProjects(rows);
   }, []);
 
+  /** 读取一条短片。选择已经换了就丢掉结果。 */
   const loadProject = useCallback(async (id: string) => {
     if (!id) {
       setProject(null);
@@ -193,6 +204,7 @@ export function StudioWorkbench(props: {
     });
   }, []);
 
+  /** 读取发布草稿。 */
   const loadPublishes = useCallback(async (projectId = studioId) => {
     const list = await api.video.listPublishes(projectId || "");
     setPublishes(asList<Publish>(list));
@@ -264,10 +276,10 @@ export function StudioWorkbench(props: {
       status: hit?.status,
       gate: hit?.gate,
     }).catch(() => {
-      /* copilot bind must not bounce the short back home */
+      /* 副驾绑定失败也不能把短片弹回首页 */
     });
-    // Attach once per short. Switching shorts changes studioId; creating one does too.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- attachCopilot is stable enough via studioId
+    // 每个短片只挂一次。切换短片会改 studioId，新建也会。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 靠 studioId 足够稳定
   }, [studioId]);
 
   useEffect(() => {
@@ -293,6 +305,7 @@ export function StudioWorkbench(props: {
     });
   }, [current, current?.id, current?.title, current?.gate, current?.furthest_gate, current?.status, current?.script, current?.script_status, current?.narration_hash, current?.skip_audio, current?.result_hash, current?.auto_phase, current?.delivery?.status, pane, setStudioMeta]);
 
+  /** 跑一次请求，失败就记下错误。 */
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
     setErr("");
@@ -307,6 +320,7 @@ export function StudioWorkbench(props: {
     }
   }
 
+  /** 按勾选的平台重拉热榜，每边 15 条。 */
   async function refreshTrends() {
     await run("radar", async () => {
       const raw = await api.video.fetchTrends(platforms.join(","), 15);
@@ -314,6 +328,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 把一条热榜收成选题，并切到选题栏。 */
   async function collect(platform: string, item: TrendItem) {
     if (!item.title) return;
     await run("collect", async () => {
@@ -324,6 +339,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 用草稿标题存一条收件箱选题。 */
   async function saveDraftTopic() {
     const title = draftTitle.trim();
     if (!title) return;
@@ -334,6 +350,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 把选题的改动写回去。 */
   async function patchTopic(t: Topic, extra: Partial<Topic>) {
     await run("topic", async () => {
       await api.video.saveTopic({ ...t, ...extra });
@@ -341,6 +358,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 打开这条短片到制作栏，并挂上副驾。 */
   async function openShort(p: StudioProject) {
     if (!p?.id) return;
     setStudioId(p.id);
@@ -349,10 +367,11 @@ export function StudioWorkbench(props: {
     try {
       await attachCopilot(p);
     } catch {
-      /* stay on this short even if the copilot session fails to bind */
+      /* 副驾会话绑不上也留在这条短片 */
     }
   }
 
+  /** 打开这条短片的交付栏，并重新读一次工程。 */
   async function openDelivery(id: string) {
     if (!id) return;
     const hit = projects.find((row) => row.id === id);
@@ -366,10 +385,11 @@ export function StudioWorkbench(props: {
       setProject(p);
       await attachCopilot(p);
     } catch {
-      /* stay on delivery even if the copilot session fails to bind */
+      /* 副驾绑不上也留在交付 */
     }
   }
 
+  /** 把这些选题做成片，并打开第一条的交付栏。 */
   async function filmTopics(ids: string[]) {
     const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
     if (!unique.length) {
@@ -392,11 +412,12 @@ export function StudioWorkbench(props: {
       try {
         await attachCopilot(first);
       } catch {
-        /* the films still land on delivery */
+        /* 成片仍然落到交付 */
       }
     });
   }
 
+  /** 不能再拍的选题改为打开交付，否则拿这一条去拍。 */
   async function produce(t: Topic) {
     const film = projects.find((p) => p.id === t.studio_project_id);
     if (t.studio_project_id && !topicCanFilm(t, film)) {
@@ -406,6 +427,7 @@ export function StudioWorkbench(props: {
     await filmTopics([t.id]);
   }
 
+  /** 清掉当前短片，回到选题栏。 */
   function goHome() {
     setStudioId("");
     setProject(null);
@@ -413,6 +435,7 @@ export function StudioWorkbench(props: {
     setNaming(false);
   }
 
+  /** 勾上或取消这条选题。 */
   function togglePick(id: string) {
     setPicked((prev) => {
       const next = new Set(prev);
@@ -422,6 +445,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 把还能拍的已勾选题一起做成片。 */
   async function produceSelected() {
     const rows = topics.filter((t) => picked.has(t.id) && topicCanFilm(t, projects.find((p) => p.id === t.studio_project_id)));
     if (!rows.length) {
@@ -431,6 +455,7 @@ export function StudioWorkbench(props: {
     await filmTopics(rows.map((t) => t.id));
   }
 
+  /** 把选题排进队列。重复时只提示已经在队列里。 */
   async function schedule(t: Topic) {
     await run("schedule", async () => {
       const out = (await api.video.scheduleTopic(t.id)) as { duplicate?: boolean };
@@ -439,6 +464,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 取消这条选题的排期。 */
   async function unschedule(t: Topic) {
     await run("unschedule", async () => {
       await api.video.unscheduleTopic(t.id);
@@ -446,6 +472,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 用标题和默认画幅新建短片并打开它。 */
   async function newProject(title: string) {
     const name = title.trim();
     if (!name) {
@@ -461,6 +488,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 选中一条短片。已有成片或自动阶段就去交付，否则去制作。 */
   async function selectProject(id: string) {
     const hit = projects.find((row) => row.id === id);
     setStudioId(id);
@@ -469,19 +497,22 @@ export function StudioWorkbench(props: {
     try {
       await attachCopilot({ id, title: hit?.title, status: hit?.status, gate: hit?.gate });
     } catch {
-      /* stay on this short even if the copilot session fails to bind */
+      /* 副驾会话绑不上也留在这条短片 */
     }
   }
 
+  /** 空标题换成新建短片的文案。 */
   function shortLabel(title?: string) {
     return (title || "").trim() || s.newProject;
   }
 
+  /** 打开删除确认。 */
   function askDelete(p: StudioProject) {
     setSwitchOpen(false);
     setKill(p);
   }
 
+  /** 删除这条短片。删的是当前条就回选题。 */
   async function removeShort(id: string) {
     await api.video.deleteStudio(id);
     setKill(null);
@@ -490,6 +521,7 @@ export function StudioWorkbench(props: {
     props.onRefreshHistory?.();
   }
 
+  /** 把补丁写回当前短片。 */
   async function saveProject(patch: Partial<StudioProject>) {
     if (!current?.id) return;
     await run("save", async () => {
@@ -498,6 +530,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 给当前成片套壳。返回了新哈希就写回短片。 */
   async function wrapCurrent() {
     if (!current?.id) return;
     const hash = current.result_hash;
@@ -515,6 +548,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 在已可发布、已选平台时保存一条发布草稿。 */
   async function saveDraftPublish() {
     if (!current?.id || !current.result_hash) {
       toast.error(s.needAssemble);
@@ -543,6 +577,7 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 用短片或传入的名字建一张人设。 */
   async function makePersona(topicId = "", name = "") {
     await run("persona", async () => {
       const label = name.trim() || current?.title || s.persona;
@@ -552,11 +587,13 @@ export function StudioWorkbench(props: {
     });
   }
 
+  /** 有媒体根地址时拼出 /media/ 路径。 */
   function mediaSrc(hash?: string) {
     if (!hash) return "";
     return mediaBase ? `${mediaBase}/media/${hash}` : "";
   }
 
+  /** 把热榜平台 id 换成界面名字。 */
   function trendLabel(id: string) {
     const labels: Record<(typeof TREND_PLATFORMS)[number], string> = {
       weibo: s.trendWeibo,
@@ -1082,6 +1119,7 @@ export function StudioWorkbench(props: {
   );
 }
 
+/** 一条发布草稿：导出、打开创作者、记失败或记已发。 */
 function PublishDraftCard(props: {
   draft: Publish;
   busy: string;

@@ -1,3 +1,5 @@
+// 个人引擎上的委派、目标和页面监视，以及 present_choices、personal_status、remember_fact。浏览器和连接器在 tools_personal.go。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/personal"
 )
 
+// needPersonal 在工具或 Personal 为空时返回 personal engine unavailable。
 func (t *WorkspaceTools) needPersonal() (*personal.Engine, error) {
 	if t == nil || t.Personal == nil {
 		return nil, fmt.Errorf("personal engine unavailable")
@@ -16,6 +19,7 @@ func (t *WorkspaceTools) needPersonal() (*personal.Engine, error) {
 	return t.Personal, nil
 }
 
+// delegateWork 用 title、prompt、kind 和若干输入字段调用 CreateTask，并返回任务 JSON。
 func (t *WorkspaceTools) delegateWork(args map[string]any) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -47,6 +51,7 @@ func (t *WorkspaceTools) delegateWork(args map[string]any) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// completeWork 调用 Personal.Complete，返回任务 JSON。
 func (t *WorkspaceTools) completeWork(id, result string) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -60,6 +65,7 @@ func (t *WorkspaceTools) completeWork(id, result string) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// answerWork 调用 Personal.Answer，返回任务 JSON。
 func (t *WorkspaceTools) answerWork(id, text string) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -73,6 +79,7 @@ func (t *WorkspaceTools) answerWork(id, text string) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// createGoal 调用 CreateGoal。里程碑来自参数，第三个位置参数传空串。
 func (t *WorkspaceTools) createGoal(title, description string, milestones []string) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -86,6 +93,7 @@ func (t *WorkspaceTools) createGoal(title, description string, milestones []stri
 	return ToolResult{Content: string(b)}
 }
 
+// watchPage 用 title、url、condition、value 和 interval_minutes 调用 Watch，返回 monitor 和 task 的 JSON。
 func (t *WorkspaceTools) watchPage(args map[string]any) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -100,6 +108,7 @@ func (t *WorkspaceTools) watchPage(args map[string]any) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// presentChoices 把 options 收成 ChoiceOption。没有 AskUser 时只返回选项 JSON。有 AskUser 时弹出第一项为推荐项的表单，能对上选项 ID 就 SelectChoice。
 func (t *WorkspaceTools) presentChoices(title string, raw any) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -158,6 +167,7 @@ func (t *WorkspaceTools) presentChoices(title string, raw any) ToolResult {
 	return ToolResult{Content: res.Content}
 }
 
+// personalStatus 返回任务、想法、目标、监视、提案和 worker 的计数，并列出等待输入或等待审批的任务。
 func (t *WorkspaceTools) personalStatus() ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -183,6 +193,7 @@ func (t *WorkspaceTools) personalStatus() ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// rememberFact 在 Memory 为空或文本为空白时返回错误。写入 KindProfile，来源固定为 User confirmed in chat。
 func (t *WorkspaceTools) rememberFact(text string) ToolResult {
 	if t.Memory == nil {
 		return ToolResult{Err: fmt.Errorf("no memory")}

@@ -1,9 +1,6 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized DraftEditor surface (scrollport + placeholder + chips).
- * Lexical is replaced with TipTap, which Yoyo already vendors.
+ * 拥有：会话草稿的 TipTap 编辑面、占位和提及芯片。Lexical 换成已经带上的 TipTap。
+ * 不拥有：发送。只改本地草稿，不调用 api。
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -15,8 +12,10 @@ import { MentionChip } from "./mention-chip";
 import { activeAtTail, pinFromToken, type MentionPin } from "../../lib/mentions";
 import { cn } from "../../lib/utils";
 
+/** DraftSnapshot 是某一刻的纯文本、芯片、光标和光标前文本。 */
 export type DraftSnapshot = { text: string; chips: MentionPin[]; caret: number; before: string };
 
+/** DraftEditorHandle 是草稿编辑器交给外面的插入、替换和快照。 */
 export type DraftEditorHandle = {
   insertChip: (pin: MentionPin) => void;
   insertText: (text: string) => void;
@@ -28,10 +27,12 @@ export type DraftEditorHandle = {
   replaceSlash: () => void;
 };
 
+/** 编辑器还在、且没被销毁，才算能用。 */
 function liveEditor(editor: Editor | null): editor is Editor {
   return !!editor && !editor.isDestroyed;
 }
 
+/** 从文档里读出纯文本、芯片和光标。 */
 function snapshotOf(editor: Editor | null): DraftSnapshot {
   if (!liveEditor(editor)) return { text: "", chips: [], caret: 0, before: "" };
   const chips: MentionPin[] = [];
@@ -54,6 +55,7 @@ function snapshotOf(editor: Editor | null): DraftSnapshot {
   return { text: parts.join(""), chips, caret, before: textBeforeCaret(editor) };
 }
 
+/** 把纯文本收成一段一段的文档。 */
 function plainToContent(text: string) {
   const lines = text.split("\n");
   return {
@@ -65,11 +67,13 @@ function plainToContent(text: string) {
   };
 }
 
+/** 读出光标前的文本。 */
 function textBeforeCaret(editor: Editor): string {
   const { from } = editor.state.selection;
   return editor.state.doc.textBetween(0, from, "\n", " ");
 }
 
+/** DraftEditor 编辑草稿，并把快照交给外面。 */
 export const DraftEditor = forwardRef<DraftEditorHandle, {
   draftKey: string;
   disabled?: boolean;
@@ -99,9 +103,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
   onKeyDownRef.current = props.onKeyDown;
   const [empty, setEmpty] = useState(true);
   const editor = useEditor({
-    // React 19 + nested Suspense (Yingce island auth/route) destroys the view
-    // and later reconnects passive effects. The default sync first render
-    // leaves a stale Editor whose `.commands` getter throws on null view.
+    // React 19 加上嵌套的 Suspense（映策岛的登录和路由）会拆掉视图，之后才把被动效果接回来。默认同步的第一次渲染会留下过期编辑器，视图是空的时候读取 commands 会抛错。
     immediatelyRender: false,
     extensions: [
       StarterKit.configure({
@@ -118,6 +120,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
         code: false,
       }),
       Placeholder.configure({
+        /** 占位文字跟当前引用走。 */
         placeholder: () => placeholderRef.current,
         showOnlyCurrent: false,
       }),
@@ -126,6 +129,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
     editable: !props.disabled,
     editorProps: {
       attributes: editorAttrs(props),
+      /** 剪贴板里有文件就交给粘贴回调，并拦住默认粘贴。 */
       handlePaste: (_view, event) => {
         const files = filesFromClipboard(event);
         if (files.length && onPasteRef.current) {
@@ -134,6 +138,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
         }
         return false;
       },
+      /** 先交给外面的按键回调，再处理芯片上的选择键。 */
       handleKeyDown: (_view, event) => {
         const ed = editorHolder.current;
         if (!liveEditor(ed)) return false;
@@ -141,18 +146,22 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
         return handleChipSelection(ed, event);
       },
     },
+    /** 编辑器建好后记下实例，并同步是不是空的。 */
     onCreate: ({ editor: ed }) => {
       editorHolder.current = ed;
       setEmpty(ed.isEmpty);
     },
+    /** 编辑器拆掉后清掉实例。 */
     onDestroy: () => {
       editorHolder.current = null;
     },
+    /** 正文变了就更新空态，并在不是内部改写时交回快照。 */
     onUpdate: ({ editor: ed }) => {
       setEmpty(ed.isEmpty);
       if (skipUpdate.current) return;
       onSnapshotRef.current(snapshotOf(ed));
     },
+    /** 选区变了，且不是内部改写时，交回光标位置。 */
     onSelectionUpdate: ({ editor: ed }) => {
       if (skipUpdate.current) return;
       onCaretRef.current?.(snapshotOf(ed));
@@ -199,14 +208,17 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
   }, [editor, props.ariaLabel, props.testId, props.workspaceTrigger, props.pickerOpen]);
 
   useImperativeHandle(ref, () => ({
+    /** 插入一枚提及芯片。 */
     insertChip: (pin) => {
       if (!liveEditor(editor)) return;
       editor.chain().focus().insertMentionChip(pin).run();
     },
+    /** 在光标处插入文本。 */
     insertText: (text) => {
       if (!liveEditor(editor)) return;
       editor.chain().focus().insertContent(text).run();
     },
+    /** 用纯文本换掉全文；编辑器还没好就先记下。 */
     setPlain: (text) => {
       if (!liveEditor(editor)) {
         pendingPlain.current = text;
@@ -218,15 +230,18 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
       skipUpdate.current = false;
       setEmpty(!text.trim());
     },
+    /** 把光标放到末尾。 */
     focus: () => {
       if (!liveEditor(editor)) return;
       editor.commands.focus("end");
     },
+    /** 交回当前快照；编辑器还没好就用挂起的纯文本。 */
     snapshot: () => {
       if (liveEditor(editor)) return snapshotOf(editor);
       const text = pendingPlain.current ?? "";
       return { text, chips: [], caret: text.length, before: text };
     },
+    /** 把光标前的提及换成芯片，没有就直接插入。 */
     replaceMention: (pin) => {
       if (!liveEditor(editor)) return;
       const token = activeAtTail(textBeforeCaret(editor));
@@ -238,6 +253,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
       const to = editor.state.selection.from;
       editor.chain().focus().deleteRange({ from, to }).insertMentionChip(pin).run();
     },
+    /** 把光标前的触发词换成文本，没有就直接插入。 */
     replaceTrigger: (text) => {
       if (!liveEditor(editor)) return;
       const token = activeAtTail(textBeforeCaret(editor));
@@ -249,6 +265,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
       const to = editor.state.selection.from;
       editor.chain().focus().deleteRange({ from, to }).insertContent(text).run();
     },
+    /** 删掉光标前的斜线命令。 */
     replaceSlash: () => {
       if (!liveEditor(editor)) return;
       const before = textBeforeCaret(editor);
@@ -275,6 +292,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
   );
 });
 
+/** 拼出输入框的无障碍属性和测试标记。 */
 function editorAttrs(props: {
   ariaLabel: string;
   testId?: string;
@@ -295,6 +313,7 @@ function editorAttrs(props: {
 
 const PASSIVE_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "Unidentified", "Process"]);
 
+/** 退格或删除先选中旁边的芯片，再按一次才删掉。 */
 function handleChipSelection(editor: Editor, event: KeyboardEvent): boolean {
   if (event.key !== "Backspace" && event.key !== "Delete") {
     if (!PASSIVE_KEYS.has(event.key) && event.key.length) clearChipSelected(editor);
@@ -325,11 +344,13 @@ function handleChipSelection(editor: Editor, event: KeyboardEvent): boolean {
   return true;
 }
 
+/** 清掉芯片的选中标记。 */
 function clearChipSelected(editor: Editor) {
   editor.view.dom.removeAttribute("data-composer-chip-selected");
   editor.view.dom.querySelectorAll("[data-mention-chip][data-selected]").forEach((n) => n.removeAttribute("data-selected"));
 }
 
+/** 从剪贴板里取出文件。 */
 function filesFromClipboard(e: ClipboardEvent): File[] {
   const files: File[] = [];
   const items = e.clipboardData?.items;

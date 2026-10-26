@@ -1,3 +1,5 @@
+// DumpSession 含轨迹与 spill，以及标识的歧义和缺失。
+
 package app_test
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestDumpSessionByIDIncludesTrajectoryAndSpill 确认按 id 和唯一前缀都能导出轨迹与 spill 全文，并写到 dump.json。
 func TestDumpSessionByIDIncludesTrajectoryAndSpill(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -80,6 +83,7 @@ func TestDumpSessionByIDIncludesTrajectoryAndSpill(t *testing.T) {
 	}
 }
 
+// TestResolveSessionIDAmbiguousAndMissing 确认共享前缀会报歧义，不存在的 id 会报缺失，精确 id 能解析。
 func TestResolveSessionIDAmbiguousAndMissing(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -100,6 +104,7 @@ func TestResolveSessionIDAmbiguousAndMissing(t *testing.T) {
 	}
 }
 
+// TestDumpSessionJSONLWithoutMeta 确认没有 meta 的轨迹仍能导出，索引里 HasMeta 为假。
 func TestDumpSessionJSONLWithoutMeta(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

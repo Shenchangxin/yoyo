@@ -1,3 +1,5 @@
+// 本文件锁住 evolve --overlay 会拒绝 --promote 和 --k，必须带 --session，且不改全局 ref。由 go test 调用。
+
 package main
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
+// TestEvolveOverlayCLIRejectsPromote 锁住 --overlay 配 --promote 会失败，且错误文案含 promote。
 func TestEvolveOverlayCLIRejectsPromote(t *testing.T) {
 	cmd := evolveCmd()
 	cmd.SilenceUsage = true
@@ -21,6 +24,7 @@ func TestEvolveOverlayCLIRejectsPromote(t *testing.T) {
 	}
 }
 
+// TestEvolveOverlayCLIRejectsSuiteK 锁住 --overlay 配 --k 会失败，且错误文案含 k。
 func TestEvolveOverlayCLIRejectsSuiteK(t *testing.T) {
 	cmd := evolveCmd()
 	cmd.SilenceUsage = true
@@ -31,6 +35,7 @@ func TestEvolveOverlayCLIRejectsSuiteK(t *testing.T) {
 	}
 }
 
+// TestEvolveOverlayCLIRequiresSession 锁住只有 --overlay、没有 --session 时失败，错误文案含 --session。
 func TestEvolveOverlayCLIRequiresSession(t *testing.T) {
 	cmd := evolveCmd()
 	cmd.SilenceUsage = true
@@ -41,6 +46,7 @@ func TestEvolveOverlayCLIRequiresSession(t *testing.T) {
 	}
 }
 
+// TestEvolveOverlayCLIKeepBase 锁住启发式 overlay 输出 kept_base=true、标准错误含 Active unchanged，并且策略仍是 follow_active，active、canary、staging 都不变。
 func TestEvolveOverlayCLIKeepBase(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("YOYO_HOME", home)
@@ -96,6 +102,7 @@ func TestEvolveOverlayCLIKeepBase(t *testing.T) {
 	}
 }
 
+// evalsDir 返回当前工作目录上两级的 evals 绝对路径。取工作目录或 Abs 失败时让测试失败。
 func evalsDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()

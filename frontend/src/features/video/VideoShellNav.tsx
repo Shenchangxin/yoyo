@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有视频壳的主导航。不拥有各栏的内容。
+ * 它只切换本地界面栏，不改服务端。
+ */
 import { BookOpen, Clapperboard, Folder, History, Images, PanelsTopLeft, Puzzle, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useCopy } from "../../lib/i18n";
@@ -20,6 +24,7 @@ const LIBRARY: { id: Extract<VideoPane, "assets" | "skills" | "plugins" | "tasks
   { id: "tasks", icon: History },
 ];
 
+/** VideoShellNav 画出创作、短片、短剧、画布，以及素材、技能、插件、任务。 */
 export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () => void }) {
   const bar = props.layout === "bar";
   const copy = useCopy();
@@ -39,12 +44,14 @@ export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () 
     tasks: copy.video.shellTasks,
   };
 
+  /** 短剧在看板打开时也算选中；其余栏只看当前栏。 */
   function active(id: VideoPane) {
     if (id === "drama") return pane === "drama" || videoBoard;
     if (id === "studio") return pane === "studio";
     return pane === id;
   }
 
+  /** 画一行导航。已经停在这一栏就不再打开。 */
   function row(item: { id: VideoPane; icon: typeof Clapperboard }) {
     const Icon = item.icon;
     const on = active(item.id);

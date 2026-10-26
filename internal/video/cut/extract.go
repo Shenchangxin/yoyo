@@ -1,3 +1,5 @@
+// extract.go 按时间抽出片段、拼接，并加黑边改成目标画幅。
+
 package cut
 
 import (
@@ -6,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// Extract writes a time window to outPath, keeping audio.
+// Extract 把一段时间写到 outPath，并尽量保留音频。视频用 libx264、veryfast、crf 20，音频用 aac、48 kHz、160k。带音频的那次失败时改为不带音频再抽一次。时长小于等于 0 时返回 empty extract。
 func (b Bin) Extract(src string, start, dur float64, outPath string) error {
 	if err := b.ok(); err != nil {
 		return err
@@ -25,7 +27,7 @@ func (b Bin) Extract(src string, start, dur float64, outPath string) error {
 	return err
 }
 
-// ConcatKeepAudio concatenates files with audio when present.
+// ConcatKeepAudio 用 concat 列表拼接文件。有音频时用 aac、48 kHz、192k；失败则去掉音频再拼。视频用 libx264、medium、crf 23。没有片段时返回 no clips。
 func (b Bin) ConcatKeepAudio(paths []string, outPath string) error {
 	if err := b.ok(); err != nil {
 		return err
@@ -54,6 +56,7 @@ func (b Bin) ConcatKeepAudio(paths []string, outPath string) error {
 	return err
 }
 
+// escapeConcat 把路径里的单引号写成 ffmpeg concat 列表能接受的形式。
 func escapeConcat(p string) string {
 	out := ""
 	for _, r := range p {
@@ -66,7 +69,7 @@ func escapeConcat(p string) string {
 	return out
 }
 
-// PadAspect letterboxes to 9:16 / 16:9 / 1:1.
+// PadAspect 加黑边到目标画幅。默认 1080×1920；16:9 是 1920×1080，1:1 是 1080×1080。先按比例缩小再居中填充。复制音频失败时改为不带音频。
 func (b Bin) PadAspect(src, outPath, aspect string) error {
 	if err := b.ok(); err != nil {
 		return err

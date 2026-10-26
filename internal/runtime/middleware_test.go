@@ -1,3 +1,5 @@
+// SoftHorizon 才发重复错误、空闲打开、wait 循环和点击微步轻推。失败的动作不重置空闲计数。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestMiddlewareNudgeAfterConsecutiveErrors 确认连续错误达到阈值后注入轻推。
 func TestMiddlewareNudgeAfterConsecutiveErrors(t *testing.T) {
 	loop := artifact.LoopPreset{MaxRecentToolErrors: 2, ToolErrorInstruction: "change strategy"}
 	if got := middlewareNudge(loop, []Message{{Content: "ERROR: a"}}); got != "" {
@@ -17,6 +20,7 @@ func TestMiddlewareNudgeAfterConsecutiveErrors(t *testing.T) {
 	}
 }
 
+// TestErrorRepeatNudgeOnSoftHorizon 确认 SoftHorizon 对重复错误发轻推。
 func TestErrorRepeatNudgeOnSoftHorizon(t *testing.T) {
 	hits := map[string]int{}
 	results := []Message{
@@ -36,6 +40,7 @@ func TestErrorRepeatNudgeOnSoftHorizon(t *testing.T) {
 	}
 }
 
+// TestIdleActionNudgeOnRepeatedBrowserOpen 确认重复 browser_open 触发空闲轻推。
 func TestIdleActionNudgeOnRepeatedBrowserOpen(t *testing.T) {
 	hits := map[string]int{}
 	args := `{"url":"game-adaptations/xiyou-tianming-guiling/build/app/index.html"}`
@@ -62,7 +67,7 @@ func TestIdleActionNudgeOnRepeatedBrowserOpen(t *testing.T) {
 	}
 }
 
-// A failed edit or click moved nothing, so it must not clear the idle count.
+// TestIdleActionFailedProgressDoesNotReset 确认失败的 str_replace 或 click 不重置空闲计数。
 func TestIdleActionFailedProgressDoesNotReset(t *testing.T) {
 	args := `{"url":"game-adaptations/xiyou-tianming-guiling/build/app/index.html"}`
 	hits := map[string]int{}
@@ -81,7 +86,7 @@ func TestIdleActionFailedProgressDoesNotReset(t *testing.T) {
 	}
 }
 
-// A write that changes nothing ("unchanged ...") is not progress either.
+// TestIdleActionUnchangedWriteDoesNotReset 确认结果含 unchanged 的写入不重置空闲计数。
 func TestIdleActionUnchangedWriteDoesNotReset(t *testing.T) {
 	args := `{"url":"game-adaptations/xiyou-tianming-guiling/build/app/index.html"}`
 	hits := map[string]int{}
@@ -93,6 +98,7 @@ func TestIdleActionUnchangedWriteDoesNotReset(t *testing.T) {
 	}
 }
 
+// TestWaitLoopNudgeOnSoftHorizon 确认 SoftHorizon 对 wait 循环发轻推。
 func TestWaitLoopNudgeOnSoftHorizon(t *testing.T) {
 	hits := map[string]int{}
 	recordWaits(hits, []ToolCall{{Name: "wait"}, {Name: "wait"}})
@@ -109,6 +115,7 @@ func TestWaitLoopNudgeOnSoftHorizon(t *testing.T) {
 	}
 }
 
+// TestErrorRepeatNudgeOnQAFail 确认重复的检查失败会发轻推。
 func TestErrorRepeatNudgeOnQAFail(t *testing.T) {
 	hits := map[string]int{}
 	results := []Message{
@@ -124,6 +131,7 @@ func TestErrorRepeatNudgeOnQAFail(t *testing.T) {
 	}
 }
 
+// TestErrorSignatureContextStubAndTruncatedJSON 确认 context stub、截断 JSON、空路径和空补丁收成 write args json，websocket message too big 收成 payload too big。
 func TestErrorSignatureContextStubAndTruncatedJSON(t *testing.T) {
 	if got := errorSignature("ERROR: refusing to write a context stub; read_file that path"); got != "context stub" {
 		t.Fatalf("stub %q", got)
@@ -139,6 +147,7 @@ func TestErrorSignatureContextStubAndTruncatedJSON(t *testing.T) {
 	}
 }
 
+// TestErrorRepeatNudgeOnEmptyPath 确认空路径的重复错误会发轻推。
 func TestErrorRepeatNudgeOnEmptyPath(t *testing.T) {
 	hits := map[string]int{}
 	results := []Message{
@@ -154,6 +163,7 @@ func TestErrorRepeatNudgeOnEmptyPath(t *testing.T) {
 	}
 }
 
+// TestClickMicroNudgeAfterConsecutiveClicks 确认连续点击触发微步轻推，成功点击会重置计数。
 func TestClickMicroNudgeAfterConsecutiveClicks(t *testing.T) {
 	n := 0
 	click := []ToolCall{{Name: "browser_click", Arguments: `{"selector":"#a"}`}}
@@ -174,6 +184,7 @@ func TestClickMicroNudgeAfterConsecutiveClicks(t *testing.T) {
 	}
 }
 
+// TestIdleProgressCallIncludesNewBrowserOps 确认 browser_act 重置微步计数。
 func TestIdleProgressCallIncludesNewBrowserOps(t *testing.T) {
 	for _, name := range []string{"browser_fill", "browser_scroll", "browser_press", "browser_select", "browser_hover"} {
 		if !idleProgressCall(ToolCall{Name: name}, "ok") {
@@ -185,6 +196,7 @@ func TestIdleProgressCallIncludesNewBrowserOps(t *testing.T) {
 	}
 }
 
+// TestClickMicroRoundCountsFillAndScroll 确认 fill、scroll、press、select、hover 在结果不是 ERROR 时算进度。
 func TestClickMicroRoundCountsFillAndScroll(t *testing.T) {
 	n := 0
 	recordClickMicro(&n, []ToolCall{{Name: "browser_fill", Arguments: `{"ref":"inp_0","text":"a"}`}})

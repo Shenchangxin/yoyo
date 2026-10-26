@@ -1,3 +1,5 @@
+// 锁住技能根顺序、后根覆盖、别名，以及 ApplyPackBootstrap 不预载正文、Depth 大于 0 时直接跳过。领域包提示不包含方法论包。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestSkillRootsOrder 锁住根顺序是 bundled、home/skills、pack、工作区 .yoyo/skills、.agents/skills、skills。
 func TestSkillRootsOrder(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -33,6 +36,7 @@ func TestSkillRootsOrder(t *testing.T) {
 	}
 }
 
+// TestMapSkillsAliasesInstallSlug 锁住目录基名和显示名都能索引到同一技能，元数据里的规范名仍是 frontmatter 的 name。
 func TestMapSkillsAliasesInstallSlug(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "dev-god")
@@ -53,6 +57,7 @@ func TestMapSkillsAliasesInstallSlug(t *testing.T) {
 	}
 }
 
+// TestLoadSkillDirsLaterRootWins 锁住同名 SKILL.md 以后面的根为准。
 func TestLoadSkillDirsLaterRootWins(t *testing.T) {
 	a := t.TempDir()
 	b := t.TempDir()
@@ -64,6 +69,7 @@ func TestLoadSkillDirsLaterRootWins(t *testing.T) {
 	}
 }
 
+// writeSkillMD 在临时根下写一份带 name 和 description 的 SKILL.md。
 func writeSkillMD(t *testing.T, root, name, body string) {
 	t.Helper()
 	dir := filepath.Join(root, name)
@@ -76,6 +82,7 @@ func writeSkillMD(t *testing.T, root, name, body string) {
 	}
 }
 
+// TestApplyPackBootstrapOnceAndSkipChild 锁住引导只设 Methodology 和 BootstrapPin，不预载正文。Depth 为 1 时 ApplyPackBootstrap 直接返回。StripPackBootstrap 清掉包、正文、提示，并从 Loaded 去掉引导技能名。
 func TestApplyPackBootstrapOnceAndSkipChild(t *testing.T) {
 	tools := &WorkspaceTools{
 		Skills: map[string]string{"using-superpowers": "You must load_skill before acting."},
@@ -125,6 +132,7 @@ func TestApplyPackBootstrapOnceAndSkipChild(t *testing.T) {
 	}
 }
 
+// TestCapLoadedSkillsPinsBootstrap 锁住 WrapBootstrap 的正文在压缩已加载技能时仍保留 EXTREMELY_IMPORTANT 标记。
 func TestCapLoadedSkillsPinsBootstrap(t *testing.T) {
 	boot := WrapBootstrap("using-superpowers", strings.Repeat("B", 8000), "mapping")
 	other := "## Skill: other\n" + strings.Repeat("X", 20000)
@@ -138,6 +146,7 @@ func TestCapLoadedSkillsPinsBootstrap(t *testing.T) {
 	}
 }
 
+// TestChatConductMethodologyYieldsWriteNow 锁住默认行为含立即写产物，方法论为真时改成先 load_skill。子会话叠加把方法论行为换回立即写。
 func TestChatConductMethodologyYieldsWriteNow(t *testing.T) {
 	plain := fragmentText(ChatConduct(ConductOpts{}))
 	if !strings.Contains(plain, "start writing those workspace artifacts this turn") {
@@ -172,6 +181,7 @@ func TestChatConductMethodologyYieldsWriteNow(t *testing.T) {
 	}
 }
 
+// TestPlanFirstOverlaySkippedWhenMethodology 锁住 Methodology 为真时 planFirstOverlay 为空，为假时含计划技能正文。
 func TestPlanFirstOverlaySkippedWhenMethodology(t *testing.T) {
 	tools := &WorkspaceTools{
 		ChatOverlay: true,
@@ -188,6 +198,7 @@ func TestPlanFirstOverlaySkippedWhenMethodology(t *testing.T) {
 	}
 }
 
+// TestReadSkillFileJail 锁住 readSkillFile 能读包内文件，含 .. 的路径被拒绝，缺失文件的错误带 missing。
 func TestReadSkillFileJail(t *testing.T) {
 	skillDir := t.TempDir()
 	ws := t.TempDir()
@@ -215,10 +226,11 @@ func TestReadSkillFileJail(t *testing.T) {
 	}
 	wsRead := tools.Call("read_file", `{"path":"secret.txt"}`)
 	if wsRead.Err != nil && !strings.Contains(wsRead.Content+errString(wsRead.Err), "nope") {
-		// workspace read of secret is allowed; pack jail must not leak it via skill path
+		// 工作区读取 secret.txt 是允许的。技能路径上的越界不得把这份内容漏出来。
 	}
 }
 
+// errString 把 nil 收成空串，否则返回 Error。
 func errString(err error) string {
 	if err == nil {
 		return ""
@@ -226,6 +238,7 @@ func errString(err error) string {
 	return err.Error()
 }
 
+// TestRunSkillScriptExtensionless 锁住无扩展名脚本会找 POSIX 解释器。没有解释器时 requireScriptInterpreter 必须失败，且不能报成 missing script。
 func TestRunSkillScriptExtensionless(t *testing.T) {
 	skillDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(skillDir, "scripts"), 0o755); err != nil {
@@ -248,7 +261,7 @@ func TestRunSkillScriptExtensionless(t *testing.T) {
 	}
 	interp := scriptInterpreter(script)
 	if interp == "" {
-		// Windows without Git Bash is an expected skip of execution, not of routing.
+		// 没有 Git Bash 的 Windows 会跳过真正执行，路由检查仍要做。
 		if requireScriptInterpreter(script) == nil {
 			t.Fatal("empty interpreter must fail require")
 		}
@@ -260,6 +273,7 @@ func TestRunSkillScriptExtensionless(t *testing.T) {
 	}
 }
 
+// TestDomainRoutingPinSkipsMethodology 锁住带 BootstrapSkill 的方法论包没有领域提示，novel-to-game 有 load_skill 行，且不把工具映射全文写进去。
 func TestDomainRoutingPinSkipsMethodology(t *testing.T) {
 	if pin := DomainRoutingPin([]PackSession{{ID: "superpowers", BootstrapSkill: "using-superpowers", Methodology: true}}); pin != "" {
 		t.Fatalf("methodology must not get a domain pin: %s", pin)
@@ -273,6 +287,7 @@ func TestDomainRoutingPinSkipsMethodology(t *testing.T) {
 	}
 }
 
+// TestWithoutNovelGamePack 锁住小说改游戏包和技能名被去掉，game-world-qa 和 yoyo-game 留着。
 func TestWithoutNovelGamePack(t *testing.T) {
 	got := WithoutNovelGamePack([]PackSession{
 		{ID: "superpowers", Methodology: true},
@@ -289,6 +304,7 @@ func TestWithoutNovelGamePack(t *testing.T) {
 	}
 }
 
+// TestHasMethodologyPack 锁住空列表为假，任一 Methodology 为真则为真。
 func TestHasMethodologyPack(t *testing.T) {
 	if HasMethodologyPack(nil) {
 		t.Fatal("empty")
@@ -298,6 +314,7 @@ func TestHasMethodologyPack(t *testing.T) {
 	}
 }
 
+// TestMergeSkillsKeepsArtifact 锁住同名时 extra 的正文和目录覆盖 base。
 func TestMergeSkillsKeepsArtifact(t *testing.T) {
 	base := []artifact.Skill{{Name: "a", Body: "cas"}}
 	extra := []artifact.Skill{{Name: "a", Body: "disk", Dir: "/pack"}}

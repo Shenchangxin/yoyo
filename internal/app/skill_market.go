@@ -1,3 +1,5 @@
+// 技能市场的目录、安装和来源判断。扫描不通过则不落盘。打开路径和链接也从这里转到 hostopen。
+
 package app
 
 import (
@@ -10,11 +12,13 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillmarket"
 )
 
+// SkillMarket 从家目录 skill-market 加载指定 hub 和查询的目录。refresh 为真时允许重新拉取。
 func (a *App) SkillMarket(refresh bool, hub, query string) (skillmarket.Catalog, error) {
 	dir := filepath.Join(a.Home.Root, "skill-market")
 	return skillmarket.LoadHub(dir, skillmarket.LoadOpts{Hub: hub, Query: query, Refresh: refresh})
 }
 
+// InstallMarketSkill 按 slug 下载技能包。缺少 SKILL.md 或扫描不通过则不安装。正文提到 scripts/ 但包里没有时写入警告。元数据里的 mcp 或 mcp_url 会 StartMCPHTTP。
 func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 	hub, remote := skillmarket.ParseInstallID(slug)
 	local := skillmarket.InstallSlug(remote)
@@ -85,10 +89,12 @@ func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 	}, nil
 }
 
+// UninstallMarketSkill 从家目录技能夹卸下该 slug。
 func (a *App) UninstallMarketSkill(slug string) error {
 	return skillmarket.Uninstall(a.Home.Skills(), slug)
 }
 
+// skillBundleNote 返回元数据里的 connectors 文本。元数据为空返回空串。
 func skillBundleNote(meta map[string]string) string {
 	if meta == nil {
 		return ""
@@ -96,6 +102,7 @@ func skillBundleNote(meta map[string]string) string {
 	return strings.TrimSpace(meta["connectors"])
 }
 
+// packSkillMD 返回包内大小写不敏感的 SKILL.md 正文，没有则 nil。
 func packSkillMD(files []skillmarket.PackFile) []byte {
 	for _, f := range files {
 		if strings.EqualFold(f.Rel, "SKILL.md") {
@@ -105,6 +112,7 @@ func packSkillMD(files []skillmarket.PackFile) []byte {
 	return nil
 }
 
+// packHasScripts 在任一相对路径以 scripts/ 开头时返回真。
 func packHasScripts(files []skillmarket.PackFile) bool {
 	for _, f := range files {
 		rel := strings.ToLower(strings.ReplaceAll(f.Rel, "\\", "/"))
@@ -115,6 +123,7 @@ func packHasScripts(files []skillmarket.PackFile) bool {
 	return false
 }
 
+// skillmarketFiles 只收集包文件的相对路径。
 func skillmarketFiles(files []skillmarket.PackFile) []string {
 	out := make([]string, 0, len(files))
 	for _, f := range files {
@@ -123,6 +132,7 @@ func skillmarketFiles(files []skillmarket.PackFile) []string {
 	return out
 }
 
+// skillInstallID 从目录里的市场记录拼安装 id。有 Remote 和 Source 时用 ItemID。没有记录返回空串。
 func skillInstallID(dir string) string {
 	rec, ok := skillmarket.ReadRecord(dir)
 	if !ok {
@@ -137,6 +147,7 @@ func skillInstallID(dir string) string {
 	return rec.Slug
 }
 
+// skillOrigin 判断技能目录来自 bundled、pack、market、home、workspace 还是 cas。市场目录要有 .market.json。
 func skillOrigin(dir, home, bundled string) string {
 	dir = filepath.Clean(dir)
 	if bundled != "" && pathUnder(bundled, dir) {
@@ -157,6 +168,7 @@ func skillOrigin(dir, home, bundled string) string {
 	return "cas"
 }
 
+// skillPackID 从家目录 packs 下的相对路径取出第一段包 id。不在该根下返回空串。
 func skillPackID(dir, home string) string {
 	if home == "" || dir == "" {
 		return ""
@@ -174,6 +186,7 @@ func skillPackID(dir, home string) string {
 	return id
 }
 
+// pathUnder 判断 path 是否等于 parent 或位于其下。相对路径以 .. 开头则否。
 func pathUnder(parent, path string) bool {
 	rel, err := filepath.Rel(filepath.Clean(parent), filepath.Clean(path))
 	if err != nil {
@@ -182,18 +195,22 @@ func pathUnder(parent, path string) bool {
 	return rel == "." || (rel != "" && !strings.HasPrefix(rel, ".."))
 }
 
+// OpenPath 用 hostopen 打开本地路径。
 func (a *App) OpenPath(path string) error {
 	return hostopen.Path(path)
 }
 
+// OpenURL 用 hostopen 打开链接。
 func (a *App) OpenURL(raw string) error {
 	return hostopen.URL(raw)
 }
 
+// OpenInEditor 用 hostopen 在编辑器里打开路径。
 func (a *App) OpenInEditor(path string) error {
 	return hostopen.Editor(path)
 }
 
+// OpenWorkspaceTerminal 用 hostopen 在该目录打开终端。
 func (a *App) OpenWorkspaceTerminal(dir string) error {
 	return hostopen.Terminal(dir)
 }

@@ -1,3 +1,6 @@
+// Package preview 把文件转成一段文本预览。
+// xlsx 列出单元格，求值成功时再附上数值。docx、pptx 和 pdf 交给 office.Query。
+// 其余扩展名按原文读，长度超过 12000 字节时只留前面 12000 字节。
 package preview
 
 import (
@@ -9,6 +12,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
+// Render 按扩展名生成预览文本。扩展名比较前转成小写。
+// xlsx 先写单元格，标题是 spreadsheet；EvaluateXlsx 成功时再写 evaluated。求值失败则只有单元格。
+// docx 和 pptx 返回 office.Query 的文本。pdf 同样走 office.Query。
 func Render(path string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {

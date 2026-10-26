@@ -12,25 +12,30 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// Attach 记下 Wails 应用和主窗口，供菜单、托盘和对话框使用。
 func (s *Service) Attach(gui *application.App, win application.Window) {
 	s.gui = gui
 	s.win = win
 }
 
+// CloseToTray 返回配置里的 CloseToTray。为真时关窗口会藏进托盘。
 func (s *Service) CloseToTray() bool {
 	return s.GetConfig().CloseToTray
 }
 
+// CompanionEnabled 返回配置里的 CompanionEnabled。
 func (s *Service) CompanionEnabled() bool {
 	return s.GetConfig().CompanionEnabled
 }
 
+// emitSessions 在 gui 非空时发出 yoyo:sessions，载荷原样送出。
 func (s *Service) emitSessions(payload any) {
 	if s.gui != nil {
 		s.gui.Event.Emit("yoyo:sessions", payload)
 	}
 }
 
+// DeleteSession 在 RPC 非空时调用 thread.delete，否则 App.DeleteSession。成功后发出 yoyo:sessions，载荷是 id。返回值里 ok 表示没有错误。
 func (s *Service) DeleteSession(id string) (map[string]any, error) {
 	var err error
 	if s.RPC != nil {
@@ -44,6 +49,7 @@ func (s *Service) DeleteSession(id string) (map[string]any, error) {
 	return map[string]any{"ok": err == nil, "id": id}, err
 }
 
+// ArchiveSession 在 RPC 非空时调用 thread.archive，否则 App.ArchiveSession。成功后发出 yoyo:sessions。
 func (s *Service) ArchiveSession(id string, archived bool) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -58,6 +64,7 @@ func (s *Service) ArchiveSession(id string, archived bool) (app.SessionMeta, err
 	return m, err
 }
 
+// PinSession 在 RPC 非空时调用 thread.pin，否则 App.PinSession。成功后发出 yoyo:sessions。
 func (s *Service) PinSession(id string, pinned bool) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -72,6 +79,7 @@ func (s *Service) PinSession(id string, pinned bool) (app.SessionMeta, error) {
 	return m, err
 }
 
+// SearchSessions 在 RPC 非空时调用 thread.search，否则 App.SearchSessions。
 func (s *Service) SearchSessions(query string, includeArchived bool) ([]app.SessionMeta, error) {
 	if s.RPC != nil {
 		return decode[[]app.SessionMeta](s.call("thread.search", map[string]any{"query": query, "include_archived": includeArchived}))
@@ -79,6 +87,7 @@ func (s *Service) SearchSessions(query string, includeArchived bool) ([]app.Sess
 	return s.App.SearchSessions(query, includeArchived)
 }
 
+// ExportSession 在 RPC 非空时调用 thread.export，并返回 markdown 字段。否则走 App.ExportSession。
 func (s *Service) ExportSession(id string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("thread.export", map[string]any{"session": id})
@@ -92,6 +101,7 @@ func (s *Service) ExportSession(id string) (string, error) {
 	return s.App.ExportSession(id)
 }
 
+// SetSessionModel 在 RPC 非空时调用 thread.model.set，否则走 App.SetSessionModel。
 func (s *Service) SetSessionModel(id, model string) (app.SessionMeta, error) {
 	if s.RPC != nil {
 		return decode[app.SessionMeta](s.call("thread.model.set", map[string]any{"session": id, "model": model}))
@@ -99,6 +109,7 @@ func (s *Service) SetSessionModel(id, model string) (app.SessionMeta, error) {
 	return s.App.SetSessionModel(id, model)
 }
 
+// SetSessionAuthMode 在 RPC 非空时调用 thread.auth.set，否则走 App.SetSessionAuthMode。
 func (s *Service) SetSessionAuthMode(id, mode string) (app.SessionMeta, error) {
 	if s.RPC != nil {
 		return decode[app.SessionMeta](s.call("thread.auth.set", map[string]any{"session": id, "mode": mode}))
@@ -106,6 +117,7 @@ func (s *Service) SetSessionAuthMode(id, mode string) (app.SessionMeta, error) {
 	return s.App.SetSessionAuthMode(id, mode)
 }
 
+// SetSessionWorkspace 在 RPC 非空时调用 thread.workspace.set，否则 App.SetSessionWorkspace。成功后发出 yoyo:sessions。
 func (s *Service) SetSessionWorkspace(id, workspace string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -120,6 +132,7 @@ func (s *Service) SetSessionWorkspace(id, workspace string) (app.SessionMeta, er
 	return m, err
 }
 
+// SetSessionIsolate 在 RPC 非空时调用 thread.isolate.set，否则 App.SetSessionIsolate。成功后发出 yoyo:sessions。
 func (s *Service) SetSessionIsolate(id string, isolate bool) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -134,6 +147,7 @@ func (s *Service) SetSessionIsolate(id string, isolate bool) (app.SessionMeta, e
 	return m, err
 }
 
+// SetSessionPinnedSkills 在 RPC 非空时调用 thread.skills.pin，否则 App.SetSessionPinnedSkills。成功后发出 yoyo:sessions。
 func (s *Service) SetSessionPinnedSkills(id string, names []string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -148,10 +162,12 @@ func (s *Service) SetSessionPinnedSkills(id string, names []string) (app.Session
 	return m, err
 }
 
+// CompactSession 调用 CompactSessionFocus，焦点为空。
 func (s *Service) CompactSession(id string) (string, error) {
 	return s.CompactSessionFocus(id, "")
 }
 
+// CompactSessionFocus 在 RPC 非空时调用 thread.compact，并返回 note。否则走 App.CompactSessionFocus。
 func (s *Service) CompactSessionFocus(id, focus string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("thread.compact", map[string]any{"session": id, "focus": focus})
@@ -165,6 +181,7 @@ func (s *Service) CompactSessionFocus(id, focus string) (string, error) {
 	return s.App.CompactSessionFocus(id, focus)
 }
 
+// QueueList 在 RPC 非空时调用 thread.queue.list。结果为 nil 时返回空切片。否则走 App.QueueList。
 func (s *Service) QueueList(id string) []app.QueuedTurn {
 	if s.RPC != nil {
 		v, err := s.call("thread.queue.list", map[string]any{"session": id})
@@ -177,6 +194,7 @@ func (s *Service) QueueList(id string) []app.QueuedTurn {
 	return s.App.QueueList(id)
 }
 
+// QueueCancel 在 RPC 非空时调用 thread.queue.cancel，并读取 ok。否则走 App.QueueCancel。
 func (s *Service) QueueCancel(id, itemID string) bool {
 	if s.RPC != nil {
 		v, _ := s.call("thread.queue.cancel", map[string]any{"session": id, "id": itemID})
@@ -187,6 +205,7 @@ func (s *Service) QueueCancel(id, itemID string) bool {
 	return s.App.QueueCancel(id, itemID)
 }
 
+// QueueReorder 在 RPC 非空时调用 thread.queue.reorder，并读取 ok。否则走 App.QueueReorder。
 func (s *Service) QueueReorder(id, itemID string, delta int) bool {
 	if s.RPC != nil {
 		v, _ := s.call("thread.queue.reorder", map[string]any{"session": id, "id": itemID, "delta": delta})
@@ -197,6 +216,7 @@ func (s *Service) QueueReorder(id, itemID string, delta int) bool {
 	return s.App.QueueReorder(id, itemID, delta)
 }
 
+// ApplySessionWorktree 在 RPC 非空时调用 thread.worktree.apply，否则走 App.ApplySessionWorktree。
 func (s *Service) ApplySessionWorktree(id string) (app.SessionMeta, error) {
 	if s.RPC != nil {
 		v, err := s.call("thread.worktree.apply", map[string]any{"session": id})
@@ -205,6 +225,7 @@ func (s *Service) ApplySessionWorktree(id string) (app.SessionMeta, error) {
 	return s.App.ApplySessionWorktree(id)
 }
 
+// Steer 在 RPC 非空时调用 turn.steer，否则走 App.Steer。
 func (s *Service) Steer(id, text string) error {
 	if s.RPC != nil {
 		_, err := s.call("turn.steer", map[string]any{"session": id, "text": text})
@@ -213,6 +234,7 @@ func (s *Service) Steer(id, text string) error {
 	return s.App.Steer(id, text)
 }
 
+// SearchFiles 在 RPC 非空时调用 fs.search，limit 为 40。结果为 nil 时返回空切片。同进程在 workspace 为空时用 App.Workspace，再 FuzzySearch，上限 40。
 func (s *Service) SearchFiles(workspace, query string) []runtime.FileHit {
 	if s.RPC != nil {
 		v, err := s.call("fs.search", map[string]any{"workspace": workspace, "query": query, "limit": 40})
@@ -228,6 +250,7 @@ func (s *Service) SearchFiles(workspace, query string) []runtime.FileHit {
 	return runtime.FuzzySearch(workspace, query, 40)
 }
 
+// WorkspaceTree 在 RPC 非空时调用 fs.tree。结果为 nil 时返回空切片。同进程在 workspace 为空时用 App.Workspace，再 ListTree，上限 4000。
 func (s *Service) WorkspaceTree(workspace string) []runtime.FileHit {
 	if s.RPC != nil {
 		v, err := s.call("fs.tree", map[string]any{"workspace": workspace})
@@ -243,10 +266,12 @@ func (s *Service) WorkspaceTree(workspace string) []runtime.FileHit {
 	return runtime.ListTree(workspace, 4000)
 }
 
+// ListSkills 调用 ListSkillsFor，工作区为空。
 func (s *Service) ListSkills() []map[string]string {
 	return s.ListSkillsFor("")
 }
 
+// ListSkillsFor 在 RPC 非空时调用 skills.list。结果为 nil 时返回空切片。没有 App 时返回 nil。否则走 App.ListSkills。
 func (s *Service) ListSkillsFor(workspace string) []map[string]string {
 	if s.RPC != nil {
 		v, err := s.call("skills.list", map[string]any{"workspace": workspace})
@@ -262,6 +287,7 @@ func (s *Service) ListSkillsFor(workspace string) []map[string]string {
 	return s.App.ListSkills(workspace)
 }
 
+// GetSkill 在 RPC 非空时调用 skills.get。结果为 nil 时返回空 map。没有 App 或技能不存在时，同进程分别返回 nil 和空 map。
 func (s *Service) GetSkill(workspace, name string) map[string]string {
 	if s.RPC != nil {
 		v, err := s.call("skills.get", map[string]any{"workspace": workspace, "name": name})
@@ -281,6 +307,7 @@ func (s *Service) GetSkill(workspace, name string) map[string]string {
 	return sk
 }
 
+// SkillMarket 在 RPC 非空时调用 skills.market。没有 App 时返回 no app。否则走 App.SkillMarket。
 func (s *Service) SkillMarket(refresh bool, hub string, query string) (any, error) {
 	if s.RPC != nil {
 		return s.call("skills.market", map[string]any{"refresh": refresh, "hub": hub, "query": query})
@@ -291,6 +318,7 @@ func (s *Service) SkillMarket(refresh bool, hub string, query string) (any, erro
 	return s.App.SkillMarket(refresh, hub, query)
 }
 
+// ModelCatalog 在 RPC 非空时调用 models.catalog。没有 App 时返回 no app。否则走 App.ModelCatalog。
 func (s *Service) ModelCatalog(refresh bool) (any, error) {
 	if s.RPC != nil {
 		return s.call("models.catalog", map[string]any{"refresh": refresh})
@@ -301,6 +329,7 @@ func (s *Service) ModelCatalog(refresh bool) (any, error) {
 	return s.App.ModelCatalog(refresh)
 }
 
+// InstallMarketSkill 在 RPC 非空时调用 skills.install。没有 App 时返回 no app。否则走 App.InstallMarketSkill。
 func (s *Service) InstallMarketSkill(slug string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("skills.install", map[string]any{"slug": slug})
@@ -312,6 +341,7 @@ func (s *Service) InstallMarketSkill(slug string) (map[string]any, error) {
 	return s.App.InstallMarketSkill(slug)
 }
 
+// UninstallMarketSkill 在 RPC 非空时调用 skills.uninstall。没有 App 时返回 no app。否则走 App.UninstallMarketSkill。
 func (s *Service) UninstallMarketSkill(slug string) error {
 	if s.RPC != nil {
 		_, err := s.call("skills.uninstall", map[string]any{"slug": slug})
@@ -323,6 +353,7 @@ func (s *Service) UninstallMarketSkill(slug string) error {
 	return s.App.UninstallMarketSkill(slug)
 }
 
+// ListPacks 在 RPC 非空时调用 packs.list。结果为 nil 时返回空切片。没有 App 时返回 nil。同进程把 ListPacks 的每项编成 map。
 func (s *Service) ListPacks(workspace string) []map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("packs.list", map[string]any{"workspace": workspace})
@@ -346,6 +377,7 @@ func (s *Service) ListPacks(workspace string) []map[string]any {
 	return out
 }
 
+// InstallPack 在 RPC 非空时调用 packs.install。没有 App 时返回 no app。同进程把 InstallPack 的结果编成 map。
 func (s *Service) InstallPack(id, path string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("packs.install", map[string]any{"id": id, "path": path})
@@ -364,6 +396,7 @@ func (s *Service) InstallPack(id, path string) (map[string]any, error) {
 	return out, nil
 }
 
+// UninstallPack 在 RPC 非空时调用 packs.uninstall。没有 App 时返回 no app。否则走 App.UninstallPack。
 func (s *Service) UninstallPack(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("packs.uninstall", map[string]any{"id": id})
@@ -375,6 +408,7 @@ func (s *Service) UninstallPack(id string) error {
 	return s.App.UninstallPack(id)
 }
 
+// EnablePack 在 RPC 非空时调用 packs.enable。没有 App 时返回 no app。否则走 App.EnablePack。
 func (s *Service) EnablePack(id, scope string, enabled bool) error {
 	if s.RPC != nil {
 		_, err := s.call("packs.enable", map[string]any{"id": id, "scope": scope, "enabled": enabled})
@@ -386,6 +420,7 @@ func (s *Service) EnablePack(id, scope string, enabled bool) error {
 	return s.App.EnablePack(id, scope, enabled)
 }
 
+// UpdatePack 在 RPC 非空时调用 packs.update。没有 App 时返回 no app。同进程把 UpdatePack 的结果编成 map。
 func (s *Service) UpdatePack(id string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("packs.update", map[string]any{"id": id})
@@ -404,6 +439,7 @@ func (s *Service) UpdatePack(id string) (map[string]any, error) {
 	return out, nil
 }
 
+// KeyStatus 在 RPC 非空时调用 key.status。没有 App 时返回空 map。否则返回 Vault.Status。
 func (s *Service) KeyStatus() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("key.status", nil)
@@ -416,6 +452,7 @@ func (s *Service) KeyStatus() map[string]any {
 	return s.App.Vault.Status()
 }
 
+// StopMCP 在 RPC 非空时调用 mcp.stop，否则走 App.StopMCP。
 func (s *Service) StopMCP(name string) error {
 	if s.RPC != nil {
 		_, err := s.call("mcp.stop", map[string]any{"name": name})
@@ -424,6 +461,7 @@ func (s *Service) StopMCP(name string) error {
 	return s.App.StopMCP(name)
 }
 
+// MCPList 在 RPC 非空时调用 mcp.list。否则返回 servers 为 MCP.Info，tools 为 MCP.Tools。
 func (s *Service) MCPList() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("mcp.list", nil)
@@ -433,6 +471,7 @@ func (s *Service) MCPList() map[string]any {
 	return map[string]any{"servers": s.App.MCP.Info(), "tools": s.App.MCP.Tools()}
 }
 
+// Logs 在 RPC 非空时调用 logs.tail，否则走 App.Logs。
 func (s *Service) Logs(limit int) map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("logs.tail", map[string]any{"limit": limit})
@@ -442,6 +481,7 @@ func (s *Service) Logs(limit int) map[string]any {
 	return s.App.Logs(limit)
 }
 
+// Journal 在 RPC 非空时调用 journal.tail，否则走 App.JournalTail。
 func (s *Service) Journal(limit int) map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("journal.tail", map[string]any{"limit": limit})
@@ -451,6 +491,7 @@ func (s *Service) Journal(limit int) map[string]any {
 	return s.App.JournalTail(limit)
 }
 
+// ExportDiagnostics 在 RPC 非空时调用 logs.export，并返回 path。否则走 App.ExportDiagnostics，目标为空。
 func (s *Service) ExportDiagnostics() (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("logs.export", map[string]any{})
@@ -461,6 +502,7 @@ func (s *Service) ExportDiagnostics() (string, error) {
 	return s.App.ExportDiagnostics("")
 }
 
+// DiagnoseSession 在 RPC 非空时调用 logs.diagnose，并返回 text。同进程用 80 条调用 App.DiagnoseSession。
 func (s *Service) DiagnoseSession(sessionID string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("logs.diagnose", map[string]any{"session": sessionID})
@@ -471,6 +513,7 @@ func (s *Service) DiagnoseSession(sessionID string) (string, error) {
 	return s.App.DiagnoseSession(sessionID, 80)
 }
 
+// FrontendLogs 在 RPC 非空时调用 logs.frontend。同进程在 Log 非空时 AppendFrontend。没有日志器时返回 nil。
 func (s *Service) FrontendLogs(events []diaglog.FrontendEvent) error {
 	if s.RPC != nil {
 		_, err := s.call("logs.frontend", map[string]any{"events": events})
@@ -482,6 +525,7 @@ func (s *Service) FrontendLogs(events []diaglog.FrontendEvent) error {
 	return nil
 }
 
+// Doctor 在 RPC 非空时调用 doctor，否则走 App.Doctor。
 func (s *Service) Doctor() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("doctor", nil)
@@ -491,6 +535,7 @@ func (s *Service) Doctor() map[string]any {
 	return s.App.Doctor()
 }
 
+// About 在 RPC 非空时调用 about，否则走 App.Health。
 func (s *Service) About() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("about", nil)
@@ -500,6 +545,7 @@ func (s *Service) About() map[string]any {
 	return s.App.Health()
 }
 
+// CheckUpdate 在 RPC 非空时调用 update.check，否则走 App.CheckUpdate。
 func (s *Service) CheckUpdate() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("update.check", nil)
@@ -509,10 +555,12 @@ func (s *Service) CheckUpdate() map[string]any {
 	return s.App.CheckUpdate()
 }
 
+// TestProvider 调用 TestChatProvider，id 为空。
 func (s *Service) TestProvider() map[string]any {
 	return s.TestChatProvider("")
 }
 
+// ListChatProviders 在 RPC 非空时调用 provider.list。结果为 nil 或没有 App 时返回空切片。否则走 App.ListChatProviders。
 func (s *Service) ListChatProviders() []app.ChatProvider {
 	if s.RPC != nil {
 		v, err := s.call("provider.list", nil)
@@ -528,6 +576,7 @@ func (s *Service) ListChatProviders() []app.ChatProvider {
 	return s.App.ListChatProviders()
 }
 
+// UpsertChatProvider 在 RPC 非空时调用 provider.upsert。没有 App 时返回 unavailable。否则走 App.UpsertChatProvider。
 func (s *Service) UpsertChatProvider(in app.ChatProviderIn, apiKey string) (app.ChatProvider, error) {
 	if s.RPC != nil {
 		return decode[app.ChatProvider](s.call("provider.upsert", map[string]any{"provider": in, "api_key": apiKey}))
@@ -538,6 +587,7 @@ func (s *Service) UpsertChatProvider(in app.ChatProviderIn, apiKey string) (app.
 	return s.App.UpsertChatProvider(in, apiKey)
 }
 
+// DeleteChatProvider 在 RPC 非空时调用 provider.delete。没有 App 时返回 unavailable。否则走 App.DeleteChatProvider。
 func (s *Service) DeleteChatProvider(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("provider.delete", map[string]any{"id": id})
@@ -549,6 +599,7 @@ func (s *Service) DeleteChatProvider(id string) error {
 	return s.App.DeleteChatProvider(id)
 }
 
+// SetDefaultChatProvider 在 RPC 非空时调用 provider.setDefault。没有 App 时返回 unavailable。否则走 App.SetDefaultChatProvider。
 func (s *Service) SetDefaultChatProvider(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("provider.setDefault", map[string]any{"id": id})
@@ -560,6 +611,7 @@ func (s *Service) SetDefaultChatProvider(id string) error {
 	return s.App.SetDefaultChatProvider(id)
 }
 
+// TestChatProvider 在 RPC 非空时调用 provider.test。没有 App 时返回 ok 为假、error 为 unavailable。否则走 App.TestChatProvider。
 func (s *Service) TestChatProvider(id string) map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("provider.test", map[string]any{"id": id})
@@ -572,6 +624,7 @@ func (s *Service) TestChatProvider(id string) map[string]any {
 	return s.App.TestChatProvider(id)
 }
 
+// ReplaceMCP 在 RPC 非空时调用 mcp.replace，否则走 App.ReplaceMCP。
 func (s *Service) ReplaceMCP(servers []app.MCPServerConfig) error {
 	if s.RPC != nil {
 		_, err := s.call("mcp.replace", map[string]any{"servers": servers})
@@ -580,6 +633,7 @@ func (s *Service) ReplaceMCP(servers []app.MCPServerConfig) error {
 	return s.App.ReplaceMCP(servers)
 }
 
+// RevealLogs 从 logs.tail 或本进程日志器取出目录，再用 RevealPath 打开。目录未知时返回 log directory unknown。
 func (s *Service) RevealLogs() error {
 	var dir string
 	if s.RPC != nil {
@@ -597,6 +651,7 @@ func (s *Service) RevealLogs() error {
 	return RevealPath(dir)
 }
 
+// RevealJournal 从 journal.tail 或本进程 Journal.Path 取出路径，再用 RevealPath 打开。路径未知时返回 journal path unknown。
 func (s *Service) RevealJournal() error {
 	var path string
 	if s.RPC != nil {
@@ -612,6 +667,7 @@ func (s *Service) RevealJournal() error {
 	return RevealPath(path)
 }
 
+// NotifyAllowed 在通知总开关关闭时返回假。NotifyWhenUnfocusedOnly 为真且主窗口正聚焦时也返回假。
 func (s *Service) NotifyAllowed() bool {
 	cfg := s.GetConfig()
 	if !cfg.NotificationsEnabled {
@@ -623,9 +679,7 @@ func (s *Service) NotifyAllowed() bool {
 	return true
 }
 
-// toastAllowed gates one OS toast by kind. A finished turn is not announced
-// while the window is in front: the user is already in the app, and the bell
-// keeps the record. Approvals and errors always reach the OS.
+// toastAllowed 先看 NotifyAllowed。kind 为 done 且主窗口正聚焦时返回假，因为人已经在应用里，铃铛还留着记录。审批和错误不受这条聚焦限制。
 func (s *Service) toastAllowed(kind string) bool {
 	if !s.NotifyAllowed() {
 		return false
@@ -633,6 +687,7 @@ func (s *Service) toastAllowed(kind string) bool {
 	return !(kind == "done" && s.win != nil && s.win.IsFocused())
 }
 
+// PickFolder 打开只能选目录的对话框，标题用当前语言的选择工作区。有主窗口时附在窗口上。没有 gui 时返回 native dialog unavailable。
 func (s *Service) PickFolder() (string, error) {
 	if s.gui == nil {
 		return "", errors.New("native dialog unavailable")
@@ -644,6 +699,7 @@ func (s *Service) PickFolder() (string, error) {
 	return dlg.PromptForSingleSelection()
 }
 
+// PickFiles 打开只能选文件的多选对话框，标题用当前语言的附加文件。有主窗口时附在窗口上。没有 gui 时返回 native dialog unavailable。
 func (s *Service) PickFiles() ([]string, error) {
 	if s.gui == nil {
 		return nil, errors.New("native dialog unavailable")
@@ -655,6 +711,7 @@ func (s *Service) PickFiles() ([]string, error) {
 	return dlg.PromptForMultipleSelection()
 }
 
+// ShowAboutNative 用原生信息框显示 About 文案、版本、harness 和 model。没有 gui 时返回。
 func (s *Service) ShowAboutNative() {
 	if s.gui == nil {
 		return

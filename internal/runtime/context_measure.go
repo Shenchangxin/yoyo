@@ -1,3 +1,6 @@
+// 下一轮模型调用的只读计量。按组提示的同一套材料计算，不读进程里上一份 ShapeReport，因此重启后仍能报用量。
+// 不改轨迹。有模型窗口时走 projectChat，否则 Shape 后再 Legalize。动态块接在历史后面。
+
 package runtime
 
 import (
@@ -7,7 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// MeasureOpts is the same bill of materials the live loop uses to Shape a turn.
+// MeasureOpts 是计量用的材料，和循环组一轮提示时用的是同一批。
 type MeasureOpts struct {
 	Loop          artifact.LoopPreset
 	Fragments     []artifact.PromptFragment
@@ -25,9 +28,8 @@ type MeasureOpts struct {
 	ProfileMemory string
 }
 
-// MeasureContext is a read-only projection of what the next model call would
-// send: prefix + dynamic tail + tool schemas + shaped history. It does not
-// depend on the in-RAM last ShapeReport, so usage survives process restart.
+// MeasureContext 投影下一轮会发给模型的内容并填写账本。笔记为空且有 spill 时读 spill 里的 notes。
+// ModelWindow 大于 0 时用 projectChat，否则 Shape 后再 Legalize。ChatTokens 只数历史。CacheStable 固定写成 true。
 func MeasureContext(opts MeasureOpts) ShapeReport {
 	loop := opts.Loop
 	notes := opts.Notes
@@ -91,9 +93,8 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 	return report
 }
 
-// ShapeFromEvents recovers a ledger from the last compact/turn_end payload
-// when materials cannot be assembled (missing harness). Empty shape events
-// are ignored — those are never written.
+// ShapeFromEvents 从最后一条带用量的 compact 或 turn_end 恢复账本。tokens 和 prefix_tokens 都是 0 的事件跳过。
+// 一条都没有时，window 大于 0 就只返回窗口。事件自己的窗口为 0 时用参数补上。
 func ShapeFromEvents(evs []trace.Event, window int) ShapeReport {
 	var last ShapeReport
 	found := false
@@ -148,6 +149,7 @@ func ShapeFromEvents(evs []trace.Event, window int) ShapeReport {
 	return last
 }
 
+// payloadStrings 读取字符串切片，或 any 切片里的非空字符串。键缺失或类型不符时返回 nil。
 func payloadStrings(p map[string]any, key string) []string {
 	if p == nil {
 		return nil

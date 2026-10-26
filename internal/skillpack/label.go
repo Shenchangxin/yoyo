@@ -1,3 +1,5 @@
+// 把技能运行时工具调用显示成操作者看到的技能 id。
+
 package skillpack
 
 import (
@@ -5,8 +7,7 @@ import (
 	"strings"
 )
 
-// CallLabel is the operator-facing skill id for a skill-runtime tool.
-// Empty means the call is not a skill tool — callers keep the host name.
+// CallLabel 给 load_skill、read_skill_file、run_skill_script、list_skills 抽出要显示的技能名。其他工具返回空串，调用方继续用宿主工具名。参数里没有名字时退回工具名本身。
 func CallLabel(tool, argsJSON string) string {
 	tool = strings.TrimSpace(tool)
 	name := jsonString(argsJSON, "name")
@@ -45,6 +46,7 @@ func CallLabel(tool, argsJSON string) string {
 	}
 }
 
+// jsonString 从 JSON 对象里取出字符串字段。正文为空、不是对象或字段不是字符串时返回空串。
 func jsonString(raw, key string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

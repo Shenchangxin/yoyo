@@ -1,3 +1,5 @@
+// 相邻增量的合并，以及订阅通道堵住时丢掉实时事件。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestHubCoalescesAssistantDeltas 把同一回合的两段助手增量拼成一条。
 func TestHubCoalescesAssistantDeltas(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -30,6 +33,7 @@ func TestHubCoalescesAssistantDeltas(t *testing.T) {
 	}
 }
 
+// TestHubCoalesceKeepsIndexRange 合并后保留从第一段到最后一段的 index 范围。
 func TestHubCoalesceKeepsIndexRange(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -57,6 +61,7 @@ func TestHubCoalesceKeepsIndexRange(t *testing.T) {
 	}
 }
 
+// TestHubFlushesOnTypeChange 在助手增量后面遇到工具调用时先把增量发出去。
 func TestHubFlushesOnTypeChange(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -79,6 +84,7 @@ func TestHubFlushesOnTypeChange(t *testing.T) {
 	}
 }
 
+// TestHubCoalescesAssistantStreamChunks 合并助手流的文本片段，并让通知帧带上 index 范围。
 func TestHubCoalescesAssistantStreamChunks(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -113,6 +119,7 @@ func TestHubCoalescesAssistantStreamChunks(t *testing.T) {
 	}
 }
 
+// TestHubDoesNotMergeDifferentRounds 不把不同回合的增量拼成一条。
 func TestHubDoesNotMergeDifferentRounds(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -135,6 +142,7 @@ func TestHubDoesNotMergeDifferentRounds(t *testing.T) {
 	}
 }
 
+// TestHubCoalescesShellStdout 把同一工具调用的两段 stdout 增量拼在一起。
 func TestHubCoalescesShellStdout(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -154,6 +162,7 @@ func TestHubCoalescesShellStdout(t *testing.T) {
 	}
 }
 
+// TestHubDropsLiveWhenSubscriberBlocked 在订阅通道堵住时发布仍能返回，终态的 turn_end 仍会送到。
 func TestHubDropsLiveWhenSubscriberBlocked(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -182,6 +191,7 @@ func TestHubDropsLiveWhenSubscriberBlocked(t *testing.T) {
 	}
 }
 
+// recv 在超时前从通道取出一条事件。
 func recv(t *testing.T, ch <-chan trace.Event) trace.Event {
 	t.Helper()
 	select {

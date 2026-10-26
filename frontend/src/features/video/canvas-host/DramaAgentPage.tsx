@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短剧代理页：风格、系列、输入和线程。不拥有短剧看板的工序。
+ * 发送、导入、绑定和开阶段会改服务端。像系列的正文走导入，其他正文走当前会话发送。
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Select } from "antd";
 import { Film, LayoutGrid, Paperclip } from "lucide-react";
@@ -25,6 +29,7 @@ type Drama = { id: string; title: string; style?: string };
 type StyleOpt = { value: string; name: string };
 type Episode = { id: string; drama_id: string; title: string; episode_number?: number };
 
+/** DramaAgentPage 在空线程时显示入口，有消息后显示记录。系列正文会打开看板。 */
 export default function DramaAgentPage() {
   const { message } = App.useApp();
   const copy = useCopy();
@@ -54,6 +59,7 @@ export default function DramaAgentPage() {
   const isEmpty = !threadOpen;
   const draftKey = "drama:home";
 
+  /** 读取系列列表。 */
   const loadDramas = useCallback(async () => {
     const list = (await api.video.listDramas()) as Drama[];
     setDramas(Array.isArray(list) ? list : []);
@@ -122,12 +128,14 @@ export default function DramaAgentPage() {
     el.scrollTop = el.scrollHeight;
   }, [items, busy, isEmpty]);
 
+  /** 取出已有会话，没有就向画布宿主要。 */
   async function sid() {
     const existing = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
     if (existing) return existing;
     return useCanvasHost.getState().ensureSession();
   }
 
+  /** 保证有一集，比例是 9:16，并刷新系列列表。 */
   async function ensureCurrent(content = "") {
     const id = await ensureDramaEpisode({
       title: "",
@@ -139,6 +147,7 @@ export default function DramaAgentPage() {
     return id;
   }
 
+  /** 记下风格；已有系列就写回。 */
   async function pickStyle(value: string) {
     setDramaStyle(value);
     if (!dramaId) return;
@@ -150,6 +159,7 @@ export default function DramaAgentPage() {
     }
   }
 
+  /** 像系列的正文走导入和大纲阶段，否则写入当前集并发送到会话。 */
   async function send(text = "") {
     const next = text.trim();
     if (!next) return;
@@ -191,6 +201,7 @@ export default function DramaAgentPage() {
     }
   }
 
+  /** 选一份文本文件导入系列，并打开大纲阶段。 */
   async function importNovel() {
     if (busy) return;
     const paths = await api.pickFiles();

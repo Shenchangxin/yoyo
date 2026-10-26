@@ -1,3 +1,6 @@
+// 本文件生成只有一页的 PDF，并按字面括号抽出文本。
+// 页面媒体框是 0 0 612 792。正文字号 12，起点是 72 720，字体是 Helvetica。文件头是 %PDF-1.4。
+
 package office
 
 import (
@@ -8,6 +11,8 @@ import (
 	"strings"
 )
 
+// encodePDF 生成一页 PDF。标题为空时用 Document。正文和标题行依次接在标题后面，中间用换行。
+// 内容流是 BT /F1 12 Tf 72 720 Td 加括号文本。目录、页面和字体共 5 个对象，根是对象 1。
 func encodePDF(req CreateReq) ([]byte, error) {
 	title := req.Title
 	if title == "" {
@@ -48,6 +53,8 @@ func encodePDF(req CreateReq) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// readPDFText 依次取出文件里每一对圆括号中的文本，并做 pdfUnescape，段与段之间加换行。
+// 一对括号都没有时，返回去掉首尾空白的原始文件文本。
 func readPDFText(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -75,6 +82,8 @@ func readPDFText(path string) (string, error) {
 	return out, nil
 }
 
+// replacePDF 在文件字节里替换。先把 pdfEscape 之后的 old 换成 pdfEscape 之后的 neu，再把原文 old 换成 pdfEscape 之后的 neu。
+// 两种形式都不存在时返回 office: old_str not found。直接覆盖 path，不重建交叉引用表。
 func replacePDF(path, old, neu string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -89,6 +98,7 @@ func replacePDF(path, old, neu string) error {
 	return os.WriteFile(path, []byte(s), 0o644)
 }
 
+// pdfEscape 转义反斜杠和圆括号。换行换成 ) Tj T* (，以便在同一内容流里换行。
 func pdfEscape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `(`, `\(`)
@@ -97,6 +107,7 @@ func pdfEscape(s string) string {
 	return s
 }
 
+// pdfUnescape 把 \) 和 \( 还原成括号，再把 \\ 还原成反斜杠。
 func pdfUnescape(s string) string {
 	s = strings.ReplaceAll(s, `\)`, `)`)
 	s = strings.ReplaceAll(s, `\(`, `(`)

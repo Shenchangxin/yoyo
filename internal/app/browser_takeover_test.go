@@ -1,3 +1,5 @@
+// 锁住浏览器接管页的路径：绝对会话路径、相对路径落在预览文件、以及相对路径落在配置工作区。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/browser"
 )
 
+// TestResolveTakeoverFileUsesAbsoluteSessionPath 锁住会话目录里的绝对 html 路径原样解析，不要求它落在 Config.Workspace。
 func TestResolveTakeoverFileUsesAbsoluteSessionPath(t *testing.T) {
 	cfg := t.TempDir()
 	sess := t.TempDir()
@@ -30,6 +33,7 @@ func TestResolveTakeoverFileUsesAbsoluteSessionPath(t *testing.T) {
 	}
 }
 
+// TestResolveTakeoverFileUsesPreviewWhenRelativeMissesConfigWorkspace 锁住相对路径不在配置工作区时，改用浏览器预览文件。
 func TestResolveTakeoverFileUsesPreviewWhenRelativeMissesConfigWorkspace(t *testing.T) {
 	cfg := t.TempDir()
 	sess := t.TempDir()
@@ -53,6 +57,7 @@ func TestResolveTakeoverFileUsesPreviewWhenRelativeMissesConfigWorkspace(t *test
 	}
 }
 
+// TestResolveTakeoverFileRelativeInsideConfigWorkspace 锁住相对路径落在 Config.Workspace 里时解析成该文件。
 func TestResolveTakeoverFileRelativeInsideConfigWorkspace(t *testing.T) {
 	cfg := t.TempDir()
 	page := filepath.Join(cfg, "game.html")

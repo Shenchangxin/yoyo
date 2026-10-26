@@ -1,3 +1,6 @@
+// 本文件拥有礼物目录、抽卡、送礼和重置卡。Catalog 里的中文名是数据。
+// 不调用模型。送礼改好感并写一条 kind 为 event 的记录，再记每日任务 gift。
+
 package idol
 
 import (
@@ -6,6 +9,7 @@ import (
 	"time"
 )
 
+// Gift 是目录里的一件礼物。Rarity 取 common、uncommon、rare。
 type Gift struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -13,6 +17,7 @@ type Gift struct {
 	Category string `json:"category"`
 }
 
+// Catalog 是可抽、可送的礼物。名字和稀有度是数据。
 var Catalog = []Gift{
 	{ID: "tea", Name: "热茶", Rarity: "common", Category: "drink"},
 	{ID: "candy", Name: "糖", Rarity: "common", Category: "food"},
@@ -26,6 +31,7 @@ var Catalog = []Gift{
 	{ID: "letter", Name: "一封信", Rarity: "rare", Category: "paper"},
 }
 
+// GiftByID 按 id 在 Catalog 里找礼物。没有则 ok 为 false。
 func GiftByID(id string) (Gift, bool) {
 	for _, g := range Catalog {
 		if g.ID == id {
@@ -35,6 +41,7 @@ func GiftByID(id string) (Gift, bool) {
 	return Gift{}, false
 }
 
+// stock 返回背包里这种礼物的数量，没有就是 0。
 func (st *State) stock(id string) int {
 	for _, s := range st.Inventory {
 		if s.GiftID == id {
@@ -44,6 +51,7 @@ func (st *State) stock(id string) int {
 	return 0
 }
 
+// addStock 增减背包数量。减到 0 以下就停在 0；没有这项且 n 大于 0 时追加一条。
 func (st *State) addStock(id string, n int) {
 	for i := range st.Inventory {
 		if st.Inventory[i].GiftID == id {
@@ -59,12 +67,14 @@ func (st *State) addStock(id string, n int) {
 	}
 }
 
+// DrawResult 是一次抽卡。ResetCard 为真时没有礼物，Left 是剩下的抽数。
 type DrawResult struct {
 	Gift      *Gift `json:"gift,omitempty"`
 	ResetCard bool  `json:"reset_card"`
 	Left      int   `json:"left"`
 }
 
+// Draw 消耗一次抽卡。先用 BonusDraws，没有再用 Draws。0 到 99 里小于 3 得到重置卡；否则 95 及以上 rare，70 及以上 uncommon，其余 common，再从该稀有度里随机一件放进背包。
 func (st *State) Draw(rng *rand.Rand) (DrawResult, error) {
 	left := st.Draws + st.BonusDraws
 	if left <= 0 {
@@ -100,6 +110,7 @@ func (st *State) Draw(rng *rand.Rand) (DrawResult, error) {
 	return DrawResult{Gift: &g, Left: st.Draws + st.BonusDraws}, nil
 }
 
+// giftDelta 计算送礼加的分数。common 是 2，uncommon 是 4，rare 是 7，喜欢的礼物再加 4。
 func giftDelta(g Gift, liked bool) int {
 	n := 2
 	switch g.Rarity {
@@ -114,6 +125,7 @@ func giftDelta(g Gift, liked bool) int {
 	return n
 }
 
+// liked 看这位偶像的 LikedGifts 里有没有这件礼物。
 func liked(idol Idol, giftID string) bool {
 	for _, id := range idol.LikedGifts {
 		if id == giftID {
@@ -123,6 +135,7 @@ func liked(idol Idol, giftID string) bool {
 	return false
 }
 
+// Give 从背包拿出一件礼物送给偶像，加上 giftDelta，并写一条 event 记录。当前对话已结束就另开一段。冷却中也继续送出。
 func (st *State) Give(idolID, giftID string, now time.Time) (Record, Affinity, error) {
 	g, ok := GiftByID(giftID)
 	if !ok {
@@ -136,7 +149,7 @@ func (st *State) Give(idolID, giftID string, now time.Time) (Record, Affinity, e
 		return Record{}, Affinity{}, errf("idol not found")
 	}
 	if aff := st.affinityOf(idolID); aff.Cooling(now) {
-		// gifts still land during a cooldown and can lift it
+		// 冷却期间礼物仍然送出，分数上来后可以解除冷却
 	}
 	st.addStock(giftID, -1)
 	delta := giftDelta(g, liked(idol, giftID))
@@ -155,6 +168,7 @@ func (st *State) Give(idolID, giftID string, now time.Time) (Record, Affinity, e
 	return rec, aff, nil
 }
 
+// UseReset 消耗一张重置卡，把分数低于 50 或仍在冷却的偶像设回 50 并清掉冷却。没有低于 trust 的人就返回错误，卡不消耗。返回值是改过的人数。
 func (st *State) UseReset(now time.Time) (int, error) {
 	if st.ResetCards <= 0 {
 		return 0, errf("no reset card")
@@ -177,6 +191,7 @@ func (st *State) UseReset(now time.Time) (int, error) {
 	return n, nil
 }
 
+// idolTZ 解析用户卡片上的时区。空的或 LoadLocation 失败时用 time.Local。
 func idolTZ(u UserCard) *time.Location {
 	if strings.TrimSpace(u.Timezone) == "" {
 		return time.Local

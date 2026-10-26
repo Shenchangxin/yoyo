@@ -1,5 +1,9 @@
+// 追加的画面风格预设。PresetStyles 会把这些接在核心表后面。
+// 每条提示是数据，不另作说明。
+
 package video
 
+// extraPresetStyles 返回核心表之外的画面风格。
 func extraPresetStyles() []Style {
 	return []Style{
 		{Value: "toon3d", Name: "Stylized toon 3D", Prompt: "stylized 3D cartoon still, appealing volumes, graphic shadows, saturated feature-animation color, consistent character sculpt across shots, avoid photoreal pores, avoid 2D line art", Description: "Graphic 3D toon."},

@@ -1,3 +1,5 @@
+// 锁住连接 JSON 只留钥匙名字，以及 default 里已保存的钥匙会抄到聊天连接，环境变量不会覆盖自定义钥匙。
+
 package connection
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/vault"
 )
 
+// TestRegistryJSONRoundTrip 确认写入的钥匙能 Lease 回来，默认项指向该连接，删除后文档不再存在。
 func TestRegistryJSONRoundTrip(t *testing.T) {
 	v := vault.NewFileOnly(t.TempDir())
 	r, err := Open(t.TempDir(), v)
@@ -50,6 +53,7 @@ func TestRegistryJSONRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSeedChatAndSearch 确认已保存的 default 钥匙被抄到聊天连接，SeedChat 不会再新建一条，搜索连接记下钥匙名字。
 func TestSeedChatAndSearch(t *testing.T) {
 	v := vault.NewFileOnly(t.TempDir())
 	v.Set("default", "chat-key")
@@ -95,6 +99,7 @@ func TestSeedChatAndSearch(t *testing.T) {
 	}
 }
 
+// isolateVaultEnv 把 YOYO_API_KEY、OPENAI_API_KEY、ANTHROPIC_API_KEY 和 DEEPSEEK_API_KEY 设成空串。
 func isolateVaultEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("YOYO_API_KEY", "")
@@ -103,6 +108,7 @@ func isolateVaultEnv(t *testing.T) {
 	t.Setenv("DEEPSEEK_API_KEY", "")
 }
 
+// TestSyncChatAdoptsDefaultKeyAfterSave 确认保存 default 之前连接没有钥匙，保存后再 SyncChat 会抄上并更新端点。
 func TestSyncChatAdoptsDefaultKeyAfterSave(t *testing.T) {
 	isolateVaultEnv(t)
 	v := vault.NewFileOnly(t.TempDir())
@@ -134,6 +140,7 @@ func TestSyncChatAdoptsDefaultKeyAfterSave(t *testing.T) {
 	}
 }
 
+// TestSyncChatReplacesStaleConnectionKey 确认默认聊天连接上的旧钥匙会被已保存的 default 换掉。
 func TestSyncChatReplacesStaleConnectionKey(t *testing.T) {
 	isolateVaultEnv(t)
 	v := vault.NewFileOnly(t.TempDir())
@@ -160,6 +167,7 @@ func TestSyncChatReplacesStaleConnectionKey(t *testing.T) {
 	}
 }
 
+// TestUpsertChatDoesNotClobberDefaultKey 确认非默认聊天连接的 Upsert 不会改掉名字 default 里的钥匙。
 func TestUpsertChatDoesNotClobberDefaultKey(t *testing.T) {
 	isolateVaultEnv(t)
 	v := vault.NewFileOnly(t.TempDir())
@@ -195,6 +203,7 @@ func TestUpsertChatDoesNotClobberDefaultKey(t *testing.T) {
 	}
 }
 
+// TestAdoptDefaultKeyDoesNotCopyEnvOntoCustomDefault 确认环境变量里的钥匙不会写进自定义默认连接。
 func TestAdoptDefaultKeyDoesNotCopyEnvOntoCustomDefault(t *testing.T) {
 	t.Setenv("YOYO_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "env-openai")
@@ -222,6 +231,7 @@ func TestAdoptDefaultKeyDoesNotCopyEnvOntoCustomDefault(t *testing.T) {
 	}
 }
 
+// TestAdoptDefaultKeyDoesNotClobberCustomWithEnv 确认已有自定义钥匙时，环境变量不会把它覆盖掉。
 func TestAdoptDefaultKeyDoesNotClobberCustomWithEnv(t *testing.T) {
 	t.Setenv("YOYO_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "env-openai")

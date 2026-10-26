@@ -1,3 +1,5 @@
+// browser_verify 丢掉模型给的状态和 CSS 选择器，六项检查由宿主计算。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestParseVerifyPlanStripsAgentStatus 确认模型给的 Status 和 Checks 被清空，terminal 与 restart 用默认值。
 func TestParseVerifyPlanStripsAgentStatus(t *testing.T) {
 	plan, err := parseVerifyPlan(map[string]any{
 		"open":   "build/app/index.html",
@@ -28,6 +31,7 @@ func TestParseVerifyPlanStripsAgentStatus(t *testing.T) {
 	}
 }
 
+// TestDeriveVerificationPassAndFail 确认步骤全过时六项为 PASS，任一步失败时总状态为 FAIL。
 func TestDeriveVerificationPassAndFail(t *testing.T) {
 	plan := VerifyPlan{Open: "build/app/index.html", Terminal: "designed-outcome", Restart: "initial-state"}
 	ok := []browserStepResult{
@@ -62,6 +66,7 @@ func TestDeriveVerificationPassAndFail(t *testing.T) {
 	}
 }
 
+// TestDeriveVerificationNoChromeIsNotRun 确认 Chrome 没跑时总状态是 NOT_RUN。
 func TestDeriveVerificationNoChromeIsNotRun(t *testing.T) {
 	plan := VerifyPlan{Open: "build/app/index.html", Terminal: "designed-outcome", Restart: "initial-state"}
 	_, verify := deriveVerification("", plan, nil, false, true)
@@ -70,6 +75,7 @@ func TestDeriveVerificationNoChromeIsNotRun(t *testing.T) {
 	}
 }
 
+// TestWriteQAFilesAtomic 确认两份 JSON 写到 qa/evidence/run.json 和 qa/verification.json。
 func TestWriteQAFilesAtomic(t *testing.T) {
 	dir := t.TempDir()
 	runDoc := map[string]any{"schemaVersion": 1, "runId": "main-path"}
@@ -93,6 +99,7 @@ func TestWriteQAFilesAtomic(t *testing.T) {
 	}
 }
 
+// TestInferVerifyRoot 确认从 open 往上找到 build/app 的项目目录。
 func TestInferVerifyRoot(t *testing.T) {
 	got := inferVerifyRoot("game-adaptations/xiyou/build/app/index.html")
 	if !strings.HasSuffix(strings.ReplaceAll(got, "\\", "/"), "game-adaptations/xiyou") {
@@ -104,6 +111,7 @@ func TestInferVerifyRoot(t *testing.T) {
 	}
 }
 
+// TestParseVerifyPlanDropsCSSRoot 确认 root 为 CSS 选择器时被丢掉。
 func TestParseVerifyPlanDropsCSSRoot(t *testing.T) {
 	plan, err := parseVerifyPlan(map[string]any{
 		"open":    "game-adaptations/tianming-guiling/build/app/index.html",
@@ -124,6 +132,7 @@ func TestParseVerifyPlanDropsCSSRoot(t *testing.T) {
 	}
 }
 
+// TestNormalizeVerifyRootIgnoresSelector 确认 #stage 不作为目录，并改用从 open 推断的路径。
 func TestNormalizeVerifyRootIgnoresSelector(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -133,6 +142,7 @@ func TestNormalizeVerifyRootIgnoresSelector(t *testing.T) {
 	}
 }
 
+// TestFormatVerifyResultNamesWrittenPaths 确认结果正文写出证据和 verification 的路径。
 func TestFormatVerifyResultNamesWrittenPaths(t *testing.T) {
 	got := formatVerifyResult("FAIL", map[string]any{
 		"checks": map[string]string{"launch": "PASS", "render": "PASS", "input": "PASS", "coreLoop": "PASS", "outcome": "PASS", "restart": "PASS"},
@@ -145,6 +155,7 @@ func TestFormatVerifyResultNamesWrittenPaths(t *testing.T) {
 	}
 }
 
+// TestLooksLikeCSSSelector 确认 #stage 和 .card 像选择器，普通相对路径不像。
 func TestLooksLikeCSSSelector(t *testing.T) {
 	if !looksLikeCSSSelector("#stage") || !looksLikeCSSSelector(".hud") || !looksLikeCSSSelector("[data-id]") {
 		t.Fatal("selectors")
@@ -154,6 +165,7 @@ func TestLooksLikeCSSSelector(t *testing.T) {
 	}
 }
 
+// TestBrowserVerifyRequiresPlan 确认既没有步骤也没有 open 时失败。
 func TestBrowserVerifyRequiresPlan(t *testing.T) {
 	tools := &WorkspaceTools{Workspace: t.TempDir()}
 	res := tools.Call("browser_verify", `{}`)
@@ -162,6 +174,7 @@ func TestBrowserVerifyRequiresPlan(t *testing.T) {
 	}
 }
 
+// TestBrowserVerifyCSSRootWritesUnderProject 确认 CSS root 不创建选择器目录，文件写到项目的 qa 下，结果含 ignored root。
 func TestBrowserVerifyCSSRootWritesUnderProject(t *testing.T) {
 	dir := t.TempDir()
 	html := "game-adaptations/tianming-guiling/build/app/index.html"

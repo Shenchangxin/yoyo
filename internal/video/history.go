@@ -1,5 +1,8 @@
+// history.go 列出画布、短剧和短片工程，并按会话找回当前工程。
+
 package video
 
+// ProjectHistory 拼出画布、短剧和短片工程。画布和短剧最多各取现有列表；短剧没有绑到集时用该剧的第一集。
 func (e *Engine) ProjectHistory() ([]map[string]any, error) {
 	canvasSess := e.latestCanvasSessions()
 	dramaSess := e.latestDramaSessions()
@@ -53,6 +56,7 @@ func (e *Engine) ProjectHistory() ([]map[string]any, error) {
 	return out, nil
 }
 
+// SessionProject 按会话绑定填回画布、短片和短剧。已有 kind 时不再用后面的绑定覆盖种类和标题。
 func (e *Engine) SessionProject(sessionID string) map[string]any {
 	out := map[string]any{"session_id": sessionID}
 	if cid, ok := e.CanvasSessionBind(sessionID); ok {
@@ -90,11 +94,13 @@ func (e *Engine) SessionProject(sessionID string) map[string]any {
 	return out
 }
 
+// dramaSessionHit 记下一部短剧最近一次绑定的会话和集。
 type dramaSessionHit struct {
 	SessionID string
 	EpisodeID string
 }
 
+// latestCanvasSessions 为每个画布保留绑定表里第一次出现的会话。引擎为空时返回空 map。
 func (e *Engine) latestCanvasSessions() map[string]string {
 	out := map[string]string{}
 	if e == nil {
@@ -111,6 +117,7 @@ func (e *Engine) latestCanvasSessions() map[string]string {
 	return out
 }
 
+// latestDramaSessions 为每部短剧保留绑定表里第一次出现的会话和集。
 func (e *Engine) latestDramaSessions() map[string]dramaSessionHit {
 	out := map[string]dramaSessionHit{}
 	if e == nil {
@@ -127,6 +134,7 @@ func (e *Engine) latestDramaSessions() map[string]dramaSessionHit {
 	return out
 }
 
+// LatestStudioSession 返回短片工程第一次出现的会话。引擎或工程标识为空时返回空串。
 func (e *Engine) LatestStudioSession(projectID string) string {
 	if e == nil || projectID == "" {
 		return ""
@@ -134,6 +142,7 @@ func (e *Engine) LatestStudioSession(projectID string) string {
 	return e.latestStudioSessions()[projectID]
 }
 
+// latestStudioSessions 为每个短片工程保留绑定表里第一次出现的会话。
 func (e *Engine) latestStudioSessions() map[string]string {
 	out := map[string]string{}
 	if e == nil {
@@ -150,6 +159,7 @@ func (e *Engine) latestStudioSessions() map[string]string {
 	return out
 }
 
+// firstEpisodeID 返回该剧列表里的第一集标识。没有集时返回空串。
 func (e *Engine) firstEpisodeID(dramaID string) string {
 	if e == nil || dramaID == "" {
 		return ""

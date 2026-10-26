@@ -1,3 +1,8 @@
+/**
+ * 拥有：缓存命中展示、紧凑格式，以及统计折叠对用量、回合和工具耗时的约定。
+ * 不拥有：追踪的采集和药丸的渲染。
+ */
+
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -11,6 +16,7 @@ import {
 } from "./session-stats.ts";
 import type { SessionTrace, TraceEvent } from "./protocol.ts";
 
+/** 补齐追踪事件缺省字段，便于只写与本例有关的项。 */
 function ev(partial: Partial<TraceEvent> & { type: string }): TraceEvent {
   return {
     index: 0,
@@ -31,6 +37,7 @@ function ev(partial: Partial<TraceEvent> & { type: string }): TraceEvent {
   };
 }
 
+/** 提示词为零返回空，满命中为 100，差一点满命中时停在 99 开头。 */
 test("formatCacheHitPercent stays honest on a near miss", () => {
   assert.equal(formatCacheHitPercent(0, 0), null);
   assert.equal(formatCacheHitPercent(80, 100), "80");
@@ -40,6 +47,7 @@ test("formatCacheHitPercent stays honest on a near miss", () => {
   assert.notEqual(near, "100");
 });
 
+/** 紧凑 token、时长和每秒 token 按档位取整。 */
 test("formatCompactTokens and duration and tps", () => {
   assert.equal(formatCompactTokens(517), "517");
   assert.equal(formatCompactTokens(12_200), "12.2K");
@@ -50,6 +58,7 @@ test("formatCompactTokens and duration and tps", () => {
   assert.equal(formatTokensPerSecond(40.6), "41");
 });
 
+/** 大纲回合、模型用量和成对工具时间折进同一份统计。 */
 test("deriveSessionStats folds usage, turns, and tool walls", () => {
   const trace: SessionTrace = {
     sessionId: "s1",
@@ -91,6 +100,7 @@ test("deriveSessionStats folds usage, turns, and tool walls", () => {
   assert.equal(billedInputTokens(stats), 100);
 });
 
+/** 同一天只剩时分。 */
 test("formatMessageClock same day is HH:mm", () => {
   const now = Date.now();
   const clock = formatMessageClock(now - 60_000, { md: "{m}/{d}", ymd: "{y}/{m}/{d}" }, now);

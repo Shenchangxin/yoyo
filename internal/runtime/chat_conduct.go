@@ -1,3 +1,6 @@
+// 聊天叠层的行为片段和语言钉。Harbor 评测不接收这些片段。
+// 不预解析用户句子来决定交付物。loop 和上下文核在 SoftHorizon 路径上调用这里。
+
 package runtime
 
 import (
@@ -34,21 +37,19 @@ const languageRewriteNudgeZH = "上一句可见回复用了英文开场（I'll /
 
 var reEnglishOpener = regexp.MustCompile(`(?i)^(?:okay[,!.]?\s+|sure[,!.]?\s+|alright[,!.]?\s+)?(i['’]ll\b|i will\b|let me\b|i['’]m going\b|i am going\b|here['’]s\b|here is\b)`)
 
+// ConductOpts 选择计划模式，以及是否启用方法论包的行为片段。
 type ConductOpts struct {
 	Plan        bool
 	Methodology bool
 }
 
-// ChatConductFragments is desktop/CLI chat overlay. Harbor eval never
-// receives it: eval ≠ personal voice (I6). Language follows the user
-// message; there is no per-locale copy of these rules.
-//
-// Deliverable type (plan vs implement) is the model's job. These fragments
-// state the mapping; they do not pre-parse the utterance.
+// ChatConductFragments 是桌面和命令行聊天叠层。Harbor 评测从不接收它：评测不等于个人口吻。语言跟随用户消息，这些规则没有按地区各写一份。
+// 交付物是计划还是实现，由模型判断。这些片段只陈述对应关系，不预先解析那句话。
 func ChatConductFragments(plan bool) []artifact.PromptFragment {
 	return ChatConduct(ConductOpts{Plan: plan})
 }
 
+// ChatConduct 在计划模式只返回语言和计划模式两句。否则返回引导、执行和运行时三槽。Methodology 为真时运行时槽换成方法论版本。
 func ChatConduct(opts ConductOpts) []artifact.PromptFragment {
 	if opts.Plan {
 		return []artifact.PromptFragment{{Slot: "runtime", Text: chatLang + " " + chatPlanMode}}
@@ -64,6 +65,7 @@ func ChatConduct(opts ConductOpts) []artifact.PromptFragment {
 	}
 }
 
+// OverlayConduct 去掉已有的聊天行为文本，再附上当前选项对应的片段。
 func OverlayConduct(frags []artifact.PromptFragment, opts ConductOpts) []artifact.PromptFragment {
 	var out []artifact.PromptFragment
 	for _, f := range frags {
@@ -75,18 +77,19 @@ func OverlayConduct(frags []artifact.PromptFragment, opts ConductOpts) []artifac
 	return append(out, ChatConduct(opts)...)
 }
 
+// isChatConductText 判断是不是本文件的行为文本。更早的构建把一份很长的失败手册放在同一槽，也算。
 func isChatConductText(t string) bool {
 	t = strings.TrimSpace(t)
 	switch t {
 	case chatConduct, chatConductMethodology, chatLang + " " + chatPlanMode, chatBootstrap, chatExecution:
 		return true
 	default:
-		// Earlier builds kept a long failure cookbook in this slot.
+		// 更早的构建把一份很长的失败手册放在这个槽里。
 		return strings.HasPrefix(t, "Reply in the same language as the operator's latest utterance") && len(t) > 900
 	}
 }
 
-// OperatorVoice is the latest real operator utterance, skipping steer/nudge.
+// OperatorVoice 是最近一条真正的操作者发言，跳过转向和轻推。空的当前输入会回头找历史。
 func OperatorVoice(user string, hist []Message) string {
 	if t := strings.TrimSpace(user); t != "" && !isControlUser(t) && !isResumeUser(t) {
 		return stripMentionAttachment(t)
@@ -99,6 +102,7 @@ func OperatorVoice(user string, hist []Message) string {
 	return stripMentionAttachment(user)
 }
 
+// stripMentionAttachment 丢掉 mentionUserPrefix 及其后的附件尾巴。
 func stripMentionAttachment(s string) string {
 	if i := strings.Index(s, mentionUserPrefix); i >= 0 {
 		return strings.TrimSpace(s[:i])
@@ -106,6 +110,7 @@ func stripMentionAttachment(s string) string {
 	return s
 }
 
+// prefersCJK 在文本里出现汉字时返回真。
 func prefersCJK(s string) bool {
 	for _, r := range s {
 		if unicode.Is(unicode.Han, r) {
@@ -115,6 +120,7 @@ func prefersCJK(s string) bool {
 	return false
 }
 
+// voiceNudge 在操作者最近发言含汉字时返回中文轻推，否则返回英文。
 func voiceNudge(req RunRequest, en, zh string) string {
 	if prefersCJK(OperatorVoice(req.User, req.History)) {
 		return zh
@@ -122,8 +128,7 @@ func voiceNudge(req RunRequest, en, zh string) string {
 	return en
 }
 
-// LanguagePin is a short front-loaded reminder so weak models do not
-// open in English when the operator wrote Chinese.
+// LanguagePin 是放在前面的短提醒，避免操作者写中文时弱模型用英文开场。不含汉字则返回空片段。
 func LanguagePin(voice string) artifact.PromptFragment {
 	if !prefersCJK(voice) {
 		return artifact.PromptFragment{}
@@ -131,6 +136,7 @@ func LanguagePin(voice string) artifact.PromptFragment {
 	return artifact.PromptFragment{Slot: "voice", Text: languagePinZH}
 }
 
+// languageDynPin 在发言含汉字时返回输出语言小节，否则返回空串。
 func languageDynPin(voice string) string {
 	if !prefersCJK(voice) {
 		return ""
@@ -138,6 +144,7 @@ func languageDynPin(voice string) string {
 	return "\n## Output language\n" + languagePinZH + "\n"
 }
 
+// firstVisibleLine 返回去掉空白后的第一行。
 func firstVisibleLine(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -149,12 +156,12 @@ func firstVisibleLine(s string) string {
 	return s
 }
 
+// englishOpener 判断第一行是不是 I'll、Let me、I will 这类英文开场。
 func englishOpener(s string) bool {
 	return reEnglishOpener.MatchString(firstVisibleLine(s))
 }
 
-// pinVisibleLanguage drops a CJK-operator reply that still opened in English.
-// Tool calls are kept; the caller re-asks for Chinese visible sentences.
+// pinVisibleLanguage 在操作者说中文但可见回复仍以英文开场时，清掉 Content 并返回中文重写轻推。工具调用保留，由调用方再要中文可见句子。
 func pinVisibleLanguage(msg *Message, voice string) string {
 	if msg == nil || !prefersCJK(voice) || !englishOpener(msg.Content) {
 		return ""

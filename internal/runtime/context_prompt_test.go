@@ -1,3 +1,5 @@
+// 锁住前缀变更时系统头和 pins 的字节不动，新前缀只作为一条用户消息追加，下一轮仍是这一条。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestPromptChangeAppendsWithoutRewritingHead 在第二轮才出现规则文件时，系统头和 pins 保持第一轮的字节，第三轮仍只有一条更新。
 func TestPromptChangeAppendsWithoutRewritingHead(t *testing.T) {
 	ws := t.TempDir()
 	st := trace.NewStore(t.TempDir())

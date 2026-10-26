@@ -1,3 +1,6 @@
+// 本文件把上下文里的字段补进 slog 记录，并在调试级别上按分类过滤。
+// 低于 INFO 的记录在 Handle 里若 debugOK 为假会被丢掉。JSON 时间键改成 ts，级别转成小写。
+
 package diaglog
 
 import (
@@ -7,21 +10,24 @@ import (
 	"time"
 )
 
+// ctxKey 是放进 context 的字段键。
 type ctxKey struct{}
 
+// Fields 是随 ctx 传递的日志字段。空字符串在 merge 时不覆盖已有值。
 type Fields struct {
-	Component  string
-	Cat        string
-	SessionID  string
-	TurnID     string
-	TaskID     string
-	RequestID  string
-	TraceID    string
-	SpanID     string
-	Harness    string
-	Model      string
+	Component string
+	Cat       string
+	SessionID string
+	TurnID    string
+	TaskID    string
+	RequestID string
+	TraceID   string
+	SpanID    string
+	Harness   string
+	Model     string
 }
 
+// With 把 f 合并进 ctx 里已有的 Fields。ctx 为 nil 时用 Background。非空字段覆盖旧值。
 func With(ctx context.Context, f Fields) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -30,6 +36,7 @@ func With(ctx context.Context, f Fields) context.Context {
 	return context.WithValue(ctx, ctxKey{}, prev.merge(f))
 }
 
+// From 取出 ctx 里的 Fields。ctx 为 nil 或类型不对时返回零值。
 func From(ctx context.Context) Fields {
 	if ctx == nil {
 		return Fields{}
@@ -38,6 +45,7 @@ func From(ctx context.Context) Fields {
 	return f
 }
 
+// merge 用 b 里的非空字段覆盖 a，并返回副本。
 func (a Fields) merge(b Fields) Fields {
 	if b.Component != "" {
 		a.Component = b.Component
@@ -72,11 +80,15 @@ func (a Fields) merge(b Fields) Fields {
 	return a
 }
 
+// ctxHandler 在下一层处理器之外补上下文字段，并按分类决定调试行是否启用。
 type ctxHandler struct {
 	next slog.Handler
 	log  *Logger
 }
 
+// Enabled 判断这条记录要不要进入 Handle。级别大于等于 INFO 时交给下一层。
+// 更低的级别在 debugOK 命中当前分类时直接启用。分类表非空时也先启用，真正丢掉发生在 Handle。
+// 都不是时仍交给下一层。
 func (h *ctxHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	if level >= slog.LevelInfo {
 		return h.next.Enabled(ctx, level)
@@ -92,6 +104,8 @@ func (h *ctxHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return h.next.Enabled(ctx, level)
 }
 
+// Handle 把 ctx 里的字段补进记录，已有同名属性则不覆盖。记录自带的 cat 字符串会改写用于过滤的分类。
+// 级别低于 INFO 且 debugOK 为假时直接返回 nil，不写下一层。
 func (h *ctxHandler) Handle(ctx context.Context, r slog.Record) error {
 	f := From(ctx)
 	cat := f.Cat
@@ -126,14 +140,18 @@ func (h *ctxHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.next.Handle(ctx, r)
 }
 
+// WithAttrs 返回带上这些属性的新处理器，仍使用同一个 Logger。
 func (h *ctxHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &ctxHandler{next: h.next.WithAttrs(attrs), log: h.log}
 }
 
+// WithGroup 返回带上分组名的新处理器，仍使用同一个 Logger。
 func (h *ctxHandler) WithGroup(name string) slog.Handler {
 	return &ctxHandler{next: h.next.WithGroup(name), log: h.log}
 }
 
+// replaceAttr 改写 JSON 属性。时间换成键 ts，值是 UTC 的 RFC3339Nano。消息键改成 msg 并脱敏。级别转成小写。
+// LooksSecretKey 为真的键，值改成占位文本。字符串值再走 Redact。
 func replaceAttr(_ []string, a slog.Attr) slog.Attr {
 	switch a.Key {
 	case slog.TimeKey:
@@ -154,6 +172,8 @@ func replaceAttr(_ []string, a slog.Attr) slog.Attr {
 	return a
 }
 
+// replaceConsoleAttr 只脱敏控制台文本，不改时间键和级别键的名字。
+// 消息是字符串时替换成脱敏结果。秘密键的值改成占位文本。其他字符串值走 Redact。
 func replaceConsoleAttr(_ []string, a slog.Attr) slog.Attr {
 	if a.Key == slog.MessageKey && a.Value.Kind() == slog.KindString {
 		return slog.String(slog.MessageKey, Redact(a.Value.String()))

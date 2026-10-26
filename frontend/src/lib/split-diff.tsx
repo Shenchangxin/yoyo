@@ -1,11 +1,18 @@
 import { cn } from "./utils";
 
+/**
+ * 拥有：把 unified diff 画成单栏或左右分栏，并按行数折叠聊天里的长差异。
+ * 不拥有：差异文本的生成，以及审阅窗格的布局。
+ */
+
+/** DiffMode 单栏或左右分栏。 */
 export type DiffMode = "unified" | "split";
 
 type Kind = "meta" | "hunk" | "ctx" | "del" | "add" | "empty";
 
 type Line = { kind: Kind; text: string };
 
+/** 把 diff 文本收成带种类的行。元信息、块头、增删和上下文分开。 */
 function linesOf(src: string): Line[] {
   return (src || "").split("\n").map((line) => {
     if (
@@ -23,6 +30,7 @@ function linesOf(src: string): Line[] {
   });
 }
 
+/** 连续的删除和新增配成左右两列。单独的新增左边留空，其余两边同一行。 */
 function pair(rows: Line[]): { left: Line; right: Line }[] {
   const out: { left: Line; right: Line }[] = [];
   let i = 0;
@@ -54,9 +62,8 @@ function pair(rows: Line[]): { left: Line; right: Line }[] {
 }
 
 /**
- * Tinted rows, plain foreground text. Colour lives in the background and the
- * gutter marker, never in the code itself — long coloured lines are what made
- * the old panel feel loud.
+ * 行底用浅色，正文保持普通前景色。颜色只在背景和行首标记上，代码本身不上色。
+ * 整行染成彩色会让长差异显得吵。
  */
 function rowTone(kind: Kind, side: "left" | "right" | "uni"): string {
   if (kind === "add") return "bg-success/[0.11] text-foreground/90";
@@ -66,6 +73,7 @@ function rowTone(kind: Kind, side: "left" | "right" | "uni"): string {
   return "text-muted";
 }
 
+/** 行首标记：新增为加号，删除为减号。 */
 function marker(kind: Kind): { glyph: string; tone: string } {
   if (kind === "add") return { glyph: "+", tone: "text-success" };
   if (kind === "del") return { glyph: "−", tone: "text-danger" };
@@ -74,9 +82,10 @@ function marker(kind: Kind): { glyph: string; tone: string } {
 
 const LINE = "diff-line grid min-w-0 grid-cols-[14px_minmax(0,1fr)] items-baseline gap-1.5 whitespace-pre-wrap break-words px-2 py-px";
 
-/** Chat mutation bubble: harness `CHAT_DIFF_MAX_LINES`. Review panes pass 0. */
+/** CHAT_DIFF_MAX_LINES 聊天里改动气泡的行数上限，与 harness 的 CHAT_DIFF_MAX_LINES 一致。审阅窗格传入 0 表示不折叠。 */
 export const CHAT_DIFF_MAX_LINES = 9;
 
+/** 正文超过上限时保留头尾，中间用省略行隔开。元信息和块头始终保留。上限不大于零时不折叠。 */
 function foldRows(rows: Line[], maxLines: number): Line[] {
   if (maxLines <= 0 || rows.length <= maxLines) return rows;
   const body = rows.filter((r) => r.kind === "add" || r.kind === "del" || r.kind === "ctx");
@@ -104,6 +113,7 @@ function foldRows(rows: Line[], maxLines: number): Line[] {
   return out;
 }
 
+/** DiffBlock 渲染一段 diff。mode 决定单栏或分栏。点到非空行时回调原文。 */
 export function DiffBlock({
   src,
   mode,

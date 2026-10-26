@@ -1,3 +1,5 @@
+// shape 行计入 Projections，不算 Compactions。delta 不进时间线。裁剪后的统计仍是全量。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestProjectTraceSkipsDeltasAndKeepsCalls 确认 delta 不进时间线，工具调用保留，shape 的 token 写入统计但不算压缩。
 func TestProjectTraceSkipsDeltasAndKeepsCalls(t *testing.T) {
 	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	evs := []trace.Event{
@@ -59,6 +62,7 @@ func TestProjectTraceSkipsDeltasAndKeepsCalls(t *testing.T) {
 	}
 }
 
+// TestTrimTraceViewDropsNoiseAndTails 确认裁剪后统计仍是全长，压缩为 1，时间线丢掉 file_change 且不超过保留条数。
 func TestTrimTraceViewDropsNoiseAndTails(t *testing.T) {
 	var evs []trace.Event
 	evs = append(evs, trace.Event{Type: trace.TypeUser, Payload: map[string]any{"text": "go"}})
@@ -72,8 +76,7 @@ func TestTrimTraceViewDropsNoiseAndTails(t *testing.T) {
 	if view.Stats.Events != len(evs) {
 		t.Fatalf("stats must stay full: %d != %d", view.Stats.Events, len(evs))
 	}
-	// Shape rows are projection samples, not compactions; only the checkpoint
-	// compacts.
+	// shape 行是投影抽样，不是压缩。只有 checkpoint 才计入压缩。
 	if view.Stats.Compactions != 1 || view.Stats.Projections != 40 {
 		t.Fatalf("compactions %d projections %d", view.Stats.Compactions, view.Stats.Projections)
 	}
@@ -87,6 +90,7 @@ func TestTrimTraceViewDropsNoiseAndTails(t *testing.T) {
 	}
 }
 
+// TestProjectTraceRecoversSpillIDFromStub 确认从省略正文恢复 spill id blob9 和字节数 88。
 func TestProjectTraceRecoversSpillIDFromStub(t *testing.T) {
 	evs := []trace.Event{{
 		Type: trace.TypeToolResult,
@@ -102,6 +106,7 @@ func TestProjectTraceRecoversSpillIDFromStub(t *testing.T) {
 	}
 }
 
+// TestProjectTraceUsageCarriesLatencyAndCache 确认用量摘要含 1240ms 和 cache 80%。
 func TestProjectTraceUsageCarriesLatencyAndCache(t *testing.T) {
 	ts := time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC)
 	view := ProjectTrace([]trace.Event{{
@@ -133,6 +138,7 @@ func TestProjectTraceUsageCarriesLatencyAndCache(t *testing.T) {
 	}
 }
 
+// TestIngestReturnsSpillID 确认超长工具结果被省略，spill 里仍能取回全文。
 func TestIngestReturnsSpillID(t *testing.T) {
 	sp := NewSpill(t.TempDir())
 	full := strings.Repeat("TAIL", 20_000)

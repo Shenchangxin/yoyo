@@ -1,3 +1,5 @@
+// publish.go 保存短片发布草稿，并给出各平台创作者后台的地址。
+
 package video
 
 import (
@@ -8,13 +10,19 @@ import (
 	"strings"
 )
 
+// 发布记录使用这四种状态文本。
 const (
+	// PublishDraft 是草稿状态 draft。
 	PublishDraft  = "draft"
+	// PublishOpened 是已打开后台的状态 opened。
 	PublishOpened = "opened"
+	// PublishPosted 是已发布状态 posted。
 	PublishPosted = "posted"
+	// PublishFailed 是失败状态 failed。
 	PublishFailed = "failed"
 )
 
+// PublishPlatform 是一个平台的标识、名称、创作地址和数据地址。
 type PublishPlatform struct {
 	ID           string `json:"id"`
 	Label        string `json:"label"`
@@ -22,8 +30,7 @@ type PublishPlatform struct {
 	AnalyticsURL string `json:"analytics_url"`
 }
 
-// PublishPlatforms are creator-backend handoff URLs. Yoyo never clicks Publish
-// and never embeds Playwright; isolated Chrome + operator takeover is the lane.
+// PublishPlatforms 返回创作者后台的交接地址。Yoyo 不会替用户点击发布，也不内嵌 Playwright。通道是隔离的 Chrome，由操作者自己接手。
 func PublishPlatforms() []PublishPlatform {
 	return []PublishPlatform{
 		{ID: "xhs", Label: "小红书", CreatorURL: "https://creator.xiaohongshu.com/publish/publish", AnalyticsURL: "https://creator.xiaohongshu.com/statistics/data-analysis"},
@@ -35,6 +42,7 @@ func PublishPlatforms() []PublishPlatform {
 	}
 }
 
+// LookupPublishPlatform 按小写标识查找平台。没有时返回假。
 func LookupPublishPlatform(id string) (PublishPlatform, bool) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	for _, p := range PublishPlatforms() {
@@ -45,6 +53,7 @@ func LookupPublishPlatform(id string) (PublishPlatform, bool) {
 	return PublishPlatform{}, false
 }
 
+// Publish 是一条短片发布记录，含文案、媒体哈希、导出路径和阅读、点赞、评论数。
 type Publish struct {
 	ID           string `json:"id"`
 	ProjectID    string `json:"project_id,omitempty"`
@@ -67,6 +76,7 @@ type Publish struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
+// normalizePublishStatus 把 open 收成 opened，把 done 和 published 收成 posted，把 error 收成 failed，其余收成 draft。
 func normalizePublishStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case PublishOpened, "open":
@@ -80,6 +90,7 @@ func normalizePublishStatus(s string) string {
 	}
 }
 
+// ListPublishes 按工程和平台过滤发布记录，按更新时间从新到旧。没有记录时返回空切片。
 func (e *Engine) ListPublishes(projectID, platform string) []Publish {
 	projectID = strings.TrimSpace(projectID)
 	platform = strings.ToLower(strings.TrimSpace(platform))
@@ -100,6 +111,7 @@ func (e *Engine) ListPublishes(projectID, platform string) []Publish {
 	return out
 }
 
+// GetPublish 按标识读取发布记录。没有时返回 publish record not found。
 func (e *Engine) GetPublish(id string) (Publish, error) {
 	p, err := getDoc[Publish](e, colStudioPublishes, strings.TrimSpace(id))
 	if err != nil {
@@ -108,6 +120,7 @@ func (e *Engine) GetPublish(id string) (Publish, error) {
 	return p, nil
 }
 
+// SavePublish 只接受 xhs、douyin、kuaishou、channels、zhihu、bilibili。标题不能为空。新建时若挂着短片工程，空的媒体哈希和文案从工程补上。更新时保留原来的创建时间、导出路径、媒体哈希和已发布地址。
 func (e *Engine) SavePublish(in Publish) (Publish, error) {
 	plat, ok := LookupPublishPlatform(in.Platform)
 	if !ok {
@@ -158,6 +171,7 @@ func (e *Engine) SavePublish(in Publish) (Publish, error) {
 	return in, nil
 }
 
+// ExportPublish 把成片写到视频目录 exports 下的 <id>.mp4，权限 0600。没有媒体哈希时返回 no assembled video on this draft — assemble first。
 func (e *Engine) ExportPublish(id string) (Publish, error) {
 	p, err := e.GetPublish(id)
 	if err != nil {
@@ -186,6 +200,7 @@ func (e *Engine) ExportPublish(id string) (Publish, error) {
 	return p, nil
 }
 
+// MarkPublish 更新状态。非空的发布地址和备注会写上。阅读、点赞、评论只在大于 0 时覆盖。状态成为 posted 且挂着选题时，把选题标成完成。
 func (e *Engine) MarkPublish(id, status, postedURL, note string, reads, likes, comments int) (Publish, error) {
 	p, err := e.GetPublish(id)
 	if err != nil {

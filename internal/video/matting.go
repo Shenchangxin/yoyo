@@ -1,3 +1,5 @@
+// matting.go 把静帧或视频中的一帧交给抠图供应商。
+
 package video
 
 import (
@@ -20,12 +22,16 @@ import (
 	"time"
 )
 
+// presetOnlyError 表示连接已选中，但这条供应商还没有对应请求。
 type presetOnlyError struct{ msg string }
 
+// Error 返回构造时的说明。
 func (e presetOnlyError) Error() string { return e.msg }
 
+// presetOnly 用这段说明构造 presetOnlyError。
 func presetOnly(msg string) error { return presetOnlyError{msg} }
 
+// matteImage 先得到一张静帧。removebg、photoroom、volcengine-visual-matting 会发请求。其他协议返回 presetOnly，说明抠像连接已选中但还没有抠像请求。空画面返回「没有可抠的画面」。
 func (e *Engine) matteImage(ctx context.Context, p Provider, protocol, key string, raw []byte) ([]byte, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("没有可抠的画面")
@@ -46,6 +52,7 @@ func (e *Engine) matteImage(ctx context.Context, p Provider, protocol, key strin
 	}
 }
 
+// stillForMatte 能解码成图片时原样返回。否则用 ffmpeg 在 0.4 秒处抽一帧 PNG，超时 20 秒。没有 ffmpeg 或抽帧失败时返回说明。
 func (e *Engine) stillForMatte(raw []byte) ([]byte, error) {
 	if _, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
 		return raw, nil
@@ -72,6 +79,7 @@ func (e *Engine) stillForMatte(raw []byte) ([]byte, error) {
 	return os.ReadFile(out)
 }
 
+// removeBG 向基址加 /v1.0/removebg 发送 image_file_b64，size 为 auto，format 为 png。鉴权头是 X-Api-Key。
 func (e *Engine) removeBG(ctx context.Context, p Provider, key string, raw []byte) ([]byte, error) {
 	body, ctype, err := imageForm(map[string]string{
 		"image_file_b64": base64.StdEncoding.EncodeToString(raw),
@@ -90,6 +98,7 @@ func (e *Engine) removeBG(ctx context.Context, p Provider, key string, raw []byt
 	return e.readImageBody(req)
 }
 
+// photoroomCutout 向基址加 /v1/segment 上传表单文件 image_file。鉴权头是 x-api-key。
 func (e *Engine) photoroomCutout(ctx context.Context, p Provider, key string, raw []byte) ([]byte, error) {
 	body, ctype, err := imageForm(nil, map[string][]byte{"image_file": raw})
 	if err != nil {
@@ -104,6 +113,7 @@ func (e *Engine) photoroomCutout(ctx context.Context, p Provider, key string, ra
 	return e.readImageBody(req)
 }
 
+// volcengineCutout 把密钥按 AccessKey 和 SecretKey 拆开，向视觉接口发 CVProcess，版本 2022-08-31。模型空着时用 saliency_seg，基址空着时用 https://visual.volcengineapi.com。请求经 signVisual 签名。code 为 0 或 10000 时解码 data.binary_data_base64 的第一项。
 func (e *Engine) volcengineCutout(ctx context.Context, p Provider, key string, raw []byte) ([]byte, error) {
 	ak, sk, ok := splitAKSK(key)
 	if !ok {
@@ -158,6 +168,7 @@ func (e *Engine) volcengineCutout(ctx context.Context, p Provider, key string, r
 	return out, nil
 }
 
+// readImageBody 最多读 32 MiB。空正文，或 JSON 里没有可用图片时返回 matting returned no image。JSON 里有 message 或 error 时返回那段文字。其他正文原样返回。
 func (e *Engine) readImageBody(req *http.Request) ([]byte, error) {
 	_, ctype, raw, err := e.doRaw(req, 32<<20)
 	if err != nil {
@@ -178,6 +189,7 @@ func (e *Engine) readImageBody(req *http.Request) ([]byte, error) {
 	return raw, nil
 }
 
+// imageForm 把字段和文件打成 multipart。文件部分的文件名是字段名加 .png。
 func imageForm(fields map[string]string, files map[string][]byte) (*bytes.Buffer, string, error) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -201,6 +213,7 @@ func imageForm(fields map[string]string, files map[string][]byte) (*bytes.Buffer
 	return &buf, w.FormDataContentType(), nil
 }
 
+// splitAKSK 用换行或冒号把密钥拆成两段非空文本。拆不开时返回假。
 func splitAKSK(key string) (string, string, bool) {
 	key = strings.TrimSpace(key)
 	if key == "" {

@@ -1,3 +1,6 @@
+// 把按词画出的帧、人声、垫乐和字幕合成一条成片。
+// 没有 ffmpeg，或编码失败时，不写 film.mp4，已经画出的帧留在临时目录里随目录一起清掉。
+
 package video
 
 import (
@@ -10,8 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/film"
 )
 
-// assembleFilm turns painted frames, speech, and the caption file into one clip.
-// A missing ffmpeg or a failed encode leaves the frames and the caption file in place.
+// assembleFilm 按词把画面收成一条 mp4，并写成产物 film.mp4。没有 ffmpeg、没有可用的帧，或编码失败，就原样返回工程。垫乐有的话混在人声下面。
 func (e *Engine) assembleFilm(p film.Project) film.Project {
 	if strings.TrimSpace(e.FFMPEG) == "" {
 		return p
@@ -88,6 +90,7 @@ func (e *Engine) assembleFilm(p film.Project) film.Project {
 	return p
 }
 
+// filmFrame 画出这一词的一帧。排行榜会把已有的行图填进格子。揭示镜头有抠像时叠到区域上。broll 有生成图时，排行榜叠在下半部分，其余把词和贴纸画到图上。没有生成图就用代码画面。
 func (e *Engine) filmFrame(p film.Project, shot film.Shot, word film.Word) ([]byte, error) {
 	pictures := map[string][]byte{}
 	if p.Structure == "ranking" {
@@ -145,6 +148,7 @@ func (e *Engine) filmFrame(p film.Project, shot film.Shot, word film.Word) ([]by
 	return base, nil
 }
 
+// artifactPath 把指定产物从内容库拷到工作目录。找不到或拷贝失败就返回空串。
 func artifactPath(e *Engine, dir string, p film.Project, name, ext string) string {
 	for _, a := range p.Artifacts {
 		if a.Name != name || a.Hash == "" {
@@ -171,6 +175,7 @@ func artifactPath(e *Engine, dir string, p film.Project, name, ext string) strin
 	return ""
 }
 
+// muxFilm 先带字幕封装。字幕导致失败时再去掉字幕试一次。
 func (e *Engine) muxFilm(list, speech, bed, srt, out string) error {
 	err := runMux(e, list, speech, bed, srt, out)
 	if err != nil && srt != "" {
@@ -179,6 +184,7 @@ func (e *Engine) muxFilm(list, speech, bed, srt, out string) error {
 	return err
 }
 
+// runMux 用 ffmpeg 把静帧序列、人声和垫乐收成 H.264。人声和垫乐同时在时，垫乐音量是 0.18。都没有音轨就不要音频。
 func runMux(e *Engine, list, speech, bed, srt, out string) error {
 	args := []string{"-y", "-f", "concat", "-safe", "0", "-i", list}
 	if speech != "" {
@@ -210,10 +216,12 @@ func runMux(e *Engine, list, speech, bed, srt, out string) error {
 	return nil
 }
 
+// escapeConcat 给 concat 列表转义单引号，并把路径换成斜杠。
 func escapeConcat(path string) string {
 	return strings.ReplaceAll(filepath.ToSlash(path), "'", `'\''`)
 }
 
+// ffmpegSubPath 给 subtitles 滤镜转义冒号和单引号。
 func ffmpegSubPath(path string) string {
 	s := filepath.ToSlash(path)
 	s = strings.ReplaceAll(s, ":", `\:`)

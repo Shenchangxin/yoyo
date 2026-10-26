@@ -1,3 +1,5 @@
+// 应用 *** Add File 和 *** Update File 这种补丁。更新是整段唯一匹配后替换，不是 git apply。路径经 resolve，写权限是 WriteWorkspace。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+// applyPatch 把补丁按 *** Begin Patch 切开。Add File 交给 writeFile，因此同样受 writeFilePartMax（32 * 1024 字节）限制。Update File 交给 applyUpdate。没有块则返回 no patch hunks。上下文占位补丁交给 resolveElidedWrite。
 func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 	patch = strings.ReplaceAll(patch, "\r\n", "\n")
 	if looksLikeContextStub(patch) {
@@ -69,6 +72,7 @@ func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 	}
 }
 
+// pathsFromReports 取每条报告的最后一个字段当路径。
 func pathsFromReports(reports []string) []string {
 	var out []string
 	for _, r := range reports {
@@ -80,6 +84,7 @@ func pathsFromReports(reports []string) []string {
 	return out
 }
 
+// applyUpdate 经 resolve 和 WriteWorkspace 读取原文件。hunk 必须唯一匹配。写入前 snapshotBeforeWrite，成功后 absorbPathRules。
 func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -119,6 +124,7 @@ func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {
 	return ToolResult{Content: "updated " + rel, FileChange: fileChangeOf(rel, raw, []byte(next), false)}
 }
 
+// splitPatches 在没有 *** Begin Patch 时把整段当成一块。有标记时按它切开，并去掉 *** End Patch 之后的内容。
 func splitPatches(s string) []string {
 	s = strings.TrimSpace(s)
 	if !strings.Contains(s, "*** Begin Patch") {
@@ -139,6 +145,7 @@ func splitPatches(s string) []string {
 	return out
 }
 
+// parsePatchBlock 只接受 *** Add File: 和 *** Update File:。Add 收集加号行，以及不是 *** 或 @@ 的行。Update 把首行之后整段当正文。
 func parsePatchBlock(block string) (kind, path, body string, err error) {
 	lines := strings.Split(strings.TrimSpace(block), "\n")
 	if len(lines) == 0 {
@@ -169,6 +176,7 @@ func parsePatchBlock(block string) (kind, path, body string, err error) {
 	}
 }
 
+// hunkReplace 把减号行和空格行收成旧文本，加号行和空格行收成新文本。@@ 和 *** 行跳过。
 func hunkReplace(body string) (old, new string, err error) {
 	var oldB, newB strings.Builder
 	for _, ln := range strings.Split(body, "\n") {
@@ -196,6 +204,7 @@ func hunkReplace(body string) (old, new string, err error) {
 	return strings.TrimSuffix(oldB.String(), "\n"), strings.TrimSuffix(newB.String(), "\n"), nil
 }
 
+// fileContextHint 用旧文本的第一行非空内容在文件里找最接近的窗口，前后各最多 4 行和 5 行。找不到则返回文件开头最多 16 行。
 func fileContextHint(text, old string) string {
 	needle := firstNonEmptyLine(old)
 	lines := strings.Split(text, "\n")
@@ -220,6 +229,7 @@ func fileContextHint(text, old string) string {
 	return "file starts with:\n" + strings.Join(lines, "\n")
 }
 
+// firstNonEmptyLine 返回第一行去掉空白后非空的内容。没有则返回空串。
 func firstNonEmptyLine(s string) string {
 	for _, ln := range strings.Split(s, "\n") {
 		if t := strings.TrimSpace(ln); t != "" {

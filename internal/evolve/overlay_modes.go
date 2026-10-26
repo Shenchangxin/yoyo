@@ -1,3 +1,6 @@
+// agg 与 seq 两种叠加日程。agg 的每一对都从父材料出发。seq 在采纳后把当前材料换成后继，下一对从当前材料提议。
+// 两种都不写 refs。预算条目由调用方记入账本。
+
 package evolve
 
 import (
@@ -7,6 +10,7 @@ import (
 	"sync"
 )
 
+// overlayAgg 先对父材料提出全部 INV 与 DOM，再并行探针，然后各自相对父材料合成。合成会话的 Attempts 记 1。终稿探针的标签是 c1 起。
 func (e *Engine) overlayAgg(ctx context.Context, opts OverlayOpts, parent MaterialSet, k int, joined OverlayRollout, held map[string]bool, overBudget func() bool, res *OverlayResult) ([]overlayCand, []overlayCand, []overlayFinal, error) {
 	invs, doms, invAtt, domAtt, err := e.overlayProposeAll(ctx, opts, parent, k, joined, held, overBudget)
 	if err != nil {
@@ -64,6 +68,7 @@ func (e *Engine) overlayAgg(ctx context.Context, opts OverlayOpts, parent Materi
 	return invs, doms, finals, nil
 }
 
+// overlaySeq 按 1 到 k 逐步提议。合成作用在 current 上。该步 adopted 为真时，current 换成 succ，下一步从新的 current 出发。
 func (e *Engine) overlaySeq(ctx context.Context, opts OverlayOpts, parent MaterialSet, k int, joined OverlayRollout, held map[string]bool, overBudget func() bool, res *OverlayResult) ([]overlayCand, []overlayCand, []overlayFinal, error) {
 	invs := make([]overlayCand, k)
 	doms := make([]overlayCand, k)
@@ -123,11 +128,13 @@ func (e *Engine) overlaySeq(ctx context.Context, opts OverlayOpts, parent Materi
 	return invs, doms, finals, nil
 }
 
+// overlayStageJob 是一次待提议的维度和下标。
 type overlayStageJob struct {
 	dim string
 	i   int
 }
 
+// overlayProposeAll 为每个下标提出 INV 和 DOM。ParallelPropose 为真且任务多于一条时并发。任一任务带回错误则整批失败。
 func (e *Engine) overlayProposeAll(ctx context.Context, opts OverlayOpts, parent MaterialSet, k int, joined OverlayRollout, held map[string]bool, overBudget func() bool) ([]overlayCand, []overlayCand, []int, []int, error) {
 	jobs := make([]overlayStageJob, 0, 2*k)
 	for i := 1; i <= k; i++ {
@@ -187,6 +194,7 @@ func (e *Engine) overlayProposeAll(ctx context.Context, opts OverlayOpts, parent
 	return invs, doms, invAtt, domAtt, nil
 }
 
+// overlayProposePair 对当前材料提出一对 INV 和 DOM。ParallelPropose 为真时两维并发，按维度把结果放回 inv 与 dom。
 func (e *Engine) overlayProposePair(ctx context.Context, opts OverlayOpts, current MaterialSet, i int, joined OverlayRollout, held map[string]bool, overBudget func() bool) (overlayCand, overlayCand, int, int, error) {
 	type out struct {
 		dim  string
@@ -232,6 +240,7 @@ func (e *Engine) overlayProposePair(ctx context.Context, opts OverlayOpts, curre
 	return invOut.cand, domOut.cand, invOut.att, domOut.att, nil
 }
 
+// overlayFindRoll 按标签找 rollout。找不到时返回只带该标签的零值。
 func overlayFindRoll(all []OverlayRollout, label string) OverlayRollout {
 	for i := range all {
 		if all[i].Label == label {

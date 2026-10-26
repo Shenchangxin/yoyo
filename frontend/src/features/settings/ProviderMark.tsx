@@ -1,3 +1,7 @@
+/**
+ * 拥有：服务商图标和别名到图标的解析。
+ * 不拥有：服务商表单。只绘制，不调用 api。
+ */
 import type { ComponentType, SVGProps } from "react";
 import AlibabaCloud from "@lobehub/icons/es/AlibabaCloud/components/Mono";
 import AssemblyAIColor from "@lobehub/icons/es/AssemblyAI/components/Color";
@@ -123,6 +127,7 @@ const MARK: Record<string, Mark> = {
   custom: { Icon: CustomGlyph, bg: "#52525B", fg: "#fff", scale: 0.7 },
 };
 
+/** ProviderMark 按服务商编号画出图标。 */
 export function ProviderMark({ id, className }: { id: string; className?: string }) {
   const key = resolveProviderId(id);
   const mark = MARK[key] || MARK.custom;
@@ -153,17 +158,20 @@ export function ProviderMark({ id, className }: { id: string; className?: string
   );
 }
 
+/** resolveProviderId 把别名收成图标表里的编号，没有就用 custom。 */
 export function resolveProviderId(id: string): string {
   const raw = (id || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
   if (!raw) return "custom";
   return ALIAS[raw] || (MARK[raw] ? raw : "custom");
 }
 
+/** 背景是不是浅色。 */
 function isLightFill(bg: string): boolean {
   const s = bg.trim().toLowerCase();
   return s === "#fff" || s === "#ffffff" || s === "white";
 }
 
+/** 画 CAS 的图标。 */
 function CasGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -173,6 +181,7 @@ function CasGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SV
   );
 }
 
+/** 画搜索的图标。 */
 function SearchGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -182,6 +191,7 @@ function SearchGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps
   );
 }
 
+/** 画 OpenTelemetry 的图标。 */
 function OtelGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill={color} {...rest}>
@@ -191,6 +201,7 @@ function OtelGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<S
   );
 }
 
+/** 画自定义服务的图标。 */
 function CustomGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -200,6 +211,7 @@ function CustomGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps
   );
 }
 
+/** 画 Pexels 的图标。 */
 function PexelsGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -209,6 +221,7 @@ function PexelsGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps
   );
 }
 
+/** 画 Pixabay 的图标。 */
 function PixabayGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -217,6 +230,7 @@ function PixabayGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProp
   );
 }
 
+/** 画 Unsplash 的图标。 */
 function UnsplashGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill={color} {...rest}>
@@ -225,6 +239,7 @@ function UnsplashGlyph({ size = "1em", color = "currentColor", ...rest }: SVGPro
   );
 }
 
+/** 画 Giphy 的图标。 */
 function GiphyGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -233,6 +248,7 @@ function GiphyGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<
   );
 }
 
+/** 画 Deepgram 的图标。 */
 function DeepgramGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>

@@ -1,3 +1,6 @@
+// 本文件拥有隔离浏览器的点击、输入、填充和等待。指针和按键都是 CDP 的真实输入事件。
+// 失败时列出页面上实际有的控件。不调用 runtime.Run。actionsJS 里的脚本是数据。
+
 package browser
 
 import (
@@ -8,30 +11,18 @@ import (
 	"unicode/utf8"
 )
 
-// Interaction model for the isolated browser.
-//
-// Click and type act the way a person does: the target is resolved in the
-// live document, must be visible and enabled, and must be the topmost element
-// at its centre (a real pointer press reaches nothing else). Key presses are
-// real key events, so keyboard-driven games see them. Every failure names the
-// actions that are actually on the page, so the agent corrects its selector
-// from ground truth instead of guessing.
-
 const (
-	// actionWait is the auto-wait window the browser_click / browser_type
-	// specs promise. The old implementation waited 3 s but never got a page
-	// to answer, so it always timed out.
+	// actionWait 是点击和输入自动等待的时间，4 秒。
 	actionWait = 4 * time.Second
+	// actionPoll 是等待循环的间隔，120 毫秒。
 	actionPoll = 120 * time.Millisecond
-	// maxActions bounds the action list shown to the model.
+	// maxActions 是展示给模型的控件列表上限，48。
 	maxActions = 48
-	// maxActionCollect is how many interactive nodes the page walk keeps
-	// before formatting. Structured snapshots can use the extra ones.
+	// maxActionCollect 是页面遍历保留的控件数，60。结构化快照可以用到这些多出来的。
 	maxActionCollect = 60
 )
 
-// Action is an element the page offers for interaction. Ref is a short
-// handle (btn_0) assigned by the live walk; it is valid until navigation.
+// Action 是页面上可交互的一个元素。Ref 是这次遍历分配的短句柄，例如 btn_0，导航之前有效。
 type Action struct {
 	Ref         string   `json:"ref,omitempty"`
 	Selector    string   `json:"selector"`
@@ -50,7 +41,7 @@ type Action struct {
 	ShadowPath  []string `json:"shadowPath,omitempty"`
 }
 
-// probe is the JSON result of one resolve-and-check evaluation.
+// probe 是一次解析并检查的 JSON 结果。OK 为假时 Reason 说明原因。
 type probe struct {
 	OK     bool    `json:"ok"`
 	Reason string  `json:"reason"`
@@ -63,8 +54,7 @@ type probe struct {
 	Error  string  `json:"error"`
 }
 
-// probeJS resolves sel, checks it, and either focuses it (focusOnly) or
-// returns the centre point to press. It never clicks by itself.
+// probeJS 在页面里解析 sel 并检查它。focusOnly 为真时只聚焦，否则返回要点按的中心点。它自己不点击。
 func probeJS(sel string, focusOnly bool) string {
 	quoted, _ := json.Marshal(sel)
 	return fmt.Sprintf(`(() => {
@@ -89,7 +79,7 @@ func probeJS(sel string, focusOnly bool) string {
 })()`, pageHelpers, quoted, focusOnly)
 }
 
-// actionsJS lists the visible, addressable interactive elements with refs.
+// actionsJS 列出可见、能定位的交互元素并带上 ref。脚本正文是数据。
 const actionsJS = `(() => {
 ` + pageHelpers + `
   const out = [];
@@ -102,8 +92,7 @@ const actionsJS = `(() => {
   return JSON.stringify(out);
 })()`
 
-// Click resolves sel, waits for it to become actionable, presses it with real
-// pointer events, and reports whether the visible page text changed.
+// Click 解析选择器，等到它可点，用真实指针事件按下，并报告可见正文有没有变化。
 func (h *Host) Click(sel string) (string, error) {
 	h.record("click", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -131,8 +120,7 @@ func (h *Host) Click(sel string) (string, error) {
 	return obs + h.pageErrorsNote() + h.actionsNote(), nil
 }
 
-// Type focuses sel (when given) and sends each character as a real key
-// press, so keydown handlers on document or window receive it.
+// Type 在给了选择器时先聚焦，再把每个字符当成真实按键发出，这样文档或 window 上的 keydown 能收到。
 func (h *Host) Type(sel, text string) (string, error) {
 	h.record("type", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -156,8 +144,7 @@ func (h *Host) Type(sel, text string) (string, error) {
 	return fmt.Sprintf("typed %d key(s) into %s; %s%s%s", utf8.RuneCountInString(text), target, note, h.pageErrorsNote(), h.actionsNote()), nil
 }
 
-// Fill replaces the current field value. Type appends key events; Fill
-// selects all, deletes, then types, so a second fill does not concatenate.
+// Fill 替换字段里的现有内容。先全选并删除，再输入，所以第二次填充不会接在后面。
 func (h *Host) Fill(sel, text string) (string, error) {
 	h.record("fill", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -186,8 +173,7 @@ func (h *Host) Fill(sel, text string) (string, error) {
 	return fmt.Sprintf("filled %d rune(s) into %s; %s%s%s", utf8.RuneCountInString(text), sel, note, h.pageErrorsNote(), h.actionsNote()), nil
 }
 
-// WaitVisible waits until sel is actionable. It does not click. browser_act
-// uses this for assert steps so a sequence can stop before a covered target.
+// WaitVisible 等到选择器可操作，但不点击。序列可以在目标被挡住之前停下来。
 func (h *Host) WaitVisible(sel string) (string, error) {
 	h.record("wait", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -202,9 +188,7 @@ func (h *Host) WaitVisible(sel string) (string, error) {
 	return fmt.Sprintf("visible %s → <%s> %q at (%d,%d)%s%s", sel, p.Tag, truncRunes(p.Text, 40), int(p.X), int(p.Y), h.pageErrorsNote(), h.actionsNote()), nil
 }
 
-// Refresh re-reads the live page (URL, title, text, actions) without
-// navigating. It is what browser_snapshot reports. live is false when Chrome
-// is not running, in which case the snapshot is the last one taken.
+// Refresh 重新读取当前页的地址、标题、正文和控件，不导航。Chrome 没在跑时 live 为假，快照是上一份。
 func (h *Host) Refresh() (snap Snapshot, live bool) {
 	live = h.chromeAlive()
 	if live {
@@ -218,6 +202,7 @@ func (h *Host) Refresh() (snap Snapshot, live bool) {
 	return snap, live
 }
 
+// clickCDP 在等到目标可点后，依次发送 mouseMoved、mousePressed、mouseReleased。
 func (h *Host) clickCDP(sel string) (probe, error) {
 	p, err := h.waitFor(sel, false)
 	if err != nil {
@@ -236,6 +221,7 @@ func (h *Host) clickCDP(sel string) (probe, error) {
 	return p, nil
 }
 
+// typeCDP 在选择器非空时先聚焦，再对每个字符调用 keyTap。
 func (h *Host) typeCDP(sel, text string) error {
 	if strings.TrimSpace(sel) != "" {
 		if _, err := h.waitFor(sel, true); err != nil {
@@ -250,10 +236,7 @@ func (h *Host) typeCDP(sel, text string) error {
 	return nil
 }
 
-// waitFor polls the probe until the target is actionable or the window ends.
-// A miss on a stale ref retries once against the last snapshot's descriptors
-// (testid / id / accessible name) so a re-render does not force the model
-// to guess a new CSS path.
+// waitFor 轮询到目标可操作或时间用尽。过期的 ref 会按上次快照的 testid、id 或无障碍名再试一次，避免重绘后去猜新的 CSS。
 func (h *Host) waitFor(sel string, focusOnly bool) (probe, error) {
 	deadline := time.Now().Add(actionWait)
 	var last probe
@@ -281,6 +264,7 @@ func (h *Host) waitFor(sel string, focusOnly bool) (probe, error) {
 	return probe{}, h.explainMiss(sel, last)
 }
 
+// probeOn 执行 probeJS 并把 JSON 解成 probe。没有结果时返回错误。
 func (h *Host) probeOn(sel string, focusOnly bool) (probe, error) {
 	out, err := h.evalJS(probeJS(sel, focusOnly))
 	if err != nil {
@@ -293,10 +277,7 @@ func (h *Host) probeOn(sel string, focusOnly bool) (probe, error) {
 	return p, nil
 }
 
-// coveredWhy words a failed hit test. An empty hit means elementFromPoint
-// returned null at the element's centre: the centre is outside the viewport or
-// clipped by an ancestor. Nothing covers it, so "covered by nothing" misled
-// the agent into hunting for an overlay that does not exist.
+// coveredWhy 说明命中测试为什么失败。by 为空或 nothing 时，中心点没有命中元素，是在视口外或被祖先裁切，并不是被一层东西盖住。
 func coveredWhy(sel, by string) string {
 	if by == "" || by == "nothing" {
 		return fmt.Sprintf("%s has no hit-test element at its centre (outside the viewport or clipped by an ancestor), so a real click would not reach it", sel)
@@ -304,8 +285,7 @@ func coveredWhy(sel, by string) string {
 	return fmt.Sprintf("%s is covered by %s, so a real click would not reach it", sel, by)
 }
 
-// explainMiss turns a probe failure into a message that names the actual
-// actions on the page, so the next selector is chosen from ground truth.
+// explainMiss 把一次失败写成错误，并附上页面上实际有的控件，供下一次选择器用。
 func (h *Host) explainMiss(sel string, p probe) error {
 	var why string
 	switch p.Reason {
@@ -333,10 +313,9 @@ func (h *Host) explainMiss(sel string, p probe) error {
 	return fmt.Errorf("browser: %s", why)
 }
 
-// keyTap sends one character as a keyDown/keyUp pair with text, which fires
-// keydown, keypress and input the way the keyboard does.
+// selectAllClear 依次发送 Ctrl+A 和 Meta+A，再按退格，用来清掉当前字段。
 func (h *Host) selectAllClear() error {
-	// Ctrl+A and Meta+A: Chrome ignores the modifier that is not native.
+	// Ctrl+A 和 Meta+A 都发一遍。Chrome 会忽略不是本机的那个修饰键。
 	for _, modifiers := range []int{2, 4} {
 		down := map[string]any{"type": "keyDown", "key": "a", "code": "KeyA", "windowsVirtualKeyCode": 65, "modifiers": modifiers}
 		up := map[string]any{"type": "keyUp", "key": "a", "code": "KeyA", "windowsVirtualKeyCode": 65, "modifiers": modifiers}
@@ -354,6 +333,7 @@ func (h *Host) selectAllClear() error {
 	return err
 }
 
+// keyTap 把一个字符发成带 text 的 keyDown 和 keyUp，从而触发 keydown、keypress 和 input。
 func (h *Host) keyTap(r rune) error {
 	k := keyFor(r)
 	down := map[string]any{"type": "keyDown", "key": k.key, "code": k.code, "windowsVirtualKeyCode": k.vk}
@@ -369,11 +349,13 @@ func (h *Host) keyTap(r rune) error {
 	return err
 }
 
+// keySpec 是一次按键的 key、code、text 和 Windows 虚拟键码。
 type keySpec struct {
 	key, code, text string
 	vk              int
 }
 
+// keyFor 把一个字符收成 keySpec。换行是 Enter，制表符是 Tab，数字和字母带上 Digit 或 Key 代码。
 func keyFor(r rune) keySpec {
 	switch {
 	case r == '\n' || r == '\r':
@@ -393,6 +375,7 @@ func keyFor(r rune) keySpec {
 	return keySpec{string(r), "", string(r), 0}
 }
 
+// actionsList 执行 actionsJS，并把结果截到 maxActionCollect。
 func (h *Host) actionsList() ([]Action, error) {
 	out, err := h.evalJS(actionsJS)
 	if err != nil {
@@ -408,6 +391,7 @@ func (h *Host) actionsList() ([]Action, error) {
 	return acts, nil
 }
 
+// formatActions 把控件收成多行文字，每行带 ref、选择器、标签和正文。超过 maxActions 的丢掉。禁用的标上 disabled。
 func formatActions(acts []Action) string {
 	if len(acts) > maxActions {
 		acts = acts[:maxActions]
@@ -427,8 +411,7 @@ func formatActions(acts []Action) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// refreshActions caches the formatted action list on the host. It never
-// relaunches Chrome; with no live page it leaves the previous list in place.
+// refreshActions 把格式化后的控件列表记在宿主上，并写入 ref 缓存。Chrome 没在跑时保留上一份，不重新启动。
 func (h *Host) refreshActions() {
 	if !h.chromeAlive() {
 		return
@@ -443,6 +426,7 @@ func (h *Host) refreshActions() {
 	h.mu.Unlock()
 }
 
+// actionsNote 在有控件列表时返回带换行的「visible actions now」文本，没有则返回空字符串。
 func (h *Host) actionsNote() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -452,18 +436,21 @@ func (h *Host) actionsNote() string {
 	return "\nvisible actions now:\n" + h.actions
 }
 
+// pageText 返回宿主记下的页面正文。
 func (h *Host) pageText() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.snap
 }
 
+// setLastAction 记下最近一次点击的观察文字。
 func (h *Host) setLastAction(s string) {
 	h.mu.Lock()
 	h.lastClick = s
 	h.mu.Unlock()
 }
 
+// truncRunes 按字符截断。超过 n 个字符时末尾加省略号。
 func truncRunes(s string, n int) string {
 	if utf8.RuneCountInString(s) <= n {
 		return s

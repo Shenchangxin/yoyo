@@ -1,6 +1,9 @@
+// 本文件拥有一枚截断的胶囊标签。不拥有标签文案从哪来。调用方传入子节点。
+
 import type { HTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
+// Badge 把文字收进最大 220px 的圆角胶囊，超出截断。
 export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
   return (
     <span

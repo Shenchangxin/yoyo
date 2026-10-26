@@ -1,3 +1,5 @@
+// 本文件拥有检查器里的浏览器面：地址、截图、工作区 HTML 和接管。不拥有浏览器怎么开。调用方传入 workspace 和 previewPath。
+
 import { useEffect, useState } from "react";
 import { ExternalLink, Globe } from "lucide-react";
 import { Tooltip } from "../components/ui/tooltip";
@@ -9,10 +11,12 @@ import { looksLikeHTMLFile } from "../lib/html-preview";
 import { joinWorkspace } from "../lib/workspace";
 import { WorkspaceFileView } from "./transcript/FilePreview";
 
+// http、https 或 file 开头算外部地址。
 function isExternalURL(raw: string): boolean {
   return /^(https?:|file:)/i.test((raw || "").trim());
 }
 
+// blob: 原样用。data: 转成对象 URL，卸下时撤销。其余地址直接用。转换失败就退回原地址。空地址清掉。
 function useRevocableURL(src?: string): string {
   const [url, setUrl] = useState("");
   useEffect(() => {
@@ -48,6 +52,7 @@ function useRevocableURL(src?: string): string {
   return url;
 }
 
+// BrowserPane 既没有活动页也没有工作区 HTML 时显示空闲。工作区 HTML 是给操作者看的页面。残留的隔离页不能盖住代理打开的这一页：source 且远程仍在时才改看截图。
 export function BrowserPane(props: {
   workspace?: string;
   previewPath?: string;
@@ -65,6 +70,7 @@ export function BrowserPane(props: {
       ? (view?.preview || "")
       : "";
 
+  // 进行中每 800 毫秒拉一次，否则每 1200 毫秒。已经有工作区 HTML 且没有隔离活动页时不再排下一次。
   useEffect(() => {
     let alive = true;
     let timer = 0;
@@ -92,14 +98,14 @@ export function BrowserPane(props: {
   const shot = useRevocableURL(view?.screenshot);
   const remoteLive = isExternalURL(view?.url || "") && (!!view?.live || !!view?.screenshot);
   const live = remoteLive || !!view?.live || !!view?.screenshot || isExternalURL(view?.url || "");
-  // Workspace HTML is the operator-facing Browser pane. Leftover isolated
-  // Chrome (previous http(s) session) must not cover the page the agent opened.
+  // 工作区 HTML 是给操作者看的浏览器面。上一轮 http 或 https 留下的隔离页不能盖住代理打开的页面。
   const showHtml = !!htmlPath && !(source && remoteLive);
   const lane = view?.headed ? copy.review.headedLane : view?.lane === "attached" ? copy.review.attachedLane : copy.review.isolatedLane;
   const address = (remoteLive ? view?.url : "") || htmlPath || view?.url || view?.title || copy.review.browser;
   const canOpenExternal = isExternalURL(view?.url || "") || !!htmlPath;
   const canTakeOver = live || !!htmlPath;
 
+  // 有工作区 HTML 时把它和 workspace 拼成目标再接管，否则不传目标。
   const takeOver = async () => {
     setBusy(true);
     try {
@@ -114,6 +120,7 @@ export function BrowserPane(props: {
     }
   };
 
+  // 正在看工作区 HTML 时用 openPath。否则外部地址用 openURL。再不行仍按工作区路径打开。
   const openExternal = async () => {
     const liveURL = (view?.url || "").trim();
     setOpening(true);

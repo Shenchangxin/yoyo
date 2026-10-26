@@ -1,6 +1,6 @@
-// Package film is Yoyo's production project for 翻拍.
-// It stores a rerunnable film: words, shots, tracks of work, and artifacts.
-// Identity strings, command names, and hosted gateways from other products do not belong here.
+// 翻拍工程的文档：简介、词、镜头、待办和产物。
+// 其他产品的标识、命令名和托管网关不放在这里。
+
 package film
 
 import (
@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Brief is the part of a film a later variant may replace on its own.
+// Brief 是以后可以单独换掉的那一部分：宿主、产品、语言、画幅、开头、价格和收口。
 type Brief struct {
 	Host     string `json:"host,omitempty"`
 	Product  string `json:"product,omitempty"`
@@ -21,7 +21,7 @@ type Brief struct {
 	CTA      string `json:"cta,omitempty"`
 }
 
-// Word is one timed token. Lines group the tokens a rewrite replaces together.
+// Word 是词轴上的一个词。同一行的词会被一次改写一起换掉。
 type Word struct {
 	ID      string  `json:"id"`
 	LineID  string  `json:"line_id"`
@@ -31,7 +31,7 @@ type Word struct {
 	End     float64 `json:"end"`
 }
 
-// Box is a region inside the frame, in 0..1 coordinates.
+// Box 是画面里的一块区域，坐标和宽高都是 0 到 1。
 type Box struct {
 	X     float64 `json:"x"`
 	Y     float64 `json:"y"`
@@ -40,7 +40,7 @@ type Box struct {
 	Label string  `json:"label,omitempty"`
 }
 
-// Shot is one picture span anchored to words.
+// Shot 是一段画面，时间锚在词上。
 type Shot struct {
 	ID      string   `json:"id"`
 	LineID  string   `json:"line_id,omitempty"`
@@ -49,23 +49,24 @@ type Shot struct {
 	Start   float64  `json:"start"`
 	End     float64  `json:"end"`
 	Region  *Box     `json:"region,omitempty"`
-	Beat    bool     `json:"beat,omitempty"`
+	// Beat 为真表示这一镜的起点落在词上。
+	Beat bool `json:"beat,omitempty"`
 }
 
-// Entry is one row on a board or one stage of a reveal.
+// Entry 是排行榜的一行，或揭示里的一档。
 type Entry struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 }
 
-// Sticker is a comment pinned to one word.
+// Sticker 是钉在某一个词上的评论。
 type Sticker struct {
 	ID     string `json:"id"`
 	WordID string `json:"word_id"`
 	Text   string `json:"text"`
 }
 
-// Need is one unit of work. InputHash covers the fields that would change its bytes.
+// Need 是构建时的一步。InputHash 盖住会改变产物字节的字段。没变时 AssetHash 会留下。
 type Need struct {
 	ID        string `json:"id"`
 	Key       string `json:"key"`
@@ -81,14 +82,14 @@ type Need struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// Artifact is a stored result of a build.
+// Artifact 是构建留下的一份结果。
 type Artifact struct {
 	Name      string `json:"name"`
 	Hash      string `json:"hash,omitempty"`
 	MediaType string `json:"media_type,omitempty"`
 }
 
-// Task is the evidence for one need on the latest build.
+// Task 是最近一次构建里某一步的证据。失败的一步不会抹掉其余产物。
 type Task struct {
 	ID     string `json:"id"`
 	NeedID string `json:"need_id"`
@@ -96,21 +97,22 @@ type Task struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// Reference is the source the operator has rights to use.
+// Reference 是操作者有权使用的参考片。
 type Reference struct {
 	Hash     string  `json:"hash,omitempty"`
 	URL      string  `json:"url,omitempty"`
 	Duration float64 `json:"duration,omitempty"`
 }
 
-// Project is one rerunnable film.
+// Project 是一部可再跑的翻拍。
 type Project struct {
-	ID        string     `json:"id"`
-	ParentID  string     `json:"parent_id,omitempty"`
-	Title     string     `json:"title"`
-	Structure string     `json:"structure"`
-	Brief     Brief      `json:"brief"`
-	Reference Reference  `json:"reference"`
+	ID        string    `json:"id"`
+	ParentID  string    `json:"parent_id,omitempty"`
+	Title     string    `json:"title"`
+	Structure string    `json:"structure"`
+	Brief     Brief     `json:"brief"`
+	Reference Reference `json:"reference"`
+	// Bed 是已经存好的垫乐。空着才会再计划配乐。
 	Bed       string     `json:"bed,omitempty"`
 	Words     []Word     `json:"words,omitempty"`
 	Shots     []Shot     `json:"shots,omitempty"`
@@ -122,7 +124,7 @@ type Project struct {
 	Note      string     `json:"note,omitempty"`
 }
 
-// Cue is a timed line used while reading a reference.
+// Cue 是读参考片时的一句带时间的话，还没拆成词。
 type Cue struct {
 	Start   float64
 	End     float64
@@ -130,7 +132,7 @@ type Cue struct {
 	Speaker string
 }
 
-// Input is everything known about a reference or a description before a project exists.
+// Input 是工程还没建起来时，对参考片或一段描述已知的全部材料。
 type Input struct {
 	ID          string
 	Title       string
@@ -145,6 +147,7 @@ type Input struct {
 	Regions     []Box
 }
 
+// digest 把值编成 JSON 再取 SHA-256 的前 12 个字节，当成输入摘要。编码失败时用错误文本。
 func digest(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -154,4 +157,5 @@ func digest(v any) string {
 	return hex.EncodeToString(sum[:12])
 }
 
+// clean 去掉字符串两端的空白。
 func clean(s string) string { return strings.TrimSpace(s) }

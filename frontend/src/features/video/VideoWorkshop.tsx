@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有视频工场按当前栏投影短片、任务、画布或短剧看板。
+ * 不拥有这些栏里的数据。它自己不请求服务端；没有对应栏时只提供回到创作的按钮。
+ */
 import { PenLine } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
@@ -10,6 +14,7 @@ import { StudioWorkbench } from "./StudioWorkbench";
 import { VideoHistory } from "./VideoHistory";
 import { useStudioSelection } from "./workshop-store";
 
+/** VideoWorkshop 按栏挂上短片工作台、任务历史、画布，或画布旁边的短剧看板。 */
 export function VideoWorkshop(props: {
   sessionId?: string;
   onNeedSession: () => void | Promise<string | void>;

@@ -1,3 +1,5 @@
+// 锁住子代理只把摘要交回父级，子工具调用不写进父 JSONL。深度达到 MaxTaskDepth 时拒绝再派，深度 1 仍广告 task。隔离复制能带走文件。
+
 package runtime
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestTaskSubagentSummaryOnly 锁住父级最终输出含 parent done，子级写入的 hello.txt 在工作区里。
 func TestTaskSubagentSummaryOnly(t *testing.T) {
 	dir := t.TempDir()
 	client := &ScriptedClient{Steps: []Message{
@@ -40,6 +43,7 @@ func TestTaskSubagentSummaryOnly(t *testing.T) {
 	}
 }
 
+// TestSubagentOwnJSONL 锁住父轨迹里没有子级的 write_file 调用，但有带 child 的子代理 start 和 complete 事件。
 func TestSubagentOwnJSONL(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
@@ -98,6 +102,7 @@ func TestSubagentOwnJSONL(t *testing.T) {
 	}
 }
 
+// TestChildSessionIDIsPathSafe 锁住子会话 ID 不含斜杠，IsChildSessionID 和 ParentOfSession 能来回解析，旧的 /tasks/ 形式仍能认出父 ID。
 func TestChildSessionIDIsPathSafe(t *testing.T) {
 	id := ChildSessionID("parent")
 	if strings.Contains(id, "/") || strings.Contains(id, "\\") {
@@ -112,6 +117,7 @@ func TestChildSessionIDIsPathSafe(t *testing.T) {
 	}
 }
 
+// TestSubagentLiveEventsUseChildSession 锁住子级工具的实时事件使用子会话 ID，而不是父会话 ID。
 func TestSubagentLiveEventsUseChildSession(t *testing.T) {
 	dir := t.TempDir()
 	var live []trace.Event
@@ -152,6 +158,7 @@ func TestSubagentLiveEventsUseChildSession(t *testing.T) {
 	}
 }
 
+// TestReadOnlySubagentDeniesWrites 锁住 ReadOnly 子代理的 write_file 被拒绝。
 func TestReadOnlySubagentDeniesWrites(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hi"), 0o644); err != nil {
@@ -177,6 +184,7 @@ func TestReadOnlySubagentDeniesWrites(t *testing.T) {
 	}
 }
 
+// TestNestedTaskForbidden 锁住 Depth 等于 MaxTaskDepth 时 task 失败，且 schema 里不再列出 task。
 func TestNestedTaskForbidden(t *testing.T) {
 	tools := &WorkspaceTools{Depth: MaxTaskDepth}
 	res := tools.Call("task", `{"prompt":"nope"}`)
@@ -191,6 +199,7 @@ func TestNestedTaskForbidden(t *testing.T) {
 	}
 }
 
+// TestTaskListedAtDepthOne 锁住 Depth 为 1 时 schema 仍包含 task。
 func TestTaskListedAtDepthOne(t *testing.T) {
 	tools := &WorkspaceTools{Depth: 1}
 	found := false
@@ -205,6 +214,7 @@ func TestTaskListedAtDepthOne(t *testing.T) {
 	}
 }
 
+// TestIsolateWorkspaceCopy 锁住 IsolateWorkspace 的目标里能读到源文件。
 func TestIsolateWorkspaceCopy(t *testing.T) {
 	src := t.TempDir()
 	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("ok"), 0o644); err != nil {
@@ -224,6 +234,7 @@ func TestIsolateWorkspaceCopy(t *testing.T) {
 	}
 }
 
+// TestPersistWorktreeCopy 锁住 PersistWorktree 能复制文件，目标已存在时再次调用成功，RemoveWorktree 会删掉目标。
 func TestPersistWorktreeCopy(t *testing.T) {
 	src := t.TempDir()
 	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("ok"), 0o644); err != nil {

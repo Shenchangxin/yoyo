@@ -1,3 +1,5 @@
+// 应用对象的装配、检出、评测、会话和配置行为测试。
+
 package app_test
 
 import (
@@ -20,6 +22,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// evalsDir 返回仓库里 evals 目录的绝对路径。
 func evalsDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -34,6 +37,7 @@ func evalsDir(t *testing.T) string {
 	return abs
 }
 
+// TestSeedCheckoutRollback 确认检出子快照后再回滚，active 回到原来的哈希。
 func TestSeedCheckoutRollback(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -73,6 +77,7 @@ func TestSeedCheckoutRollback(t *testing.T) {
 	}
 }
 
+// TestAgentLoopTrajectory 发送后工作区出现文件，轨迹里有工具调用和 harness，续发后用户事件增加，且在线整理不把 staging 写成 active。
 func TestAgentLoopTrajectory(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -136,6 +141,7 @@ func TestAgentLoopTrajectory(t *testing.T) {
 	}
 }
 
+// TestContextUsageSurvivesReopen 确认发送后上下文用量增加，重新打开后用量还在。
 func TestContextUsageSurvivesReopen(t *testing.T) {
 	home := t.TempDir()
 	a, err := app.Open(home, evalsDir(t))
@@ -173,6 +179,7 @@ func TestContextUsageSurvivesReopen(t *testing.T) {
 	}
 }
 
+// TestSessionTraceIncludesSpillArtifact 确认轨迹投影带上 spill 产物，并且 SpillBlob 能读回全文。
 func TestSessionTraceIncludesSpillArtifact(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -219,6 +226,7 @@ func TestSessionTraceIncludesSpillArtifact(t *testing.T) {
 	}
 }
 
+// TestCheckoutRequiresL3 确认未确认的拓扑变更不移动 active，确认后可以检出，回滚也能回到原哈希。
 func TestCheckoutRequiresL3(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -263,6 +271,7 @@ func TestCheckoutRequiresL3(t *testing.T) {
 	}
 }
 
+// TestEvalAndSelfHarnessPromote 确认默认演进不移动 active，候选留在 canary，held-out 不进提议证据。
 func TestEvalAndSelfHarnessPromote(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -327,6 +336,7 @@ func TestEvalAndSelfHarnessPromote(t *testing.T) {
 	}
 }
 
+// TestMineUsesBaselineTraceNotAllMissingArtifact 确认从基线轨迹挖出的失败不全是缺失产物，且 held-out 不进证据。
 func TestMineUsesBaselineTraceNotAllMissingArtifact(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -356,6 +366,7 @@ func TestMineUsesBaselineTraceNotAllMissingArtifact(t *testing.T) {
 	}
 }
 
+// TestPassingTaskNotMinedFromFixture 确认已经通过的 write-hello 不会再被挖进证据。
 func TestPassingTaskNotMinedFromFixture(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -377,6 +388,7 @@ func TestPassingTaskNotMinedFromFixture(t *testing.T) {
 	}
 }
 
+// TestIndexIdsNeverEnterEvidence 确认索引题的 id 不出现在演进证据里。
 func TestIndexIdsNeverEnterEvidence(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -395,6 +407,7 @@ func TestIndexIdsNeverEnterEvidence(t *testing.T) {
 	}
 }
 
+// TestLastEvalPersists 确认跑完评测后 LastEval 还能读到同一份报告。
 func TestLastEvalPersists(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -411,6 +424,7 @@ func TestLastEvalPersists(t *testing.T) {
 	}
 }
 
+// TestWASMAdmitDispose 确认 WASM 随 fiber 装入，卸下后不再留在宿主里。
 func TestWASMAdmitDispose(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -440,6 +454,7 @@ func TestWASMAdmitDispose(t *testing.T) {
 	_ = wasm.NewHost()
 }
 
+// TestCapabilityJail 确认读工作区外的路径会被拒绝。
 func TestCapabilityJail(t *testing.T) {
 	dir := t.TempDir()
 	outside, _ := os.MkdirTemp("", "outside-*")
@@ -451,6 +466,7 @@ func TestCapabilityJail(t *testing.T) {
 	}
 }
 
+// TestForkRenameAndPlaybookThumb 确认改名和分叉留下轨迹，点赞只写 staging，不移动 active。
 func TestForkRenameAndPlaybookThumb(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -505,6 +521,7 @@ func TestForkRenameAndPlaybookThumb(t *testing.T) {
 	}
 }
 
+// TestBestOfModelsPrefersWorkingSolver 确认跨模型评测选中能通过题目的那个模型。
 func TestBestOfModelsPrefersWorkingSolver(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -526,6 +543,7 @@ func TestBestOfModelsPrefersWorkingSolver(t *testing.T) {
 	}
 }
 
+// TestCheckUpdateNoURL 确认没有单独配置地址时，更新状态仍有默认源且自动检查为开。
 func TestCheckUpdateNoURL(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -548,6 +566,7 @@ func TestCheckUpdateNoURL(t *testing.T) {
 	}
 }
 
+// TestAppearancePaletteDefaults 确认主题和调色板的默认值，非法值会被拨回，合法值能保存。
 func TestAppearancePaletteDefaults(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -577,6 +596,7 @@ func TestAppearancePaletteDefaults(t *testing.T) {
 	}
 }
 
+// TestCompanionEnabledDefaultsOn 确认陪伴默认开启，配置里写明 false 后仍然保持关闭。
 func TestCompanionEnabledDefaultsOn(t *testing.T) {
 	dir := t.TempDir()
 	a, err := app.Open(dir, evalsDir(t))
@@ -602,6 +622,7 @@ func TestCompanionEnabledDefaultsOn(t *testing.T) {
 	}
 }
 
+// TestSaveConfigWritesKeymap 确认保存配置时把快捷键写到 keymap.yaml。
 func TestSaveConfigWritesKeymap(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -621,6 +642,7 @@ func TestSaveConfigWritesKeymap(t *testing.T) {
 	}
 }
 
+// TestApplyConfigPatchKeepsOmitted 确认部分补丁改得了模型和搜索地址，但不会清掉 CrashResume、gate 和 MCP。
 func TestApplyConfigPatchKeepsOmitted(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -660,6 +682,7 @@ func TestApplyConfigPatchKeepsOmitted(t *testing.T) {
 	}
 }
 
+// TestC5ForkRecallHitsCopiedSpill 确认分叉后能从复制来的 spill 里召回原文。
 func TestC5ForkRecallHitsCopiedSpill(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -687,6 +710,7 @@ func TestC5ForkRecallHitsCopiedSpill(t *testing.T) {
 	}
 }
 
+// TestC10DeleteSessionRemovesContext 确认删除会话后 home 里的 spill、工作区上下文、meta 和 jsonl 都没了。
 func TestC10DeleteSessionRemovesContext(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -723,6 +747,7 @@ func TestC10DeleteSessionRemovesContext(t *testing.T) {
 	}
 }
 
+// TestCheckoutInstructionSkipsL3 确认只改引导文案、拓扑不变时，检出不要求 L3。
 func TestCheckoutInstructionSkipsL3(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -754,6 +779,7 @@ func TestCheckoutInstructionSkipsL3(t *testing.T) {
 	}
 }
 
+// TestSeedIncludesSafety 确认播种的评测套件里有 no-escape。
 func TestSeedIncludesSafety(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -775,6 +801,7 @@ func TestSeedIncludesSafety(t *testing.T) {
 	}
 }
 
+// TestUnsignedWASMRejectedOnCheckout 确认未签名的 WASM 快照不能检出，active 也不动。
 func TestUnsignedWASMRejectedOnCheckout(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -804,6 +831,7 @@ func TestUnsignedWASMRejectedOnCheckout(t *testing.T) {
 	}
 }
 
+// TestSignedWASMStagesNotActive 确认签过名的 WASM 先进入 staging，不直接改 active。
 func TestSignedWASMStagesNotActive(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -839,6 +867,7 @@ func TestSignedWASMStagesNotActive(t *testing.T) {
 	}
 }
 
+// TestSealedSuiteCounts 确认密封套件的 held-in 和 held-out 计数，以及启发式求解能通过。
 func TestSealedSuiteCounts(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -864,6 +893,7 @@ func TestSealedSuiteCounts(t *testing.T) {
 	}
 }
 
+// TestEvolvePromoteFlagMovesActive 确认打开 PromoteActive 后，演进会移动 refs/active。
 func TestEvolvePromoteFlagMovesActive(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -890,6 +920,7 @@ func TestEvolvePromoteFlagMovesActive(t *testing.T) {
 	}
 }
 
+// TestSessionAuthMode 确认新会话是完整权限，改成询问后能保存，分叉也带着这个模式。
 func TestSessionAuthMode(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -929,6 +960,7 @@ func TestSessionAuthMode(t *testing.T) {
 	}
 }
 
+// hasLevel 判断级别切片里有没有 want。
 func hasLevel(levels []capability.Level, want capability.Level) bool {
 	for _, l := range levels {
 		if l == want {
@@ -938,6 +970,7 @@ func hasLevel(levels []capability.Level, want capability.Level) bool {
 	return false
 }
 
+// TestSessionWorkspace 确认能改工作区并保存，不存在的目录会失败，分叉沿用新工作区。
 func TestSessionWorkspace(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -976,6 +1009,7 @@ func TestSessionWorkspace(t *testing.T) {
 	}
 }
 
+// TestHarnessLineageAndMaterialize 确认子快照的父节点、playbook 差异和 staging 引用，以及物化目录和 HarnessState。
 func TestHarnessLineageAndMaterialize(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

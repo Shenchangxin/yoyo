@@ -1,3 +1,5 @@
+// 锁住 load_skill 会带上包路径和 yoyo-tools 适配说明，安装目录名能解析到规范名，scripts/ 相对路径会改写成包内文件。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestLoadSkillPointsAtGeneratedAdapter 锁住包里有 references/yoyo-tools.md 时，load_skill 的正文点名先读它。
 func TestLoadSkillPointsAtGeneratedAdapter(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "novel-to-game")
@@ -37,6 +40,7 @@ func TestLoadSkillPointsAtGeneratedAdapter(t *testing.T) {
 	}
 }
 
+// TestLoadSkillAnalyzeHintsTaskExplore 锁住 novel-game-analyze 的正文追加 task profile=explore 的分章说明。
 func TestLoadSkillAnalyzeHintsTaskExplore(t *testing.T) {
 	tools := &WorkspaceTools{
 		Workspace: t.TempDir(),
@@ -51,6 +55,7 @@ func TestLoadSkillAnalyzeHintsTaskExplore(t *testing.T) {
 	}
 }
 
+// TestLoadSkillDecoratesPackPath 锁住有目录的技能正文以 Skill pack directory 开头，并列出包内文件。
 func TestLoadSkillDecoratesPackPath(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "arxiv-watcher")
@@ -77,6 +82,7 @@ func TestLoadSkillDecoratesPackPath(t *testing.T) {
 	}
 }
 
+// TestLoadSkillResolvesInstallSlug 锁住用安装目录基名调用 load_skill 仍能取到该技能正文。
 func TestLoadSkillResolvesInstallSlug(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "dev-god")
@@ -110,6 +116,7 @@ func TestLoadSkillResolvesInstallSlug(t *testing.T) {
 	}
 }
 
+// TestRunSkillScriptFindsPackHelper 锁住 run_skill_script 能在包的 scripts 目录里找到脚本，而不是报 missing script。
 func TestRunSkillScriptFindsPackHelper(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "demo")
@@ -139,6 +146,7 @@ func TestRunSkillScriptFindsPackHelper(t *testing.T) {
 	}
 }
 
+// TestExpandSkillScriptsRewritesRelativePath 锁住 scripts/ 相对路径被改成包内绝对路径，并且该路径在额外根放行后能通过 ShellDenied。
 func TestExpandSkillScriptsRewritesRelativePath(t *testing.T) {
 	skillDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(skillDir, "scripts"), 0o755); err != nil {
@@ -162,6 +170,7 @@ func TestExpandSkillScriptsRewritesRelativePath(t *testing.T) {
 	}
 }
 
+// TestShellAllowsSkillDirPath 锁住技能目录不在额外根里时 ShellDenied 拒绝该脚本，传了该目录则放行。
 func TestShellAllowsSkillDirPath(t *testing.T) {
 	ws := t.TempDir()
 	skillDir := t.TempDir()

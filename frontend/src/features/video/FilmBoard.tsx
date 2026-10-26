@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有成片台的简介、画幅、预览和去剪辑。不拥有剪辑时间线。
+ * 保存简介、做画面、换床、分叉和交接都会改服务端。
+ */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -8,6 +12,7 @@ import { useFilmDesk, type FilmProject, type FilmWord } from "./film-desk";
 
 const shapes = ["9:16", "16:9", "1:1"] as const;
 
+/** 按行把词拼起来，汉字之间不加空格，最多 8 行。 */
 function scriptLines(words: FilmWord[]) {
   const groups = new Map<string, FilmWord[]>();
   for (const word of words) {
@@ -27,6 +32,7 @@ function scriptLines(words: FilmWord[]) {
   return lines.slice(0, 8);
 }
 
+/** FilmBoard 编辑主持人和产品，有画面时去剪辑，否则做画面。 */
 export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const copy = useCopy();
   const c = copy.video.film;
@@ -72,6 +78,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const shapeLabel = aspect === "16:9" ? c.landscape : aspect === "1:1" ? c.square : c.portrait;
   const structure = project.structure === "ranking" ? c.ranking : project.structure === "podcast" ? c.podcast : project.structure === "interview" ? c.interview : c.title;
 
+  /** 跑一次成片请求，成功就换上返回的工程。 */
   async function run(label: string, fn: () => Promise<FilmProject>) {
     setBusy(label);
     try {
@@ -86,6 +93,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
     }
   }
 
+  /** 简介字段没变就不提交。 */
   function patch(label: string, body: Record<string, string>) {
     const current = project?.brief || {};
     const same = Object.entries(body).every(([key, value]) => String((current as Record<string, string | undefined>)[key] || "") === value);
@@ -93,6 +101,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
     void run(label, async () => api.video.filmSwap(id, body) as Promise<FilmProject>);
   }
 
+  /** 记下主持人和产品后，把成片交成一条剪辑并打开它。 */
   async function openCut() {
     setBusy("handoff");
     try {

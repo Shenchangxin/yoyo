@@ -1,7 +1,10 @@
+// unix find -name 映成 glob。Windows 的 FIND 文本搜索不改写。本文件不执行命令。
+
 package runtime
 
 import "testing"
 
+// TestParseUnixFindGlob 确认 find . -name 映成 *.pdf，find src -type f -name 映成 src/**/*.go，文本搜索不改写，只有 -type f 算 misuse。
 func TestParseUnixFindGlob(t *testing.T) {
 	pat, ok := parseUnixFindGlob(`find . -name "*.pdf"`)
 	if !ok || pat != "*.pdf" {

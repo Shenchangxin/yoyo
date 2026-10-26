@@ -1,9 +1,15 @@
+/**
+ * 拥有：冻结只留最后两块、相同输入命中缓存，以及非追加输入换代。
+ * 不拥有：解析器的实现。
+ */
+
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { IncrementalMarkdownParser } from "./incremental-md.ts";
 import { parseGfm } from "./parse-gfm.ts";
 
 describe("IncrementalMarkdownParser", () => {
+  /** 超过两块时冻住前面的，尾部留两块。再追加时已冻结的前缀保持原样，代不变。 */
   it("freezes all but the trailing two blocks", () => {
     const parser = new IncrementalMarkdownParser(parseGfm);
     const first = parser.update("a\n\nb\n\nc\n\nd\n\ne");
@@ -19,6 +25,7 @@ describe("IncrementalMarkdownParser", () => {
     assert.equal(second.generation, first.generation);
   });
 
+  /** 只有两块时全部留在尾部，冻结偏移为 0。 */
   it("holds every block in the tail until more than two exist", () => {
     const parser = new IncrementalMarkdownParser(parseGfm);
     const result = parser.update("only\n\ntwo blocks");
@@ -27,12 +34,14 @@ describe("IncrementalMarkdownParser", () => {
     assert.equal(result.tailStart, 0);
   });
 
+  /** 相同输入返回同一次结果。 */
   it("returns the cached result for identical input", () => {
     const parser = new IncrementalMarkdownParser(parseGfm);
     const first = parser.update("a\n\nb\n\nc");
     assert.equal(parser.update("a\n\nb\n\nc"), first);
   });
 
+  /** 不是追加时代加一，已冻结的块丢掉。 */
   it("bumps generation and discards frozen blocks on non-append input", () => {
     const parser = new IncrementalMarkdownParser(parseGfm);
     const before = parser.update("a\n\nb\n\nc\n\nd");

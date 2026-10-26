@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有剪辑台的预览、保留片段、找片段、出片、字幕和配音。
+ * 不拥有创作入口。保留、提议、出片、转写、略过、配音、混音和烧录都会改服务端。
+ */
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -8,10 +12,12 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { cutClips, cutCues, useCutDesk, useCutReadiness, type CutClip, type CutProject } from "./cut-desk";
 import { playbackSrc } from "./playback-src";
 
+/** 把秒数收成一位小数的字符串。 */
 function span(n?: number) {
   return Number(n || 0).toFixed(1);
 }
 
+/** 不足 60 秒显示秒，否则显示分和秒。无效时长返回空。 */
 function formatDuration(n: number | undefined) {
   const s = Number(n || 0);
   if (!(s > 0) || !Number.isFinite(s)) return "";
@@ -21,6 +27,7 @@ function formatDuration(n: number | undefined) {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
+/** CutStage 先出预览。没有保留片段时找 3 段、每段 15-30 秒；有了才做出片。 */
 export function CutStage(props: { onLeave?: () => void }) {
   const copy = useCopy();
   const c = copy.video.conductor;
@@ -53,6 +60,7 @@ export function CutStage(props: { onLeave?: () => void }) {
     setArmed(false);
   }, [preview]);
 
+  /** 跑一次剪辑请求，返回了工程就写回桌子。 */
   async function run(label: string, fn: () => Promise<CutProject | void>) {
     if (!project?.id) return;
     setBusy(label);
@@ -78,12 +86,14 @@ export function CutStage(props: { onLeave?: () => void }) {
   const lengthLabel = formatDuration(length);
   const status = project.result_hash ? c.statusFilm : clips.length ? c.statusCut : c.statusIn;
 
+  /** 从视频元素记下有限且大于 0 的时长。 */
   function noteDuration(node: HTMLVideoElement) {
     const d = node.duration;
     if (Number.isFinite(d) && d > 0) setMediaDuration(d);
     setPictureReady(true);
   }
 
+  /** 勾上或取消这个片段的保留。 */
   function toggleClip(clip: CutClip) {
     if (!clip.id) return;
     const next = new Set(kept);

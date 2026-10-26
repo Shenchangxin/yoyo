@@ -1,3 +1,6 @@
+// 本文件锁住双语拆句、语气提示、好感冷却、记忆盖过、一轮对话的工作标记，以及抽卡送礼。
+// fakeBrain 只返回测试用的固定句子。由 go test 调用。
+
 package idol
 
 import (
@@ -8,6 +11,7 @@ import (
 	"time"
 )
 
+// TestParseBilingual 锁住 ja 口语、zh 字幕，以及 photo 标签不进台词。
 func TestParseBilingual(t *testing.T) {
 	got := ParseReply("<ja>こんにちは</ja><zh>你好</zh><photo>窗边</photo>", "ja", "zh")
 	if len(got.Segments) != 1 || got.Segments[0].Spoken != "こんにちは" || got.Segments[0].Subtitle != "你好" {
@@ -21,6 +25,7 @@ func TestParseBilingual(t *testing.T) {
 	}
 }
 
+// TestStripCue 锁住方括号语气提示会从 zh 台词里去掉。
 func TestStripCue(t *testing.T) {
 	got := ParseReply("<zh>[happily] 在的。</zh>", "zh", "zh")
 	if len(got.Segments) != 1 || got.Segments[0].Spoken != "在的。" {
@@ -28,6 +33,7 @@ func TestStripCue(t *testing.T) {
 	}
 }
 
+// TestTier 锁住 0 是 cold、50 是 trust、80 是 intimate，以及一次 -40 会落到 10 并进入冷却。
 func TestTier(t *testing.T) {
 	if TierOf(0) != TierCold || TierOf(50) != TierTrust || TierOf(80) != TierIntimate {
 		t.Fatalf("tiers")
@@ -39,6 +45,7 @@ func TestTier(t *testing.T) {
 	}
 }
 
+// TestMemorySupersedeAndCircle 锁住后一句盖过前一句，同圈子的另一位偶像能看见那条记忆。
 func TestMemorySupersedeAndCircle(t *testing.T) {
 	st := &State{}
 	idol := Idol{ID: "m", Name: "M", CircleID: "c"}
@@ -61,6 +68,7 @@ func TestMemorySupersedeAndCircle(t *testing.T) {
 	}
 }
 
+// TestTurnAndWorkFlag 锁住工作通道打开时 Turn 标上 Work，并留下一条记忆。
 func TestTurnAndWorkFlag(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
@@ -89,6 +97,7 @@ func TestTurnAndWorkFlag(t *testing.T) {
 	}
 }
 
+// TestDrawAndGift 锁住有抽数时 Draw 给出礼物或重置卡，送出喜欢的礼物后分数不低于 50。
 func TestDrawAndGift(t *testing.T) {
 	st := &State{Draws: 1}
 	st.Idols = []Idol{{ID: "a", Name: "A", LikedGifts: []string{"tea"}}}
@@ -111,8 +120,10 @@ func TestDrawAndGift(t *testing.T) {
 	}
 }
 
+// fakeBrain 按 kind 返回固定文本，供 Turn 测试，不连真正的模型。
 type fakeBrain struct{}
 
+// Chat 在 judge 时返回带记忆和工作标记的 JSON，title 时返回「整理文件」，其余返回一句中文。
 func (fakeBrain) Chat(_ context.Context, kind, _ string, _ []Msg) (string, error) {
 	switch kind {
 	case "judge":
@@ -124,4 +135,5 @@ func (fakeBrain) Chat(_ context.Context, kind, _ string, _ []Msg) (string, error
 	}
 }
 
+// Paint 固定返回错误，让这一轮不保存照片。
 func (fakeBrain) Paint(context.Context, string) ([]byte, error) { return nil, errf("no") }

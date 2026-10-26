@@ -1,3 +1,7 @@
+/**
+ * 拥有：壁纸和蒙层。
+ * 不拥有：主题色板。上传、保存和清除会调用 api 改外观配置。
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -12,6 +16,7 @@ import { cn } from "../../lib/utils";
 import { SettingRow, SettingSection, SettingSegmented } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
+/** 把文件读成去掉前缀的 base64。 */
 function fileToB64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -25,6 +30,7 @@ function fileToB64(file: File): Promise<string> {
   });
 }
 
+/** SkinStudio 选择壁纸和蒙层，并写成当前皮肤。 */
 export function SkinStudio({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const { resolved, skinId, setSkinOverlay } = useTheme();
@@ -38,6 +44,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
 
   const activeId = isUserSkinId(host.cfg.skin || skinId) ? host.cfg.skin || skinId : "";
 
+  /** 把这套材质画到界面上。 */
   const paint = useCallback(
     (id: string, mats: SkinMaterials, url: string, file: string) => {
       if (!isUserSkinId(id) || !url) {
@@ -56,6 +63,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     [setSkinOverlay],
   );
 
+  /** 按编号取回皮肤并画出来。 */
   const hydrate = useCallback(async (id: string) => {
     const got = await api.getSkin(id);
     const mats = got.info.materials || defaultMaterials();
@@ -79,6 +87,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     void hydrate(activeId).catch(() => setSkinOverlay(null));
   }, [activeId, hydrate, setSkinOverlay]);
 
+  /** 保存材质并设成当前皮肤。 */
   const persist = useCallback(
     async (id: string, mats: SkinMaterials, extra?: { wallpaper_b64?: string; wallpaper_name?: string }) => {
       const info = await api.saveSkin({
@@ -104,6 +113,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     [copy.settings.skinWallpaper, host, paint, wallpaperFile, wallpaperUrl],
   );
 
+  /** 把一次保存排到稍后。 */
   function queueSave(mats: SkinMaterials) {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -112,6 +122,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     }, 400);
   }
 
+  /** 选了壁纸就上传并保存。 */
   async function onPick(file: File) {
     setBusy(true);
     try {
@@ -120,7 +131,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
       try {
         veil = await wallpaperVeil(file, resolved);
       } catch {
-        /* keep fallback */
+        /* 算不出来就留着进入尝试前的值 */
       }
       const mats: SkinMaterials = { ...materials, wallpaperDim: veil, wallpaperFit: materials.wallpaperFit || "cover" };
       setMaterials(mats);
@@ -132,6 +143,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
     }
   }
 
+  /** 清掉壁纸并取消当前皮肤。 */
   async function clearWallpaper() {
     setBusy(true);
     try {

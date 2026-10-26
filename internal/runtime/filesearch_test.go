@@ -1,3 +1,5 @@
+// 锁住子串检索把更像文件名的命中排在前面，以及钻进目录时不受调用方 40 条补全上限的约束。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestFuzzySearch 锁住查询 loop 时 src/loop.go 排在前面，空查询和 ListTree 都能看到多条。
 func TestFuzzySearch(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
@@ -33,6 +36,7 @@ func TestFuzzySearch(t *testing.T) {
 	}
 }
 
+// TestFuzzySearchListsDirectoryChildrenBeyondTypeaheadCap 锁住查询 src/ 且 limit 为 40 时仍列出全部 60 个子文件。过滤串只留在该目录下。空查询的 ListTree 仍能走到 src/pkg/deep.go。
 func TestFuzzySearchListsDirectoryChildrenBeyondTypeaheadCap(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src")

@@ -1,3 +1,8 @@
+/**
+ * 拥有：桌面开发服务器的 Vite 配置，以及几个只在开发时插进的中间件。
+ * 不拥有：生产包怎么由 Go 提供静态文件。
+ */
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -11,6 +16,7 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 const embedKeep = path.join(dir, "dist", ".keep");
 const embedKeepBody = "go embed stub\n";
 
+/** keepGoEmbed 在打包结束时写 dist/.keep。目录里没有这个文件时，Go 的 embed 会拒绝空目录。文件已经在就不覆盖。 */
 function keepGoEmbed() {
   return {
     name: "keep-go-embed",
@@ -22,12 +28,10 @@ function keepGoEmbed() {
 }
 
 /**
- * streamdown React.lazy()s ./highlighted-body-*.js. Vite 8's dep optimizer
- * rewrites that to a hashed file under .vite/deps that is never written, so
- * WebView2 on wails.localhost fails the dynamic import.
- *
- * Do not optimizeDeps.exclude streamdown — native ESM of that graph never
- * mounts in WebView2 and leaves the Wails background (28,29,31) on screen.
+ * streamdownHighlight 补上 streamdown 用 React.lazy 去加载的 highlighted-body。
+ * Vite 8 的依赖优化会把这个文件改写成 .vite/deps 下一个从未写出的带哈希名字，WebView2 在 wails.localhost 上动态导入就会失败。
+ * 不要把 streamdown 放进 optimizeDeps.exclude。那一图的原生 ESM 在 WebView2 里挂不上，窗口会停在 Wails 的背景色 (28,29,31)。
+ * 哈希文件若已经写在 node_modules/.vite/deps 里，就交给后面的中间件。
  */
 function streamdownHighlight() {
   const shim =
@@ -67,6 +71,7 @@ function streamdownHighlight() {
   };
 }
 
+/** characterCastPackDir 是角色包目录。设了 YOYO_HOME 就用它，否则用用户主目录下的 .yoyo。路径是 video/packs/character-cast。 */
 function characterCastPackDir() {
   const home = process.env.YOYO_HOME?.trim()
     ? path.resolve(process.env.YOYO_HOME.trim())
@@ -74,7 +79,7 @@ function characterCastPackDir() {
   return path.join(home, "video", "packs", "character-cast");
 }
 
-/** Dev server only. Production stills are served by the Go asset middleware. */
+/** characterCastDevPack 只给开发服务器用。生产环境的静帧由 Go 的资源中间件提供。只接受 /character-cast/ 下小写连字符的 jpg，路径跳出包目录就交给后面的中间件。 */
 function characterCastDevPack() {
   return {
     name: "yoyo-character-cast",
@@ -139,6 +144,7 @@ function characterCastDevPack() {
   };
 }
 
+/** standHomeDir 是立绘缓存目录。设了 YOYO_HOME 就用它，否则用用户主目录下的 .yoyo/idols/stands。 */
 function standHomeDir() {
   const home = process.env.YOYO_HOME?.trim()
     ? path.resolve(process.env.YOYO_HOME.trim())
@@ -146,7 +152,7 @@ function standHomeDir() {
   return path.join(home, "idols", "stands");
 }
 
-/** Dev server only. The desktop build serves the same cache from Go. */
+/** standDevPack 只给开发服务器用。桌面安装包由 Go 提供同一份缓存。缺文件时向 cf-static.shinycolors.moe 拉取，校验通过才写入缓存。 */
 function standDevPack() {
   const cdn = "https://cf-static.shinycolors.moe/spine/idols/";
   const files: Record<string, string> = {
@@ -239,6 +245,7 @@ function standDevPack() {
   };
 }
 
+/** standBytesOk 拒绝明显不是立绘文件的响应。data.json 必须以 { 开头。data.png 接受 PNG 或 WEBP 文件头。其余文本不能以 < 开头，避免把 HTML 错误页存进缓存。 */
 function standBytesOk(name: string, body: Buffer): boolean {
   const text = body.toString("utf8", 0, Math.min(body.length, 32)).trimStart();
   if (name === "data.json") return text.startsWith("{");
@@ -250,6 +257,7 @@ function standBytesOk(name: string, body: Buffer): boolean {
   return text.length > 0 && !text.startsWith("<");
 }
 
+/** pointAtlas 把图集里单独一行的 date.png 改成 data.png。后面要有一行以 size: 开头才改，避免误伤正文里的同名文字。 */
 function pointAtlas(text: string): string {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
@@ -284,8 +292,7 @@ export default defineConfig({
     "import.meta.env.VITE_CANVAS_BACKEND_URL": JSON.stringify("/api"),
   },
   server: {
-    // Wails loads http://localhost:9245. Binding only 127.0.0.1 leaves ::1
-    // dead on Windows, so WebView2 connects and paints a blank window.
+    // Wails 打开的是 http://localhost:9245。只绑 127.0.0.1 时，Windows 上的 ::1 没有人听，WebView2 连上后会画出空白窗口。
     host: true,
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,

@@ -1,3 +1,5 @@
+// 检查点摘要不把原始 write 正文交给摘要模型。含 _elided 的补丁重放必须被拒绝。
+
 package runtime
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestDesktopCheckpointUsesStructuredSummary 确认摘要请求不含原始 write 正文，结果含结构化摘要。窗口大小是本测试的参数。
 func TestDesktopCheckpointUsesStructuredSummary(t *testing.T) {
 	dir := t.TempDir()
 	st := trace.NewStore(dir)
@@ -59,6 +62,7 @@ func TestDesktopCheckpointUsesStructuredSummary(t *testing.T) {
 	}
 }
 
+// TestReplayFacbSession 在本机没有那份会话时跳过。projectChat 不得把没有 _elided 的参数改成占位；含 _elided 的 str_replace 重放必须被拒绝，文件保持原样。
 func TestReplayFacbSession(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -1,3 +1,5 @@
+// 词轴。一句拆成词，改一行只重排这一行的时间。
+
 package film
 
 import (
@@ -7,7 +9,7 @@ import (
 	"unicode"
 )
 
-// WordsFromCues splits each cue into tokens and gives every token an equal slice of that cue.
+// WordsFromCues 把每一句拆成词，并让这些词平分这一句的时间。汉字和假名一个字一个词，拉丁字母连在一起。
 func WordsFromCues(cues []Cue) []Word {
 	var out []Word
 	for i, cue := range cues {
@@ -53,8 +55,7 @@ type stampFile struct {
 	} `json:"segments"`
 }
 
-// WordsFromStamps reads a word-level JSON document.
-// A flat words list is used as-is. WhisperX writes segments[].words instead.
+// WordsFromStamps 读词级 JSON。有扁平的 words 就用它。WhisperX 写在 segments 里的词会展开，并带上句子的说话人。解不开就返回错误。
 func WordsFromStamps(raw []byte) ([]Word, error) {
 	var doc stampFile
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -95,8 +96,7 @@ func WordsFromStamps(raw []byte) ([]Word, error) {
 	return out, nil
 }
 
-// ReplaceLine rewrites one line and redistributes only that line's time.
-// Shots and needs that do not use the line keep their asset hashes.
+// ReplaceLine 重写一行，并只把这一行原来的时间平分给新词。不用这一行的镜头保持原样。然后重算待办，输入没变的产物编号会留下。找不到这一行就原样返回。
 func ReplaceLine(p Project, lineID, text string) Project {
 	lineID = clean(lineID)
 	start, end, ok := lineSpan(p.Words, lineID)
@@ -148,6 +148,7 @@ func ReplaceLine(p Project, lineID, text string) Project {
 	return rehash(p)
 }
 
+// lineSpan 返回这一行词的最早开始和最晚结束。没有这一行时第三个结果是假。
 func lineSpan(words []Word, lineID string) (float64, float64, bool) {
 	start, end := 0.0, 0.0
 	seen := false
@@ -166,6 +167,7 @@ func lineSpan(words []Word, lineID string) (float64, float64, bool) {
 	return start, end, seen
 }
 
+// splitTokens 把一句拆成词。汉字、假名、片假名和谚文逐字切开，拉丁字母和数字连成一块。
 func splitTokens(s string) []string {
 	var out []string
 	var latin strings.Builder
@@ -191,15 +193,16 @@ func splitTokens(s string) []string {
 	return out
 }
 
+// cueLine 给第 i 句一个行编号，从 line-0 起。
 func cueLine(i int) string { return "line-" + itoa(i) }
 
-// Line is one rewriteable sentence, in time order.
+// Line 是按时间排好的一行，可以整行改写。
 type Line struct {
 	ID   string
 	Text string
 }
 
-// LineTexts joins each line's tokens in the order they are spoken.
+// LineTexts 按说话顺序把每一行的词拼回句子。
 func LineTexts(p Project) []Line {
 	var out []Line
 	var cur string
@@ -222,6 +225,7 @@ func LineTexts(p Project) []Line {
 	return out
 }
 
+// joinTokens 把词拼回一句。任一词超过一个字时，和相邻词之间加空格。
 func joinTokens(words []Word) string {
 	var b strings.Builder
 	prevLong := false
@@ -236,7 +240,7 @@ func joinTokens(words []Word) string {
 	return b.String()
 }
 
-// ShotWords returns the words anchored to a shot, or one span when the shot has none.
+// ShotWords 返回挂在这一镜上的词。一镜没有词、但有时间跨度时，返回一个盖住这段时间的空词。
 func ShotWords(p Project, shot Shot) []Word {
 	var out []Word
 	for _, id := range shot.WordIDs {
@@ -253,6 +257,7 @@ func ShotWords(p Project, shot Shot) []Word {
 	return out
 }
 
+// itoa 把非负整数写成十进制。不使用 fmt。
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

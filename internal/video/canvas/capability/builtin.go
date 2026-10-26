@@ -1,12 +1,18 @@
+// builtin.go 登记文本、Markdown、图片、视频、音频、背板、批量创作表和分镜脚本。
+
 package capability
 
+// 内置节点的标题、正文和坐标上限。
 const (
+	// maxAgentNodeTitleRunes 是节点标题上限，240 个字符。
 	maxAgentNodeTitleRunes   = 240
+	// maxAgentNodeContentRunes 是正文上限，16000 个字符。
 	maxAgentNodeContentRunes = 16000
 	// 坐标绝对值上限：与 app 侧整理工具收敛几何值的范围一致。
 	maxAgentNodeCoordLimit = 1e6
 )
 
+// BuiltinRegistry 建立内置节点登记。构造失败时 panic。
 func BuiltinRegistry() *Registry {
 	registry, err := NewRegistry([]Descriptor{
 		{
@@ -105,6 +111,7 @@ func BuiltinRegistry() *Registry {
 	return registry
 }
 
+// generatedMediaDescriptor 拼出图片、视频或音频节点。正文补丁写的是下次生成的提示词草稿，不覆盖已提交提示词或媒体结果。
 func generatedMediaDescriptor(nodeType, version, label string, width, height float64, generationMode string, connection ConnectionPolicy) Descriptor {
 	semantics := generatedMediaSemantics(nodeType)
 	return Descriptor{
@@ -119,6 +126,7 @@ func generatedMediaDescriptor(nodeType, version, label string, width, height flo
 	}
 }
 
+// generatedMediaCapabilitySemantics 是一种生成节点的用途、适用、不适用、取舍和动作。
 type generatedMediaCapabilitySemantics struct {
 	Purpose     string
 	GoodFor     []string
@@ -127,6 +135,7 @@ type generatedMediaCapabilitySemantics struct {
 	Actions     []string
 }
 
+// generatedMediaSemantics 返回 image、video、audio 的说明。其他类型返回空说明。
 func generatedMediaSemantics(nodeType string) generatedMediaCapabilitySemantics {
 	switch nodeType {
 	case "image":
@@ -158,6 +167,7 @@ func generatedMediaSemantics(nodeType string) generatedMediaCapabilitySemantics 
 	}
 }
 
+// editableNodeFields 给出标题、正文和坐标三类补丁。
 func editableNodeFields(contentPath, contentLabel, contentDescription string) map[string]PatchField {
 	fields := map[string]PatchField{
 		"title": {
@@ -182,6 +192,7 @@ func positionPatchFields() map[string]PatchField {
 	}
 }
 
+// generatedMetadata 用提示词填上 prompt 和 composerContent，状态为 idle。
 func generatedMetadata(prompt string) map[string]any {
 	return map[string]any{"content": "", "prompt": prompt, "composerContent": prompt, "status": "idle"}
 }

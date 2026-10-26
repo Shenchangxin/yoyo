@@ -1,3 +1,4 @@
+/** 拥有偶像台词、分组、快照和错误码的断言。不拥有实现。不改服务端。 */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -26,6 +27,7 @@ const errors = {
 };
 
 describe("idol transcript", () => {
+  /** 一轮拆成你说的和她说的。 */
   it("splits a turn into what you said and what she said", () => {
     const lines = linesOf([{
       id: "r1",
@@ -46,6 +48,7 @@ describe("idol transcript", () => {
     }
   });
 
+  /** 礼物留成事件，不收成聊天气泡。 */
   it("keeps a gift as an event, not a chat bubble", () => {
     const lines = linesOf([{ id: "g", kind: "event", gift_id: "tea", segments: [{ subtitle: "收到了热茶" }], delta: 4 }]);
     assert.equal(lines.length, 1);
@@ -54,6 +57,7 @@ describe("idol transcript", () => {
 });
 
 describe("idol desk helpers", () => {
+  /** 按圈子分组，圈外的没有标题。 */
   it("groups by circle and leaves outsiders untitled", () => {
     const idols: Idol[] = [
       { ...base("a"), name: "甲", circle_id: "c1", pinned: true },
@@ -67,6 +71,7 @@ describe("idol desk helpers", () => {
     assert.deepEqual(groups[1].idols.map((i) => i.id), ["c"]);
   });
 
+  /** 桌面上的那一组排在最前。 */
   it("puts the group that is on the desktop first", () => {
     const idols: Idol[] = [
       { ...base("a"), circle_id: "c1" },
@@ -77,6 +82,7 @@ describe("idol desk helpers", () => {
     assert.deepEqual(groups[0].idols.map((i) => i.id), ["b"]);
   });
 
+  /** 冷却、快照和错误码按预期读出。 */
   it("reads cooling, snapshots, and error codes", () => {
     assert.equal(isCooling("2099-01-01T00:00:00Z", Date.parse("2026-01-01T00:00:00Z")), true);
     assert.equal(isCooling("", Date.now()), false);
@@ -91,6 +97,7 @@ describe("idol desk helpers", () => {
   });
 });
 
+/** 造一条测试用的偶像，只填编号。 */
 function base(id: string): Idol {
   return {
     id, name: id, intro: "", color: "#c47b8a", spoken_lang: "zh", subtitle_lang: "zh",

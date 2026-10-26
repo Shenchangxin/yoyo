@@ -1,3 +1,6 @@
+// 把单条 cat、type、Get-Content、head 或 sed -n 映射成 read_file 的路径和行范围。
+// 含管道或重定向的命令留在真正的 shell。不调用 WorkspaceTools.resolve；聊天叠层命中后由 tools.go 再走 readFile。
+
 package runtime
 
 import (
@@ -8,9 +11,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
-// parseShellRead maps a cat/sed/head/type invocation onto read_file.
-// Pipelines stay in the real shell. A single `cd dir && <read>` is rewritten
-// so chat does not dump source through bash (I1).
+// parseShellRead 把 cat、sed、head、type 或 Get-Content 映到相对路径、起始行和行数。
+// 管道留在真正的 shell。单独的 `cd 目录 && <读取>` 会改写路径，避免聊天经 bash 倾倒源码。
 func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
@@ -71,6 +73,7 @@ func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 	return joinReadPath(prefixDir, rel), offset, limit, true
 }
 
+// splitCdAnd 只接受恰好一个 &&，且左边是 cd。两边再出现管道或重定向则不拆。/d 和 -d 不当成目录。
 func splitCdAnd(cmd string) (dir, rest string, ok bool) {
 	if strings.Count(cmd, "&&") != 1 {
 		return "", "", false
@@ -99,6 +102,7 @@ func splitCdAnd(cmd string) (dir, rest string, ok bool) {
 	return dir, rest, true
 }
 
+// joinReadPath 把目录和相对路径拼起来。绝对路径和已能译成盘符的 MSYS 路径不再拼接。不调用 WorkspaceTools.resolve。
 func joinReadPath(dir, rel string) string {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
@@ -117,11 +121,13 @@ func joinReadPath(dir, rel string) string {
 	return filepath.ToSlash(filepath.Join(dir, rel))
 }
 
+// msysDriveRel 判断路径能否被 MSYSToWindowsPath 译成盘符路径。
 func msysDriveRel(p string) bool {
 	_, ok := capability.MSYSToWindowsPath(p)
 	return ok
 }
 
+// lastNonFlag 返回参数里最后一个非开关文件。
 func lastNonFlag(argv []string) string {
 	files := nonFlagFiles(argv)
 	if len(files) == 0 {
@@ -130,6 +136,7 @@ func lastNonFlag(argv []string) string {
 	return files[len(files)-1]
 }
 
+// nonFlagFiles 丢掉空串和以 - 开头的参数。
 func nonFlagFiles(argv []string) []string {
 	var out []string
 	for _, a := range argv {
@@ -142,6 +149,7 @@ func nonFlagFiles(argv []string) []string {
 	return out
 }
 
+// parseDashN 解析 head 的 -n N、-nN 或 -N。非正数返回 0。
 func parseDashN(argv []string) (n int, consumed int) {
 	if len(argv) == 0 {
 		return 0, 0
@@ -170,6 +178,7 @@ func parseDashN(argv []string) (n int, consumed int) {
 	return 0, 0
 }
 
+// parseSedPrint 只接受带 -n 的 `起,止p`。起始必须为正，结束不小于起始。
 func parseSedPrint(argv []string) (start, end int, rest []string, ok bool) {
 	quiet := false
 	i := 0

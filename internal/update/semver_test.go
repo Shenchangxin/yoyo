@@ -1,7 +1,10 @@
+// 检查版本新旧和通道清单只指向 latest。
+
 package update
 
 import "testing"
 
+// TestIsNewer 确认更高版本、v 前缀和正式版相对预发布版的比较。
 func TestIsNewer(t *testing.T) {
 	if !IsNewer("0.5.0", "0.4.0") {
 		t.Fatal("0.5.0")
@@ -23,6 +26,7 @@ func TestIsNewer(t *testing.T) {
 	}
 }
 
+// TestChannelsForVersion 确认非空版本只返回 DefaultChannel，空版本返回 nil。
 func TestChannelsForVersion(t *testing.T) {
 	for _, ver := range []string{"0.5.0", "0.5.0-beta.1", "0.0.0-dev.abc1234"} {
 		got := ChannelsForVersion(ver)

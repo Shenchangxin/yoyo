@@ -1,3 +1,6 @@
+// 本文件在隔离 Chrome 里录一段操作。绑定名是 yoyoRecord。
+// 页面脚本经 Runtime.addBinding 送事件；主框架导航也记一条。密码和地址里的令牌在记下之前先打码。最多留 2000 条，10 毫秒内的连续滚动丢掉。
+
 package browser
 
 import (
@@ -12,8 +15,10 @@ import (
 	"time"
 )
 
+// recordBinding 是页面里调用的绑定名，值是 yoyoRecord。
 const recordBinding = "yoyoRecord"
 
+// RecordTarget 是一次录制事件点中的元素，带角色、无障碍名、选择器候选和框架路径。
 type RecordTarget struct {
 	Tag                string   `json:"tag,omitempty"`
 	Role               string   `json:"role,omitempty"`
@@ -31,6 +36,7 @@ type RecordTarget struct {
 	ShadowPath         []string `json:"shadowPath,omitempty"`
 }
 
+// RecordEvent 是录下来的一条。Kind 取 click、input、change、keydown、scroll、navigation。
 type RecordEvent struct {
 	Kind   string       `json:"kind"`
 	TS     string       `json:"ts"`
@@ -42,6 +48,7 @@ type RecordEvent struct {
 	Target RecordTarget `json:"target,omitempty"`
 }
 
+// RecordSession 是停录之后的一份结果。Steps 和 SkillBody 由 collapseRecordEvents 与 generateRecordedSkill 填上。Dir 是写到磁盘的目录。
 type RecordSession struct {
 	ID        string         `json:"id"`
 	Started   time.Time      `json:"started"`
@@ -55,6 +62,7 @@ type RecordSession struct {
 	Dir       string         `json:"dir,omitempty"`
 }
 
+// recorder 是进行中的一次录制。nonce 用来丢掉不是这次注入的事件。
 type recorder struct {
 	mu       sync.Mutex
 	active   bool
@@ -67,6 +75,7 @@ type recorder struct {
 	dropped  int
 }
 
+// newNonce 返回 8 字节随机数的十六进制。读随机数失败时用当前纳秒。
 func newNonce() string {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -75,6 +84,7 @@ func newNonce() string {
 	return hex.EncodeToString(b[:])
 }
 
+// recording 在宿主上有一场还没停的录制时返回真。
 func (h *Host) recording() bool {
 	if h == nil || h.rec == nil {
 		return false
@@ -84,6 +94,7 @@ func (h *Host) recording() bool {
 	return h.rec.active
 }
 
+// StartRecord 确保 Chrome 已启动，记下 id 形如 rec_20060102_150405，并在当前连接上装上录制钩子。返回这次的 id。
 func (h *Host) StartRecord() (string, error) {
 	if h == nil {
 		return "", fmt.Errorf("browser: no host")
@@ -109,6 +120,7 @@ func (h *Host) StartRecord() (string, error) {
 	return rec.id, nil
 }
 
+// applyRecordHooks 在正在录制时加上绑定、新文档脚本，并立刻在当前页执行一次注入脚本。
 func (h *Host) applyRecordHooks(c *cdpConn) {
 	if h == nil || c == nil || !h.recording() {
 		return
@@ -122,6 +134,7 @@ func (h *Host) applyRecordHooks(c *cdpConn) {
 	_, _ = c.call("Runtime.evaluate", map[string]any{"expression": js, "returnByValue": true})
 }
 
+// recordInjectJS 用当前 nonce 和录制 id 生成注入脚本。没在录时返回空字符串。
 func (h *Host) recordInjectJS() string {
 	if h == nil || h.rec == nil {
 		return ""
@@ -133,6 +146,7 @@ func (h *Host) recordInjectJS() string {
 	return recorderJS(nonce, id)
 }
 
+// StopRecord 结束录制，把事件收成步骤并生成技能草稿，写到 recordings/<id>。没在录时返回 not recording。
 func (h *Host) StopRecord() (*RecordSession, error) {
 	if h == nil || h.rec == nil {
 		return nil, fmt.Errorf("browser: not recording")
@@ -163,6 +177,7 @@ func (h *Host) StopRecord() (*RecordSession, error) {
 	return sess, nil
 }
 
+// RecordStatus 返回没在录，或一行带 id、事件数和开始时间的状态。
 func (h *Host) RecordStatus() string {
 	if h == nil || h.rec == nil {
 		return "not recording"
@@ -175,6 +190,7 @@ func (h *Host) RecordStatus() string {
 	return fmt.Sprintf("recording %s events=%d started=%s", h.rec.id, len(h.rec.events), h.rec.started.Format(time.RFC3339))
 }
 
+// persistRecord 把 manifest.json、events.json、steps.json 和 draft.skill.md 写到目录下的 recordings/<id>，权限 0o600。目录本身是 0o700。
 func (h *Host) persistRecord(sess *RecordSession) (string, error) {
 	dir := filepath.Join(h.dir, "recordings", sess.ID)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -200,6 +216,7 @@ func (h *Host) persistRecord(sess *RecordSession) (string, error) {
 	return dir, nil
 }
 
+// onCDPEvent 在主框架导航时清掉 ref，录制中再记一条打过码的 navigation。Runtime.bindingCalled 交给 noteRecordBinding。
 func (h *Host) onCDPEvent(method string, params json.RawMessage) {
 	switch method {
 	case "Page.frameNavigated":
@@ -224,6 +241,7 @@ func (h *Host) onCDPEvent(method string, params json.RawMessage) {
 	}
 }
 
+// isMainFrameNav 在帧没有 parentId 时返回真，用来只记主框架。
 func isMainFrameNav(params json.RawMessage) bool {
 	var p struct {
 		Frame struct {
@@ -237,6 +255,7 @@ func isMainFrameNav(params json.RawMessage) bool {
 	return strings.TrimSpace(p.Frame.ParentID) == ""
 }
 
+// noteRecordBinding 解析 yoyoRecord 的载荷。nonce 对上且仍在录时才收下事件。
 func (h *Host) noteRecordBinding(params json.RawMessage) {
 	var p struct {
 		Name    string `json:"name"`
@@ -264,6 +283,7 @@ func (h *Host) noteRecordBinding(params json.RawMessage) {
 	h.noteRecordEvent(wrap.Event)
 }
 
+// noteRecordEvent 打码地址和值后追加一条。距上一条不足 10 毫秒的 scroll，或已经有 2000 条时，只增加 dropped。
 func (h *Host) noteRecordEvent(ev RecordEvent) {
 	if h == nil || h.rec == nil {
 		return

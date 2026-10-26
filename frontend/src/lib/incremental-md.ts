@@ -1,80 +1,42 @@
 /**
  * Copyright (c) 2026 DeepSeek
  * SPDX-License-Identifier: MIT
- *
- * Internalized from deepseek-harness IncrementalMarkdownParser.
- * Added `tailStart` so Yoyo can freeze Streamdown on the source prefix.
- *
- * Incremental block-level markdown parsing for an append-only text stream.
- *
- * Re-parsing the whole accumulated document on every streaming chunk is
- * quadratic in the final reply length. CommonMark block parsing is line-based
- * and appended text can only reshape the parse frontier — the last top-level
- * block (a paragraph becoming a setext heading or a table, or a list
- * continuing after a blank line) — so earlier blocks are final. This parser
- * therefore freezes all but the trailing {@link UNSTABLE_TAIL_BLOCKS} blocks
- * and re-parses only the source tail behind them. A final unclosed top-level
- * fence cannot freeze as a block, so its completed content lines use a second
- * frontier: only the last completed line and current partial line return
- * through the caller's grammar. Each source region is therefore parsed a
- * bounded number of times over the stream instead of once per chunk.
- *
- * The block freeze boundary comes from the parser's own `position` offsets.
- * The cut sits at the *end offset* of the last frozen block (not the next
- * block's start): a following block's start offset excludes up to three spaces
- * of insignificant leading indentation, which is harmless to drop, but
- * cutting at the previous end also keeps the inter-block blank lines in the
- * tail so the sliced source stays verbatim. Fence scanning only recognizes a
- * parser-confirmed code node and closing delimiter; ambiguous input returns to
- * the normal tail parse.
- *
- * Known deviation, shared with any prefix-freeze scheme: micromark resolves
- * reference-style links and footnotes document-wide at parse time, so a
- * reference whose definition lands on the other side of the freeze boundary
- * renders literally until the settled full parse self-heals it.
+ */
+
+/**
+ * 拥有：对只追加的 markdown 做块级增量解析，给出冻结前缀和不稳定尾部。来自 deepseek-harness 的 IncrementalMarkdownParser，并增加 tailStart，便于把 Streamdown 冻在源码前缀上。
+ * 不拥有：调用方的语法，以及块的渲染。
+ * 整篇重解析随回复变长呈二次。CommonMark 按行解析，追加只会改写前沿，即最后一个顶层块，更早的块已定稿。因此除末尾 UNSTABLE_TAIL_BLOCKS 个块外都冻结，只重解析它们后面的源码尾。最后一块未闭合的顶层围栏不能当块冻结，其已完成的内容行用第二道前沿：只有最后一行完整行和当前半行回到调用方语法。每个源码区域在整段流里被解析的次数有上界，而不是每个块一次。
+ * 冻结边界取解析器自己的 position。切口在最后一块已冻结块的结束偏移，不在下一块的起始：下一块的起始会丢掉最多三个不重要的前导空格，丢掉无害，但切在上一块结束还能把块间空行留在尾部，切出的源码保持原文。围栏扫描只认解析器确认过的 code 节点和闭合定界符；含糊的输入退回普通尾部解析。
+ * 与任何前缀冻结一样：micromark 在解析时按整篇解析引用式链接和脚注，定义落在冻结边界另一侧的引用会按字面显示，直到定稿的全文解析自己修好。
  */
 
 import type { Code, Root, RootContent } from 'mdast'
 
-/**
- * Trailing blocks kept unstable. Appended text reshapes at most the last
- * block; the second-to-last is retained as safety margin so a freeze decision
- * never has to reason about the parse frontier.
- */
+/** 尾部保持不稳定的块数。追加最多改写最后一块，倒数第二块留作余量，冻结不必推理解析前沿。 */
 const UNSTABLE_TAIL_BLOCKS = 2
 
-/** A top-level mdast block plus a render key that is stable across chunks. */
+/** PositionedBlock 一个顶层 mdast 块，加上跨块稳定的渲染键。 */
 export interface PositionedBlock {
-  /** The parsed block. Positions inside it are relative to its parse slice. */
+  /** 解析出的块。块内位置相对于它那一片源码。 */
   readonly node: RootContent
-  /**
-   * The block's start offset in the full source text. Stable from the frame
-   * a block first appears through freezing, so React reconciles rather than
-   * remounts when a block crosses the freeze boundary.
-   */
+  /** 块在全文里的起始偏移。从首次出现到冻结都不变，跨过冻结边界时 React 复用而不是重挂。 */
   readonly key: number
 }
 
-/** One {@link IncrementalMarkdownParser.update} result. */
+/** IncrementalBlocks 一次 update 的结果。 */
 export interface IncrementalBlocks {
-  /** Blocks that can no longer change; grows monotonically per generation. */
+  /** 不会再变的块。同一代里只增不减。 */
   readonly frozen: readonly PositionedBlock[]
-  /** The re-parsed unstable tail (at most {@link UNSTABLE_TAIL_BLOCKS} blocks plus growth). */
+  /** 重新解析的不稳定尾部，最多 UNSTABLE_TAIL_BLOCKS 块，再加上这一拍新长出来的。 */
   readonly tail: readonly PositionedBlock[]
-  /** Bumped whenever non-append input discards the frozen prefix; callers drop caches keyed on it. */
+  /** 非追加输入丢掉冻结前缀时加一。调用方按它丢掉缓存。 */
   readonly generation: number
-  /** Absolute source offset where the unstable tail begins. Frozen markdown is `text.slice(0, tailStart)`. */
+  /** 不稳定尾部在全文里的起始偏移。冻结的 markdown 是 text.slice(0, tailStart)。 */
   readonly tailStart: number
 }
 
-/**
- * A block's render key: its absolute source start offset. A position-less
- * node (a grammar is free to omit positions) falls back to a negative
- * list-index key — unique within one update's tail, which is the only place
- * the fallback can occur: freezing requires the cut block's position, so a
- * position-less parse keeps every block in the tail (real grammars always
- * stamp positions and never take this path).
- */
+/** 渲染键是块在全文里的起始偏移。没有位置时用负的列表下标，只在这一次 update 的尾部里唯一。冻结要求切开的那块有位置，所以没有位置的解析会把所有块留在尾部。 */
 function blockKey(node: RootContent, base: number, index: number): number {
   const offset = node.position?.start.offset
   return offset === undefined ? -(index + 1) : base + offset
@@ -93,7 +55,7 @@ interface OpenFenceState {
   readonly endedWithCarriageReturn: boolean
 }
 
-/** Return the first line terminator at or after `start`, including a CRLF pair. */
+/** 返回 start 处或之后第一个行终止符的结束位置，CRLF 算一个。没有则空。 */
 function lineTerminatorEnd(text: string, start: number): number | undefined {
   for (let index = start; index < text.length; index += 1) {
     const char = text[index]
@@ -103,10 +65,7 @@ function lineTerminatorEnd(text: string, start: number): number | undefined {
   return undefined
 }
 
-/**
- * Source prefix before the last completed line. Keeping that line beside the
- * current partial line lets the grammar retain its trailing-newline semantics.
- */
+/** 最后一行完整行之前的源码长度。把那一行留在当前半行旁边，语法才能保住结尾换行的含义。 */
 function committableLinePrefixLength(text: string): number {
   let previousEnd = 0
   let end = 0
@@ -125,12 +84,12 @@ function committableLinePrefixLength(text: string): number {
   return previousEnd
 }
 
-/** Exact source terminator ending a non-empty committable prefix. */
+/** 非空可提交前缀结尾的那个行终止符。CRLF、CR，否则 LF。 */
 function trailingLineTerminator(text: string): '\n' | '\r' | '\r\n' {
   return text.endsWith('\r\n') ? '\r\n' : text.endsWith('\r') ? '\r' : '\n'
 }
 
-/** Whether `text` contains a CommonMark closing fence on one of its logical lines. */
+/** 某一逻辑行上是否有 CommonMark 闭合围栏：缩进不超过三个空格，标记不少于给定长度，其余只有空白。 */
 function containsClosingFence(text: string, marker: '`' | '~', markerLength: number): boolean {
   let start = 0
   while (start <= text.length) {
@@ -145,11 +104,11 @@ function containsClosingFence(text: string, marker: '`' | '~', markerLength: num
     if (end === text.length) return false
     start = text[end] === '\r' && text[end + 1] === '\n' ? end + 2 : end + 1
   }
-  /* v8 ignore next -- each loop iteration returns at EOF or advances past a line terminator. */
+  /* v8 ignore next -- 每次循环要么在文件尾返回，要么越过一个行终止符。 */
   return false
 }
 
-/** Advance an mdast point across one append while treating a split CRLF as one line ending. */
+/** 把一个 mdast 点按追加的文本往前推。被拆开的 CRLF 仍算一次换行。 */
 function advancePoint(
   point: OpenFenceState['end'],
   appended: string,
@@ -177,10 +136,7 @@ function advancePoint(
   return { line, column, offset: point.offset + appended.length }
 }
 
-/**
- * Append-only incremental parser over a caller-supplied grammar. One instance
- * accumulates one streaming document; non-append input resets it.
- */
+/** IncrementalMarkdownParser 在调用方给的语法上做只追加的增量解析。一个实例累积一篇流式文档。输入不是追加时重置。 */
 export class IncrementalMarkdownParser {
   private prevText = ''
   private tailStart = 0
@@ -190,12 +146,12 @@ export class IncrementalMarkdownParser {
   private openFence: OpenFenceState | null = null
   private readonly parse: (text: string) => Root
 
-  /** @param parse - Grammar shared with whatever renders the blocks, so boundaries agree. */
+  /** 语法与渲染块的那一方共用，边界才一致。 */
   constructor(parse: (text: string) => Root) {
     this.parse = parse
   }
 
-  /** Parse one unclosed-fence content slice through the caller's grammar. */
+  /** 用调用方语法解析一片未闭合围栏的内容。根上不是恰好一个 code 节点则没有。 */
   private fenceValue(state: Pick<OpenFenceState, 'syntheticPrefix'>, text: string): string | undefined {
     const root = this.parse(`${state.syntheticPrefix}${text}`)
     if (root.children.length !== 1) return undefined
@@ -203,7 +159,7 @@ export class IncrementalMarkdownParser {
     return node.type === 'code' ? node.value : undefined
   }
 
-  /** Recognize the parsed tail's final unclosed fence and prepare its incremental content frontier. */
+  /** 认出尾部最后一块未闭合围栏，并准备它的增量内容前沿。对不上则空。 */
   private openFenceState(
     text: string,
     base: number,
@@ -217,14 +173,14 @@ export class IncrementalMarkdownParser {
     const startOffset = node.position?.start.offset
     const end = node.position?.end
     if (startOffset === undefined || end?.offset === undefined) return null
-    /* v8 ignore next -- the caller's parse slice ends at text.length, so its final node ends there. */
+    /* v8 ignore next -- 调用方的解析片以 text.length 结束，因此最后一个节点也结束在那里。 */
     if (base + end.offset !== text.length) return null
     const source = text.slice(base)
     const previousLf = source.lastIndexOf('\n', startOffset - 1)
     const previousCr = source.lastIndexOf('\r', startOffset - 1)
     const lineStart = Math.max(previousLf, previousCr) + 1
     const terminatorEnd = lineTerminatorEnd(source, startOffset)
-    /* v8 ignore next -- a parser-confirmed fenced code node requires its opening line terminator. */
+    /* v8 ignore next -- 解析器确认过的围栏代码节点一定有开头的行终止符。 */
     if (terminatorEnd === undefined) return null
     if (terminatorEnd === source.length && source.endsWith('\r')) return null
     const openingLine = source.slice(lineStart, terminatorEnd).replace(/[\r\n]+$/, '')
@@ -232,7 +188,7 @@ export class IncrementalMarkdownParser {
     if (opening === null) return null
     const indent = opening[1] as string
     const run = opening[2] as string
-    /* v8 ignore next -- mdast positions a fenced code node at the matched delimiter after indentation. */
+    /* v8 ignore next -- mdast 把围栏代码节点的位置放在缩进之后匹配到的定界符上。 */
     if (lineStart + indent.length !== startOffset) return null
     const marker = run[0] as '`' | '~'
     const contentStart = base + terminatorEnd
@@ -263,7 +219,7 @@ export class IncrementalMarkdownParser {
     }
   }
 
-  /** Extend a recognized unclosed fence without parsing its completed content prefix again. */
+  /** 延长已认出的未闭合围栏，不再解析已经完成的内容前缀。出现闭合围栏或语法对不上则空。 */
   private updateOpenFence(
     state: OpenFenceState,
     text: string,
@@ -278,8 +234,7 @@ export class IncrementalMarkdownParser {
       ? ''
       : this.fenceValue(state, pending.slice(0, stableLength))
     if (stableValue === undefined) return undefined
-    // OpenFenceState is private and is installed only from this exact retained
-    // code entry; updates replace that entry with another positioned Code.
+    // OpenFenceState 是私有的，只从这条保留的 code 装入；更新会换成另一块带位置的 Code。
     const block = state.tail[state.codeIndex] as PositionedBlock
     const previousNode = block.node as Code & { position: NonNullable<Code['position']> }
     const end = advancePoint(
@@ -312,21 +267,10 @@ export class IncrementalMarkdownParser {
     return cached
   }
 
-  /**
-   * Fold the current accumulated text and return the frozen/tail split.
-   * Idempotent for identical input (the previous result is returned as-is),
-   * so callers may invoke it from render paths that re-execute.
-   * @param text - The full accumulated markdown source.
-   * @returns Frozen and tail blocks with stream-stable render keys.
-   */
+  /** update 折当前累积全文，返回冻结和尾部。相同输入直接返回上一次结果，渲染路径重复调用也安全。text 是累积的全部 markdown。 */
   update(text: string): IncrementalBlocks {
     if (this.cached !== null && text === this.prevText) return this.cached
-    // Deliberate O(prefix) memcmp per update: sound divergence detection has
-    // to verify the whole retained prefix, and startsWith compares bytes two
-    // orders of magnitude faster than parsing them — the cost this class
-    // exists to remove. Passing append/reset deltas instead would push
-    // append bookkeeping across the session-projection update boundary for a check
-    // that stays sub-millisecond at realistic reply sizes.
+    // 每次更新故意对前缀做线性比较：要确认保留的整段前缀没变，startsWith 比把这些字节再解析一遍快两个数量级，这正是这个类要去掉的成本。改传追加或重置增量，会把追加记账推过会话投影的更新边界，而按实际回复长度这项检查仍在一毫秒以内。
     if (!text.startsWith(this.prevText)) {
       this.prevText = ''
       this.tailStart = 0
@@ -351,8 +295,7 @@ export class IncrementalMarkdownParser {
     if (firstUnstable > 0) {
       const cutEnd = blocks[firstUnstable - 1]?.position?.end.offset
       if (cutEnd === undefined) {
-        // A grammar that omits positions leaves nothing to cut at; keep the
-        // whole parse in the tail rather than guessing a boundary.
+        // 语法不给位置就没有切口。整段解析留在尾部，不猜边界。
         firstUnstable = 0
       } else {
         for (const node of blocks.slice(0, firstUnstable)) {

@@ -1,3 +1,6 @@
+// 用 TokenStore 里的访问令牌读写信件和日历。令牌不进 connectors.json。
+// HTTP 429 和 5xx 的错误文本带 outcome_unknown。
+
 package connector
 
 import (
@@ -13,11 +16,13 @@ import (
 	"time"
 )
 
+// TokenStore 按名字读写令牌字符串。名字是账号上的 VaultKey。
 type TokenStore interface {
 	Get(name string) (string, error)
 	Set(name, value string)
 }
 
+// Token 是访问令牌、刷新令牌和过期时间。SaveToken 把它编成 JSON 交给 TokenStore。
 type Token struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token,omitempty"`
@@ -26,18 +31,21 @@ type Token struct {
 	Scope        string    `json:"scope,omitempty"`
 }
 
+// SetTokens 换上令牌仓库。
 func (b *Broker) SetTokens(store TokenStore) {
 	b.mu.Lock()
 	b.tokens = store
 	b.mu.Unlock()
 }
 
+// SetHTTP 换上 HTTP 客户端。测试用它替换传输。
 func (b *Broker) SetHTTP(client *http.Client) {
 	b.mu.Lock()
 	b.http = client
 	b.mu.Unlock()
 }
 
+// client 返回已设置的 HTTP 客户端，否则用 http.DefaultClient。
 func (b *Broker) client() *http.Client {
 	if b.http != nil {
 		return b.http
@@ -45,6 +53,7 @@ func (b *Broker) client() *http.Client {
 	return http.DefaultClient
 }
 
+// Exchange 用授权码向 Google 或微软换令牌。client secret 只放进这次表单，函数不把它写入 JSON。gmail、gcal、outlook 以外返回错误。
 func (b *Broker) Exchange(provider, code, clientID, secret, redirect string) (Token, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	form := url.Values{
@@ -98,6 +107,7 @@ func (b *Broker) Exchange(provider, code, clientID, secret, redirect string) (To
 	return tok, nil
 }
 
+// SaveToken 把令牌 JSON 存到 TokenStore 的 vaultKey 名下。仓库或名字为空时返回错误。
 func (b *Broker) SaveToken(vaultKey string, tok Token) error {
 	if b.tokens == nil || vaultKey == "" {
 		return fmt.Errorf("connector: no token store")
@@ -107,6 +117,7 @@ func (b *Broker) SaveToken(vaultKey string, tok Token) error {
 	return nil
 }
 
+// loadToken 从 TokenStore 读取。正文不是 { 开头时当成裸访问令牌。JSON 解析失败时也退回裸令牌。
 func (b *Broker) loadToken(vaultKey string) (Token, error) {
 	if b.tokens == nil || vaultKey == "" {
 		return Token{}, fmt.Errorf("connector: no token")
@@ -129,6 +140,7 @@ func (b *Broker) loadToken(vaultKey string) (Token, error) {
 	return tok, nil
 }
 
+// liveRead 用账号的 VaultKey 取令牌。日历种类或查询像日历时走日历接口，否则走邮件。其他供应商返回 MCP-pack only。
 func (b *Broker) liveRead(a Account, query string) ([]map[string]string, error) {
 	tok, err := b.loadToken(a.VaultKey)
 	if err != nil {
@@ -153,6 +165,7 @@ func (b *Broker) liveRead(a Account, query string) ([]map[string]string, error) 
 	}
 }
 
+// liveSend 对日历种类或 gcal 写日程，gmail 和 outlook 发信。其他供应商返回错误。
 func (b *Broker) liveSend(a Account, d Draft) error {
 	tok, err := b.loadToken(a.VaultKey)
 	if err != nil {
@@ -172,6 +185,7 @@ func (b *Broker) liveSend(a Account, d Draft) error {
 	}
 }
 
+// gmailList 列出最多 20 封 Gmail，并尽量补上主题和发件人。空列表返回一条 note。
 func gmailList(client *http.Client, token, query string) ([]map[string]string, error) {
 	u := "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20"
 	if query != "" {
@@ -214,6 +228,7 @@ func gmailList(client *http.Client, token, query string) ([]map[string]string, e
 	return out, nil
 }
 
+// gmailMeta 读取一封信的 Subject、From 和 snippet。
 func gmailMeta(client *http.Client, token, id string) (map[string]string, error) {
 	u := "https://gmail.googleapis.com/gmail/v1/users/me/messages/" + url.PathEscape(id) + "?format=metadata&metadataHeaders=Subject&metadataHeaders=From"
 	req, _ := http.NewRequest(http.MethodGet, u, nil)
@@ -249,6 +264,7 @@ func gmailMeta(client *http.Client, token, id string) (map[string]string, error)
 	return out, nil
 }
 
+// gmailSend 把草稿编成 MIME，再以 base64 raw 调用 Gmail send。
 func gmailSend(client *http.Client, token string, d Draft) error {
 	raw := mimeMail(d)
 	enc := base64.RawURLEncoding.EncodeToString([]byte(raw))
@@ -268,6 +284,7 @@ func gmailSend(client *http.Client, token string, d Draft) error {
 	return nil
 }
 
+// outlookList 列出最多 20 封 Outlook 邮件的主题、发件人和预览。
 func outlookList(client *http.Client, token, query string) ([]map[string]string, error) {
 	u := "https://graph.microsoft.com/v1.0/me/messages?$top=20&$select=subject,from,bodyPreview"
 	if query != "" {
@@ -311,6 +328,7 @@ func outlookList(client *http.Client, token, query string) ([]map[string]string,
 	return out, nil
 }
 
+// outlookSend 调用 Graph 的 sendMail。状态码大于等于 300 时返回错误。
 func outlookSend(client *http.Client, token string, d Draft) error {
 	payload, _ := json.Marshal(map[string]any{
 		"message": map[string]any{
@@ -336,6 +354,7 @@ func outlookSend(client *http.Client, token string, d Draft) error {
 	return nil
 }
 
+// mimeMail 拼出文本邮件。有附件时用 multipart，单个附件最多读 8 MiB。
 func mimeMail(d Draft) string {
 	var hdr strings.Builder
 	fmt.Fprintf(&hdr, "To: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\n", d.To, d.Subject)
@@ -370,6 +389,7 @@ func mimeMail(d Draft) string {
 	return hdr.String()
 }
 
+// wrap64 把 base64 按 76 个字符折行。
 func wrap64(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i += 76 {
@@ -383,6 +403,7 @@ func wrap64(s string) string {
 	return b.String()
 }
 
+// liveWriteEvent 拒绝 recurrence。操作名含 delete 则删除，含 update 或已有 EventID 则修改，否则创建。
 func liveWriteEvent(client *http.Client, provider, token string, d Draft) error {
 	if strings.TrimSpace(d.Recurrence) != "" {
 		return fmt.Errorf("connector: recurring series must be edited in the calendar app (422)")
@@ -397,6 +418,7 @@ func liveWriteEvent(client *http.Client, provider, token string, d Draft) error 
 	return liveCreateEvent(client, provider, token, d)
 }
 
+// liveCreateEvent 按供应商调用 Google 或 Outlook 创建日程。
 func liveCreateEvent(client *http.Client, provider, token string, d Draft) error {
 	start, end := eventWindow(d)
 	switch strings.ToLower(provider) {
@@ -409,6 +431,7 @@ func liveCreateEvent(client *http.Client, provider, token string, d Draft) error
 	}
 }
 
+// livePatchEvent 要求 EventID 和 TargetVersion，再按供应商修改。
 func livePatchEvent(client *http.Client, provider, token string, d Draft) error {
 	if strings.TrimSpace(d.EventID) == "" || strings.TrimSpace(d.TargetVersion) == "" {
 		return fmt.Errorf("connector: calendar update needs event_id and target_version")
@@ -424,6 +447,7 @@ func livePatchEvent(client *http.Client, provider, token string, d Draft) error 
 	}
 }
 
+// liveDeleteEvent 要求 EventID 和 TargetVersion，再按供应商删除。
 func liveDeleteEvent(client *http.Client, provider, token string, d Draft) error {
 	if strings.TrimSpace(d.EventID) == "" || strings.TrimSpace(d.TargetVersion) == "" {
 		return fmt.Errorf("connector: calendar delete needs event_id and target_version")
@@ -438,6 +462,7 @@ func liveDeleteEvent(client *http.Client, provider, token string, d Draft) error
 	}
 }
 
+// sendStatusError 对 412 说明事件已变。429 和 5xx 的错误文本含 outcome_unknown。
 func sendStatusError(op string, code int, body string) error {
 	if code == 412 {
 		return fmt.Errorf("%s: HTTP %d the event changed; prepare a new action: %s", op, code, truncate(body, 300))
@@ -448,6 +473,7 @@ func sendStatusError(op string, code int, body string) error {
 	return fmt.Errorf("%s: HTTP %d: %s", op, code, truncate(body, 300))
 }
 
+// eventWindow 从 Start 或 To 解析开始时间，失败则用一小时后。结束时间不晚于开始时，全天加 24 小时，否则加 1 小时。
 func eventWindow(d Draft) (time.Time, time.Time) {
 	start := time.Now().UTC().Add(time.Hour).Truncate(time.Minute)
 	for _, raw := range []string{d.Start, d.To} {
@@ -480,6 +506,7 @@ func eventWindow(d Draft) (time.Time, time.Time) {
 	return start, end
 }
 
+// gcalInsert 向 Google Calendar 插入事件。日历 ID 为空时用 primary。
 func gcalInsert(client *http.Client, token string, d Draft, start, end time.Time) error {
 	tz := d.TimeZone
 	if tz == "" {
@@ -530,6 +557,7 @@ func gcalInsert(client *http.Client, token string, d Draft, start, end time.Time
 	return nil
 }
 
+// gcalMutate 用 If-Match 带着 TargetVersion 修改或删除 Google 事件。
 func gcalMutate(client *http.Client, token string, d Draft, start, end time.Time, del bool) error {
 	cal := d.CalendarID
 	if cal == "" {
@@ -577,6 +605,7 @@ func gcalMutate(client *http.Client, token string, d Draft, start, end time.Time
 	return nil
 }
 
+// outlookCreateEvent 调用 Graph 创建事件。
 func outlookCreateEvent(client *http.Client, token string, d Draft, start, end time.Time) error {
 	tz := d.TimeZone
 	if tz == "" {
@@ -619,6 +648,7 @@ func outlookCreateEvent(client *http.Client, token string, d Draft, start, end t
 	return nil
 }
 
+// outlookMutate 用 If-Match 带着 TargetVersion 修改或删除 Outlook 事件。
 func outlookMutate(client *http.Client, token string, d Draft, start, end time.Time, del bool) error {
 	u := "https://graph.microsoft.com/v1.0/me/events/" + url.PathEscape(d.EventID)
 	method := http.MethodPatch
@@ -660,6 +690,7 @@ func outlookMutate(client *http.Client, token string, d Draft, start, end time.T
 	return nil
 }
 
+// looksCalendar 在查询里出现 calendar、event、日程、会议、meetup 或 agenda 时返回真。
 func looksCalendar(query string) bool {
 	q := strings.ToLower(query)
 	for _, n := range []string{"calendar", "event", "日程", "会议", "meetup", "agenda"} {
@@ -670,6 +701,7 @@ func looksCalendar(query string) bool {
 	return false
 }
 
+// gcalList 列出主日历最多 20 个事件。查询里有两个 RFC3339 时间时用作 timeMin 和 timeMax。
 func gcalList(client *http.Client, token, query string) ([]map[string]string, error) {
 	timeMin := time.Now().UTC().Format(time.RFC3339)
 	timeMax := ""
@@ -730,6 +762,7 @@ func gcalList(client *http.Client, token, query string) ([]map[string]string, er
 	return out, nil
 }
 
+// outlookEvents 列出最多 20 个 Outlook 事件。查询不像日历且不是时间范围时加上 $search。
 func outlookEvents(client *http.Client, token, query string) ([]map[string]string, error) {
 	u := "https://graph.microsoft.com/v1.0/me/events?$top=20&$select=subject,start,end,location"
 	if query != "" && !looksCalendar(query) {
@@ -776,6 +809,7 @@ func outlookEvents(client *http.Client, token, query string) ([]map[string]strin
 	return out, nil
 }
 
+// truncate 超过 n 个字节时截断并加上省略号。
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -783,6 +817,7 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
+// envSecret 读取 YOYO_GMAIL_CLIENT_SECRET 或 YOYO_OUTLOOK_CLIENT_SECRET。本文件没有调用它。
 func envSecret(provider string) string {
 	switch strings.ToLower(provider) {
 	case "gmail", "gcal":

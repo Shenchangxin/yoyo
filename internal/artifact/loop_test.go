@@ -1,7 +1,10 @@
+// 锁住拓扑比较：只改文案、中间件和 ID 时仍然相等，改 MaxTurns 则不相等。runtime 槽写进 Execution；middleware 在次数未设时写成 2。
+
 package artifact
 
 import "testing"
 
+// TestLoopTopologyEqualIgnoresInstruction 确认文案、中间件和 ID 不算拓扑，MaxTurns 算。
 func TestLoopTopologyEqualIgnoresInstruction(t *testing.T) {
 	a := LoopPreset{ID: "a", MaxTurns: 12, CompactionKeep: 8, Bootstrap: "old", Verification: "v"}
 	b := a
@@ -20,6 +23,7 @@ func TestLoopTopologyEqualIgnoresInstruction(t *testing.T) {
 	}
 }
 
+// TestSetInstructionSlotRuntime 确认 runtime 写入 Execution，middleware 会把未设的次数写成 2。
 func TestSetInstructionSlotRuntime(t *testing.T) {
 	p := LoopPreset{}.SetInstructionSlot("runtime", "implement then verify")
 	if p.Execution != "implement then verify" {

@@ -1,3 +1,5 @@
+// 本文件拥有一轮工具过程的折叠、进行中的标题和单条工具行。不拥有工具怎么配对，那一步在 transcript-layout。Transcript、SubagentCard 和 TurnStatusBar 使用它。
+
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AtSign, Bot, Brain, ChevronRight, CircleDashed, MessageSquare, X } from "lucide-react";
@@ -43,9 +45,10 @@ import {
 
 type TranscriptCopy = Copy["transcript"];
 
-/** Harness process title hold: the live verb cannot flip faster than this. */
+// 进行中的动词不能比 150 毫秒更快地换成下一个。
 const PROCESS_TITLE_MINIMUM_MS = 150;
 
+// 不在进行中时立刻跟上 key。进行中时若 key 变了，先等到距上次稳住满 150 毫秒。
 function useStableLiveKey(key: string, live: boolean): string {
   const [shown, setShown] = useState(key);
   const heldAt = useRef(Date.now());
@@ -69,7 +72,7 @@ function useStableLiveKey(key: string, live: boolean): string {
   return live ? shown : key;
 }
 
-/** One-second clock that only ticks while something is live. */
+// useNow 只在 active 为真时每 1000 毫秒走一格。停下后不再计时。
 export function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -81,11 +84,7 @@ export function useNow(active: boolean): number {
   return now;
 }
 
-/**
- * The turn is alive but no tool is in flight: model is composing. `since`
- * is the last user message so the clock does not restart at every batch
- * (Codex falls back to the user timestamp the same way).
- */
+// WorkingLine 用在回合还活着、但没有工具在飞的时候。since 是上一条用户消息的时间，时钟不在每一批重新起算。没有 since，或 now 不大于 since，就不显示耗时。
 export function WorkingLine({
   since,
   label,
@@ -118,6 +117,7 @@ export function WorkingLine({
   );
 }
 
+// ProcessGroup 默认收成一组，liveDetail 默认打开。用户没点过时，分组的默认是合上。展开后先显示一页，再按 PROCESS_PAGE 往前补。进行中且没有当前工具时标题停在 composing。
 export const ProcessGroup = memo(function ProcessGroup({
   items: rawItems,
   live,
@@ -263,6 +263,7 @@ export const ProcessGroup = memo(function ProcessGroup({
     </div>
   );
 }, (a, b) => (
+  // 这些字段和每条 item 的引用都没变时跳过这次渲染。
   a.live === b.live
   && a.running === b.running
   && a.compact === b.compact
@@ -273,6 +274,7 @@ export const ProcessGroup = memo(function ProcessGroup({
   && a.items.every((it, i) => it === b.items[i])
 ));
 
+// 没有调用也没有结果时显示思考。kind 为 other 时用工具名填 other。detail 不为 false 时，字节超过 2048 且带 progress 才显示 KB。
 function LiveLabel({ pair, t, detail }: { pair?: ToolPair; t: TranscriptCopy; detail?: boolean }) {
   if (!pair?.call && !pair?.result) {
     return <span className="shimmer-text font-medium">{t.live.think}</span>;
@@ -294,6 +296,7 @@ function LiveLabel({ pair, t, detail }: { pair?: ToolPair; t: TranscriptCopy; de
   );
 }
 
+// 有调用或结果就画一条 ToolLine，其余条目交给 ProcessExtra。
 function ProcessPair({
   pair,
   running,
@@ -327,6 +330,7 @@ function ProcessPair({
   );
 }
 
+// 传入 icon 就用它。否则 running 用圆点，failed 用叉，interrupted 用虚线圈，其余用实心点。compact 时底色用侧栏。
 function StepGlyph({ state, compact, icon }: { state: PairState | "note"; compact?: boolean; icon?: ReactNode }) {
   return (
     <span
@@ -345,6 +349,7 @@ function StepGlyph({ state, compact, icon }: { state: PairState | "note"; compac
   );
 }
 
+// 点整行切换展开。open 为真且有 children 才放出正文。减少动效时不做高度动画。
 function StepRow({
   glyph,
   label,
@@ -409,6 +414,7 @@ function StepRow({
   );
 }
 
+// 缺省截到 4000。语言猜不出来时交给 guessLang。
 function CodeSurface({ text, cap = 4000, dim, lang }: { text: string; cap?: number; dim?: boolean; lang?: string }) {
   return (
     <CodePreview
@@ -421,6 +427,7 @@ function CodeSurface({ text, cap = 4000, dim, lang }: { text: string; cap?: numb
   );
 }
 
+// live 为真时在末尾留一个光标块。
 function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
   return (
     <pre
@@ -433,6 +440,7 @@ function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
   );
 }
 
+// read 用代码面，search 只取前 40 条非空行，web 把地址和正文分开。
 function TypedToolBody(props: {
   kind: "read" | "search" | "web";
   text: string;
@@ -468,6 +476,7 @@ function TypedToolBody(props: {
   );
 }
 
+// 以 { 或 [ 开头当 json，以 diff、--- 或 *** Begin Patch 开头当 diff，其余当 text。
 function guessLang(text: string): string {
   const t = text.trim();
   if (t.startsWith("{") || t.startsWith("[")) return "json";
@@ -475,6 +484,7 @@ function guessLang(text: string): string {
   return "text";
 }
 
+// 流式时强制展开。推理、进度、子代理和上下文注入各走一行；对不上就什么都不画。没有 onOpenChild 时，打开子会话会先 dump，再把路径或子会话 id 写入剪贴板。
 function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: boolean; onOpenChild?: (id: string) => void }) {
   const copy = useCopy();
   const streaming = !!item.delta || !!item.payload?.streaming;
@@ -605,8 +615,10 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
   return null;
 }
 
+// 摘要里种类的先后。最多只用前三种。
 const TALLY_ORDER: ToolKind[] = ["edit", "run", "read", "search", "web", "list", "plan", "skill", "other"];
 
+// 有计数就取前三种拼起来。没有计数时依次退到推理耗时、进度条数、子代理、技能，最后是进行中文案。一条用单数文案。
 function summarize(items: Item[], t: TranscriptCopy): string {
   const tally = processKindTally(items);
   const parts: string[] = [];
@@ -629,6 +641,7 @@ function summarize(items: Item[], t: TranscriptCopy): string {
   return t.working;
 }
 
+// 推理取 reasoningText。其余按 text、summary、prompt、note、question 取第一条非空。
 function readableExtra(item: Item): string {
   if (item.payload?.groupPart === "reasoning" || item.type === "reasoning") {
     return reasoningText(item);
@@ -642,6 +655,7 @@ function readableExtra(item: Item): string {
   return "";
 }
 
+// 没有调用，或正文是空、{}、null，就返回空字符串。
 function argsPreview(call?: Item): string {
   if (!call) return "";
   const raw = formatToolBody(call).trim();
@@ -649,6 +663,7 @@ function argsPreview(call?: Item): string {
   return raw;
 }
 
+// ToolLine 在 pending 且 running 时自动展开。pending 但不在跑算中断，结果失败算失败，否则算完成。read、search、web 不画输入。shell 用终端，补丁类输出用 diff。
 export function ToolLine({
   item,
   call,

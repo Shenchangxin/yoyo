@@ -6,6 +6,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/winsize"
 )
 
+// TestCompanionCallWindowIsDraggable 锁住通话卡片内部可以拖，卡片外不命中。
 func TestCompanionCallWindowIsDraggable(t *testing.T) {
 	companionInteractive.Store(true)
 	t.Cleanup(func() { companionInteractive.Store(false) })
@@ -21,6 +22,7 @@ func TestCompanionCallWindowIsDraggable(t *testing.T) {
 	}
 }
 
+// TestCompanionChildRegionDuringCall 锁住和通话窗口一样大的子窗口贴形状，仍是空闲尺寸或很小的子窗口在通话中清掉裁剪，空闲时尺寸不匹配则跳过。
 func TestCompanionChildRegionDuringCall(t *testing.T) {
 	parentW, parentH := companionCallW, companionCallH
 	if companionChildRegion(parentW, parentH, parentW, parentH, true) != companionChildShape {
@@ -40,6 +42,7 @@ func TestCompanionChildRegionDuringCall(t *testing.T) {
 	}
 }
 
+// TestCompanionCallKeepsBottomRight 锁住通话窗口长大后，空闲窗口的右下角还在原处。
 func TestCompanionCallKeepsBottomRight(t *testing.T) {
 	x, y := companionCallOrigin(1000, 700, companionW, companionIdleH)
 	if x+companionCallW != 1000+companionW || y+companionCallH != 700+companionIdleH {
@@ -47,6 +50,7 @@ func TestCompanionCallKeepsBottomRight(t *testing.T) {
 	}
 }
 
+// TestCompanionHitDisk 锁住宠物圆盘中心和内部命中，圆外的角和窗口四角穿透。
 func TestCompanionHitDisk(t *testing.T) {
 	w, h := float64(companionW), float64(companionIdleH)
 	cx, cy := w/2, float64(companionPetTop)+float64(companionPet)/2
@@ -70,6 +74,7 @@ func TestCompanionHitDisk(t *testing.T) {
 	}
 }
 
+// TestCompanionIdleWindowCoversPaint 锁住空闲区域盖住宠物框和绘制范围，且不吃掉左右留白。
 func TestCompanionIdleWindowCoversPaint(t *testing.T) {
 	w, h := float64(companionW), float64(companionIdleH)
 	rx, ry, rw, rh := companionPetRegionRect(w, h, false)
@@ -100,6 +105,7 @@ func TestCompanionIdleWindowCoversPaint(t *testing.T) {
 	}
 }
 
+// TestCompanionShapeLeavesChrome 锁住宠物中心在区域内，四角留白在区域外，绘制的头顶和下巴不被裁掉。
 func TestCompanionShapeLeavesChrome(t *testing.T) {
 	w, h := float64(companionW), float64(companionIdleH)
 	x, y, rw, rh := companionPetRegionRect(w, h, false)
@@ -130,6 +136,7 @@ func TestCompanionShapeLeavesChrome(t *testing.T) {
 	}
 }
 
+// TestCompanionRegionCoversBlobHips 锁住圆角不是整圆，宠物框四角和上下缘都落在圆角矩形里。
 func TestCompanionRegionCoversBlobHips(t *testing.T) {
 	w, h := float64(companionW), float64(companionIdleH)
 	x, y, rw, rh := companionPetRegionRect(w, h, false)
@@ -156,6 +163,7 @@ func TestCompanionRegionCoversBlobHips(t *testing.T) {
 	}
 }
 
+// TestCompanionHitCaption 锁住字幕关闭时字幕槽不命中，打开时命中，字幕两侧仍穿透。
 func TestCompanionHitCaption(t *testing.T) {
 	w, h := float64(companionW), float64(companionFrameH(true))
 	bx := w / 2
@@ -174,6 +182,7 @@ func TestCompanionHitCaption(t *testing.T) {
 	}
 }
 
+// TestCompanionCaptionGrowsWithContent 锁住默认字幕是气泡尺寸，测到 200 乘 88 后变高但顶边不动，高字幕仍能点到，旁边穿透。
 func TestCompanionCaptionGrowsWithContent(t *testing.T) {
 	setCompanionCaptionBox(0, 0)
 	t.Cleanup(func() { setCompanionCaptionBox(0, 0) })
@@ -205,6 +214,7 @@ func TestCompanionCaptionGrowsWithContent(t *testing.T) {
 	}
 }
 
+// TestCompanionCaptionStaysOnScreen 锁住长字幕夹在底边留白之上，无字幕高度等于空闲高度，有字幕时更高。
 func TestCompanionCaptionStaysOnScreen(t *testing.T) {
 	setCompanionCaptionBox(220, 140)
 	t.Cleanup(func() { setCompanionCaptionBox(0, 0) })
@@ -224,12 +234,13 @@ func TestCompanionCaptionStaysOnScreen(t *testing.T) {
 	}
 }
 
+// TestClampCompanionToNearestWorkArea 锁住两块屏幕之间的空隙会吸到其中一块上，且不会停在工作区上方。
 func TestClampCompanionToNearestWorkArea(t *testing.T) {
 	boxes := []hitBox{
 		{0, 0, 1920, 1080},
 		{1920, 200, 800, 800},
 	}
-	// Gap above the second monitor, right of the first.
+	// 第一块屏幕右侧、第二块屏幕上方的空隙。
 	x, y := clampCompanionTo(2000, 20, companionW, companionH, companionPad, boxes, 0, 0, 2720, 1080)
 	onFirst := winsize.FullyInside(x, y, companionW, companionH, boxes[0].x, boxes[0].y, boxes[0].w, boxes[0].h)
 	onSecond := winsize.FullyInside(x, y, companionW, companionH, boxes[1].x, boxes[1].y, boxes[1].w, boxes[1].h)
@@ -241,6 +252,7 @@ func TestClampCompanionToNearestWorkArea(t *testing.T) {
 	}
 }
 
+// TestClampCompanionStaysOnPrimary 锁住宠物夹在主屏幕内，并留出 companionPad。
 func TestClampCompanionStaysOnPrimary(t *testing.T) {
 	boxes := []hitBox{{0, 0, 1920, 1080}}
 	x, y := clampCompanionTo(1900, 1000, companionW, companionH, companionPad, boxes, 0, 0, 1920, 1080)

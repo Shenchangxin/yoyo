@@ -1,3 +1,6 @@
+// 锁住实时副本不改 JSONL 原文：重写入调用只留路径桩，工具结果和已结算助手文本按字节裁切，delta 文本不裁。
+// 界面轨迹丢掉 file_change，并丢掉已被后续进展盖住的错误。
+
 package runtime
 
 import (
@@ -8,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestCompactCallArgsOmitsFileBytes 确认 str_replace 的长正文被收成带 _elided 的桩，粘贴回去会被拒绝。
 func TestCompactCallArgsOmitsFileBytes(t *testing.T) {
 	body := strings.Repeat("const GROUND = H - 78;\n", 400)
 	args := `{"path":"game.html","new_str":` + mustJSONString(body) + `,"old_str":"x"}`
@@ -26,6 +30,7 @@ func TestCompactCallArgsOmitsFileBytes(t *testing.T) {
 	}
 }
 
+// TestSlimLiveEventStubsWriteArgs 确认实时副本去掉 write_file 正文并记下 bytes，原 payload 仍是全文。
 func TestSlimLiveEventStubsWriteArgs(t *testing.T) {
 	body := strings.Repeat("x", 4000)
 	args := `{"path":"a.ts","content":"` + body + `"}`
@@ -44,6 +49,7 @@ func TestSlimLiveEventStubsWriteArgs(t *testing.T) {
 	}
 }
 
+// TestSlimLiveEventStubsTruncatedWritePath 确认截断的写入参数在实时副本里只留 path，原文仍保留半截正文。
 func TestSlimLiveEventStubsTruncatedWritePath(t *testing.T) {
 	args := `{"path": "pelican-bike.html", "content": "<!DOCTYPE html>\n<html`
 	ev := trace.Event{Type: trace.TypeToolCall, Payload: map[string]any{"name": "write_file", "arguments": args, "id": "w1"}}
@@ -63,6 +69,7 @@ func TestSlimLiveEventStubsTruncatedWritePath(t *testing.T) {
 	}
 }
 
+// TestSlimLiveEventLeavesShellAlone 确认 shell 参数不被瘦身。
 func TestSlimLiveEventLeavesShellAlone(t *testing.T) {
 	args := `{"cmd":"echo hi"}`
 	ev := trace.Event{Type: trace.TypeToolCall, Payload: map[string]any{"name": "shell", "arguments": args}}
@@ -72,6 +79,7 @@ func TestSlimLiveEventLeavesShellAlone(t *testing.T) {
 	}
 }
 
+// TestSlimTrajectoryStubsWriteArgs 确认界面投影去掉写入正文，存储事件仍保留全文。
 func TestSlimTrajectoryStubsWriteArgs(t *testing.T) {
 	body := strings.Repeat("z", 4000)
 	args := `{"path":"b.ts","content":"` + body + `"}`
@@ -89,6 +97,7 @@ func TestSlimTrajectoryStubsWriteArgs(t *testing.T) {
 	}
 }
 
+// TestSlimLiveEventCapsToolResult 确认工具结果按 uiResultBytes 裁切并带省略号，原 payload 仍是全文。
 func TestSlimLiveEventCapsToolResult(t *testing.T) {
 	body := strings.Repeat("log\n", 2000)
 	orig := map[string]any{"name": "shell", "content": body, "id": "c1"}
@@ -103,6 +112,7 @@ func TestSlimLiveEventCapsToolResult(t *testing.T) {
 	}
 }
 
+// TestSlimLiveEventDropsAssistantStreamTape 确认实时助手事件丢掉 stream，原文仍保留这份磁带。
 func TestSlimLiveEventDropsAssistantStreamTape(t *testing.T) {
 	tape := []any{
 		map[string]any{"type": "text-delta", "text": strings.Repeat("x", 4000)},
@@ -121,6 +131,7 @@ func TestSlimLiveEventDropsAssistantStreamTape(t *testing.T) {
 	}
 }
 
+// TestUITrajectoryCapsSettledAssistant 确认已结算助手文本按 uiAssistantBytes 裁切，delta 为真的文本保持原长。
 func TestUITrajectoryCapsSettledAssistant(t *testing.T) {
 	body := strings.Repeat("a", 40_000)
 	orig := map[string]any{"text": body, "id": "r1"}
@@ -145,6 +156,7 @@ func TestUITrajectoryCapsSettledAssistant(t *testing.T) {
 	}
 }
 
+// TestUITrajectoryKeepsTurnsDropsNoise 确认新旧用户回合和全部工具调用都留着，file_change 不进入界面轨迹。
 func TestUITrajectoryKeepsTurnsDropsNoise(t *testing.T) {
 	var evs []trace.Event
 	evs = append(evs, trace.Event{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "old"}})
@@ -188,6 +200,7 @@ func TestUITrajectoryKeepsTurnsDropsNoise(t *testing.T) {
 	}
 }
 
+// TestUITrajectoryKeepsLongTurn 确认长回合的 3 条助手和 120 次工具调用都留着，最后一条助手 id 是 s:r3。
 func TestUITrajectoryKeepsLongTurn(t *testing.T) {
 	var evs []trace.Event
 	evs = append(evs, trace.Event{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "build"}})
@@ -219,6 +232,7 @@ func TestUITrajectoryKeepsLongTurn(t *testing.T) {
 	}
 }
 
+// TestUITrajectoryDropsSupersededErrors 确认停在回合末尾的错误留下，后面又有助手进展时这张停止卡片被去掉。
 func TestUITrajectoryDropsSupersededErrors(t *testing.T) {
 	stopped := trace.Event{Type: trace.TypeError, Payload: map[string]any{"kind": "canceled", "title": "Stopped", "hint": "This turn was interrupted."}}
 	kept := UITrajectory([]trace.Event{
@@ -240,6 +254,7 @@ func TestUITrajectoryDropsSupersededErrors(t *testing.T) {
 	}
 }
 
+// countType 数某一类事件的条数。
 func countType(evs []trace.Event, typ trace.EventType) int {
 	n := 0
 	for _, ev := range evs {

@@ -17,6 +17,7 @@ type cursorPoint struct {
 	x, y int32
 }
 
+// desktopCursorCSS 读取屏幕光标，并按该点 DPI 除以 96 换成 CSS 像素。GetCursorPos 失败时返回假。
 func desktopCursorCSS() (x, y float64, ok bool) {
 	var pt cursorPoint
 	r, _, _ := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))

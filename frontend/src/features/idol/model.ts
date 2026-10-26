@@ -1,3 +1,9 @@
+/**
+ * 拥有：偶像、圈子、好感、会话和快照的类型，以及从接口对象整理这些类型、分组、时间和错误文案。
+ * 不拥有：界面和请求。这是服务端载荷的投影，不改服务端状态。
+ */
+
+/** Idol 一个偶像的身份、人设、声音、头像、圈子、工作和外观。 */
 export type Idol = {
   id: string;
   name: string;
@@ -20,10 +26,15 @@ export type Idol = {
   liked_gifts: string[];
 };
 
+/** Circle 是一个圈子的编号和名字。 */
 export type Circle = { id: string; name: string };
+/** Affinity 是对某个偶像的分数、段位和冷却截止。 */
 export type Affinity = { idol_id: string; score: number; tier: string; cooldown_until: string };
+/** Lore 是挂在某个偶像上的一条设定。 */
 export type Lore = { id: string; idol_id: string; title: string; body: string };
+/** Segment 一轮回复里的口播和字幕。 */
 export type Segment = { spoken?: string; subtitle?: string };
+/** Rec 会话里的一条记录：用户原文、分段、工作会话、礼物、照片和分数变化。 */
 export type Rec = {
   id: string;
   kind: string;
@@ -35,6 +46,7 @@ export type Rec = {
   photo_id?: string;
   delta?: number;
 };
+/** Conversation 一段会话及其记录。current 表示当前段，ended 表示已结束。 */
 export type Conversation = {
   id: string;
   idol_id: string;
@@ -44,7 +56,9 @@ export type Conversation = {
   created_at: string;
   records: Rec[];
 };
+/** History 把当前会话和过去的会话分开。 */
 export type History = { current: Conversation | null; past: Conversation[] };
+/** Snap 一次快照：偶像、圈子、好感、设定、钉住的人和头像，以及能否聊天、仅文字、电话音和能否工作。 */
 export type Snap = {
   idols: Idol[];
   circles: Circle[];
@@ -58,11 +72,13 @@ export type Snap = {
   work: boolean;
 };
 
+/** Line 是画进对话里的一行，角色是用户、偶像或事件。 */
 export type Line =
   | { id: string; role: "user"; text: string; at?: string }
   | { id: string; role: "idol"; text: string; at?: string; photo?: string; work?: string; delta?: number }
   | { id: string; role: "event"; text: string; gift?: string; delta?: number };
 
+/** IdolErrors 是偶像错误码对应的界面文案。 */
 export type IdolErrors = {
   cooldown: string;
   ended: string;
@@ -76,6 +92,7 @@ export type IdolErrors = {
   missing: string;
 };
 
+/** blankIdol 一份空白偶像。颜色和语言有默认，工作默认开。 */
 export function blankIdol(): Idol {
   return {
     id: "", name: "", intro: "", color: "#c47b8a", spoken_lang: "zh", subtitle_lang: "zh",
@@ -84,20 +101,24 @@ export function blankIdol(): Idol {
   };
 }
 
+/** 缺值时用空串，否则收成字符串。 */
 function str(v: unknown, fallback = ""): string {
   if (v == null) return fallback;
   return String(v);
 }
 
+/** 收成有限数字，否则用后备值。 */
 function num(v: unknown, fallback = 0): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** 是数组就原样返回，否则空数组。 */
 function list(v: unknown): any[] {
   return Array.isArray(v) ? v : [];
 }
 
+/** 按给出的字段名依次取第一个有值的。 */
 function pick(v: any, ...keys: string[]): unknown {
   if (v == null || typeof v !== "object") return undefined;
   for (const k of keys) {
@@ -106,6 +127,7 @@ function pick(v: any, ...keys: string[]): unknown {
   return undefined;
 }
 
+/** idolOf 从接口对象整理偶像。缺颜色用默认。工作开关只有明确 false 才关。 */
 export function idolOf(v: any): Idol {
   const base = blankIdol();
   if (!v || typeof v !== "object") return base;
@@ -133,10 +155,12 @@ export function idolOf(v: any): Idol {
   };
 }
 
+/** circleOf 把接口对象收成圈子。 */
 export function circleOf(v: any): Circle {
   return { id: str(pick(v, "id", "ID")), name: str(pick(v, "name", "Name")) };
 }
 
+/** affinityOf 在列表里找该偶像的好感。没有则 50 分、trust、无冷却。 */
 export function affinityOf(listIn: unknown, idolId: string): Affinity {
   const raw = list(listIn).find((a) => str(pick(a, "idol_id", "IdolID")) === idolId);
   if (!raw) return { idol_id: idolId, score: 50, tier: "trust", cooldown_until: "" };
@@ -148,6 +172,7 @@ export function affinityOf(listIn: unknown, idolId: string): Affinity {
   };
 }
 
+/** 整理一条会话记录，分段收成口播和字幕。 */
 function recOf(v: any): Rec {
   return {
     id: str(pick(v, "id", "ID")),
@@ -165,6 +190,7 @@ function recOf(v: any): Rec {
   };
 }
 
+/** conversationOf 把接口对象收成一段会话。 */
 export function conversationOf(v: any): Conversation {
   return {
     id: str(pick(v, "id", "ID")),
@@ -177,6 +203,7 @@ export function conversationOf(v: any): Conversation {
   };
 }
 
+/** historyOf 把当前和过去的会话分开，丢掉没有编号的过去项。 */
 export function historyOf(v: any): History {
   const cur = v?.current ?? v?.Current;
   return {
@@ -185,6 +212,7 @@ export function historyOf(v: any): History {
   };
 }
 
+/** loreOf 把接口对象收成一条设定。 */
 export function loreOf(v: any): Lore {
   return {
     id: str(pick(v, "id", "ID")),
@@ -194,6 +222,7 @@ export function loreOf(v: any): Lore {
   };
 }
 
+/** snapOf 整理快照。钉住的人可以是对象，也可以是列表里 pinned 的那个。work 只有明确 false 才关。 */
 export function snapOf(v: any): Snap {
   const idols = list(v?.idols ?? v?.Idols).map(idolOf);
   const pinned = v?.pinned ?? v?.Pinned;
@@ -212,6 +241,7 @@ export function snapOf(v: any): Snap {
   };
 }
 
+/** linesOf 把记录收成对话行。事件或礼物单独成行。没有字幕、照片和工作会话的偶像轮次不出现。 */
 export function linesOf(records: Rec[]): Line[] {
   const out: Line[] = [];
   for (const r of records) {
@@ -236,8 +266,10 @@ export function linesOf(records: Rec[]): Line[] {
   return out;
 }
 
+/** groupIdols 按圈子分组可见偶像。钉住的排在组内和组间前面。没有圈子或圈子不存在的归到无名组。 */
 export function groupIdols(idols: Idol[], circles: Circle[]): { id: string; name: string; idols: Idol[] }[] {
   const visible = idols.filter((i) => !i.hidden);
+  /** 置顶的排前面，其余按名字排。 */
   const order = (listIn: Idol[]) => [...listIn].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name, "zh"));
   const known = new Set(circles.map((c) => c.id));
   const groups = circles
@@ -254,12 +286,14 @@ export function groupIdols(idols: Idol[], circles: Circle[]): { id: string; name
   return groups;
 }
 
+/** isCooling 冷却截止还在现在之后则为真。空或无法解析为假。 */
 export function isCooling(iso: string | undefined, now = Date.now()): boolean {
   if (!iso) return false;
   const t = Date.parse(iso);
   return Number.isFinite(t) && t > now;
 }
 
+/** clock 今天只显示时分，更早的加上月日。无法解析则空。 */
 export function clock(iso?: string, now = Date.now()): string {
   if (!iso) return "";
   const t = Date.parse(iso);
@@ -270,6 +304,7 @@ export function clock(iso?: string, now = Date.now()): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
 
+/** whenLabel 显示月日和时分。无法解析则空。 */
 export function whenLabel(iso: string | undefined, now = Date.now()): string {
   if (!iso) return "";
   const t = Date.parse(iso);
@@ -279,11 +314,13 @@ export function whenLabel(iso: string | undefined, now = Date.now()): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
 
+/** mmss 把毫秒收成 mm:ss。负的当 0。 */
 export function mmss(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** imageURL 把 base64 收成 data URL。按魔数判断 jpeg、png、gif、webp，其余当 png。已带逗号的只取逗号后。 */
 export function imageURL(b64: string): string {
   const raw = b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64;
   const mime = raw.startsWith("/9j/") ? "image/jpeg"
@@ -294,6 +331,7 @@ export function imageURL(b64: string): string {
   return `data:${mime};base64,${raw}`;
 }
 
+/** hexAlpha 把六位色写成带透明度的颜色，不合规则用后备色。 */
 export function hexAlpha(hex: string, alpha: number): string {
   const h = hex.trim().replace("#", "");
   if (!/^[0-9a-fA-F]{6}$/.test(h)) return `rgba(196,123,138,${alpha})`;
@@ -301,6 +339,7 @@ export function hexAlpha(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
+/** idolError 按错误原文选一句界面文案。对不上则去掉 /api/idol 前缀，仍空则用空回复那句。 */
 export function idolError(err: unknown, copy: IdolErrors): string {
   const msg = String((err as { message?: string })?.message || err || "").trim();
   const low = msg.toLowerCase();
@@ -317,12 +356,14 @@ export function idolError(err: unknown, copy: IdolErrors): string {
   return msg.replace(/^\/api\/idol:\s*/i, "") || copy.emptyReply;
 }
 
+/** achievementLabel 亲密和亲近成就套上名字，其余查表，没有则用 id。 */
 export function achievementLabel(id: string, names: Record<string, string>, ach: Record<string, string>, closeTpl: string, intimateTpl: string): string {
   if (id.startsWith("intimate:")) return intimateTpl.replace("{name}", names[id.slice("intimate:".length)] || "");
   if (id.startsWith("close:")) return closeTpl.replace("{name}", names[id.slice("close:".length)] || "");
   return ach[id] || id;
 }
 
+/** tierText 把段位编号换成文案，没有就留编号。 */
 export function tierText(tiers: Record<string, string>, tier: string): string {
   return tiers[tier] || tier;
 }

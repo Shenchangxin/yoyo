@@ -1,3 +1,6 @@
+// 把 browser_open 的目标收成工作区相对路径，并拆出 lane 与 profile。
+// 工作区预览调用 WorkspaceTools.resolve。http、https 和 data: 不是工作区预览。不启动 Chrome。
+
 package runtime
 
 import (
@@ -11,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+// parseBrowserOpen 从目标文本里拆出 lane 和 profile。默认 lane 是 isolated。lane=attached 改成 attached。
 func parseBrowserOpen(raw string) (target, lane, profile string) {
 	target = strings.TrimSpace(raw)
 	lane = "isolated"
@@ -31,6 +35,7 @@ func parseBrowserOpen(raw string) (target, lane, profile string) {
 	return strings.Join(kept, " "), lane, profile
 }
 
+// browserHandle 优先用 ref，并补上 ref= 前缀。没有 ref 时返回 selector。
 func browserHandle(args map[string]any) string {
 	if args == nil {
 		return ""
@@ -44,17 +49,19 @@ func browserHandle(args map[string]any) string {
 	return strings.TrimSpace(str(args["selector"]))
 }
 
+// isRemoteBrowserURL 判断目标是不是 http 或 https。
 func isRemoteBrowserURL(raw string) bool {
 	low := strings.ToLower(strings.TrimSpace(raw))
 	return strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://")
 }
 
+// isDataURL 判断目标是不是 data:。
 func isDataURL(raw string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "data:")
 }
 
-// workspacePreviewRel maps a browser_open target to a workspace-relative path.
-// Remote http(s) and data: URLs are not workspace previews.
+// workspacePreviewRel 把 browser_open 的目标收成相对工作区的路径。远程 http(s) 和 data: 不是工作区预览。
+// workspace:// 去掉前缀，file: 先译成路径。然后调用 WorkspaceTools.resolve，文件必须已经存在。
 func (t *WorkspaceTools) workspacePreviewRel(raw string) (string, error) {
 	if t == nil || strings.TrimSpace(t.Workspace) == "" {
 		return "", fmt.Errorf("browser_open: no workspace")
@@ -89,6 +96,7 @@ func (t *WorkspaceTools) workspacePreviewRel(raw string) (string, error) {
 	return filepath.ToSlash(out), nil
 }
 
+// fileURLToPath 把 file: URL 收成路径。Windows 上去掉盘符前多余的斜杠，再经 CanonicalizeToolPath。
 func fileURLToPath(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {

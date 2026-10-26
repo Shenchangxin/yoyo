@@ -1,3 +1,6 @@
+// 短片镜头的生图、封面、发布文案，以及从网址或长视频里取素材。
+// 不合成成片。
+
 package video
 
 import (
@@ -15,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
+// shotPrompt 拼这一镜的生图提示。优先用画面说明，其次提示、字幕，再其次整段口播。风格、要保住的和不要出现的会包在外面。
 func (e *Engine) shotPrompt(p StudioProject, shot StudioShot) string {
 	visual := strings.TrimSpace(shot.Visual)
 	if visual == "" {
@@ -40,6 +44,8 @@ func (e *Engine) shotPrompt(p StudioProject, shot StudioShot) string {
 	return strings.TrimSpace(b.String())
 }
 
+// GenerateStudioShot 给一镜排队生图。口播还没锁定，或找不到镜头，或提示是空的，就拒绝。镜头编号空着就用第一镜。
+// 已有图就拿它做参考，否则用身份上的参考图。排队成功后把任务编号写上，并把这一镜标成过期，等结果回来再清掉。
 func (e *Engine) GenerateStudioShot(id, shotID string) (Job, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -86,6 +92,7 @@ func (e *Engine) GenerateStudioShot(id, shotID string) (Job, error) {
 	return j, nil
 }
 
+// GenerateMissingStudioShots 给还没有可用画面的镜头排队生图。图还在且没过期、又没有视频的会跳过。视频还在且没过期的也会跳过。中途失败时返回已经排上的任务。
 func (e *Engine) GenerateMissingStudioShots(id string) ([]Job, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -111,6 +118,7 @@ func (e *Engine) GenerateMissingStudioShots(id string) ([]Job, error) {
 	return jobs, nil
 }
 
+// applyStudioJob 把完成的任务写回短片。封面任务追加到候选，还没有选中封面时用这一张。镜头任务写下图或视频，并留下上一版，同时清掉过期。没有工程编号或没有结果就直接返回。
 func (e *Engine) applyStudioJob(j Job, params JobParams) error {
 	if params.StudioProjectID == "" || j.ResultHash == "" {
 		return nil
@@ -156,6 +164,7 @@ func (e *Engine) applyStudioJob(j Job, params JobParams) error {
 	return err
 }
 
+// markStudioJobFailed 记下镜头生图失败。封面任务不处理。这一镜已经有图或视频时清掉过期，避免旧画面被卡死。
 func (e *Engine) markStudioJobFailed(j Job) {
 	params := parseParams(j.Params)
 	if params.StudioProjectID == "" || params.StudioKind == "cover" {
@@ -178,6 +187,7 @@ func (e *Engine) markStudioJobFailed(j Job) {
 	}
 }
 
+// GenerateStudioCover 按标题排队一张封面。有海报就用海报做参考，否则用第一张镜头图。
 func (e *Engine) GenerateStudioCover(id string) (Job, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -211,6 +221,7 @@ func (e *Engine) GenerateStudioCover(id string) (Job, error) {
 	return j, nil
 }
 
+// PickStudioCover 把选中的封面编号写上工程。编号空着就拒绝。不检查它是不是候选里的一张。
 func (e *Engine) PickStudioCover(id, hash string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -225,6 +236,7 @@ func (e *Engine) PickStudioCover(id, hash string) (StudioProject, error) {
 	return e.saveStudio(p)
 }
 
+// WriteStudioCopy 按平台把发布文案写上工程，并尽量把正文放进内容库。平台非空时改工程的平台。不编造经历或功效。
 func (e *Engine) WriteStudioCopy(id, platform string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -243,6 +255,7 @@ func (e *Engine) WriteStudioCopy(id, platform string) (StudioProject, error) {
 	return e.saveStudio(p)
 }
 
+// ExpandTopic 给选题写三个固定角度。不调用模型，也不改分数。
 func (e *Engine) ExpandTopic(id string) (Topic, error) {
 	t, err := e.GetTopic(id)
 	if err != nil {
@@ -258,6 +271,7 @@ func (e *Engine) ExpandTopic(id string) (Topic, error) {
 	return e.SaveTopic(t)
 }
 
+// ChooseTopicOption 把选中的角度写回标题、角度和备注。找不到这个角度就拒绝。
 func (e *Engine) ChooseTopicOption(id, optionID string) (Topic, error) {
 	t, err := e.GetTopic(id)
 	if err != nil {
@@ -280,6 +294,7 @@ func (e *Engine) ChooseTopicOption(id, optionID string) (Topic, error) {
 	return t, fmt.Errorf("option not found")
 }
 
+// IngestStudioURL 把一个公开地址收成新的一镜。视频写成视频编号，其他写成图编号。地址空着就拒绝。
 func (e *Engine) IngestStudioURL(id, rawURL string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -304,6 +319,7 @@ func (e *Engine) IngestStudioURL(id, rawURL string) (StudioProject, error) {
 	return e.saveStudio(p)
 }
 
+// fetchMediaURL 优先用 PATH 里的 yt-dlp 下载。没有就直接 HTTP 下载，最多 80MB。空文件或状态码大于等于 300 都算失败。
 func (e *Engine) fetchMediaURL(rawURL string) (hash, mime string, err error) {
 	if ytdlp, lookErr := exec.LookPath("yt-dlp"); lookErr == nil {
 		tmp, terr := os.MkdirTemp(e.Dir, "ingest-*")
@@ -358,16 +374,20 @@ func (e *Engine) fetchMediaURL(rawURL string) (hash, mime string, err error) {
 	return h, ct, err
 }
 
+// StudioClip 是从一条长视频里切出的一段。
 type StudioClip struct {
-	ID       string         `json:"id"`
-	Hash     string         `json:"hash"`
-	Start    float64        `json:"start"`
-	End      float64        `json:"end"`
-	Title    string         `json:"title,omitempty"`
+	ID    string  `json:"id"`
+	Hash  string  `json:"hash"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+	Title string  `json:"title,omitempty"`
+	// Scores 是这段的能量、完整度之类的分数。切分没给时写成 3 和 3。
 	Scores   map[string]int `json:"scores,omitempty"`
 	MediaURL string         `json:"media_url,omitempty"`
 }
 
+// AutoClip 按场景和静音把一条长视频切成若干段，每段单独放进内容库。不把它们接成片。
+// 条数默认 3，最多 12。时长窗口 15-30 按 20 秒，60-90 按 75 秒，其余按 45 秒。没有 ffmpeg 就拒绝。
 func (e *Engine) AutoClip(hash string, count int, window string) ([]StudioClip, error) {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
@@ -439,6 +459,7 @@ func (e *Engine) AutoClip(hash string, count int, window string) ([]StudioClip, 
 	return out, nil
 }
 
+// ListStudioJobs 返回参数里带着这个短片编号的任务。没有时返回空切片。
 func (e *Engine) ListStudioJobs(projectID string) []Job {
 	projectID = strings.TrimSpace(projectID)
 	all := loadCol[Job](e, colJobs)
@@ -455,6 +476,7 @@ func (e *Engine) ListStudioJobs(projectID string) []Job {
 	return out
 }
 
+// probeFileSeconds 用指定的 ffprobe 读文件时长。输出不是数字就返回错误。
 func probeFileSeconds(ffprobe, path string) (float64, error) {
 	cmd := quiet(exec.Command(ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path))
 	b, err := cmd.CombinedOutput()
@@ -466,6 +488,7 @@ func probeFileSeconds(ffprobe, path string) (float64, error) {
 	return n, err
 }
 
+// trimErr 把命令输出收成一段错误文本，最长 400 个字符。输出是空的就用错误本身。
 func trimErr(b []byte, err error) string {
 	msg := strings.TrimSpace(string(b))
 	if msg == "" && err != nil {

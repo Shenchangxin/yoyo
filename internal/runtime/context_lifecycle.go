@@ -1,3 +1,6 @@
+// 会话上下文目录的复制和删除。分叉会话时复制 spill 和工作区里的 .yoyo/context，删除会话时两边一起清掉。
+// 不改 JSONL。轨迹文件由调用方另行复制。
+
 package runtime
 
 import (
@@ -5,6 +8,7 @@ import (
 	"path/filepath"
 )
 
+// CopyTree 把 src 复制到 dst。src 或 dst 为空，或 src 不存在时返回 nil。复制文件时保留原权限。
 func CopyTree(src, dst string) error {
 	if src == "" || dst == "" {
 		return nil
@@ -49,6 +53,7 @@ func CopyTree(src, dst string) error {
 	})
 }
 
+// RemoveSessionContext 删除 homeRoot/sessions/<sessionID>，以及工作区下的 .yoyo/context/<sessionID>。sessionID 为空则不动。
 func RemoveSessionContext(homeRoot, workspace, sessionID string) {
 	if sessionID == "" {
 		return

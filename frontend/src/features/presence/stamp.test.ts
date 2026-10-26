@@ -1,3 +1,4 @@
+/** 拥有信笺是静态休息脸、不会把活引擎送到某一轮上的断言。不拥有绘制。不改服务端。 */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = dirname(fileURLToPath(import.meta.url));
 
 describe("presence letterhead", () => {
+  /** 信笺是静态休息脸，活的引擎不会被送到某一轮上。 */
   it("renders a static rest face and never portals the live engine onto a turn", () => {
     const stamp = readFileSync(join(root, "PresenceRuntime.tsx"), "utf8");
     assert.match(stamp, /data-testid="presence-stamp"/);

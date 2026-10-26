@@ -1,3 +1,6 @@
+/**
+ * 本文件拥有短剧占位标题、风格封面和系列判断的断言。不改服务端。
+ */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -16,6 +19,7 @@ import {
 } from "./drama-lib.ts";
 
 describe("drama placeholder titles", () => {
+  /** 存下来的英文占位标题换成当前文案。 */
   it("maps stored English placeholders to the current locale", () => {
     assert.equal(shownSeriesTitle("Untitled", "新短剧"), "新短剧");
     assert.equal(shownSeriesTitle("Untitled series", "新短剧"), "新短剧");
@@ -24,6 +28,7 @@ describe("drama placeholder titles", () => {
     assert.equal(shownSeriesTitle("雨巷", "新短剧"), "雨巷");
   });
 
+  /** 未命名集按集数生成显示名。 */
   it("names untitled episodes from the episode number", () => {
     assert.equal(shownEpisodeTitle("Untitled episode", 2, "第 {n} 集"), "第 2 集");
     assert.equal(shownEpisodeTitle("Episode 1", 1, "第 {n} 集"), "第 1 集");
@@ -31,6 +36,7 @@ describe("drama placeholder titles", () => {
     assert.equal(shownEpisodeTitle("巷口夜", 1, "第 {n} 集"), "巷口夜");
   });
 
+  /** 占位字符串不会被当成真名字留下。 */
   it("does not persist placeholder strings as real names", () => {
     assert.equal(isPlaceholderSeries("Untitled series"), true);
     assert.equal(isPlaceholderEpisode("Untitled episode"), true);
@@ -41,6 +47,7 @@ describe("drama placeholder titles", () => {
 });
 
 describe("drama style covers", () => {
+  /** 预设风格有静帧路径，自定义值是空。 */
   it("maps preset looks to stills and leaves custom values empty", () => {
     assert.equal(isPresetDramaStyle("ghibli"), true);
     assert.equal(dramaStyleCover("ghibli"), "/drama-styles/ghibli.jpg");
@@ -58,6 +65,7 @@ describe("drama style covers", () => {
     assert.equal(presetStyleGroup("risograph"), "paint");
   });
 
+  /** 服务端列表旧了也还留着内置风格。 */
   it("keeps seeded looks when the server list is stale", () => {
     const merged = mergeDramaStyles([{ value: "3d", name: "三维电影" }, { value: "atelier", name: "Atelier" }]);
     assert.equal(merged[0]?.value, "3d");
@@ -68,10 +76,12 @@ describe("drama style covers", () => {
 });
 
 describe("series detection", () => {
+  /** 很短的一章仍走单集。 */
   it("keeps a short chapter on the one-episode path", () => {
     assert.equal(looksLikeSeries("林小雨在巷口等车。"), false);
   });
 
+  /** 长文或两章算系列。 */
   it("treats a long book or two chapters as a series", () => {
     assert.equal(looksLikeSeries("林小雨在巷口等车。".repeat(280)), true);
     assert.equal(looksLikeSeries("第一章 雨\n" + "她等了很久。".repeat(50) + "\n第二章 夜\n" + "他没有来。".repeat(50)), true);

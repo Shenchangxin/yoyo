@@ -1,3 +1,5 @@
+// 本文件拥有上下文用量、耗时和最近调用。不拥有这些数字怎么算，那一步在 context-usage。调用方传入 ctx 和 trace。
+
 import { RefreshCw } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
@@ -15,6 +17,7 @@ import {
 import type { ContextUsage, SessionTrace } from "../lib/protocol";
 import type { Copy } from "../lib/copy";
 
+// 每种切片对应一条颜色。free 在条上可以缩到 0 宽，图例里仍可能单独出现。
 const SLICE_TONE: Record<CtxSliceId, string> = {
   system: "bg-[var(--ctx-system)]",
   rules: "bg-[var(--ctx-rules)]",
@@ -28,6 +31,7 @@ const SLICE_TONE: Record<CtxSliceId, string> = {
   free: "bg-[var(--ctx-free)]",
 };
 
+// ContextPane 没有 sessionId 时只显示空状态。没有用量、耗时和调用时也显示空状态。命中率至少 70 用好颜色，低于 40 用警告色，没报出来不着色。最近调用只取末尾 8 条并倒序。
 export function ContextPane(props: {
   sessionId?: string;
   running?: boolean;
@@ -146,6 +150,7 @@ export function ContextPane(props: {
   );
 }
 
+// 百分比达到 90 用危险色。图例去掉 free，但 chat 即使 token 为 0 也留着。每段至少按 1 份伸展，free 不设最小宽度。
 function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; copy: Copy }) {
   const visible = br.slices.filter((s) => s.tokens > 0);
   const legend = br.slices.filter((s) => s.id !== "free" && (s.tokens > 0 || s.id === "chat"));
@@ -186,6 +191,7 @@ function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; co
   );
 }
 
+// 已知切片换成文案，其余当空闲。
 function sliceLabel(id: CtxSliceId, copy: Copy): string {
   switch (id) {
     case "system": return copy.composer.ctxSystem;
@@ -201,6 +207,7 @@ function sliceLabel(id: CtxSliceId, copy: Copy): string {
   }
 }
 
+// good 用绿色，warn 用琥珀色，没传 tone 用前景色。
 function Fact({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
   return (
     <div className="rounded-lg border border-border/60 bg-lift/30 px-2.5 py-2">
@@ -219,6 +226,7 @@ function Fact({ label, value, tone }: { label: string; value: string; tone?: "go
   );
 }
 
+// 居中的空状态，最小高度 10rem。
 function Empty({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center">

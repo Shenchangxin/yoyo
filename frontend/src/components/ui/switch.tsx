@@ -1,7 +1,10 @@
+// 本文件拥有开关的尺寸和开合颜色。不拥有开关代表的设置。调用方传入 checked 和 onCheckedChange。
+
 import type { ComponentProps } from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { cn } from "../../lib/utils";
 
+// Switch 在未选中时用 lift，选中时用 accent，拇指跟随 data-state 平移。
 export function Switch({ className, ...props }: ComponentProps<typeof SwitchPrimitive.Root>) {
   return (
     <SwitchPrimitive.Root

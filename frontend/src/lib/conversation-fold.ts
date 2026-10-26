@@ -1,3 +1,8 @@
+/**
+ * 拥有：把助手流帧折进同一条尝试。持久收束替换它，瞬时状态留到 step_end。
+ * 不拥有：帧的序号规则。那是 ClientAssistantStream 的事。
+ */
+
 import type { Item } from "./protocol";
 import { ClientAssistantStream, frameFromItem } from "./assistant-stream";
 import { sameUserTurnText } from "./mentions";
@@ -20,6 +25,7 @@ type AttemptState = {
   nextIndex: number;
 };
 
+/** 复制条目并盖上补丁。补丁里的 payload 与原载荷合并，并丢掉 stream。 */
 function cloneItem(it: Item, patch: Partial<Item> & { payload?: Record<string, any> }): Item {
   const payload = { ...it.payload, ...(patch.payload || {}) };
   delete payload.stream;
@@ -30,19 +36,23 @@ function cloneItem(it: Item, patch: Partial<Item> & { payload?: Record<string, a
   };
 }
 
+/** 助手条目的键，按会话和回合。 */
 function assistantKey(sessionId: string, round: string): string {
   return `${sessionId}:assistant:${round}`;
 }
 
+/** 账本类：回合与步骤的起止、收件箱、系统、评测、演化、文件变更、ask_user。 */
 function isLedger(type: string): boolean {
   return type === "turn_end" || type === "turn_start" || type === "step_start" || type === "step_end"
     || type === "inbox" || type === "system" || type === "eval" || type === "evolve" || type === "file_change" || type === "ask_user";
 }
 
+/** 从载荷解析内容块。解析不了则没有。 */
 function blocksOf(it: Item): ContentBlock[] | undefined {
   return parseContentBlocks(it.payload?.blocks);
 }
 
+/** 用内容块重写正文和推理，并丢掉 stream。有推理块才写入 reasoning。 */
 function applyBlocks(it: Item, blocks: ContentBlock[], extra?: Record<string, any>): Item {
   const text = textFromBlocks(blocks, "text");
   const reasoning = textFromBlocks(blocks, "reasoning");
@@ -57,6 +67,7 @@ function applyBlocks(it: Item, blocks: ContentBlock[], extra?: Record<string, an
   return cloneItem(it, { text, payload });
 }
 
+/** 载荷里没有 stream 时原样返回。有则去掉 stream。 */
 function dropStreamTape(payload: Record<string, any> | undefined): Record<string, any> {
   if (!payload || payload.stream == null) return payload || {};
   const next = { ...payload };
@@ -64,19 +75,18 @@ function dropStreamTape(payload: Record<string, any> | undefined): Record<string
   return next;
 }
 
+/** 取出 request_id，没有则取 requestId。 */
 function userRequestId(it: Item): string {
   return String(it.payload?.request_id || it.payload?.requestId || "");
 }
 
-/**
- * Seat fold: live StreamChunk frames update one assistant attempt; durable
- * settlement replaces it; transients stay until step_end.
- */
+/** ConversationFold 座位折叠。实时块更新同一次尝试，持久收束替换它，瞬时状态留到 step_end 或 turn_end。 */
 export class ConversationFold {
   private list: Item[] = [];
   private readonly stream = new ClientAssistantStream();
   private attempts = new Map<string, AttemptState>();
 
+  /** from 用现有条目建一份折叠，并恢复仍在流式的尝试。 */
   static from(items: Item[]): ConversationFold {
     const f = new ConversationFold();
     f.list = items.slice();
@@ -84,10 +94,12 @@ export class ConversationFold {
     return f;
   }
 
+  /** items 当前条目列表。 */
   items(): Item[] {
     return this.list;
   }
 
+  /** replace 换成另一份列表。先清掉流状态，再恢复仍在流式的尝试。 */
   replace(items: Item[]): Item[] {
     this.stream.reset();
     this.attempts.clear();
@@ -96,6 +108,7 @@ export class ConversationFold {
     return this.list;
   }
 
+  /** trim 换成裁过的列表。键已经不在列表里的尝试退休。 */
   trim(items: Item[]): void {
     this.list = items;
     const keys = new Set(items.map((x) => x.key));
@@ -106,11 +119,13 @@ export class ConversationFold {
     }
   }
 
+  /** accept 折进一条并返回列表。 */
   accept(ev: Item): Item[] {
     this.acceptCore(ev);
     return this.list;
   }
 
+  /** 流帧走 acceptStream。step_end 与 turn_end 退休流并收束。账本类忽略。compaction 只留 kind 为 checkpoint 的。用户、助手、推理、工具分别处理。键已存在则忽略，否则追加。 */
   private acceptCore(ev: Item): void {
     if (!ev) return;
     if (ev.type === "assistant_stream") {
@@ -148,6 +163,7 @@ export class ConversationFold {
     this.list = [...this.list, ev];
   }
 
+  /** 界面来源且已有相同正文的非引导用户消息则忽略，否则追加。引导先去掉末尾重复的同文引导再追加。键或非界面来源的同一 requestId 已存在则忽略。作曲回声即使后面已经有实时助手，也在原位替换，避免正式用户消息把回合拆成两段。 */
   private acceptUser(ev: Item): void {
     const steer = ev.source === "steer" || ev.name === "steer";
     const requestId = userRequestId(ev);
@@ -179,8 +195,7 @@ export class ConversationFold {
       this.list = next;
       return;
     }
-    // Replace the composer echo in place even if a live assistant already
-    // landed after it. Appending the durable user would split the turn in two.
+    // 作曲回声即使后面已经有实时助手，也在原位替换。把正式用户消息追加在后面会把回合拆成两段。
     for (let i = next.length - 1; i >= 0; i--) {
       const it = next[i];
       if (it.type !== "user" || it.source === "steer") continue;
@@ -196,6 +211,7 @@ export class ConversationFold {
     this.list = [...next, ev];
   }
 
+  /** 帧无法解析则返回。重新对齐时先重置；开始帧再收一次，其他帧丢掉。开始走 beginAttempt。块推进组装器，stream_index 为 nextIndex 减一。结束时 abandoned 去掉该键上的空正文并删除尝试。其他结束只把 streaming 标上。 */
   private acceptStream(ev: Item): void {
     const frame = frameFromItem(ev);
     if (!frame) return;
@@ -243,6 +259,7 @@ export class ConversationFold {
     }
   }
 
+  /** 同一 attemptId 已有则返回。没有对应助手条目时追加一条空的流式助手。 */
   private beginAttempt(ev: Item, attemptId: string, turn: number, step: number): void {
     const existing = this.attempts.get(attemptId);
     if (existing) return;
@@ -286,6 +303,7 @@ export class ConversationFold {
     }
   }
 
+  /** 仍在流式且已有流式条目时，序号不高于已有 stream_index 则忽略，否则把正文接上并丢掉 stream。否则用收束条目替换或追加。不再流式或已中断则删除尝试并退休。 */
   private acceptSettlement(ev: Item): void {
     const round = String(ev.payload?.id || ev.payload?.round || "");
     const attemptId = String(ev.payload?.attempt_id || ev.payload?.attemptId || round);
@@ -343,6 +361,7 @@ export class ConversationFold {
     }
   }
 
+  /** 增量按回合把推理正文接上。非增量则写进该回合助手的内容块，换掉原有推理块。没有助手条目且给了这条推理时用它创建。 */
   private acceptReasoning(ev: Item): void {
     const round = String(ev.payload?.id || ev.payload?.round || "");
     if (ev.delta) {
@@ -377,6 +396,7 @@ export class ConversationFold {
     }, ev);
   }
 
+  /** 仍标着 delta 或 streaming 的助手收成非流式，并丢掉 stream。清空尝试。 */
   private settleStreaming(): void {
     this.list = this.list.map((it) => {
       if (it.type !== "assistant") return it;
@@ -386,6 +406,7 @@ export class ConversationFold {
     this.attempts.clear();
   }
 
+  /** 没有键则追加。工具调用的进度事件不覆盖还没有进度的调用。工具结果的增量在已有非增量正文时忽略，否则把 content 接上。非增量的工具结果清掉 delta，content 空则留原来的。工具调用不带进度时删掉载荷里的 progress。 */
   private upsertByKey(ev: Item): void {
     const idx = ev.key ? this.list.findIndex((x) => x.key === ev.key) : -1;
     if (idx < 0) {
@@ -431,6 +452,7 @@ export class ConversationFold {
     this.list = next;
   }
 
+  /** 重置后，为仍是 delta 或 streaming 的助手重建组装器和流状态。nextIndex 为 stream_index 加一，没有序号则为 0。 */
   private restoreLiveAttempts(): void {
     this.stream.reset();
     this.attempts.clear();
@@ -464,6 +486,7 @@ export class ConversationFold {
     }
   }
 
+  /** 按键改一条助手。没有这条且给了 create 时，用函数处理 create 后追加。 */
   private patchAssistant(key: string, fn: (it: Item) => Item, create?: Item): void {
     const idx = this.list.findIndex((x) => x.key === key);
     if (idx < 0) {
@@ -476,6 +499,7 @@ export class ConversationFold {
   }
 }
 
+/** mergeSeats 从列表建一份折叠并收下这一条。 */
 export function mergeSeats(list: Item[], ev: Item): Item[] {
   return ConversationFold.from(list).accept(ev);
 }

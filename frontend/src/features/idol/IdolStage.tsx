@@ -1,3 +1,4 @@
+/** 拥有偶像台：名单、当前会话、通话层和侧栏入口。不拥有立绘绘制和通话循环。保存、置顶、发消息、删档和开新会话会改服务端状态。 */
 import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal, Phone, Pin, PinOff, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +25,7 @@ import { primeCallAudio, useIdolCall } from "./useIdolCall";
 
 const emptyHistory: History = { current: null, past: [] };
 
+/** 按肖像编号取回图片地址，并缓存在这一轮里。 */
 function usePortraitURLs(idols: Idol[]) {
   const key = idols.map((i) => i.portrait).filter(Boolean).sort().join("|");
   const cache = useRef(new Map<string, string>());
@@ -37,7 +39,7 @@ function usePortraitURLs(idols: Idol[]) {
         const o = await api.idolCall("blob", { id });
         const data = str(o?.data);
         if (data) cache.current.set(id, imageURL(data));
-      } catch { /* a missing face stays the color */ }
+      } catch { /* 缺的脸保持底色 */ }
     })).then(() => { if (!stop) setReady((n) => n + 1); });
     return () => { stop = true; };
   }, [key]);
@@ -45,6 +47,7 @@ function usePortraitURLs(idols: Idol[]) {
   return cache.current;
 }
 
+/** 画名单上的圆脸、桌宠印或色块。 */
 function IdolMark(props: { idol: Idol; src: string; size?: number }) {
   const size = props.size ?? 36;
   if (props.src) {
@@ -58,6 +61,7 @@ function IdolMark(props: { idol: Idol; src: string; size?: number }) {
   return <span className="shrink-0 rounded-full" style={{ width: size, height: size, background: props.idol.color || "#c47b8a" }} />;
 }
 
+/** IdolStage 管名单、会话、通话层和侧栏，并把保存与发送写到服务端。 */
 export function IdolStage() {
   const copy = useCopy();
   const c = copy.idol;
@@ -108,12 +112,14 @@ export function IdolStage() {
     work: callWork,
     textOnly: !!snap?.textOnly,
     phone: !!snap?.phone,
+    /** 通话结束后关掉通话层，并刷新这段会话。 */
     onEnded: () => {
       setCallOn(false);
       void refreshTalk(sel);
     },
   });
 
+  /** 拉取快照并保住仍然存在的选中项。 */
   async function load() {
     const next = snapOf(await api.idolCall("snapshot"));
     setSnap(next);
@@ -121,6 +127,7 @@ export function IdolStage() {
     return next;
   }
 
+  /** 重拉这一位的会话和快照，过期的请求丢掉。 */
   async function refreshTalk(idolId = sel) {
     const gen = ++talkGen.current;
     if (!idolId) {
@@ -149,7 +156,7 @@ export function IdolStage() {
       for (const item of asArray(g?.catalog)) map[str(item.id)] = str(item.name);
       setGiftNames(map);
     }).catch(() => {});
-    // first open only
+    // 只在第一次打开时拉快照。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -184,6 +191,7 @@ export function IdolStage() {
     return () => { stop = true; };
   }, [sel, snap?.pinnedId, snap?.portrait, current?.portrait]);
 
+  /** 保存偶像并刷新名单。 */
   async function save(next: Idol, keepPanel = false) {
     if (!next.name.trim()) {
       setNotice(c.requiredName);
@@ -203,6 +211,7 @@ export function IdolStage() {
     }
   }
 
+  /** 把输入送成一个回合，失败时把文字放回输入框。 */
   async function send() {
     const body = text.trim();
     if (!body || !sel || sending || blocked) return;
@@ -229,6 +238,7 @@ export function IdolStage() {
     }
   }
 
+  /** 把这一位放到桌面，或从桌面取下。 */
   async function place(id?: string) {
     const idol = (snap?.idols || []).find((i) => i.id === (id || sel));
     if (!idol) return;
@@ -252,6 +262,7 @@ export function IdolStage() {
     }
   }
 
+  /** 开始或回到这一位的通话；被冷却、结束或只读挡住时只留下提示。 */
   function startCall(id?: string) {
     const target = id || sel;
     const idol = (snap?.idols || []).find((i) => i.id === target);
@@ -272,6 +283,7 @@ export function IdolStage() {
     setCallOn(true);
   }
 
+  /** 打开编辑，没有对象就用空白草稿。 */
   function openEdit(next?: Idol) {
     setDraft(next ? { ...next } : blankIdol());
     setPanel("edit");

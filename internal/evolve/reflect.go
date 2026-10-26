@@ -1,3 +1,5 @@
+// 把轨迹收成洞察和剧本标签。不调用模型；模型路径在 reflect_llm.go。Curate 消费这里的结果，本文件不改剧本。
+
 package evolve
 
 import (
@@ -7,21 +9,21 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// Reflection is the ACE Reflector output: diagnose trajectories, tag bullets.
+// Reflection 是确定性的反射结果：洞察、条目标签和排在最前的机制。
 type Reflection struct {
 	Insights   []string    `json:"insights"`
 	BulletTags []BulletTag `json:"bullet_tags"`
 	Mechanism  string      `json:"mechanism"`
 }
 
+// BulletTag 给一条剧本打 helpful 或 harmful。
 type BulletTag struct {
 	ID  string `json:"id"`
-	Tag string `json:"tag"` // helpful | harmful
+	Tag string `json:"tag"`
 }
 
-// Reflect is deterministic: no extra model call. The LLM proposer still
-// generates candidate text; the reflector only attributes failure mechanisms
-// and playbook counters so we never collapse the book into a rewrite.
+// Reflect 用 Mine 的第一簇机制作为 Mechanism，并把每簇收成一条洞察。只给系统轨迹里出现过正文的剧本打标签。
+// 失败表为空时标签是 helpful。否则在机制为 unproductive_retry 或 stalled_tool_loop 时打 harmful，其余打 helpful。
 func Reflect(events []trace.Event, failed map[string]string, pb artifact.Playbook) Reflection {
 	bundle := Mine(events, failed)
 	ref := Reflection{}
@@ -48,6 +50,7 @@ func Reflect(events []trace.Event, failed map[string]string, pb artifact.Playboo
 	return ref
 }
 
+// usedBulletIDs 收集系统事件文本里包含其正文的剧本编号。
 func usedBulletIDs(events []trace.Event, pb artifact.Playbook) map[string]bool {
 	out := map[string]bool{}
 	var sys string

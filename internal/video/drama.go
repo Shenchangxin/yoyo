@@ -1,3 +1,6 @@
+// 短剧、集，以及生成任务写回角色、场景、道具和镜头。
+// 不切分集，也不合成短片。
+
 package video
 
 import (
@@ -9,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/filestore"
 )
 
+// writeBack 在任务有结果时写回。带了短片工程编号就交给 applyStudioJob。否则把图写回角色、场景或道具，把视频和海报写回镜头，再看这一集的阶段能不能收口。
 func (e *Engine) writeBack(j Job) error {
 	params := parseParams(j.Params)
 	if params.StudioProjectID != "" {
@@ -58,6 +62,7 @@ func (e *Engine) writeBack(j Job) error {
 	return err
 }
 
+// maybeFinishStage 在这一集的静帧都齐了时把 assets 标成完成，镜头视频都齐了时把 gen 标成完成。没有集编号就什么都不做。
 func (e *Engine) maybeFinishStage(j Job) {
 	if j.EpisodeID == "" {
 		return
@@ -74,6 +79,7 @@ func (e *Engine) maybeFinishStage(j Job) {
 	}
 }
 
+// patchPipeline 给这一集的流水线阶段写上状态、错误和更新时间。原来的流水线解不开就从空对象写起。
 func (e *Engine) patchPipeline(episodeID, stage, status, errMsg string) error {
 	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
 	if err != nil {
@@ -90,6 +96,7 @@ func (e *Engine) patchPipeline(episodeID, stage, status, errMsg string) error {
 	return e.putDoc(colEpisodes, rec.ID, rec)
 }
 
+// ListDramas 列出没删除的剧，并带上未删除的集数。按更新时间从新到旧。没有时返回空切片。
 func (e *Engine) ListDramas() ([]Drama, error) {
 	recs := loadCol[dramaRec](e, colDramas)
 	eps := loadCol[episodeRec](e, colEpisodes)
@@ -115,6 +122,7 @@ func (e *Engine) ListDramas() ([]Drama, error) {
 	return out, nil
 }
 
+// CreateDrama 新建一部剧。画幅会规范化。风格空着写成 3d，状态空着写成 draft。
 func (e *Engine) CreateDrama(d Drama) (Drama, error) {
 	now := Now()
 	d.ID = NewID()
@@ -130,6 +138,7 @@ func (e *Engine) CreateDrama(d Drama) (Drama, error) {
 	return d, e.putDoc(colDramas, d.ID, dramaRec{Drama: d})
 }
 
+// GetDrama 读取一部没删除的剧，并带上集数。没有或已删除时返回 drama not found。
 func (e *Engine) GetDrama(id string) (Drama, error) {
 	r, err := getDoc[dramaRec](e, colDramas, id)
 	if err != nil || r.DeletedAt != "" {
@@ -140,6 +149,7 @@ func (e *Engine) GetDrama(id string) (Drama, error) {
 	return d, nil
 }
 
+// episodeCount 数这部剧里还没删除的集。
 func (e *Engine) episodeCount(dramaID string) int {
 	n := 0
 	for _, ep := range loadCol[episodeRec](e, colEpisodes) {
@@ -150,6 +160,7 @@ func (e *Engine) episodeCount(dramaID string) int {
 	return n
 }
 
+// UpdateDrama 只覆盖标题、简介、类型、风格、画幅和状态里非空的字段。画幅会再规范化。
 func (e *Engine) UpdateDrama(d Drama) (Drama, error) {
 	cur, err := e.GetDrama(d.ID)
 	if err != nil {
@@ -180,6 +191,7 @@ func (e *Engine) UpdateDrama(d Drama) (Drama, error) {
 	return cur, e.putDoc(colDramas, cur.ID, r)
 }
 
+// DeleteDrama 给剧、它的集、角色、场景和道具标上删除时间，不抹掉文档。
 func (e *Engine) DeleteDrama(id string) error {
 	now := Now()
 	r, err := getDoc[dramaRec](e, colDramas, id)
@@ -222,6 +234,7 @@ func (e *Engine) DeleteDrama(id string) error {
 	return nil
 }
 
+// ListEpisodes 按集号列出这部剧里没删除的集。没有时返回空切片。
 func (e *Engine) ListEpisodes(dramaID string) ([]Episode, error) {
 	var out []Episode
 	for _, rec := range loadCol[episodeRec](e, colEpisodes) {
@@ -236,10 +249,13 @@ func (e *Engine) ListEpisodes(dramaID string) ([]Episode, error) {
 	return out, nil
 }
 
+// CreateEpisode 在这部剧下新建一集。集号传 0，由 createEpisode 排到现有集数后面。
 func (e *Engine) CreateEpisode(dramaID, title, content string) (Episode, error) {
 	return e.createEpisode(dramaID, title, content, 0, nil, nil, nil)
 }
 
+// createEpisode 新建一集，并带上当前启用的图像、视频和语音提供商。分辨率先写成 720p。
+// 剧必须还在。集号小于等于 0 时排到现有最大集号后面。没传入关联时，从分集方案和最近一集抄角色、场景和道具。
 func (e *Engine) createEpisode(dramaID, title, content string, number int, chars, scenes, props []string) (Episode, error) {
 	d, err := e.GetDrama(dramaID)
 	if err != nil {
@@ -274,6 +290,7 @@ func (e *Engine) createEpisode(dramaID, title, content string, number int, chars
 	})
 }
 
+// inheritLinks 给新集抄关联。方案里这一集写了角色就用方案的角色。场景、道具，以及方案没写的角色，抄最近一集里有关联的那一集。
 func (e *Engine) inheritLinks(dramaID string, episodeNumber int) (chars, scenes, props []string) {
 	if plan, err := e.GetPlan(dramaID); err == nil {
 		for _, pe := range plan.Episodes {
@@ -305,6 +322,7 @@ func (e *Engine) inheritLinks(dramaID string, episodeNumber int) (chars, scenes,
 	return
 }
 
+// GetEpisode 读取一集。没有或已删除时返回 episode not found。
 func (e *Engine) GetEpisode(id string) (Episode, error) {
 	rec, err := getDoc[episodeRec](e, colEpisodes, id)
 	if err != nil || rec.DeletedAt != "" {
@@ -313,6 +331,7 @@ func (e *Engine) GetEpisode(id string) (Episode, error) {
 	return rec.Episode, nil
 }
 
+// UpdateEpisode 保存一集。标题空着就保留。正文和剧本按传入的整段替换，空字符串也会清掉。其余字段空着就保留。
 func (e *Engine) UpdateEpisode(ep Episode) (Episode, error) {
 	cur, err := e.GetEpisode(ep.ID)
 	if err != nil {
@@ -356,6 +375,7 @@ func (e *Engine) UpdateEpisode(ep Episode) (Episode, error) {
 	return e.saveEpisode(cur)
 }
 
+// PatchEpisode 只改参数里出现的键。换了提供商又没带模型时，模型改成该提供商当前的模型。
 func (e *Engine) PatchEpisode(id string, fields map[string]any) (Episode, error) {
 	cur, err := e.GetEpisode(id)
 	if err != nil {
@@ -417,6 +437,7 @@ func (e *Engine) PatchEpisode(id string, fields map[string]any) (Episode, error)
 	return e.saveEpisode(cur)
 }
 
+// saveEpisode 写回一集并刷新更新时间。文档不存在时按这一集新建一条记录。
 func (e *Engine) saveEpisode(cur Episode) (Episode, error) {
 	rec, err := getDoc[episodeRec](e, colEpisodes, cur.ID)
 	if err != nil {
@@ -432,6 +453,7 @@ func (e *Engine) saveEpisode(cur Episode) (Episode, error) {
 	return cur, e.putDoc(colEpisodes, cur.ID, rec)
 }
 
+// DeleteEpisode 给这一集标上删除时间，不抹掉文档。
 func (e *Engine) DeleteEpisode(id string) error {
 	rec, err := getDoc[episodeRec](e, colEpisodes, id)
 	if err != nil {
@@ -443,6 +465,7 @@ func (e *Engine) DeleteEpisode(id string) error {
 	return e.putDoc(colEpisodes, id, rec)
 }
 
+// SaveScript 写入剧本，并把改写阶段标成完成。
 func (e *Engine) SaveScript(episodeID, script string) error {
 	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
 	if err != nil {
@@ -456,6 +479,7 @@ func (e *Engine) SaveScript(episodeID, script string) error {
 	return e.patchPipeline(episodeID, "rewrite", "done", "")
 }
 
+// SkipRewrite 把原文抄成剧本。原文是空的就拒绝。
 func (e *Engine) SkipRewrite(episodeID string) error {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -468,6 +492,7 @@ func (e *Engine) SkipRewrite(episodeID string) error {
 	return e.SaveScript(episodeID, src)
 }
 
+// hydrateEpisodeProviders 按当前启用的图像、视频和语音提供商补编号和模型。有变化才写回。
 func (e *Engine) hydrateEpisodeProviders(ep *Episode) {
 	fields := map[string]any{}
 	fill := func(kind, id, model string) (string, string, bool) {
@@ -499,6 +524,7 @@ func (e *Engine) hydrateEpisodeProviders(ep *Episode) {
 	}
 }
 
+// Bundle 拼出这一集的剧、集、角色、场景、道具、镜头和任务，并按剧本或原文估时长。剧本空着就用原文。
 func (e *Engine) Bundle(episodeID string) (EpisodeBundle, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {

@@ -1,3 +1,5 @@
+// 流式响应头发出后取消上下文，读取应在超时内返回错误。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"time"
 )
 
+// TestChatStreamStopsOnCancel 确认响应头发出后取消上下文，ChatStream 在 2 秒内返回非 nil 错误。
 func TestChatStreamStopsOnCancel(t *testing.T) {
 	started := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

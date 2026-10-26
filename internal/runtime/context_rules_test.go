@@ -1,3 +1,5 @@
+// 锁住规则索引写出路径前缀，嵌套的 AGENTS.md 出现在 web/ 下面。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestWriteRulesIndexIncludesPathScope 确认索引含 when path matches 和 web/。
 func TestWriteRulesIndexIncludesPathScope(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("root agents"), 0o644); err != nil {

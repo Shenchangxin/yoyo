@@ -1,4 +1,8 @@
-/** Play a CAS url on the app origin when the webview would block the loopback server. */
+/**
+ * 本文件拥有把媒体地址改写成当前页面可播路径的规则。不拥有播放器，也不上传文件。
+ * 它只改地址字符串，不改服务端。
+ */
+/** playbackSrc 在 https 或 wails 页面上，把 /media/ 与 /resource/ 收成站内路径。 */
 export function playbackSrc(url?: string, page?: { protocol: string; hostname: string }): string {
   const raw = String(url || "").trim();
   if (!raw) return "";

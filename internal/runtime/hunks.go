@@ -1,3 +1,5 @@
+// 把 git diff 拆成可选择的 hunk，并用 git apply 打回工作区。失败不 reset。工作区隔离和整树回写在 worktree.go。
+
 package runtime
 
 import (
@@ -9,8 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
-// DiffHunk is one @@ hunk from a unified git diff. IDs are stable for a
-// given raw diff so the UI can accept/reject without round-tripping git.
+// DiffHunk 是统一 diff 里的一个 @@ 块。同一份原始 diff 上的 ID 稳定，界面可以按 ID 接受或拒绝，不必再跑一遍 git。
 type DiffHunk struct {
 	ID     string `json:"id"`
 	File   string `json:"file"`
@@ -18,7 +19,7 @@ type DiffHunk struct {
 	Body   string `json:"body"`
 }
 
-// ParseDiffHunks splits a `git diff --no-color` into per-hunk records.
+// ParseDiffHunks 把 git diff --no-color 拆成逐 hunk 记录。空文本或以 (no unstaged 开头时返回 nil。ID 是文件路径加冒号再加序号。
 func ParseDiffHunks(diff string) []DiffHunk {
 	diff = strings.ReplaceAll(diff, "\r\n", "\n")
 	if strings.TrimSpace(diff) == "" || strings.HasPrefix(strings.TrimSpace(diff), "(no unstaged") {
@@ -77,8 +78,9 @@ func ParseDiffHunks(diff string) []DiffHunk {
 	return out
 }
 
+// gitDiffPath 从 diff --git 行取最后一段，并去掉 b/ 前缀。字段不足四段时返回空串。
 func gitDiffPath(line string) string {
-	// diff --git a/foo b/foo
+	// diff --git 行至少四段，最后一段去掉 b/ 前缀就是路径。
 	fields := strings.Fields(line)
 	if len(fields) < 4 {
 		return ""
@@ -87,6 +89,7 @@ func gitDiffPath(line string) string {
 	return b
 }
 
+// fileFromPlusMinus 只从 +++ 行取路径。去掉 b/ 和制表符之后的内容。/dev/null 返回空串。--- 行返回空串。
 func fileFromPlusMinus(line string) string {
 	line = strings.TrimSpace(line)
 	if strings.HasPrefix(line, "+++ ") {
@@ -103,7 +106,7 @@ func fileFromPlusMinus(line string) string {
 	return ""
 }
 
-// PatchFromHunks rebuilds a git-apply-able unified diff containing only ids.
+// PatchFromHunks 按 ids 重组一份 git apply 能读的统一 diff。没有选中、或有未知 ID 时返回错误。每个文件写成 diff --git、---、+++ 再接选中的 hunk。
 func PatchFromHunks(diff string, ids []string) (string, error) {
 	want := map[string]bool{}
 	for _, id := range ids {
@@ -152,18 +155,17 @@ func PatchFromHunks(diff string, ids []string) (string, error) {
 	return b.String(), nil
 }
 
-// ApplyHunks applies selected hunks from a workspace git diff. Paths are
-// jailed to workspace; this is not a sandbox, just the same path jail as tools.
+// ApplyHunks 把所选 hunk 打进工作区。先 PatchFromHunks，再用 WithinWorkspace 检查每个路径。执行 git apply：先带 --unidiff-zero 和 --whitespace=nowarn，失败后再只带 --whitespace=nowarn。两次都失败就返回 git apply 错误，不执行 git reset。
 func ApplyHunks(workspace, diff string, ids []string) error {
 	return applyHunks(workspace, diff, ids, false)
 }
 
-// ReverseApplyHunks undoes a previously applied selection using the snapshot
-// diff from before apply. The snapshot must still contain those hunk IDs.
+// ReverseApplyHunks 用 applyHunks 的 reverse 路径撤销已应用的选择，git apply 会加上 -R。传入的 diff 仍须包含这些 hunk ID。
 func ReverseApplyHunks(workspace, diff string, ids []string) error {
 	return applyHunks(workspace, diff, ids, true)
 }
 
+// applyHunks 在 workspace 为空时返回错误。补丁从标准输入送给 git -C workspace apply -。reverse 为真时在参数里追加 -R。成功即返回，失败不 reset。
 func applyHunks(workspace, diff string, ids []string, reverse bool) error {
 	if workspace == "" {
 		return fmt.Errorf("empty workspace")

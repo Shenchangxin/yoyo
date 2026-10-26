@@ -3,11 +3,18 @@ import type { Item, ItemType } from "./protocol";
 import { sameUserTurnText } from "./mentions";
 import { ConversationFold } from "./conversation-fold";
 
+/**
+ * 拥有：把原始事件、实时通知和增量折成转录条目，并限制界面上保留的热窗口。
+ * 不拥有：会话订阅和序号游标，那在 stream；块组装，那在 stream-chunk。
+ */
+
+/** 取出事件载荷。没有对象载荷时为空对象。 */
 function payload(raw: any): Record<string, any> {
   const p = pick(raw, "payload", "Payload");
   return p && typeof p === "object" ? p : {};
 }
 
+/** coerceTS 把各种时间收成 ISO 字符串。零值和 Go 的零时间变成空串。 */
 export function coerceTS(v: any): string {
   if (v == null || v === "") return "";
   if (typeof v === "string") {
@@ -25,6 +32,7 @@ export function coerceTS(v: any): string {
   return "";
 }
 
+/** itemKey 一条转录的稳定键。助手和推理按回合并到同一条，增量用序号区分。 */
 export function itemKey(opts: {
   sessionId: string;
   type: string;
@@ -57,6 +65,7 @@ export function itemKey(opts: {
   return `${sessionId}:${ts}:${type}:${name}:${opts.delta ? "d" : "f"}:${idx}:${(opts.text || "").slice(0, 80)}`;
 }
 
+/** 会带大段正文的工具调用。界面上把超长参数收成摘要，避免整段进热窗口。 */
 const HEAVY_CALLS = new Set([
   "write_file",
   "create_file",
@@ -68,6 +77,7 @@ const HEAVY_CALLS = new Set([
   "cite_sources",
 ]);
 
+/** 超长的写文件类参数只留路径和开头，并记下原始字节数。 */
 function slimToolCallPayload(type: string, name: string, p: Record<string, any>): Record<string, any> {
   if (type !== "tool_call" || !HEAVY_CALLS.has(name)) return p;
   const args = p.arguments;
@@ -91,18 +101,22 @@ function slimToolCallPayload(type: string, name: string, p: Record<string, any>)
   }
 }
 
-/** Renderer hot window. Seed, send, and live merge stay inside this. */
+/** HOT_TRANSCRIPT_TURNS 渲染器热窗口。种子、发送和实时合并都停在这个用户回合数以内。 */
 export const HOT_TRANSCRIPT_TURNS = 8;
-/** Scroll-up may grow the window this far; send snaps back to HOT. */
+/** BROWSE_TRANSCRIPT_TURNS 向上滚动最多展开到的用户回合数。发送时收回热窗口。 */
 export const BROWSE_TRANSCRIPT_TURNS = 16;
+/** UI_TEXT_CAP 界面上一条非增量正文的长度上限。 */
 export const UI_TEXT_CAP = 24_000;
+/** UI_RESULT_CAP 界面上一条工具结果的长度上限。 */
 export const UI_RESULT_CAP = 1_200;
 
+/** 超过上限的正文截断并加省略号。 */
 function capText(s: string, n = UI_TEXT_CAP): string {
   if (!s || s.length <= n) return s;
   return `${s.slice(0, n)}\n…`;
 }
 
+/** itemFromEvent 把一条原始事件收成条目。收束后的流磁带丢掉。非增量正文按种类截断。 */
 export function itemFromEvent(raw: any, idx = 0): Item {
   const src = unwrapEvent(raw);
   const p = payload(src);
@@ -137,6 +151,7 @@ export function itemFromEvent(raw: any, idx = 0): Item {
   };
 }
 
+/** eventFingerprint 去重指纹。增量带上序号或文本尾部，收束条目带上 id 和键。 */
 export function eventFingerprint(raw: any): string {
   const src = unwrapEvent(raw);
   const seq = num(pick(src, "seq", "Seq"));
@@ -150,7 +165,7 @@ export function eventFingerprint(raw: any): string {
   return `${it.sessionId}|${it.ts}|${it.type}|${it.name}|${it.key}`;
 }
 
-/** A new model round starts after these; do not merge assistant text across them. */
+/** closesAssistant 这些种类之后开始新的模型回合，助手正文不能跨过去合并。 */
 export function closesAssistant(type: ItemType): boolean {
   return (
     type === "user" ||
@@ -162,6 +177,7 @@ export function closesAssistant(type: ItemType): boolean {
   );
 }
 
+/** isTranscriptNoise 不进转录正文的事件。检查点压缩留下，开始标记和没有溢出层的压缩视为噪声。 */
 export function isTranscriptNoise(ev: Item): boolean {
   if (
     ev.type === "system" ||
@@ -183,11 +199,12 @@ export function isTranscriptNoise(ev: Item): boolean {
   return true;
 }
 
+/** 两条用户正文是否同一回合。比较前先按提及规则归一。 */
 function sameUserText(a: string, b: string): boolean {
   return sameUserTurnText(a, b);
 }
 
-/** True if the open turn (after the last assistant) already has this user text. */
+/** turnHasUserText 当前打开的回合（最后一条助手之前）是否已经有这段用户正文。 */
 export function turnHasUserText(list: Item[], text: string): boolean {
   for (let i = list.length - 1; i >= 0; i--) {
     const it = list[i];
@@ -198,22 +215,22 @@ export function turnHasUserText(list: Item[], text: string): boolean {
 }
 
 /**
- * Fold a live or replayed event into the transcript.
- * Assistant deltas join the in-progress attempt of the current round.
+ * mergeItem 把一条实时或重放事件折进转录。
+ * 助手增量并入当前回合里进行中的尝试。
  */
 export function mergeItem(list: Item[], ev: Item): Item[] {
   return foldTurnErrors(ConversationFold.from(list).accept(ev));
 }
 
+/** 用户消息、助手、推理和工具是回合有进展。引导备注不算。 */
 function isTurnProgress(it: Item): boolean {
   if (it.type === "user" && it.source !== "steer") return true;
   return it.type === "assistant" || it.type === "reasoning" || it.type === "tool_call" || it.type === "tool_result";
 }
 
 /**
- * Error cards are the terminal chip of a turn, not a letter. Keep at most
- * the last one after the latest progress; a retry or a new user message
- * supersedes Stopped / max-turns / provider failures.
+ * foldTurnErrors 错误卡片是回合末尾的芯片，不是一封信。
+ * 最近一次进展之后只留最后一张。重试或新的用户消息会盖过停止、达到回合上限和供应商失败。
  */
 export function foldTurnErrors(list: Item[]): Item[] {
   if (!list.length) return list;
@@ -232,18 +249,18 @@ export function foldTurnErrors(list: Item[]): Item[] {
   return next.length === list.length ? list : next;
 }
 
-/** Operator resumed the turn: the chip is gone before the next token. */
+/** dropTurnErrors 操作者恢复回合时，下一 token 到来之前先去掉错误芯片。 */
 export function dropTurnErrors(list: Item[]): Item[] {
   const next = list.filter((it) => it.type !== "error");
   return next.length === list.length ? list : next;
 }
 
-/** Drop the error chips at the tail so a resume can keep the same turn. */
+/** dropTrailingErrors 去掉末尾错误芯片，恢复时仍是同一回合。 */
 export function dropTrailingErrors(items: Item[]): Item[] {
   return dropTurnErrors(items);
 }
 
-/** Keep optimistic composer bubbles that the JSONL seed has not caught up to. */
+/** mergePendingUsers 保留 JSONL 种子还没追上的乐观作曲气泡。正文已经在种子里的不再追加。 */
 export function mergePendingUsers(seed: Item[], live: Item[]): Item[] {
   const pending = live.filter((x) => x.source === "ui" && x.type === "user");
   if (!pending.length) return seed;
@@ -255,7 +272,7 @@ export function mergePendingUsers(seed: Item[], live: Item[]): Item[] {
   return out;
 }
 
-/** Replay live items onto a trajectory seed so a late seed cannot drop round 2. */
+/** foldLiveIntoSeed 把实时条目重放到轨迹种子上，迟到的种子不会丢掉后面的回合。 */
 export function foldLiveIntoSeed(seed: Item[], live: Item[]): Item[] {
   if (!live.length) return seed;
   const fold = ConversationFold.from(seed);
@@ -264,8 +281,8 @@ export function foldLiveIntoSeed(seed: Item[], live: Item[]): Item[] {
 }
 
 /**
- * Keep the live hot pack visible while the operator browses an older window.
- * Identity is payload.id / seq / key — never dump the full JSONL.
+ * withLiveTail 操作者在看更早的窗口时，仍把进行中的热包留在末尾。
+ * 身份用载荷 id、序号或键。整份 JSONL 不倒进来。
  */
 export function withLiveTail(browse: Item[], live: Item[]): Item[] {
   if (!live.length) return browse;
@@ -285,6 +302,7 @@ export function withLiveTail(browse: Item[], live: Item[]): Item[] {
   return tail.length ? [...browse, ...tail] : browse;
 }
 
+/** 用户回合的身份：载荷 id，否则序号，否则键。 */
 function liveTurnId(it: Item): string {
   const id = String(it.payload?.id || "").trim();
   if (id) return id;
@@ -292,6 +310,7 @@ function liveTurnId(it: Item): string {
   return it.key || "";
 }
 
+/** lastUserTurns 只留末尾若干个非引导用户回合及其后的条目。 */
 export function lastUserTurns(items: Item[], users = 3): Item[] {
   if (users <= 0 || items.length === 0) return items;
   let n = 0;
@@ -306,6 +325,7 @@ export function lastUserTurns(items: Item[], users = 3): Item[] {
   return items;
 }
 
+/** userTurnCount 非引导的用户回合数。 */
 export function userTurnCount(items: Item[]): number {
   let n = 0;
   for (const it of items) {
@@ -314,6 +334,7 @@ export function userTurnCount(items: Item[]): number {
   return n;
 }
 
+/** replayEvents 按顺序把原始事件折成转录，并收拢错误芯片。 */
 export function replayEvents(raws: any[]): Item[] {
   const fold = new ConversationFold();
   (raws || []).forEach((raw, i) => {
@@ -322,6 +343,7 @@ export function replayEvents(raws: any[]): Item[] {
   return foldTurnErrors(fold.items());
 }
 
+/** attachStreamFrame 把流帧上的种类、序号和块写进条目载荷。助手流或系统条目会改成 assistant_stream。 */
 export function attachStreamFrame(item: Item, frame?: StreamFrame): Item {
   if (!item || !frame) return item;
   if (item.type !== "assistant_stream" && frame.kind !== "start" && frame.kind !== "chunk" && frame.kind !== "end") {
@@ -341,10 +363,12 @@ export function attachStreamFrame(item: Item, frame?: StreamFrame): Item {
   return { ...item, type, payload: p };
 }
 
+/** 类型字符串非空且不是 yoyo: 前缀时，视为追踪信封。 */
 function isTraceEnvelopeType(t: unknown): boolean {
   return typeof t === "string" && t.length > 0 && !t.startsWith("yoyo:");
 }
 
+/** StreamFrame 一条助手流帧。index_from 到 index 是这段合并增量覆盖的序号。 */
 export type StreamFrame = {
   kind?: string;
   attempt_id?: string;
@@ -360,6 +384,7 @@ export type StreamFrame = {
   committed_seq?: number;
 };
 
+/** LiveNotice 一条实时通知：全局序号、会话、内联事件和可选流帧。 */
 export type LiveNotice = {
   seq: number;
   sessionId: string;
@@ -367,6 +392,7 @@ export type LiveNotice = {
   frame?: StreamFrame;
 };
 
+/** 从通知或嵌套事件上读出流帧。没有帧对象时返回空。 */
 function readStreamFrame(raw: any): StreamFrame | undefined {
   const src = raw?.frame ?? raw?.Frame;
   if (!src || typeof src !== "object") return undefined;
@@ -391,7 +417,7 @@ function readStreamFrame(raw: any): StreamFrame | undefined {
   };
 }
 
-/** Peel a notify/pull envelope without treating `type` as the event itself. */
+/** parseLiveNotice 剥开通知或回拉信封。type 本身不当成事件。嵌套事件优先。 */
 export function parseLiveNotice(raw: any): LiveNotice {
   const e = unwrapEvent(raw);
   if (e == null || typeof e !== "object") return { seq: 0, sessionId: "", event: e };
@@ -409,9 +435,8 @@ export function parseLiveNotice(raw: any): LiveNotice {
 }
 
 /**
- * Peel only the Wails v3 `{ name, data }` envelope (or a 1-length args array).
- * Never walk an arbitrary `.data` / `.detail` once a trace event is in hand —
- * that used to swallow the second-round payload.
+ * unwrapEvent 只剥 Wails v3 的 `{ name, data }` 信封，或长度为 1 的参数数组。
+ * 已经拿到追踪事件后，不再顺着任意的 data 或 detail 往下走，那会吞掉下一回合的载荷。
  */
 export function unwrapEvent(e: any, depth = 0): any {
   if (e == null || depth > 4) return e;
@@ -438,6 +463,7 @@ export function unwrapEvent(e: any, depth = 0): any {
   return e;
 }
 
+/** eventText 从剥开后的事件取出纯文本。对象没有单独的文本字段时返回空串。 */
 export function eventText(raw: any): string {
   const d = unwrapEvent(raw);
   if (typeof d === "string") return d.trim();

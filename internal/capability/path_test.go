@@ -1,3 +1,8 @@
+// 锁住这些不变量：/c/Users/... 译成 C:\Users\...，/cygdrive/c/Users/x 译成 C:\Users\x。
+// /dev/null、/tmp、//F 不是盘符路径。//F、//IM、//FI、/C、/B、/IM 是开关；/c/Users/scx、/etc/passwd、Windows 绝对路径、无斜杠文件名、/console/ 不是。
+// Windows 上，工作区内文件的 Git Bash 路径仍算在工作区内。
+// ForbiddenDiagPath 拒绝 home 下的 logs、journal、observe、pages、profiles 以及 vault.json，放行 workspace 里的文件；home 为空时不拒绝。
+
 package capability
 
 import (
@@ -8,6 +13,7 @@ import (
 	"testing"
 )
 
+// TestMSYSToWindowsPath 确认盘符翻译成功，并确认 /dev/null、/tmp、//F 翻译失败。
 func TestMSYSToWindowsPath(t *testing.T) {
 	got, ok := MSYSToWindowsPath(`/c/Users/scx/Desktop/codex/api/api.go`)
 	if !ok || got != `C:\Users\scx\Desktop\codex\api\api.go` {
@@ -28,6 +34,7 @@ func TestMSYSToWindowsPath(t *testing.T) {
 	}
 }
 
+// TestLooksLikeWindowsSwitch 确认样例里的开关为真，带多段路径的字符串为假。
 func TestLooksLikeWindowsSwitch(t *testing.T) {
 	for _, s := range []string{`//F`, `//IM`, `//FI`, `/C`, `/B`, `/IM`} {
 		if !LooksLikeWindowsSwitch(s) {
@@ -41,6 +48,7 @@ func TestLooksLikeWindowsSwitch(t *testing.T) {
 	}
 }
 
+// TestWithinWorkspaceGitBashPath 只在 Windows 上跑，确认工作区内文件的 /盘符 路径仍被 WithinWorkspace 接受。
 func TestWithinWorkspaceGitBashPath(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip()
@@ -57,6 +65,7 @@ func TestWithinWorkspaceGitBashPath(t *testing.T) {
 	}
 }
 
+// TestForbiddenDiagPath 确认诊断目录和 vault.json 被拒绝，工作区文件与空 home 不被拒绝。
 func TestForbiddenDiagPath(t *testing.T) {
 	home := t.TempDir()
 	for _, p := range []string{

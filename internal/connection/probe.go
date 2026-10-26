@@ -1,3 +1,5 @@
+// 用租约或 default 钥匙探测端点是否可达。探测请求带上钥匙，连接 JSON 仍然不保存钥匙原文。
+
 package connection
 
 import (
@@ -10,6 +12,7 @@ import (
 	"time"
 )
 
+// Test 读取 id 对应的连接并做一次探测。读不到时返回 ok 为 false。
 func (r *Registry) Test(id string) map[string]any {
 	c, err := r.Get(id)
 	if err != nil {
@@ -18,6 +21,7 @@ func (r *Registry) Test(id string) map[string]any {
 	return TestConnection(c, r)
 }
 
+// TestConnection 对 cas 协议直接返回可达。其他协议用 Lease 取钥匙，仍为空则再 Get default。聊天或 openai-chat-completions 走 ProbeChatCompletions。
 func TestConnection(c Connection, r *Registry) map[string]any {
 	if c.Protocol == "cas" {
 		return map[string]any{"ok": true, "status": 200, "reachable": true}
@@ -62,9 +66,7 @@ func TestConnection(c Connection, r *Registry) map[string]any {
 	return out
 }
 
-// ProbeChatCompletions hits POST {base}/chat/completions — the contract every
-// OpenAI-compatible chat host implements. GET /models is optional and some
-// gateways 401 that route even with a valid Bearer token.
+// ProbeChatCompletions 向 base/chat/completions 发 POST，正文 max_tokens 为 1。不请求 GET /models。钥匙为空返回 missing vault key。
 func ProbeChatCompletions(base, key, model, vendor string) map[string]any {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	key = strings.TrimSpace(key)
@@ -108,6 +110,7 @@ func ProbeChatCompletions(base, key, model, vendor string) map[string]any {
 	return out
 }
 
+// chatProbeOK 在 2xx 时返回真。400 且正文不像鉴权失败时也返回真。其他状态返回假。
 func chatProbeOK(status int, raw []byte) bool {
 	if status >= 200 && status < 300 {
 		return true
@@ -119,13 +122,13 @@ func chatProbeOK(status int, raw []byte) bool {
 			strings.Contains(msg, "expired token") || strings.Contains(msg, "authentication") {
 			return false
 		}
-		// Gateway accepted the Bearer and rejected the tiny ping payload
-		// (unknown model, max_tokens, etc). That still proves reachability.
+		// 网关收下了 Bearer，拒绝的是这条极短探测体。这仍算可达。
 		return true
 	}
 	return false
 }
 
+// ProbeError 从 JSON 的 msg、message 或 error 里抽出说明，最长 240 字节。抽不出时返回 HTTP 状态码。
 func ProbeError(status int, raw string) string {
 	msg := strings.TrimSpace(raw)
 	var wrap struct {
@@ -154,6 +157,7 @@ func ProbeError(status int, raw string) string {
 	return fmt.Sprintf("HTTP %d: %s", status, msg)
 }
 
+// jsonErrorString 把 error 字段解析成字符串，或对象里的 message、msg。
 func jsonErrorString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -178,6 +182,7 @@ func jsonErrorString(raw json.RawMessage) string {
 	return strings.TrimSpace(string(raw))
 }
 
+// probeURL 按供应商或协议给非聊天探测补上路径。端点为空返回空串。
 func probeURL(c Connection) string {
 	base := strings.TrimRight(strings.TrimSpace(c.Endpoint), "/")
 	if base == "" {
@@ -217,6 +222,7 @@ func probeURL(c Connection) string {
 	}
 }
 
+// applyProbeAuth 按供应商把钥匙放进 Authorization、查询参数或专用头。钥匙为空则不改请求。
 func applyProbeAuth(req *http.Request, c Connection, key string) {
 	if req == nil || strings.TrimSpace(key) == "" {
 		return
@@ -262,6 +268,7 @@ func applyProbeAuth(req *http.Request, c Connection, key string) {
 	}
 }
 
+// chatVendorUsesGoogleKey 在供应商是 gemini 或 google，或端点包含 generativelanguage.googleapis.com 时返回真。
 func chatVendorUsesGoogleKey(vendor, base string) bool {
 	v := strings.ToLower(strings.TrimSpace(vendor))
 	if v == "gemini" || v == "google" {
@@ -270,6 +277,7 @@ func chatVendorUsesGoogleKey(vendor, base string) bool {
 	return strings.Contains(strings.ToLower(base), "generativelanguage.googleapis.com")
 }
 
+// truncateProbe 按字节把字符串截到 n。本文件没有调用它。
 func truncateProbe(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -277,6 +285,7 @@ func truncateProbe(s string, n int) string {
 	return s[:n]
 }
 
+// needsKey 对 cas 和 otel 返回假。搜索里 tavily、brave、serper、bocha、exa 要钥匙，其余搜索协议不要。其他协议要钥匙。
 func needsKey(c Connection) bool {
 	if c.Protocol == "cas" {
 		return false

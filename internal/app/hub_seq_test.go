@@ -1,3 +1,5 @@
+// 实时序号、Since，以及通知是否把正文内联。
+
 package app
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestHubAssignsSeqAndSince 确认发布会分配序号，Since 能补到后面的事件，并且通知带上序号。
 func TestHubAssignsSeqAndSince(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")
@@ -28,6 +31,7 @@ func TestHubAssignsSeqAndSince(t *testing.T) {
 	}
 }
 
+// TestNoticeOmitsToolCallAndSettledAssistant 确认工具通知带短字段，过长参数不进通知，已落定的助手正文只留序号。
 func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 	call := NoticeOf(trace.Event{Seq: 2, SessionID: "s", Type: trace.TypeToolCall, Payload: map[string]any{"name": "read_file", "id": "c1", "arguments": `{"path":"a.go"}`}})
 	if call.Event == nil || call.Event.Payload["name"] != "read_file" {
@@ -88,6 +92,7 @@ func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 	}
 }
 
+// TestNoticeOmitsLargePayload 确认过大的已落定助手事件不内联，序号仍在。
 func TestNoticeOmitsLargePayload(t *testing.T) {
 	body := make([]byte, 4000)
 	for i := range body {

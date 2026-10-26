@@ -1,3 +1,5 @@
+// PowerShell 命令解析与物化。编码命令原样保留，不在这里解码。
+
 package runtime
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestParsePowerShellInvocation 确认裸 Get-Process 当正文，-Command 解出 Start-Process，-File 保留 -Verbose，隐含 .ps1 被识别，-EncodedCommand 原样保留。
 func TestParsePowerShellInvocation(t *testing.T) {
 	file, extra, body, encoded := parsePowerShellInvocation(`Get-Process | ForEach-Object { $_.Id }`)
 	if file != "" || encoded != nil || !strings.Contains(body, "Get-Process") {
@@ -32,6 +35,7 @@ func TestParsePowerShellInvocation(t *testing.T) {
 	}
 }
 
+// TestMaterializePowerShellWritesFile 确认物化后的参数含 -File 和 yoyo-inline-。
 func TestMaterializePowerShellWritesFile(t *testing.T) {
 	ws := t.TempDir()
 	exe, args, cleanup, err := materializePowerShell("pwsh", `Get-ChildItem | Select-Object -First 3`, ws)
@@ -48,6 +52,7 @@ func TestMaterializePowerShellWritesFile(t *testing.T) {
 	}
 }
 
+// TestPowershellCommandArgStillUnwraps 确认 powershellCommandArg 仍能解出 -Command 的正文。
 func TestPowershellCommandArgStillUnwraps(t *testing.T) {
 	got := powershellCommandArg(`powershell -NoProfile -Command Start-Process x`)
 	if got != "Start-Process x" {

@@ -1,7 +1,10 @@
+// 本文件锁住配置名校验，以及没启动 Chrome 时也能换配置名。由 go test 调用。
+
 package browser
 
 import "testing"
 
+// TestSanitizeProfileName 锁住空名是 default，attached 和空格被拒绝，github 可以通过。
 func TestSanitizeProfileName(t *testing.T) {
 	got, err := SanitizeProfileName("")
 	if err != nil || got != "default" {
@@ -19,6 +22,7 @@ func TestSanitizeProfileName(t *testing.T) {
 	}
 }
 
+// TestUseProfileChangesNameWithoutChrome 锁住 UseProfile 把名字改成 work，列表第一项仍是 default。
 func TestUseProfileChangesNameWithoutChrome(t *testing.T) {
 	h, err := Open(t.TempDir())
 	if err != nil {

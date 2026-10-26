@@ -1,11 +1,17 @@
+/**
+ * 本文件拥有画布浮层的宿主根，以及请 Yoyo 切视频栏的事件。
+ * 不拥有菜单内容。它只改页面上的根节点和本地跳转，不改服务端。
+ */
 import { useCanvasThemeStore } from "@yingce/stores/canvas/use-canvas-theme-store";
 
 const POPUP_ROOT_ID = "yingce-popup-root";
 
+/** 明暗对应宿主根上的类名。 */
 function hostThemeClass(dark: boolean) {
   return dark ? "yoyo-host-dark" : "yoyo-host-light";
 }
 
+/** 画布主题明确时用它，否则看传入值，再否则看文档是否带 dark。 */
 function popupThemeDark(explicit?: boolean) {
   const { active, theme } = useCanvasThemeStore.getState();
   if (active && (theme === "light" || theme === "dark")) return theme === "dark";
@@ -13,7 +19,7 @@ function popupThemeDark(explicit?: boolean) {
   return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 }
 
-/** Keep portaled Ant/yc overlays on a token-bearing host root, not raw document.body. */
+/** syncYoyoPopupRoot 把传送出去的浮层放在带令牌的宿主根上，不直接挂到没有令牌的 document.body。 */
 export function syncYoyoPopupRoot(dark?: boolean) {
   if (typeof document === "undefined") return null;
   let root = document.getElementById(POPUP_ROOT_ID);
@@ -31,29 +37,32 @@ export function syncYoyoPopupRoot(dark?: boolean) {
   return root;
 }
 
+/** yoyoCanvasPopupContainer 返回这块带令牌的根；没有文档时退回传入节点。 */
 export function yoyoCanvasPopupContainer(node?: HTMLElement): HTMLElement {
   if (typeof document === "undefined") return node || (undefined as unknown as HTMLElement);
   return syncYoyoPopupRoot() || document.body;
 }
 
-/** Menus and inspectors that must escape the canvas viewport, while keeping the canvas color theme. */
+/** canvasOverlayHost 让菜单和检查器离开画布视口，同时保住画布配色。不在宿主里就用 document.body。 */
 export function canvasOverlayHost(): HTMLElement {
   if (typeof document === "undefined") return undefined as unknown as HTMLElement;
   if (isYoyoCanvasHost()) return syncYoyoPopupRoot() || document.body;
   return document.body;
 }
 
+/** isYoyoCanvasHost 看窗口上有没有画布宿主标记。 */
 export function isYoyoCanvasHost(): boolean {
   return typeof window !== "undefined" && Boolean((window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__);
 }
 
-/** Hosted island: ask Yoyo to switch the Video rail instead of only changing the inner memory router. */
+/** requestHostNavigation 在托管岛里请 Yoyo 切视频栏，而不是只改内部记忆路由。 */
 export function requestHostNavigation(to: string): boolean {
   if (!isYoyoCanvasHost() || typeof window === "undefined") return false;
   window.dispatchEvent(new CustomEvent("yoyo:host-navigate", { detail: { to } }));
   return true;
 }
 
+/** goWorkspacePath 宿主接住了就返回，否则交给备用跳转。 */
 export function goWorkspacePath(to: string, fallback?: (to: string) => void) {
   if (requestHostNavigation(to)) return;
   fallback?.(to);

@@ -1,3 +1,5 @@
+// 计划、等待、技能清单、看图和 web_fetch。主机拒绝与 HTTP 正文上限在本文件。检索顺序在 webnet.go。
+
 package runtime
 
 import (
@@ -19,6 +21,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/webcontent"
 )
 
+// updatePlan 解析 explanation 和 plan。空计划返回错误。空状态写成 pending。正文写入 PlanText，并 WritePlanFile。
 func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 	var p struct {
 		Explanation string `json:"explanation"`
@@ -53,6 +56,7 @@ func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 	return ToolResult{Content: plan}
 }
 
+// wait 把秒数夹到 1 到 30。用工具上下文等待，上下文取消则返回其错误。
 func (t *WorkspaceTools) wait(seconds int) ToolResult {
 	if seconds < 1 {
 		seconds = 1
@@ -74,6 +78,7 @@ func (t *WorkspaceTools) wait(seconds int) ToolResult {
 	}
 }
 
+// listSkills 优先用 SkillMeta 的名字，否则用 Skills 的键。按 SkillCatalogBudget 截断，零值用 DefaultSkillCatalogBudget。描述超过 skillCatalogDescCap 个 rune 会截断。超预算的条目计为省略。
 func (t *WorkspaceTools) listSkills() ToolResult {
 	seen := map[string]bool{}
 	var names []string
@@ -138,6 +143,7 @@ func (t *WorkspaceTools) listSkills() ToolResult {
 	return ToolResult{Content: strings.TrimSpace(b.String())}
 }
 
+// viewImage 经 resolve 和 ReadWorkspace 审批后读取图片。扩展名只接受 png、jpg、jpeg、gif、webp、bmp。能编码时把 data URL 放进 Parts。
 func (t *WorkspaceTools) viewImage(rel string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -170,8 +176,10 @@ func (t *WorkspaceTools) viewImage(rel string) ToolResult {
 	return res
 }
 
+// webFetchUA 是 web_fetch 的 User-Agent。
 const webFetchUA = "Yoyo/0.3 (+https://github.com/Shenchangxin/yoyo)"
 
+// webFetch 只接受带主机的 http 或 https。先用 blockedHost 拒绝主机，再做 Network 审批，超时 20 秒。SiteText 成功则截到 12000 个 rune。否则 httpGet。状态 406 时 retryHTTPOn406 得到的地址会再取一次。XML 源保留标签；非 JSON 且非源则去掉标签。shouldJinaReader 为真时再试 Jina。正文截到 12000 个 rune。
 func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -208,7 +216,7 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 		return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, compact)}
 	} else if isXMLFeed(ct, body) {
 		feed = true
-		// Keep tags so ids/titles stay recoverable after elision.
+		// 保留标签，省略之后 id 和标题仍能认出来。
 	} else if !strings.Contains(strings.ToLower(ct), "json") {
 		text = stripTags(text)
 	}
@@ -222,8 +230,10 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, capped)}
 }
 
+// jinaSkipLoopback 为真时，localhost、以 .localhost 结尾的名字和环回 IP 不走 Jina。测试可把它改成假。
 var jinaSkipLoopback = true
 
+// shouldJinaReader 在 u 为空、环回（当 jinaSkipLoopback 为真）、主机名含 jina.ai 或 duckduckgo.com、或内容类型含 json 时返回假。状态 403、429、503 返回真。其余看 LooksAntibot 或 ThinExtract。
 func shouldJinaReader(u *url.URL, status int, ct, raw, stripped string) bool {
 	if u == nil {
 		return false
@@ -249,6 +259,7 @@ func shouldJinaReader(u *url.URL, status int, ct, raw, stripped string) bool {
 	return webcontent.LooksAntibot(raw) || webcontent.ThinExtract(stripped, raw)
 }
 
+// httpGet 用 http.DefaultClient 发 GET，没有设置 CheckRedirect，跟随重定向时不再检查 blockedHost。正文经 io.LimitReader 截到 256<<10，即 256KiB。
 func httpGet(ctx context.Context, rawURL string) (status int, finalURL, contentType, body string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -268,13 +279,13 @@ func httpGet(ctx context.Context, rawURL string) (status int, finalURL, contentT
 	return resp.StatusCode, resp.Request.URL.String(), resp.Header.Get("Content-Type"), string(raw), nil
 }
 
+// blockedHost 判断 web_fetch 是否拒绝该主机。metadata.google.internal 直接拒绝。localhost 以及以 .localhost 结尾的名字放行。主机名能解析成 IP 时交给 blockedIP：环回地址放行，私网、链路本地单播、链路本地多播和未指定地址拒绝。其余名字做 DNS 查询，查询失败则拒绝；任一解析结果被 blockedIP 拒绝则拒绝。
 func blockedHost(host string) bool {
 	h := strings.ToLower(strings.TrimSpace(host))
 	if h == "metadata.google.internal" {
 		return true
 	}
-	// Desktop agent: the operator's own loopback servers (a live game on
-	// 127.0.0.1:port) are in scope. Cloud metadata and RFC1918 stay blocked.
+	// localhost 和以 .localhost 结尾的名字在这里放行。环回 IP 由 blockedIP 放行。metadata.google.internal 已在上面拒绝。私网、链路本地和未指定地址由 blockedIP 拒绝。
 	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
 		return false
 	}
@@ -293,6 +304,7 @@ func blockedHost(host string) bool {
 	return false
 }
 
+// blockedIP 在 ip 为 nil 时拒绝。环回地址放行。私网、链路本地单播、链路本地多播和未指定地址拒绝。其余放行。
 func blockedIP(ip net.IP) bool {
 	if ip == nil {
 		return true
@@ -303,6 +315,7 @@ func blockedIP(ip net.IP) bool {
 	return ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
+// stripTags 去掉尖括号标签，把标签换成空格，再把连续空白收成一个空格。
 func stripTags(s string) string {
 	var b strings.Builder
 	in := false

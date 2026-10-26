@@ -1,3 +1,6 @@
+// 本文件按上次遍历记下的描述，在页面重绘后把过期的 ref 对回现在的控件。
+// ref 本身在页面里重新走一遍才解析。分数低于 matchThreshold（45）算没对上。不调用模型。
+
 package browser
 
 import (
@@ -6,17 +9,17 @@ import (
 	"sync"
 )
 
+// refName 匹配两到三个小写字母、下划线、数字，例如 btn_0。
 var refName = regexp.MustCompile(`^[a-z]{2,3}_\d+$`)
 
-// refCache holds the last successful action walk. Refs themselves are
-// resolved live in the page; the cache is the descriptor set used when a
-// handle goes stale after a re-render and we retry by testid / name / id.
+// refCache 保存上次成功的控件遍历。页面重绘后句柄过期时，用这里的 testid、名字和 id 再试一次。
 type refCache struct {
 	mu    sync.Mutex
 	list  []Action
 	byRef map[string]Action
 }
 
+// store 换成这一批控件，并按 Ref 建索引。
 func (c *refCache) store(acts []Action) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -29,6 +32,7 @@ func (c *refCache) store(acts []Action) {
 	}
 }
 
+// lookup 按 ref 取出上次记下的控件。
 func (c *refCache) lookup(ref string) (Action, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -36,12 +40,14 @@ func (c *refCache) lookup(ref string) (Action, bool) {
 	return a, ok
 }
 
+// all 返回控件列表的副本。
 func (c *refCache) all() []Action {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]Action(nil), c.list...)
 }
 
+// clear 丢掉列表和索引。
 func (c *refCache) clear() {
 	c.mu.Lock()
 	c.list = nil
@@ -49,6 +55,7 @@ func (c *refCache) clear() {
 	c.mu.Unlock()
 }
 
+// invalidateRefs 清掉宿主上的 ref 缓存。导航和换配置时调用。
 func (h *Host) invalidateRefs() {
 	if h == nil {
 		return
@@ -56,8 +63,7 @@ func (h *Host) invalidateRefs() {
 	h.refs.clear()
 }
 
-// parseRef extracts btn_0 from ref=btn_0, ref:btn_0, [ref=btn_0], or a bare
-// btn_0. Empty means the string is a CSS selector or text= handle.
+// parseRef 从 ref=btn_0、ref:btn_0、[ref=btn_0] 或单独的 btn_0 里取出句柄。空字符串表示这是 CSS 选择器或 text= 句柄。
 func parseRef(sel string) string {
 	s := strings.TrimSpace(sel)
 	if s == "" {
@@ -76,6 +82,7 @@ func parseRef(sel string) string {
 	return ""
 }
 
+// rememberedTarget 把选择器对回缓存里的描述。ref 对上就返回那条；对不上也返回一个只带 Ref 和 Text 的 Action。text= 取出可见文字。CSS、#id 和 data-testid 再在全部缓存里找。
 func (h *Host) rememberedTarget(sel string) (Action, bool) {
 	if h == nil {
 		return Action{}, false
@@ -104,6 +111,7 @@ func (h *Host) rememberedTarget(sel string) (Action, bool) {
 	return Action{}, false
 }
 
+// matchFallback 用记住的描述对当前页面再匹配一次。分数低于 matchThreshold，或结果既没有 Ref 也没有 Selector 时返回空。
 func (h *Host) matchFallback(sel string) (string, string) {
 	want, ok := h.rememberedTarget(sel)
 	if !ok {
@@ -123,11 +131,10 @@ func (h *Host) matchFallback(sel string) (string, string) {
 	return got.Selector, why
 }
 
+// matchThreshold 是 matchTarget 的及格分。低于 45 算没对上。
 const matchThreshold = 45
 
-// matchTarget scores live actions against a remembered descriptor.
-// Weights follow the octop-browser matcher: selector/testid, id, name attr,
-// accessible name, role. A score below 45 is a miss.
+// matchTarget 给每个实况控件打分。选择器或 testid 重合加 80，id 加 70，name 属性加 60，无障碍名完全相同加 50、部分包含加 20，role 加 25。低于 45 时返回 not-found。
 func matchTarget(want Action, have []Action) (Action, string, int) {
 	wantSel := selectorSet(want)
 	wantName := normMatch(firstNonEmpty(want.Name, want.Text, want.Placeholder))
@@ -183,6 +190,7 @@ func matchTarget(want Action, have []Action) (Action, string, int) {
 	return best, bestWhy, bestScore
 }
 
+// selectorSet 收集选择器、data-testid 属性和 #id。
 func selectorSet(a Action) map[string]struct{} {
 	out := map[string]struct{}{}
 	add := func(s string) {
@@ -201,6 +209,7 @@ func selectorSet(a Action) map[string]struct{} {
 	return out
 }
 
+// overlap 看两个集合有没有相同的键。
 func overlap(a, b map[string]struct{}) bool {
 	for k := range a {
 		if _, ok := b[k]; ok {
@@ -210,10 +219,12 @@ func overlap(a, b map[string]struct{}) bool {
 	return false
 }
 
+// normMatch 去掉空白并转成小写，供打分比较。
 func normMatch(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+// firstNonEmpty 返回第一个非空白字符串。都空则返回空字符串。
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {

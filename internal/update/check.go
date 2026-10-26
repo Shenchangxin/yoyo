@@ -1,3 +1,5 @@
+// 拉取并验签清单，把核对过的字节写到 yoyo.staging，不替换正在运行的文件。
+
 package update
 
 import (
@@ -23,11 +25,13 @@ var (
 	httpClient = defaultHTTPClient()
 )
 
+// defaultHTTPClient 返回超时 30 分钟的 HTTP 客户端。
 func defaultHTTPClient() *http.Client {
-	// Installers can be hundreds of MB; JSON checks rely on the request context.
+	// 安装包可能到数百 MB，所以客户端超时是 30 分钟。清单请求的时限靠调用方的 context。
 	return &http.Client{Timeout: 30 * time.Minute}
 }
 
+// SetHTTPClient 换掉包级 HTTP 客户端。传入 nil 时恢复 defaultHTTPClient。
 func SetHTTPClient(c *http.Client) {
 	httpMu.Lock()
 	defer httpMu.Unlock()
@@ -38,14 +42,14 @@ func SetHTTPClient(c *http.Client) {
 	httpClient = c
 }
 
+// client 返回当前包级 HTTP 客户端。
 func client() *http.Client {
 	httpMu.Lock()
 	defer httpMu.Unlock()
 	return httpClient
 }
 
-// CheckResult is advisory. Applying a package is a human/L3 action; this
-// package never overwrites the running executable on its own.
+// CheckResult 是一次清单检查的结果。Newer 表示清单版本比当前版本新。Verified 表示验签并解析成功。
 type CheckResult struct {
 	Current  Status   `json:"current"`
 	Manifest Manifest `json:"manifest"`
@@ -54,6 +58,7 @@ type CheckResult struct {
 	Verified bool     `json:"verified"`
 }
 
+// Check 验签并解析清单。payload 非空时直接用这份正文和 sig。否则按 feedAttemptURLs 依次 GET 清单和旁边的 .sig。签名被拒且正文仍是带版本的清单时立刻返回该错误。地址都失败且没有更早的错误时返回 "update: empty url"。
 func Check(ctx context.Context, manifestURL string, payload, sig []byte, pub ed25519.PublicKey) (CheckResult, error) {
 	res := CheckResult{Current: Current("")}
 	if len(payload) > 0 {
@@ -89,6 +94,7 @@ func Check(ctx context.Context, manifestURL string, payload, sig []byte, pub ed2
 	return res, last
 }
 
+// finishCheck 先验签再解析。成功时 Verified 为真，Newer 来自 IsNewer，并按 DesktopOS 选择资源。
 func finishCheck(res CheckResult, payload, sig []byte, pub ed25519.PublicKey) (CheckResult, error) {
 	if err := Verify(pub, payload, sig); err != nil {
 		return res, err
@@ -106,6 +112,7 @@ func finishCheck(res CheckResult, payload, sig []byte, pub ed25519.PublicKey) (C
 	return res, nil
 }
 
+// feedAttemptURLs 先放清单地址本身。地址以 /channels/latest.json 结尾时，再追加同目录的 nightly.json 和 stable.json。空白地址返回 nil。
 func feedAttemptURLs(manifestURL string) []string {
 	manifestURL = strings.TrimSpace(manifestURL)
 	if manifestURL == "" {
@@ -125,6 +132,7 @@ func feedAttemptURLs(manifestURL string) []string {
 	return out
 }
 
+// signedManifestRejected 在错误文本含 "signature rejected"，且正文能解析出非空 version 时返回 true。
 func signedManifestRejected(payload []byte, err error) bool {
 	if err == nil || !strings.Contains(err.Error(), "signature rejected") {
 		return false
@@ -133,7 +141,7 @@ func signedManifestRejected(payload []byte, err error) bool {
 	return perr == nil && strings.TrimSpace(m.Version) != ""
 }
 
-// Stage writes a verified payload to destDir. It never replaces argv[0].
+// Stage 把字节写到 destDir/yoyo.staging，权限 0o755。wantSHA 非空且与内容 SHA-256 不一致时返回 "update: sha256 mismatch"。本函数不替换正在运行的可执行文件。
 func Stage(destDir string, bin []byte, wantSHA string) (string, error) {
 	sum := sha256.Sum256(bin)
 	got := hex.EncodeToString(sum[:])
@@ -150,12 +158,12 @@ func Stage(destDir string, bin []byte, wantSHA string) (string, error) {
 	return path, nil
 }
 
+// httpGet 以最多 2 MiB 调用 Fetch。
 func httpGet(ctx context.Context, rawURL string, nocache bool) ([]byte, error) {
 	return Fetch(ctx, rawURL, maxManifestBytes, nocache)
 }
 
-// Fetch downloads url up to max bytes into memory. It never writes argv[0].
-// ModelScope resolve URLs fall back to the dataset API on failure.
+// Fetch 把 URL 读进内存，最多 max 字节。max 小于等于 0 时按 1 MiB。空地址返回 "update: empty url"。resolve 地址失败时再试数据集 API。本函数不写正在运行的可执行文件。
 func Fetch(ctx context.Context, rawURL string, max int64, nocache bool) ([]byte, error) {
 	if rawURL == "" {
 		return nil, fmt.Errorf("update: empty url")
@@ -177,6 +185,7 @@ func Fetch(ctx context.Context, rawURL string, max int64, nocache bool) ([]byte,
 	return nil, last
 }
 
+// fetchOnce 做一次 GET。状态码大于等于 300 返回 "update: http <码>"。超过 max 返回 "update: payload too large"。正文只有空白时返回 "update: empty body"。
 func fetchOnce(ctx context.Context, rawURL string, max int64, nocache bool) ([]byte, error) {
 	resp, err := doGET(ctx, rawURL, nocache, 0)
 	if err != nil {
@@ -199,6 +208,7 @@ func fetchOnce(ctx context.Context, rawURL string, max int64, nocache bool) ([]b
 	return b, nil
 }
 
+// doGET 发出 GET。User-Agent 用 UpdaterUA，Accept 为 */*，Referer 来自 Referer。nocache 为真时加上 Cache-Control 和 Pragma 的 no-cache。start 大于 0 时加 Range。
 func doGET(ctx context.Context, rawURL string, nocache bool, start int64) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {

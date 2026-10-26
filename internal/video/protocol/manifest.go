@@ -1,3 +1,5 @@
+// manifest.go 把插件清单校验并装成适配器，再按模板组请求、解析响应。不发出网络请求。安装插件时由画布插件调用 LoadInstalledProviders。
+
 package protocol
 
 import (
@@ -13,6 +15,7 @@ import (
 	"strings"
 )
 
+// ManifestOperation 是清单里的一次 HTTP 操作，含方法、路径、头、查询、正文和文件段。
 type ManifestOperation struct {
 	Method              string             `json:"method"`
 	Path                string             `json:"path"`
@@ -27,6 +30,7 @@ type ManifestOperation struct {
 	Files               []ManifestFilePart `json:"files,omitempty"`
 }
 
+// ManifestFilePart 是 multipart 的一个文件段。来源、文件名和 MIME 都可以是模板。
 type ManifestFilePart struct {
 	Name     string `json:"name"`
 	Source   any    `json:"source"`
@@ -34,6 +38,7 @@ type ManifestFilePart struct {
 	MIMEType any    `json:"mimeType,omitempty"`
 }
 
+// ManifestResponse 描述创建和轮询响应从哪里取值。
 type ManifestResponse struct {
 	TaskIDPaths     []string `json:"taskIdPaths,omitempty"`
 	StatusPaths     []string `json:"statusPaths,omitempty"`
@@ -59,9 +64,7 @@ type ManifestResponse struct {
 	Usage         any  `json:"usage,omitempty"`
 }
 
-// ManifestAgentResponse describes the provider response shape for a
-// tool-capable text request. Tool call paths are resolved against each item in
-// ToolCallsPath.
+// ManifestAgentResponse 描述带工具调用的文本响应。工具调用路径对着 ToolCallsPath 里的每一项取值。
 type ManifestAgentResponse struct {
 	TextPaths              []string `json:"textPaths,omitempty"`
 	ReasoningPaths         []string `json:"reasoningPaths,omitempty"`
@@ -72,11 +75,10 @@ type ManifestAgentResponse struct {
 	ToolCallSignaturePaths []string `json:"toolCallThoughtSignaturePaths,omitempty"`
 }
 
-// AdapterResolver is used by the host to bind a shipped execution engine to a
-// manifest. Uploaded plugins must use the declarative path; host bindings are
-// reserved for manifests shipped with the application.
+// AdapterResolver 供宿主把随应用带上的执行引擎绑到清单。上传的插件走声明式路径。宿主绑定只留给随应用发布的清单。
 type AdapterResolver func(string) (Adapter, bool)
 
+// LoadInstalledPlugin 加载插件里的供应商并返回第一个。一个都没有则失败。
 func LoadInstalledPlugin(data []byte, resolve AdapterResolver) (Adapter, error) {
 	adapters, err := LoadInstalledProviders(data, resolve)
 	if err != nil {
@@ -88,9 +90,7 @@ func LoadInstalledPlugin(data []byte, resolve AdapterResolver) (Adapter, error) 
 	return adapters[0], nil
 }
 
-// LoadInstalledProviders loads every provider contribution from one plugin
-// package. The package remains the lifecycle and permission unit; providers
-// are separate execution entries in the runtime index.
+// LoadInstalledProviders 从一个插件包加载全部供应商。后端以 host: 开头时只能有一项供应商，并用 resolve 取出宿主适配器。没有供应商贡献时走声明式清单。有贡献时按每一项各建一个适配器。
 func LoadInstalledProviders(data []byte, resolve AdapterResolver) ([]Adapter, error) {
 	manifest, err := decodeManifest(data)
 	if err != nil {
@@ -134,6 +134,7 @@ func LoadInstalledProviders(data []byte, resolve AdapterResolver) ([]Adapter, er
 	return result, nil
 }
 
+// validatePluginMetadata 要求标识和版本非空且标识合法，至少有一种能力和一个使用面。能力只能是 text、image、video 或 audio。使用面只能是管理端系统频道、用户自定义频道、画布、创作或代理。
 func validatePluginMetadata(metadata Metadata) error {
 	if strings.TrimSpace(metadata.ID) == "" || strings.TrimSpace(metadata.Version) == "" || !validManifestIdentifier(metadata.ID) {
 		return fmt.Errorf("protocol plugin metadata is invalid")
@@ -161,30 +162,47 @@ type metadataAdapter struct {
 	delegate Adapter
 }
 
+// Metadata 返回包在外面的元数据。
 func (a metadataAdapter) Metadata() Metadata { return a.metadata }
+
+// AgentAvailable 在被包装的适配器实现了智能体能力且其自身可用时返回真。
 func (a metadataAdapter) AgentAvailable() bool {
 	capability, ok := a.delegate.(AgentCapability)
 	return ok && capability.AgentAvailable()
 }
+
+// ResultAvailable 在被包装的适配器实现了结果拉取且其自身可用时返回真。
 func (a metadataAdapter) ResultAvailable() bool {
 	capability, ok := a.delegate.(ResultCapability)
 	return ok && capability.ResultAvailable()
 }
+
+// BuildCreate 把创建请求转给被包装的适配器。
 func (a metadataAdapter) BuildCreate(ctx context.Context, c RequestContext) (RequestSpec, error) {
 	return a.delegate.BuildCreate(ctx, c)
 }
+
+// ParseCreate 把创建响应转给被包装的适配器。
 func (a metadataAdapter) ParseCreate(ctx context.Context, body []byte) (CreateResult, error) {
 	return a.delegate.ParseCreate(ctx, body)
 }
+
+// BuildPoll 把轮询请求转给被包装的适配器。
 func (a metadataAdapter) BuildPoll(ctx context.Context, c PollContext) (RequestSpec, error) {
 	return a.delegate.BuildPoll(ctx, c)
 }
+
+// ParsePoll 把轮询响应转给被包装的适配器。
 func (a metadataAdapter) ParsePoll(ctx context.Context, c PollContext, body []byte) (PollResult, error) {
 	return a.delegate.ParsePoll(ctx, c, body)
 }
+
+// BuildCancel 把取消请求转给被包装的适配器。
 func (a metadataAdapter) BuildCancel(ctx context.Context, c PollContext) (RequestSpec, error) {
 	return a.delegate.BuildCancel(ctx, c)
 }
+
+// BuildResult 在被包装的适配器不是 ResultAdapter 时返回不可用，否则转给它。
 func (a metadataAdapter) BuildResult(ctx context.Context, c PollContext) (RequestSpec, error) {
 	adapter, ok := a.delegate.(ResultAdapter)
 	if !ok {
@@ -192,6 +210,8 @@ func (a metadataAdapter) BuildResult(ctx context.Context, c PollContext) (Reques
 	}
 	return adapter.BuildResult(ctx, c)
 }
+
+// BuildAgent 在被包装的适配器不是 AgentAdapter 时返回不可用，否则转给它。
 func (a metadataAdapter) BuildAgent(ctx context.Context, c AgentRequestContext) (RequestSpec, error) {
 	adapter, ok := a.delegate.(AgentAdapter)
 	if !ok {
@@ -199,6 +219,8 @@ func (a metadataAdapter) BuildAgent(ctx context.Context, c AgentRequestContext) 
 	}
 	return adapter.BuildAgent(ctx, c)
 }
+
+// ParseAgent 在被包装的适配器不是 AgentAdapter 时返回不可用，否则转给它。
 func (a metadataAdapter) ParseAgent(ctx context.Context, body []byte) (AgentResult, error) {
 	adapter, ok := a.delegate.(AgentAdapter)
 	if !ok {
@@ -207,6 +229,7 @@ func (a metadataAdapter) ParseAgent(ctx context.Context, body []byte) (AgentResu
 	return adapter.ParseAgent(ctx, body)
 }
 
+// LoadManifest 解码清单并装成声明式适配器。
 func LoadManifest(data []byte) (Adapter, error) {
 	manifest, err := decodeManifest(data)
 	if err != nil {
@@ -215,6 +238,7 @@ func LoadManifest(data []byte) (Adapter, error) {
 	return loadDeclarativeManifest(manifest)
 }
 
+// decodeManifest 把字节解成清单并调用 ValidateManifest。解码或校验失败时返回该错误。
 func decodeManifest(data []byte) (Manifest, error) {
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
@@ -226,6 +250,7 @@ func decodeManifest(data []byte) (Manifest, error) {
 	return manifest, nil
 }
 
+// loadDeclarativeManifest 把后端写成 declarative，规范化后返回清单适配器。
 func loadDeclarativeManifest(manifest Manifest) (Adapter, error) {
 	manifest.Runtime.Backend = "declarative"
 	if err := normalizeManifest(&manifest); err != nil {
@@ -234,6 +259,7 @@ func loadDeclarativeManifest(manifest Manifest) (Adapter, error) {
 	return manifestAdapter{manifest: manifest}, nil
 }
 
+// loadDeclarativeManifestProvider 把后端写成 declarative，按给定下标规范化供应商后返回清单适配器。
 func loadDeclarativeManifestProvider(manifest Manifest, index int) (Adapter, error) {
 	manifest.Runtime.Backend = "declarative"
 	if err := normalizeManifestForProvider(&manifest, index); err != nil {
@@ -242,6 +268,7 @@ func loadDeclarativeManifestProvider(manifest Manifest, index int) (Adapter, err
 	return manifestAdapter{manifest: manifest}, nil
 }
 
+// ValidateManifest 校验 apiVersion 只能是 yingce.plugin/v1 或 yingce.plugin/v2，元数据要有标识、版本和名字，名字长于 160 或供应商长于 120 则失败。后端只接受空、declarative、rpc、wasm、trusted-backend，或以 host: 开头。没有供应商时必须另有贡献，然后只校验支付贡献。有供应商时逐项校验操作，最后仍校验支付贡献。
 func ValidateManifest(manifest Manifest) error {
 	seenSMS := map[string]bool{}
 	for _, provider := range manifest.Contributes.SMSProviders {
@@ -333,6 +360,7 @@ func ValidateManifest(manifest Manifest) error {
 	return validatePaymentProviderContributions(manifest)
 }
 
+// validatePaymentProviderContributions 校验支付供应商的标识、图标、结账方式、过期策略、身份字段和通知状态。结账方式只接受 qr_code 和 redirect。身份字段为空或长于 80 则失败。通知状态小于 0 或大于 599 则失败。
 func validatePaymentProviderContributions(manifest Manifest) error {
 	seen := make(map[string]struct{}, len(manifest.Contributes.PaymentProviders))
 	for index, provider := range manifest.Contributes.PaymentProviders {
@@ -370,6 +398,7 @@ func validatePaymentProviderContributions(manifest Manifest) error {
 	return nil
 }
 
+// normalizeManifest 在清单为空时失败。没有供应商贡献时把执行后端写进元数据。有供应商时按第一项规范化。
 func normalizeManifest(manifest *Manifest) error {
 	if manifest == nil {
 		return fmt.Errorf("plugin manifest is missing")
@@ -381,6 +410,7 @@ func normalizeManifest(manifest *Manifest) error {
 	return normalizeManifestForProvider(manifest, 0)
 }
 
+// normalizeManifestForProvider 把指定下标的供应商抄到清单的元数据和操作上。清单为空或下标越界则失败。
 func normalizeManifestForProvider(manifest *Manifest, index int) error {
 	if manifest == nil || index < 0 || index >= len(manifest.Contributes.Providers) {
 		return fmt.Errorf("plugin provider contribution is missing")
@@ -408,6 +438,7 @@ func normalizeManifestForProvider(manifest *Manifest, index int) error {
 	return nil
 }
 
+// hasNonProviderContribution 在短信、支付、工作流、画布节点、变换、命令、素材源、用量观察、AI 能力、智能体或导入导出任一非空时返回真。
 func hasNonProviderContribution(contributes ManifestContributions) bool {
 	if len(contributes.SMSProviders) > 0 {
 		return true
@@ -415,12 +446,14 @@ func hasNonProviderContribution(contributes ManifestContributions) bool {
 	return len(contributes.PaymentProviders) > 0 || len(contributes.Workflows) > 0 || len(contributes.CanvasNodes) > 0 || len(contributes.Transforms) > 0 || len(contributes.Commands) > 0 || len(contributes.AssetSources) > 0 || len(contributes.UsageObservers) > 0 || len(contributes.AICapabilities) > 0 || len(contributes.Agents) > 0 || len(contributes.ImportExport) > 0
 }
 
+// operationSummary 把方法和路径拼成一行。路径里的 {{model}} 写成 {model}，{{taskId}} 写成 {task_id}。
 func operationSummary(operation ManifestOperation) string {
 	path := strings.ReplaceAll(operation.Path, "{{model}}", "{model}")
 	path = strings.ReplaceAll(path, "{{taskId}}", "{task_id}")
 	return strings.ToUpper(operation.Method) + " " + path
 }
 
+// operationSummaryPtr 在操作为空时返回空串，否则返回 operationSummary 的结果。
 func operationSummaryPtr(operation *ManifestOperation) string {
 	if operation == nil {
 		return ""
@@ -428,6 +461,7 @@ func operationSummaryPtr(operation *ManifestOperation) string {
 	return operationSummary(*operation)
 }
 
+// validateManifestOperation 只接受 GET、POST、DELETE 和 PUT。没有路径模板时路径必须是相对路径。带文件段时，没有内容类型模板就必须是 multipart/form-data，且每段要有名字和来源。
 func validateManifestOperation(operation ManifestOperation) error {
 	method := strings.ToUpper(strings.TrimSpace(operation.Method))
 	if method != http.MethodGet && method != http.MethodPost && method != http.MethodDelete && method != http.MethodPut {
@@ -455,11 +489,18 @@ func validateManifestOperation(operation ManifestOperation) error {
 
 type manifestAdapter struct{ manifest Manifest }
 
+// Metadata 返回清单上的元数据。
 func (a manifestAdapter) Metadata() Metadata { return a.manifest.Metadata }
+
+// AgentAvailable 在清单同时有智能体操作和智能体响应映射时返回真。
 func (a manifestAdapter) AgentAvailable() bool {
 	return a.manifest.Agent != nil && a.manifest.AgentResponse != nil
 }
+
+// ResultAvailable 在清单声明了结果操作时返回真。
 func (a manifestAdapter) ResultAvailable() bool { return a.manifest.ResultOperation != nil }
+
+// BuildCreate 在没有供应商贡献时失败。否则先按校验规则检查请求，再按创建操作组出请求。
 func (a manifestAdapter) BuildCreate(_ context.Context, c RequestContext) (RequestSpec, error) {
 	if len(a.manifest.Contributes.Providers) == 0 {
 		return RequestSpec{}, fmt.Errorf("plugin %s does not provide a provider", a.manifest.Metadata.ID)
@@ -469,6 +510,8 @@ func (a manifestAdapter) BuildCreate(_ context.Context, c RequestContext) (Reque
 	}
 	return buildManifestOperation(a.manifest.Create, a.manifest.Auth, c.Request, "")
 }
+
+// BuildAgent 在没有智能体操作时失败。否则把智能体请求放进 extra 的 agent 后组出请求。
 func (a manifestAdapter) BuildAgent(_ context.Context, c AgentRequestContext) (RequestSpec, error) {
 	if a.manifest.Agent == nil {
 		return RequestSpec{}, fmt.Errorf("protocol %s has no agent operation", a.manifest.Metadata.ID)
@@ -476,6 +519,8 @@ func (a manifestAdapter) BuildAgent(_ context.Context, c AgentRequestContext) (R
 	request := GenerationRequest{Model: c.Model, Extra: map[string]any{"agent": c.Request}}
 	return buildManifestOperation(*a.manifest.Agent, a.manifest.Auth, request, "")
 }
+
+// ParseAgent 在没有智能体响应映射时失败。否则按路径取文本、推理和工具调用。工具名为空的项丢掉。调用标识为空时用响应体和序号合成。
 func (a manifestAdapter) ParseAgent(_ context.Context, body []byte) (AgentResult, error) {
 	if a.manifest.AgentResponse == nil {
 		return AgentResult{}, fmt.Errorf("protocol %s has no agent response mapping", a.manifest.Metadata.ID)
@@ -510,10 +555,13 @@ func (a manifestAdapter) ParseAgent(_ context.Context, body []byte) (AgentResult
 	return result, nil
 }
 
+// syntheticAgentToolCallID 用响应体和序号的 SHA-256 前 8 字节拼出带 call_ 前缀的标识。
 func syntheticAgentToolCallID(body []byte, index int) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s#%d", body, index)))
 	return fmt.Sprintf("call_%x", sum[:8])
 }
+
+// ParseCreate 在声明了二进制载荷时走 binaryPayloadCreateResult，否则把正文解成对象再解析。
 func (a manifestAdapter) ParseCreate(_ context.Context, body []byte) (CreateResult, error) {
 	if a.manifest.Response.BinaryPayload {
 		return binaryPayloadCreateResult(a.manifest.Response.ResultKind, body)
@@ -546,6 +594,8 @@ func binaryPayloadCreateResult(resultKind string, body []byte) (CreateResult, er
 	}
 	return CreateResult{Status: StatusSucceeded, Result: result}, nil
 }
+
+// BuildPoll 在没有轮询操作时失败。否则用模型和任务标识组出轮询请求。
 func (a manifestAdapter) BuildPoll(_ context.Context, c PollContext) (RequestSpec, error) {
 	if a.manifest.Poll == nil {
 		return RequestSpec{}, fmt.Errorf("protocol %s has no poll operation", a.manifest.Metadata.ID)
@@ -554,6 +604,8 @@ func (a manifestAdapter) BuildPoll(_ context.Context, c PollContext) (RequestSpe
 	request.Model = c.Model
 	return buildManifestOperation(*a.manifest.Poll, a.manifest.Auth, request, c.TaskID)
 }
+
+// ParsePoll 把正文解成对象，再收成轮询结果。
 func (a manifestAdapter) ParsePoll(_ context.Context, c PollContext, body []byte) (PollResult, error) {
 	payload, err := decodeObject(body)
 	if err != nil {
@@ -562,6 +614,8 @@ func (a manifestAdapter) ParsePoll(_ context.Context, c PollContext, body []byte
 	result := a.parse(payload, c)
 	return PollResult{TaskID: result.TaskID, Status: result.Status, Result: result.Result, Message: result.Message}, nil
 }
+
+// BuildCancel 在没有取消操作时失败。否则用模型和任务标识组出取消请求。
 func (a manifestAdapter) BuildCancel(_ context.Context, c PollContext) (RequestSpec, error) {
 	if a.manifest.Cancel == nil {
 		return RequestSpec{}, fmt.Errorf("protocol %s does not support cancellation", a.manifest.Metadata.ID)
@@ -571,6 +625,7 @@ func (a manifestAdapter) BuildCancel(_ context.Context, c PollContext) (RequestS
 	return buildManifestOperation(*a.manifest.Cancel, a.manifest.Auth, request, c.TaskID)
 }
 
+// BuildResult 在没有结果操作时失败。否则用模型和任务标识组出结果请求。
 func (a manifestAdapter) BuildResult(_ context.Context, c PollContext) (RequestSpec, error) {
 	if a.manifest.ResultOperation == nil {
 		return RequestSpec{}, fmt.Errorf("protocol %s has no result operation", a.manifest.Metadata.ID)
@@ -580,6 +635,7 @@ func (a manifestAdapter) BuildResult(_ context.Context, c PollContext) (RequestS
 	return buildManifestOperation(*a.manifest.ResultOperation, a.manifest.Auth, request, c.TaskID)
 }
 
+// parse 按响应映射取出任务标识、状态、消息、文本、推理和媒体。错误路径命中时状态为 failed。状态仍是 pending 但已经有文本或媒体时改成 succeeded。什么结果都没有时结果为空。
 func (a manifestAdapter) parse(payload map[string]any, c PollContext) CreateResult {
 	response := a.manifest.Response
 	env := map[string]any{"response": payload, "taskId": c.TaskID, "request": manifestRequestValues(c.Request)}
@@ -647,6 +703,7 @@ func (a manifestAdapter) parse(payload map[string]any, c PollContext) CreateResu
 	return CreateResult{TaskID: id, Status: status, Result: result, Message: message}
 }
 
+// validateManifestRequest 在没有规则时直接返回。断言求值失败，或结果不为真时，返回错误。
 func validateManifestRequest(rules []ManifestValidation, request GenerationRequest) error {
 	if len(rules) == 0 {
 		return nil
@@ -664,6 +721,7 @@ func validateManifestRequest(rules []ManifestValidation, request GenerationReque
 	return nil
 }
 
+// manifestResponseString 求值模板后把非空白文本拼起来。模板为空或求值失败时返回空串。
 func manifestResponseString(template any, env map[string]any) string {
 	if template == nil {
 		return ""
@@ -682,6 +740,7 @@ func manifestResponseString(template any, env map[string]any) string {
 	return strings.Join(parts, "")
 }
 
+// manifestResponseMedia 求值模板并收成指定种类的素材。模板为空或求值失败时返回 nil。
 func manifestResponseMedia(template any, env map[string]any, kind string, ephemeral bool) []MediaReference {
 	if template == nil {
 		return nil
@@ -693,6 +752,7 @@ func manifestResponseMedia(template any, env map[string]any, kind string, epheme
 	return mediaReferencesFromManifestValue(value, kind, ephemeral)
 }
 
+// mediaReferencesFromManifestValue 把字符串和对象收成素材引用。以 data: 开头的字符串写入 DataURL，其他字符串写入 URL。
 func mediaReferencesFromManifestValue(value any, kind string, ephemeral bool) []MediaReference {
 	result := make([]MediaReference, 0)
 	for _, item := range manifestArray(value) {
@@ -731,6 +791,7 @@ func mediaReferencesFromManifestValue(value any, kind string, ephemeral bool) []
 	return result
 }
 
+// normalizeManifestInlineDataURL 把非 data URL 的内联数据补成 data URL。空串和已经是 data URL 的值原样返回。
 func normalizeManifestInlineDataURL(value, kind, formatHint string) string {
 	value = strings.TrimSpace(value)
 	if value == "" || strings.HasPrefix(value, "data:") {
@@ -739,6 +800,7 @@ func normalizeManifestInlineDataURL(value, kind, formatHint string) string {
 	return "data:" + manifestInlineMediaMIME(kind, formatHint) + ";base64," + value
 }
 
+// manifestInlineMediaMIME 按格式提示或种类返回 MIME。对不上时图像用 image/png，音频用 audio/mpeg，视频用 video/mp4。
 func manifestInlineMediaMIME(kind, formatHint string) string {
 	hint := strings.ToLower(strings.TrimSpace(formatHint))
 	switch hint {
@@ -780,6 +842,7 @@ var (
 	manifestHTMLVideoRegex = regexp.MustCompile(`(?i)<video[^>]+src=['"]([^'"]+)['"]`)
 )
 
+// mediaPathValues 从路径上的字符串或数组里取媒体地址。字符串里有 Markdown 图片或 video 标签时改取其中的地址。
 func mediaPathValues(payload map[string]any, path string) []string {
 	value := pathValue(payload, path)
 	if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
@@ -828,6 +891,7 @@ func mediaPathValues(payload map[string]any, path string) []string {
 	return values
 }
 
+// buildManifestOperation 按操作模板求值正文、路径、头、查询、文件和内容类型。求值后的路径必须仍是相对路径。模型标识转义后保留其中的斜杠。
 func buildManifestOperation(operation ManifestOperation, auth ManifestAuth, request GenerationRequest, taskID string) (RequestSpec, error) {
 	requestValues := manifestRequestValues(request)
 	env := map[string]any{"request": requestValues, "taskId": taskID}
@@ -858,9 +922,7 @@ func buildManifestOperation(operation ManifestOperation, auth ManifestAuth, requ
 		return RequestSpec{}, fmt.Errorf("evaluate request path: %w", err)
 	}
 	path := strings.ReplaceAll(manifestString(evaluatedPath), "{{taskId}}", url.PathEscape(taskID))
-	// Model identifiers from async aggregators commonly contain path segments
-	// (for example openai/gpt-image/edit). Escape each segment while preserving
-	// the provider's intentional slash separators in the manifest path.
+	// 异步聚合器的模型标识常含路径段（例如 openai/gpt-image/edit）。逐段转义，同时保留清单路径里故意留下的斜杠。
 	escapedModel := strings.ReplaceAll(url.PathEscape(request.Model), "%2F", "/")
 	path = strings.ReplaceAll(path, "{{model}}", escapedModel)
 	path = interpolateManifestString(path, env)
@@ -891,6 +953,7 @@ func buildManifestOperation(operation ManifestOperation, auth ManifestAuth, requ
 	return RequestSpec{Method: strings.ToUpper(operation.Method), Path: path, OriginPath: operation.OriginPath, ContentType: contentType, Headers: headers, Query: query, Body: body, Files: files, Auth: auth}, nil
 }
 
+// evaluateManifestStringMap 把模板映射求值成字符串。空映射返回 nil。求值后为空白的项丢掉。
 func evaluateManifestStringMap(values map[string]any, env map[string]any) (map[string]string, error) {
 	if len(values) == 0 {
 		return nil, nil
@@ -908,6 +971,7 @@ func evaluateManifestStringMap(values map[string]any, env map[string]any) (map[s
 	return result, nil
 }
 
+// evaluateManifestQuery 把模板映射求值成查询参数。每个键可以对应多段非空白文本。
 func evaluateManifestQuery(values map[string]any, env map[string]any) (map[string][]string, error) {
 	if len(values) == 0 {
 		return nil, nil
@@ -927,6 +991,7 @@ func evaluateManifestQuery(values map[string]any, env map[string]any) (map[strin
 	return result, nil
 }
 
+// evaluateManifestFiles 按文件段求值来源、文件名和 MIME，收成请求文件段。文件名为空时用素材名，仍为空则用段名和序号。
 func evaluateManifestFiles(parts []ManifestFilePart, env map[string]any) ([]RequestFilePart, error) {
 	result := make([]RequestFilePart, 0)
 	for _, part := range parts {
@@ -963,6 +1028,7 @@ func evaluateManifestFiles(parts []ManifestFilePart, env map[string]any) ([]Requ
 	return result, nil
 }
 
+// normalizeManifestValue 递归规范化值。键正好从 0 连续排到末尾时，把对象改成数组。
 func normalizeManifestValue(value any) any {
 	switch v := value.(type) {
 	case map[string]any:
@@ -999,6 +1065,7 @@ func normalizeManifestValue(value any) any {
 	}
 }
 
+// manifestExpressionValue 解析用竖线分隔的旧式表达式。来源是 taskId 或 request 路径，其余当成字面量，再套上后面的变换。
 func manifestExpressionValue(expression string, request GenerationRequest, taskID string) any {
 	expression = strings.TrimSpace(expression)
 	source := expression
@@ -1026,9 +1093,7 @@ func manifestExpressionValue(expression string, request GenerationRequest, taskI
 	return value
 }
 
-// manifestRequestValues is deliberately a small, JSON-shaped view of the
-// platform request. It lets uploaded manifests address media items by index
-// without exposing Go structs or adding provider-specific host code.
+// manifestRequestValues 把生成请求投影成清单能按下标寻址的对象，含消息、素材、输出和供应商选项。还没有 system 消息时，系统指令写进消息数组。输出字段为空时回退到请求上的旧字段。
 func manifestRequestValues(request GenerationRequest) map[string]any {
 	userContent := make([]any, 0)
 	if strings.TrimSpace(request.Prompt) != "" {
@@ -1127,6 +1192,7 @@ func manifestRequestValues(request GenerationRequest) map[string]any {
 	}
 }
 
+// hasSystemMessage 在任一消息的角色去掉空白后等于 system 时返回真，比较时忽略大小写。
 func hasSystemMessage(messages []Message) bool {
 	for _, message := range messages {
 		if strings.EqualFold(strings.TrimSpace(message.Role), "system") {
@@ -1136,6 +1202,7 @@ func hasSystemMessage(messages []Message) bool {
 	return false
 }
 
+// requestAsManifestValue 经 JSON 往返把值收成清单能用的数据。
 func requestAsManifestValue(value any) (any, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {
@@ -1148,6 +1215,7 @@ func requestAsManifestValue(value any) (any, error) {
 	return result, nil
 }
 
+// manifestModelID 返回模型标识。含 :: 时只取最后一段，并转成小写。
 func manifestModelID(request GenerationRequest) string {
 	modelID := strings.TrimSpace(request.Model)
 	if separator := strings.LastIndex(modelID, "::"); separator >= 0 {
@@ -1156,6 +1224,7 @@ func manifestModelID(request GenerationRequest) string {
 	return strings.ToLower(modelID)
 }
 
+// manifestMediaValues 把素材投影成带地址、角色、顺序和来源的对象。顺序为 0 且下标大于 0 时，顺序改用下标。
 func manifestMediaValues(values []MediaReference) []any {
 	result := make([]any, 0, len(values))
 	for index, value := range values {
@@ -1187,6 +1256,7 @@ func manifestMediaValues(values []MediaReference) []any {
 	return result
 }
 
+// manifestMediaSourceType 有 DataURL 时返回 data，否则有 URL 时返回 url，都没有则返回 unknown。
 func manifestMediaSourceType(value MediaReference) string {
 	if value.DataURL != "" {
 		return "data"
@@ -1197,6 +1267,7 @@ func manifestMediaSourceType(value MediaReference) string {
 	return "unknown"
 }
 
+// applyManifestTransform 按变换名处理值，包括布尔、整数、省略零值或空串、按模型名包含或等于来省略、去空白和大小写。纯数字的 resolution_p 补上 p。video-resolution 交给旧分辨率归一。
 func applyManifestTransform(value any, transform string, request GenerationRequest) any {
 	transform = strings.ToLower(strings.TrimSpace(transform))
 	if transform == "bool" || transform == "boolean" {
@@ -1297,14 +1368,14 @@ func applyManifestTransform(value any, transform string, request GenerationReque
 		}
 		return text
 	case "video-resolution", "video_resolution", "videoresolution":
-		// Compatibility for already-installed 1.0.1 manifests. New plugins
-		// should declare exact enum values and use generic string transforms.
+		// 兼容已经装上的 1.0.1 清单。新插件应声明确切枚举，并使用通用字符串变换。
 		return normalizeLegacyManifestVideoResolution(text)
 	default:
 		return value
 	}
 }
 
+// normalizeLegacyManifestVideoResolution 把纯数字分辨率补上 p。空串返回空串。含非数字时返回小写后的原文。
 func normalizeLegacyManifestVideoResolution(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	if normalized == "" {
@@ -1318,15 +1389,18 @@ func normalizeLegacyManifestVideoResolution(value string) string {
 	return normalized + "p"
 }
 
+// pathValue 按点号路径取值。
 func pathValue(payload map[string]any, path string) any {
 	return manifestPathValue(payload, path)
 }
 
+// arrayValue 把值当成数组。不是数组时返回 nil。
 func arrayValue(value any) []any {
 	items, _ := value.([]any)
 	return items
 }
 
+// firstPathValue 按路径顺序返回第一个非空白字符串。
 func firstPathValue(payload map[string]any, paths ...string) string {
 	for _, path := range paths {
 		value := pathValue(payload, path)
@@ -1337,6 +1411,7 @@ func firstPathValue(payload map[string]any, paths ...string) string {
 	return ""
 }
 
+// manifestError 沿错误路径看值。空串、0、ok、success、succeeded 和 true 不算错误，其他非空值算错误。都没碰上时返回假。
 func manifestError(payload map[string]any, paths ...string) bool {
 	for _, path := range paths {
 		value := pathValue(payload, path)
@@ -1377,6 +1452,7 @@ func manifestError(payload map[string]any, paths ...string) bool {
 	return false
 }
 
+// reflectValueIsZero 判断有符号或无符号整数是否为 0。其他类型返回假。
 func reflectValueIsZero(value any) bool {
 	switch typed := value.(type) {
 	case int:
@@ -1404,9 +1480,7 @@ func reflectValueIsZero(value any) bool {
 	}
 }
 
-// firstPathJSONValue keeps scalar response fields string-like while allowing
-// providers to return tool arguments as an object instead of a JSON string.
-// The platform tool contract always stores arguments as JSON text.
+// firstPathJSONValue 按路径取工具参数。字符串去掉空白后返回，对象则编成 JSON 文本。
 func firstPathJSONValue(payload map[string]any, paths ...string) string {
 	for _, path := range paths {
 		value := pathValue(payload, path)
@@ -1427,6 +1501,7 @@ func firstPathJSONValue(payload map[string]any, paths ...string) string {
 	return ""
 }
 
+// setMapPath 按点号路径写入值，中间缺少的对象会补上。
 func setMapPath(target map[string]any, path string, value any) {
 	parts := strings.Split(strings.Trim(path, "."), ".")
 	current := target
@@ -1443,11 +1518,13 @@ func setMapPath(target map[string]any, path string, value any) {
 	}
 }
 
+// isRelativePath 在路径以单个斜杠开头，且没有主机、用户信息和协议时返回真。
 func isRelativePath(path string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(path))
 	return err == nil && parsed.Path != "" && strings.HasPrefix(parsed.Path, "/") && !strings.HasPrefix(parsed.Path, "//") && parsed.Host == "" && parsed.User == nil && parsed.Scheme == ""
 }
 
+// validManifestIdentifier 检查标识。空串或长度超过 96 时返回假。只允许小写字母、数字、连字符、下划线和点，且不能以这后三种符号开头。
 func validManifestIdentifier(value string) bool {
 	if len(value) == 0 || len(value) > 96 {
 		return false

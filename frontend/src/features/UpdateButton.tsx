@@ -1,3 +1,5 @@
+// 本文件拥有标题栏上的更新按钮和确认应用。不拥有更新包怎么下载。调用方把它放进标题栏。
+
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
@@ -19,10 +21,12 @@ type UpdateSnap = {
   manifest?: { version?: string };
 };
 
+// 从快照的 manifest.version 取版本，没有就是空字符串。
 function versionOf(s: UpdateSnap | null): string {
   return String(s?.manifest?.version || "").trim();
 }
 
+// phase 为 ready 或 applying，或者已经 downloaded，才显示按钮。没有快照不显示。
 function visible(s: UpdateSnap | null): boolean {
   if (!s) return false;
   const phase = String(s.phase || "idle");
@@ -30,6 +34,7 @@ function visible(s: UpdateSnap | null): boolean {
   return !!s.downloaded;
 }
 
+// UpdateButton 不可见时不渲染。百分比夹在 0 到 100。ready、downloading、checking 时每 1500 毫秒拉一次状态，否则每 4000 毫秒。
 export function UpdateButton() {
   const copy = useCopy();
   const [ota, setOta] = useState<UpdateSnap | null>(null);
@@ -62,6 +67,7 @@ export function UpdateButton() {
     };
   }, [phase]);
 
+  // VITE_E2E 时不订 yoyo:pulse。收到 kind 为 update 的脉冲就再拉一次状态。
   useEffect(() => {
     if (import.meta.env.VITE_E2E) return;
     let off: (() => void) | undefined;
@@ -84,6 +90,7 @@ export function UpdateButton() {
 
   if (!visible(ota)) return null;
 
+  // applying 时只提示当前文案，不打开确认。其余阶段打开确认，确认后调用 applyUpdate。
   async function onClick() {
     if (phase === "applying") {
       toast.message(label);

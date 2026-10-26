@@ -1,3 +1,5 @@
+// 本文件拥有代码高亮、工作区文件预览和产物正文。不拥有差异怎么算，那一块用 DiffBlock。Transcript、BrowserPane 和 FilePeek 传入路径或产物。
+
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { CHAT_DIFF_MAX_LINES, DiffBlock } from "../../lib/split-diff";
 import { langFromPath, type ArtifactView } from "../../lib/artifact-preview";
@@ -20,6 +22,7 @@ import { useUI } from "../../lib/store";
 import { PresenceModuleLoading } from "../presence";
 import { SandboxedFrame } from "./SandboxedFrame";
 
+// 高亮插件交来的一块 token。htmlStyle 可以是样式对象或分号串。
 type HlToken = {
   content: string;
   color?: string;
@@ -28,6 +31,7 @@ type HlToken = {
   htmlAttrs?: Record<string, string>;
 };
 
+// 对象形式的 htmlStyle 原样用。字符串按分号拆开。color 和 bgColor 只在对应属性还空着时补上。没有样式就返回 undefined。
 function tokenStyle(t: HlToken): CSSProperties | undefined {
   if (t.htmlStyle && typeof t.htmlStyle === "object" && !Array.isArray(t.htmlStyle)) {
     return t.htmlStyle as CSSProperties;
@@ -47,6 +51,7 @@ function tokenStyle(t: HlToken): CSSProperties | undefined {
   return Object.keys(style).length ? style : undefined;
 }
 
+// 语言不受支持时改用 text。同步结果和回调都写入，卸下后不再写。高亮抛错就清空。
 function useHighlight(code: string, lang?: string): HlToken[][] | null {
   const [lines, setLines] = useState<HlToken[][] | null>(null);
   useEffect(() => {
@@ -69,7 +74,7 @@ function useHighlight(code: string, lang?: string): HlToken[][] | null {
   return lines;
 }
 
-/** One code surface — DESIGN.md recipe. No nested Streamdown card. */
+// CodePreview 只画一块代码，不再套一层卡片。cap 缺省或不大于 0 时截到 12000。空白文本不渲染。fill 为真时撑满，否则最高 28rem。
 export function CodePreview({
   lang,
   text,
@@ -119,6 +124,7 @@ export function CodePreview({
   );
 }
 
+// 挂上时打开全局模块加载，卸下时关掉。fill 为真时尺寸 160，否则 96。
 function PreviewLoading({ fill, label }: { fill?: boolean; label: string }) {
   useEffect(() => {
     useUI.getState().setModuleLoading(true);
@@ -133,6 +139,7 @@ function PreviewLoading({ fill, label }: { fill?: boolean; label: string }) {
   );
 }
 
+// WorkspaceFileView 没有工作区或路径时不渲染。二进制走 readWorkspaceBlob，docx 转成 HTML，其余做成对象 URL 并在卸下时撤销。非二进制走 previewWorkspaceFile。source 为真时不按 HTML 打开。非 fill 的文本加载中什么都不画。
 export function WorkspaceFileView({
   workspace,
   path,
@@ -236,6 +243,7 @@ export function WorkspaceFileView({
     };
   }, [workspace, path, blobKind]);
 
+  // 对象 URL 出来后若媒体一直没就绪，2000 毫秒后也算就绪，避免遮罩不撤。
   useEffect(() => {
     if (!objectUrl || mediaReady) return;
     const t = window.setTimeout(() => setMediaReady(true), 2_000);
@@ -333,6 +341,7 @@ export function WorkspaceFileView({
   return <p className={note}>{copy.review.cannotPreview}</p>;
 }
 
+// 能解析成 A1=值 这种格子才画表。少于两行、任一行对不上，或超过 80 行、26 列，就退回纯文本。
 function OfficeText({ text, fill }: { text: string; fill?: boolean }) {
   const rows = parseSheet(text);
   if (rows) {
@@ -361,6 +370,7 @@ function OfficeText({ text, fill }: { text: string; fill?: boolean }) {
   );
 }
 
+// 每一行都必须是列字母、行号和等号。行号和列号从 1 计，写进格子时减 1。
 function parseSheet(text: string): string[][] | null {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return null;
@@ -380,12 +390,14 @@ function parseSheet(text: string): string[][] | null {
   return grid;
 }
 
+// A 是 1。按 26 进制把列字母换成列号。
 function colIndex(col: string): number {
   let n = 0;
   for (const ch of col) n = n * 26 + (ch.charCodeAt(0) - 64);
   return n;
 }
 
+// ArtifactBody 在要看 HTML 且不是源码时优先用沙箱或工作区预览。源码带着 diff 时只留差异，不再打开 HTML。纯文本、pdf、docx、xlsx、pptx 且没有 diff 和 code 时再读工作区文件。
 export function ArtifactBody({
   view,
   workspace,

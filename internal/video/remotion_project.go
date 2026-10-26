@@ -1,3 +1,5 @@
+// remotion_project.go 把托管的 Remotion 工程文件写到视频目录。
+
 package video
 
 import (
@@ -5,6 +7,7 @@ import (
 	"path/filepath"
 )
 
+// writeRemotionProject 创建 src 和 public，并把清单、npmrc、TypeScript 配置和 TitleCard 源码写成 0644。目录为空时返回 os.ErrInvalid。
 func (e *Engine) writeRemotionProject() error {
 	dir := e.remotionDir()
 	if dir == "" {
@@ -33,6 +36,7 @@ func (e *Engine) writeRemotionProject() error {
 	return nil
 }
 
+// remotionPackageJSON 是工程清单。依赖 remotion 与 @remotion/cli 4.0.241，render 脚本渲染 TitleCard。
 const remotionPackageJSON = `{
   "name": "yoyo-remotion",
   "private": true,
@@ -49,11 +53,13 @@ const remotionPackageJSON = `{
 }
 `
 
+// remotionNPMRC 关掉 npm 的 fund、audit 和 progress。
 const remotionNPMRC = `fund=false
 audit=false
 progress=false
 `
 
+// remotionTSConfig 把 TypeScript 设成 ES2018、commonjs、react-jsx，并且 noEmit。
 const remotionTSConfig = `{
   "compilerOptions": {
     "target": "ES2018",
@@ -67,16 +73,19 @@ const remotionTSConfig = `{
 }
 `
 
+// remotionConfigTS 让 Remotion 用 jpeg 帧，并允许覆盖输出。
 const remotionConfigTS = `import { Config } from "@remotion/cli/config";
 Config.setVideoImageFormat("jpeg");
 Config.setOverwriteOutput(true);
 `
 
+// remotionIndexTS 用 registerRoot 挂上 RemotionRoot。
 const remotionIndexTS = `import { registerRoot } from "remotion";
 import { RemotionRoot } from "./Root";
 registerRoot(RemotionRoot);
 `
 
+// remotionRootTSX 注册 id 为 TitleCard 的合成。默认 90 帧、30 fps、1080×1920。props 可以改时长和宽高，帧数至少 1，宽高至少 16。
 const remotionRootTSX = `import React from "react";
 import { Composition } from "remotion";
 import { TitleCard } from "./TitleCard";
@@ -108,6 +117,7 @@ export const RemotionRoot: React.FC = () => {
 };
 `
 
+// remotionTitleCardTSX 把视频铺满黑底，并在底部渐变上写标题。src 含 :// 或以 / 开头时直接使用，否则去掉 public/ 前缀后当作 staticFile。
 const remotionTitleCardTSX = `import React from "react";
 import { AbsoluteFill, OffthreadVideo, staticFile } from "remotion";
 

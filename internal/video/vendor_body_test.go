@@ -1,3 +1,5 @@
+// vendor_body_test.go 检查抠图和配乐请求是否按各供应商的公开字段发出。
+
 package video
 
 import (
@@ -15,6 +17,7 @@ import (
 	"time"
 )
 
+// TestCutoutVendorsSendTheirPublicBodies 确认 remove.bg 带 X-Api-Key 和 image_file_b64，PhotoRoom 带 x-api-key，火山引擎带 saliency_seg、only_mask 为 3 和 HMAC-SHA256。单段密钥会失败。同一正文和同一时间的签名两次相同。
 func TestCutoutVendorsSendTheirPublicBodies(t *testing.T) {
 	pngBytes := tinyPNG(t)
 	var removeKey, photoKey, volcBody, volcAuth string
@@ -71,6 +74,7 @@ func TestCutoutVendorsSendTheirPublicBodies(t *testing.T) {
 	}
 }
 
+// TestMusicVendorsSendTheirPublicBodies 确认 MiniMax 纯器乐请求、Mureka 查询后的音频、ElevenLabs 的 xi-api-key，以及 Stability 提示词。google-lyria 保持为预设，不发出成功结果。
 func TestMusicVendorsSendTheirPublicBodies(t *testing.T) {
 	var miniBody, elevenKey, stablePrompt string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +132,7 @@ func TestMusicVendorsSendTheirPublicBodies(t *testing.T) {
 	}
 }
 
+// tinyPNG 做一张 2×2 的 PNG。
 func tinyPNG(t *testing.T) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
@@ -139,11 +144,13 @@ func tinyPNG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// readString 读完请求正文并当成字符串。
 func readString(r *http.Request) string {
 	b, _ := io.ReadAll(r.Body)
 	return string(b)
 }
 
+// srvURL 用请求的 Host 拼出 http 地址。
 func srvURL(r *http.Request) string {
 	return "http://" + r.Host
 }

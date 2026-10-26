@@ -1,3 +1,5 @@
+// 本文件调用 Jina 的无密钥搜索和阅读接口。正文仍受 get 的 maxBody 限制。
+
 package webcontent
 
 import (
@@ -10,11 +12,15 @@ import (
 )
 
 const (
+	// DefaultJinaSearch 是 Jina 搜索地址 https://s.jina.ai/。
 	DefaultJinaSearch = "https://s.jina.ai/"
+	// DefaultJinaReader 是 Jina 阅读地址 https://r.jina.ai/。
 	DefaultJinaReader = "https://r.jina.ai/"
 )
 
-// SearchJina hits Jina's no-key search endpoint and returns formatted hits.
+// SearchJina 请求 base 加上路径转义后的 query。base 空白时用 DefaultJinaSearch，没有结尾斜杠会补上。
+// 状态码大于等于 300 时错误文案是 jina search 加状态码。能从 JSON 抽出命中且 FormatHits 通过 Useful 就返回格式化文本。
+// 否则正文须通过 Useful，不然错误文案是 jina search empty。query 空白时错误文案是 empty query。
 func SearchJina(ctx context.Context, client *http.Client, base, query string) (string, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -47,7 +53,9 @@ func SearchJina(ctx context.Context, client *http.Client, base, query string) (s
 	return text, nil
 }
 
-// ReadJina returns markdown for a public URL via Jina Reader.
+// ReadJina 请求 base 直接拼接 rawURL，Accept 为 text/plain。base 空白时用 DefaultJinaReader。
+// 状态码大于等于 300 时错误文案是 jina reader 加状态码。LooksAntibot 为真时错误文案是 jina reader antibot。
+// 去掉空白后短于 40 字节时错误文案是 jina reader empty。rawURL 空白时错误文案是 empty url。
 func ReadJina(ctx context.Context, client *http.Client, base, rawURL string) (string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -77,6 +85,8 @@ func ReadJina(ctx context.Context, client *http.Client, base, rawURL string) (st
 	return text, nil
 }
 
+// hitsFromJSON 从对象的 data、results、organic、web、items 里取数组。某一项是对象且含 results 数组时用那个数组。
+// 每条取 title 或 name、url 或 link 或 href、以及 description、snippet、content、text、summary 里的第一个非空字符串。标题和 URL 都空的丢掉。
 func hitsFromJSON(raw []byte) []Hit {
 	var top map[string]any
 	if json.Unmarshal(raw, &top) != nil {
@@ -115,6 +125,7 @@ func hitsFromJSON(raw []byte) []Hit {
 	return hits
 }
 
+// firstString 按 keys 的顺序返回第一个去掉空白后非空的字符串。
 func firstString(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {

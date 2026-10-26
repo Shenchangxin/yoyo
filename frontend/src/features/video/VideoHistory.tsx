@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有任务栏里的剪辑、短剧、短片和画布列表。不拥有各工种的编辑器。
+ * 新建和删除会改服务端。任务页签只嵌任务路由，不是另一条模型循环。
+ */
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Clapperboard, Copy, LayoutGrid, Plus, Scissors, Sparkles, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
@@ -21,6 +25,7 @@ import type { CutProject } from "./cut-desk";
 
 const YingceApp = lazy(() => import("./canvas-host/YingceApp"));
 
+/** VideoHistory 在项目和任务之间切换，并列出剪辑、短剧、短片和画布。 */
 export function VideoHistory(props: {
   projects: VideoProject[];
   canvasProjectId?: string;
@@ -54,6 +59,7 @@ export function VideoHistory(props: {
     return () => { alive = false; };
   }, [props.projects, props.sessionId]);
 
+  /** 新建一块画布，有会话就绑定并打开。 */
   async function newCanvas() {
     setBusy("canvas");
     try {
@@ -77,6 +83,7 @@ export function VideoHistory(props: {
     }
   }
 
+  /** 用填写的标题新建短片。画幅只接受 16:9、1:1，否则用 9:16。 */
   async function newStudio(title: string) {
     const name = title.trim();
     if (!name) {
@@ -108,6 +115,7 @@ export function VideoHistory(props: {
     }
   }
 
+  /** 按当前风格新建系列，比例是 9:16。 */
   async function newDrama() {
     setBusy("drama");
     try {
@@ -297,6 +305,7 @@ export function VideoHistory(props: {
   );
 }
 
+/** 一行历史。短片可以复制 id，也可以交给删除。 */
 function HistoryRow(props: { project: VideoProject; active: boolean; fallback: string; onSelect: () => void; onDelete?: () => void }) {
   const copy = useCopy();
   const p = props.project;

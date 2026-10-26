@@ -1,3 +1,5 @@
+// 本文件锁住马具钉住、载入时丢掉 high_risk、Acquire 忙、搜索重建，以及审批清空后的状态。由 go test 调用。
+
 package session
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestResolveHarnessPin 锁住 pin 返回钉住的哈希，follow_active 和空策略在 active 非空时返回 active。
 func TestResolveHarnessPin(t *testing.T) {
 	if got := ResolveHarness(Pin, "abc", "xyz"); got != "abc" {
 		t.Fatalf("pin: %s", got)
@@ -19,6 +22,7 @@ func TestResolveHarnessPin(t *testing.T) {
 	}
 }
 
+// TestRunStateDropsHighRiskOnLoad 锁住保存时的 running 载入后变成 idle，high_risk 被丢掉，队列仍在。
 func TestRunStateDropsHighRiskOnLoad(t *testing.T) {
 	dir := t.TempDir()
 	st := RunState{
@@ -46,6 +50,7 @@ func TestRunStateDropsHighRiskOnLoad(t *testing.T) {
 	}
 }
 
+// TestManagerAcquireBusy 锁住第一次 Acquire 成功且 Running 为真，同一 id 再 Acquire 返回 ErrBusy。
 func TestManagerAcquireBusy(t *testing.T) {
 	m := NewManager(t.TempDir())
 	ctx, release, err := m.Acquire("s", context.Background())
@@ -61,6 +66,7 @@ func TestManagerAcquireBusy(t *testing.T) {
 	}
 }
 
+// TestIndexMatch 锁住两个词都要出现才命中，不相关的文档被排除。
 func TestIndexMatch(t *testing.T) {
 	idx := OpenIndex(t.TempDir())
 	idx.Put("a", "fix the parser in loop.go")
@@ -71,6 +77,7 @@ func TestIndexMatch(t *testing.T) {
 	}
 }
 
+// TestIndexRebuildFile 锁住 Flush 写出 _search.json，再次 OpenIndex 还能按词命中。
 func TestIndexRebuildFile(t *testing.T) {
 	dir := t.TempDir()
 	idx := OpenIndex(dir)
@@ -87,6 +94,7 @@ func TestIndexRebuildFile(t *testing.T) {
 	}
 }
 
+// TestSetApprovalsClearsAwaiting 锁住有审批时状态是 awaiting_approval，清空后在没有 Actor 时回到 idle，待审批列表为空。
 func TestSetApprovalsClearsAwaiting(t *testing.T) {
 	m := NewManager(t.TempDir())
 	m.SetApprovals("s", []PendingApproval{{ID: "o1", Action: "shell"}})
@@ -104,6 +112,7 @@ func TestSetApprovalsClearsAwaiting(t *testing.T) {
 	}
 }
 
+// TestSetApprovalsRunningWhenActorLive 锁住 Actor 还在时，清空审批后状态回到 running。
 func TestSetApprovalsRunningWhenActorLive(t *testing.T) {
 	m := NewManager(t.TempDir())
 	_, release, err := m.Acquire("s", context.Background())

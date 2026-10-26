@@ -1,3 +1,5 @@
+// 上下文清单里能看到计划和 Today。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// TestContextInventoryIncludesPlanAndToday 确认清单里有计划文本和钉住的文件，并且计划文件写到了工作区。
 func TestContextInventoryIncludesPlanAndToday(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

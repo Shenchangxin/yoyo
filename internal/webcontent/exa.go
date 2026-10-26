@@ -1,3 +1,5 @@
+// 本文件调用 Exa 的 JSON 搜索和托管 MCP。两次请求的 numResults 都是 8。REST 的正文上限是 400 个字符。响应仍受 maxBody 限制。
+
 package webcontent
 
 import (
@@ -10,11 +12,15 @@ import (
 )
 
 const (
+	// DefaultExaREST 是 Exa JSON 搜索地址 https://api.exa.ai/search。
 	DefaultExaREST = "https://api.exa.ai/search"
-	DefaultExaMCP  = "https://mcp.exa.ai/mcp"
+	// DefaultExaMCP 是 Exa 托管 MCP 地址 https://mcp.exa.ai/mcp。
+	DefaultExaMCP = "https://mcp.exa.ai/mcp"
 )
 
-// SearchExaREST calls Exa's JSON search API. key is required.
+// SearchExaREST 调用 Exa 的 JSON 搜索。key 去掉空白后为空就返回 exa: api key required。endpoint 空白时用 DefaultExaREST。
+// 请求体的 numResults 是 8，type 是 auto，contents.text.maxCharacters 是 400。授权头是 Authorization: Bearer 加 key。
+// FormatHits 的结果须 Useful，否则错误文案是 exa empty。query 空白时错误文案是 empty query。
 func SearchExaREST(ctx context.Context, client *http.Client, endpoint, key, query string) (string, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -44,8 +50,8 @@ func SearchExaREST(ctx context.Context, client *http.Client, endpoint, key, quer
 	return out, nil
 }
 
-// SearchExaMCP calls Exa's hosted MCP endpoint (no API key). Handshake is
-// initialize + tools/call web_search_exa.
+// SearchExaMCP 调用 Exa 托管 MCP，不带 API key。先 initialize，再 tools/call，工具名是 web_search_exa，numResults 是 8。
+// endpoint 空白时用 DefaultExaMCP。工具文本能抽出命中且 Useful 就返回格式化结果，否则文本本身须 Useful。不行时错误文案是 exa mcp empty。
 func SearchExaMCP(ctx context.Context, client *http.Client, endpoint, query string) (string, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -91,6 +97,8 @@ func SearchExaMCP(ctx context.Context, client *http.Client, endpoint, query stri
 	return text, nil
 }
 
+// mcpInitialize 发送 protocolVersion 2025-11-25、空 capabilities，以及 clientInfo 的 name yoyo、version 0.4.1。
+// 正文同时含 "error" 和 "code" 时返回 exa mcp initialize failed。随后发送 notifications/initialized，忽略它的错误。返回会话 id。
 func mcpInitialize(ctx context.Context, client *http.Client, endpoint string) (string, error) {
 	init := map[string]any{
 		"jsonrpc": "2.0",
@@ -115,11 +123,14 @@ func mcpInitialize(ctx context.Context, client *http.Client, endpoint string) (s
 	return session, nil
 }
 
+// mcpPost 调用 mcpPostSession 并只返回正文。
 func mcpPost(ctx context.Context, client *http.Client, endpoint, session string, payload []byte) (string, error) {
 	_, body, err := mcpPostSession(ctx, client, endpoint, session, payload)
 	return body, err
 }
 
+// mcpPostSession 向 MCP 端点 POST JSON。ctx 为 nil 时用 defaultTimeout。session 非空时设置 Mcp-Session-Id。
+// 正文最多读 maxBody。响应头里的 Mcp-Session-Id 非空就改用它。状态码大于等于 300 时把正文截到 400 字节放进错误。成功时返回 decodeSSE 之后的正文。
 func mcpPostSession(ctx context.Context, client *http.Client, endpoint, session string, payload []byte) (string, string, error) {
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -159,6 +170,7 @@ func mcpPostSession(ctx context.Context, client *http.Client, endpoint, session 
 	return session, decodeSSE(raw), nil
 }
 
+// decodeSSE 在正文含 data: 时返回最后一条 data: 后面的内容。没有这样的行就返回原文。
 func decodeSSE(raw string) string {
 	if !strings.Contains(raw, "data:") {
 		return raw
@@ -176,6 +188,7 @@ func decodeSSE(raw string) string {
 	return raw
 }
 
+// mcpToolText 从 result.content 里拼接 type 项的 text。JSON 无效或没有文本时返回去掉空白的原文。
 func mcpToolText(raw string) string {
 	var top map[string]any
 	if json.Unmarshal([]byte(raw), &top) != nil {

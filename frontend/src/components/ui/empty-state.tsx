@@ -1,6 +1,9 @@
+// 本文件拥有空状态的居中排版。不拥有何时算空，也不提供默认行动。调用方传入 title，icon、body、action 可省略。
+
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
+// EmptyState 始终画出 title。icon、body、action 缺了就不渲染对应一块。
 export function EmptyState(props: {
   icon?: ReactNode;
   title: string;

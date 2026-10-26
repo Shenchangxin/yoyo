@@ -1,5 +1,8 @@
-/** Copyright (c) 2026 DeepSeek. SPDX-License-Identifier: MIT. Internalized send/stop glyphs from InputBar. */
-
+/**
+ * 拥有：发送和停止两个图标。
+ * 不拥有：按钮行为。只绘制，不调用 api。
+ */
+/** SendGlyph 画发送箭头。 */
 export function SendGlyph() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
@@ -11,6 +14,7 @@ export function SendGlyph() {
   );
 }
 
+/** StopGlyph 画停止方块。 */
 export function StopGlyph() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>

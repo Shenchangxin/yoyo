@@ -1,3 +1,6 @@
+// 锁住 DefaultLoop 的评测数字不被 ApplyChatHorizon 改写，偏小的聊天视界被抬高，RulesTokens 被写成 1600。
+// 同一文件还锁住行为文案不改 Harbor 循环，以及身份、语言和环境提示的几条拼装结果。childLoopFor 的实现在 tools_task.go。
+
 package runtime
 
 import (
@@ -8,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestDefaultLoopHorizonUnchanged 确认 DefaultLoop 的 MaxTurns 是 32，MaxToolMessages 是 40，MicroKeep 是 4，CompactionKeep 是 24，CompactionTokens 是 24000。
 func TestDefaultLoopHorizonUnchanged(t *testing.T) {
 	loop := DefaultLoop()
 	if loop.MaxTurns != 32 || loop.MaxToolMessages != 40 {
@@ -24,6 +28,7 @@ func TestDefaultLoopHorizonUnchanged(t *testing.T) {
 	}
 }
 
+// TestApplyChatHorizon 确认偏小的 MaxTurns 等被抬高，RulesTokens 写成 ChatRulesTokens 并盖掉传入的 32k，StackAgentsMD 变成 false，AllowLLMCompact 变成 true；已经更大的轮数和保留数不被缩小，DefaultLoop 本身不变且 AllowLLMCompact 仍是 false。
 func TestApplyChatHorizon(t *testing.T) {
 	fat := DefaultLoop()
 	fat.RulesTokens = 32_000
@@ -72,6 +77,7 @@ func TestApplyChatHorizon(t *testing.T) {
 	}
 }
 
+// TestChatConductDoesNotTouchHarborLoop 确认聊天行为文案不改 DefaultLoop 的 Execution、Bootstrap 和 MaxTurns 32。
 func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	base := DefaultLoop()
 	frags := ChatConductFragments(false)
@@ -111,6 +117,7 @@ func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	}
 }
 
+// fragmentText 把片段正文按行拼成一段，供上面的文案断言使用。
 func fragmentText(frags []artifact.PromptFragment) string {
 	var b strings.Builder
 	for _, f := range frags {
@@ -120,6 +127,7 @@ func fragmentText(frags []artifact.PromptFragment) string {
 	return b.String()
 }
 
+// TestChildLoopProfiles 确认 explore 和 qa 不进计划模式，explore 的 MaxTurns 不小于 24，且 childLoopFor 不改 DefaultLoop 的 32 轮。
 func TestChildLoopProfiles(t *testing.T) {
 	parent := RunRequest{Loop: DefaultLoop(), SoftHorizon: true}
 	explore := childLoopFor(parent, "explore")
@@ -145,6 +153,7 @@ func TestChildLoopProfiles(t *testing.T) {
 	}
 }
 
+// TestOperatorVoiceSkipsControl 确认控制行 toolBudgetNudge 不盖住操作者原文「完善前端」。
 func TestOperatorVoiceSkipsControl(t *testing.T) {
 	got := OperatorVoice(toolBudgetNudge, []Message{
 		{Role: RoleUser, Content: "完善前端"},
@@ -155,6 +164,7 @@ func TestOperatorVoiceSkipsControl(t *testing.T) {
 	}
 }
 
+// TestOperatorVoiceSkipsResume 确认「继续」退回更早那句含 RBAC 的操作者原文。
 func TestOperatorVoiceSkipsResume(t *testing.T) {
 	got := OperatorVoice("继续", []Message{
 		{Role: RoleUser, Content: "本项目是一个基于golang开发的RBAC权限管理系统，请完善前端"},
@@ -165,6 +175,7 @@ func TestOperatorVoiceSkipsResume(t *testing.T) {
 	}
 }
 
+// TestAssembleIdentitySingleBootstrap 确认身份里 ## bootstrap 只出现一次，重复的 Bootstrap 正文只留一份，独特片段仍在。
 func TestAssembleIdentitySingleBootstrap(t *testing.T) {
 	loop := DefaultLoop()
 	dup := loop.Bootstrap
@@ -197,6 +208,7 @@ func TestAssembleIdentitySingleBootstrap(t *testing.T) {
 	}
 }
 
+// TestChatDoesNotPinALanguage 确认动态段不含 ## Voice，也不含「用中文回复」。
 func TestChatDoesNotPinALanguage(t *testing.T) {
 	dyn := AssembleDynamic("", nil, "## Objective\n完善前端\n", "", "")
 	if strings.Contains(dyn, "## Voice") || strings.Contains(dyn, "用中文回复") {
@@ -204,6 +216,7 @@ func TestChatDoesNotPinALanguage(t *testing.T) {
 	}
 }
 
+// TestChatConductLandsInRuntimeSlot 确认没有聊天片段时身份不含交付判断，加上片段后落在 ## runtime，并带上 chatBootstrap。
 func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	loop := DefaultLoop()
 	plain := AssembleIdentity(loop, nil)
@@ -225,6 +238,7 @@ func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	}
 }
 
+// TestLanguagePinLeadsIdentity 确认中文查询的语言钉在 You are Yoyo 之前，并且覆盖进度叙述。
 func TestLanguagePinLeadsIdentity(t *testing.T) {
 	pin := LanguagePin("帮我查询一下关于agent自进化的论文")
 	s := AssembleIdentity(DefaultLoop(), []artifact.PromptFragment{pin})
@@ -238,6 +252,7 @@ func TestLanguagePinLeadsIdentity(t *testing.T) {
 	}
 }
 
+// TestRefreshDynamicRepeatsLanguagePin 确认 SoftHorizon 的工作记忆再次钉上中文输出。
 func TestRefreshDynamicRepeatsLanguagePin(t *testing.T) {
 	req := RunRequest{User: "帮我查询一下关于agent自进化的论文", SoftHorizon: true}
 	k := newContextKernel(&req)
@@ -247,6 +262,7 @@ func TestRefreshDynamicRepeatsLanguagePin(t *testing.T) {
 	}
 }
 
+// TestAssembleEnvironmentIsFacts 确认环境段以 os: 开头，含工作区和 shell，不含 Start-Process 和「用中文」。
 func TestAssembleEnvironmentIsFacts(t *testing.T) {
 	ws := t.TempDir()
 	got := AssembleEnvironment(ws)

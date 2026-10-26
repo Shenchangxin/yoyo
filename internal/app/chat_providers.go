@@ -1,3 +1,5 @@
+// 设置里的聊天供应商。记录存在视频模块的连接库，capability 为 chat。默认连接会写回 Config 的厂商、BaseURL 和模型。自定义供应商不借用 OpenAI 环境变量密钥。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// ChatProvider 是给设置页的一条聊天连接。HasKey 表示库里有密钥，IsDefault 表示它是 chat 的默认连接。
 type ChatProvider struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
@@ -20,6 +23,7 @@ type ChatProvider struct {
 	Active    bool     `json:"active"`
 }
 
+// ChatProviderIn 是新建或更新聊天连接的入参。Active 为 nil 时保留原有启用状态。MakeDefault 为真时设为 chat 默认连接。
 type ChatProviderIn struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
@@ -31,6 +35,7 @@ type ChatProviderIn struct {
 	MakeDefault bool     `json:"make_default"`
 }
 
+// connReg 返回视频模块上的连接库。视频模块不存在时返回 nil。
 func (a *App) connReg() *connection.Registry {
 	if a != nil && a.Video != nil {
 		return a.Video.Conn
@@ -38,6 +43,7 @@ func (a *App) connReg() *connection.Registry {
 	return nil
 }
 
+// ListChatProviders 列出 capability 为 chat 的连接。库不存在或列出失败时返回空切片。
 func (a *App) ListChatProviders() []ChatProvider {
 	r := a.connReg()
 	if r == nil {
@@ -56,6 +62,7 @@ func (a *App) ListChatProviders() []ChatProvider {
 	return out
 }
 
+// UpsertChatProvider 规范化端点，把 anthropic 写成 claude，空厂商写成 custom。没有默认连接或 MakeDefault 为真时设为默认，并 promoteChatDefault。
 func (a *App) UpsertChatProvider(in ChatProviderIn, apiKey string) (ChatProvider, error) {
 	r := a.connReg()
 	if r == nil {
@@ -117,6 +124,7 @@ func (a *App) UpsertChatProvider(in ChatProviderIn, apiKey string) (ChatProvider
 	return chatProviderOf(out, r.Defaults()[connection.CapChat]), nil
 }
 
+// DeleteChatProvider 拒绝删到一条都不剩。删掉的是默认连接时，把剩下的第一条设为默认并写回配置。
 func (a *App) DeleteChatProvider(id string) error {
 	r := a.connReg()
 	if r == nil {
@@ -148,6 +156,7 @@ func (a *App) DeleteChatProvider(id string) error {
 	return nil
 }
 
+// SetDefaultChatProvider 把指定 chat 连接设为默认，并写回配置。不是 chat 连接时返回 not a chat provider。
 func (a *App) SetDefaultChatProvider(id string) error {
 	r := a.connReg()
 	if r == nil {
@@ -167,6 +176,7 @@ func (a *App) SetDefaultChatProvider(id string) error {
 	return nil
 }
 
+// TestChatProvider 在有 id 时测试该连接。id 为空时测试当前活动的 chat 连接。库不可用时改走 probeConfigChat。
 func (a *App) TestChatProvider(id string) map[string]any {
 	r := a.connReg()
 	id = strings.TrimSpace(id)
@@ -181,6 +191,7 @@ func (a *App) TestChatProvider(id string) map[string]any {
 	return a.probeConfigChat()
 }
 
+// probeConfigChat 用 Config.BaseURL 和 vault 的 default 密钥探测 chat/completions。缺地址或密钥时 ok 为 false。
 func (a *App) probeConfigChat() map[string]any {
 	base := ""
 	if a != nil {
@@ -211,6 +222,7 @@ func (a *App) probeConfigChat() map[string]any {
 	return out
 }
 
+// promoteChatDefault 把连接的厂商、端点和模型写入 Config，并把租到的密钥放进 vault 的 default，然后 SaveConfig。
 func (a *App) promoteChatDefault(c connection.Connection) {
 	if a == nil {
 		return
@@ -231,6 +243,7 @@ func (a *App) promoteChatDefault(c connection.Connection) {
 	_ = a.SaveConfig()
 }
 
+// chatProviderOf 把连接库记录收成 ChatProvider。默认模型放进 Models 的前面。
 func chatProviderOf(c connection.Connection, defID string) ChatProvider {
 	models := append([]string{}, c.Models...)
 	model := connection.ModelFor(c, connection.CapChat)
@@ -250,6 +263,7 @@ func chatProviderOf(c connection.Connection, defID string) ChatProvider {
 	}
 }
 
+// splitSessionModel 解析 connectionId::model。左段必须是已有的 chat 连接，否则整段当作模型名、连接 id 为空。
 func (a *App) splitSessionModel(raw string) (connID, model string) {
 	raw = strings.TrimSpace(raw)
 	left, right, ok := strings.Cut(raw, "::")
@@ -267,6 +281,7 @@ func (a *App) splitSessionModel(raw string) (connID, model string) {
 	return c.ID, strings.TrimSpace(right)
 }
 
+// resolveChatConnection 先用会话的 ConnectionID。否则按模型在活动 chat 连接里匹配，多个命中时优先默认连接。仍没有则用活动 chat 连接。
 func (a *App) resolveChatConnection(meta SessionMeta) (connection.Connection, error) {
 	r := a.connReg()
 	if r == nil {
@@ -312,6 +327,7 @@ func (a *App) resolveChatConnection(meta SessionMeta) (connection.Connection, er
 	return r.Active(connection.CapChat, "")
 }
 
+// defaultChatSlot 返回活动 chat 连接的模型和 id。库不可用时只返回 Config.Model。
 func (a *App) defaultChatSlot() (model, connID string) {
 	model = strings.TrimSpace(a.Config.Model)
 	r := a.connReg()
@@ -328,6 +344,7 @@ func (a *App) defaultChatSlot() (model, connID string) {
 	return model, c.ID
 }
 
+// chatRoutes 先放会话选中的连接和模型，再放该连接的其他模型，然后是默认连接和其他活动连接。没有密钥的连接不进入路线。
 func (a *App) chatRoutes(meta SessionMeta) []runtime.ChatRoute {
 	r := a.connReg()
 	if r == nil {
@@ -411,6 +428,7 @@ func (a *App) chatRoutes(meta SessionMeta) []runtime.ChatRoute {
 	return routes
 }
 
+// openAIForConn 用连接端点；端点空则用 Config.BaseURL。密钥先向库租用。默认连接租用失败时读 Vault.GetStored("default")，该调用不读环境变量。只有 chatAllowsEnvKey 为真才再 Vault.Get。密钥仍空则返回 nil。
 func (a *App) openAIForConn(c connection.Connection) *runtime.OpenAIClient {
 	base := strings.TrimSpace(c.Endpoint)
 	if base == "" && a != nil {
@@ -443,6 +461,7 @@ func (a *App) openAIForConn(c connection.Connection) *runtime.OpenAIClient {
 	return runtime.NewOpenAIClient(base, key)
 }
 
+// chatAllowsEnvKey 在厂商为 openai 或 azure，或端点包含 api.openai.com、openai.azure.com 时返回真。
 func chatAllowsEnvKey(c connection.Connection) bool {
 	v := strings.ToLower(strings.TrimSpace(c.Vendor))
 	if v == "openai" || v == "azure" {
@@ -452,6 +471,7 @@ func chatAllowsEnvKey(c connection.Connection) bool {
 	return strings.Contains(ep, "api.openai.com") || strings.Contains(ep, "openai.azure.com")
 }
 
+// envChatFallback 仅当 Config 的厂商和端点通过 chatAllowsEnvKey 时，用 Vault.Get("default") 做客户端。否则返回 nil。
 func (a *App) envChatFallback() runtime.Client {
 	if a == nil || a.Vault == nil {
 		return nil

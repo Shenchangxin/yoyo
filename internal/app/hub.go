@@ -1,3 +1,5 @@
+// 把会话事件分给订阅者，并用序号环留住错过的实时事件。
+
 package app
 
 import (
@@ -13,16 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// Hub fans session events to HTTP SSE clients without a heavy broker.
-// Live events (token deltas, tool_call, tool_result) drop under backpressure
-// after spilling to Overflow: a frozen WebView must not spawn unbounded
-// send goroutines. Terminal events (turn_end, error, approval, user) still
-// wait on a single overflow goroutine. Adjacent token deltas (same session,
-// type, and round) coalesce on a 50ms window so Wails and SSE subscribers
-// both see ~20fps instead of per-token wakeups.
-//
-// Every fanout is recorded in a seq ring so a slow renderer can pull what
-// it missed instead of depending on the in-flight channel.
+// Hub 把会话事件分给订阅者。背压时实时增量先写入 Overflow 再丢掉，终态事件仍会送出。相邻增量按时间窗合并，扇出记入序号环。
 type Hub struct {
 	mu       sync.Mutex
 	subs     map[string]map[chan trace.Event]struct{}
@@ -38,20 +31,29 @@ type Hub struct {
 }
 
 const (
-	coalesceWindow   = 50 * time.Millisecond
-	liveLogCap       = 16384
-	liveInlineBytes  = 768
-	liveSinceCap     = 1024
-	noticeArgBytes   = 480
-	noticeBodyBytes  = 400
+	// coalesceWindow 是相邻增量合并前等待的时间。
+	coalesceWindow = 50 * time.Millisecond
+	// liveLogCap 是序号环最多保留的条数，满了就覆盖最老的。
+	liveLogCap = 16384
+	// liveInlineBytes 是整份事件放进通知的字节上限。
+	liveInlineBytes = 768
+	// liveSinceCap 是一页最多返回的事件数，多出来的标 More。
+	liveSinceCap = 1024
+	// noticeArgBytes 是工具参数能放进压缩通知的字节上限。
+	noticeArgBytes = 480
+	// noticeBodyBytes 是工具结果正文能放进压缩通知的字节上限。
+	noticeBodyBytes = 400
+	// noticePatchBytes 是补丁能放进压缩通知的字节上限。
 	noticePatchBytes = 4000
 )
 
+// liveItem 是序号环里的一条已发布事件。
 type liveItem struct {
 	seq int64
 	ev  trace.Event
 }
 
+// deltaBuf 暂存等待合并的一笔增量，并记住 index 范围。
 type deltaBuf struct {
 	ev        trace.Event
 	key       string
@@ -60,8 +62,7 @@ type deltaBuf struct {
 	index     int
 }
 
-// StreamFrame is the live-only dual-write of a token/tool chunk. It does not
-// enter JSONL; EventType names stay the durable ledger.
+// StreamFrame 是实时片段的旁路帧，不写入 JSONL。
 type StreamFrame struct {
 	Kind         string         `json:"kind,omitempty"`
 	AttemptID    string         `json:"attempt_id,omitempty"`
@@ -77,8 +78,7 @@ type StreamFrame struct {
 	CommittedSeq int64          `json:"committed_seq,omitempty"`
 }
 
-// LiveNotice is the Wails payload. Small events travel inline; larger ones
-// are a seq the renderer pulls via LiveSince.
+// LiveNotice 是给界面的通知。小事件内联，大的只留序号，由 LiveSince 去拉。
 type LiveNotice struct {
 	Seq       int64        `json:"seq"`
 	SessionID string       `json:"session_id"`
@@ -87,10 +87,12 @@ type LiveNotice struct {
 	Frame     *StreamFrame `json:"frame,omitempty"`
 }
 
+// NewHub 做一个还没有订阅者的 Hub。
 func NewHub() *Hub {
 	return &Hub{subs: make(map[string]map[chan trace.Event]struct{})}
 }
 
+// Subscribe 注册对 sessionID 的订阅，返回带缓冲的通道和取消函数。
 func (h *Hub) Subscribe(sessionID string) (<-chan trace.Event, func()) {
 	ch := make(chan trace.Event, 8192)
 	h.mu.Lock()
@@ -109,6 +111,7 @@ func (h *Hub) Subscribe(sessionID string) (<-chan trace.Event, func()) {
 	}
 }
 
+// Publish 把能合并的增量先暂存；其他事件先冲掉暂存再扇出。
 func (h *Hub) Publish(ev trace.Event) {
 	if key, ok := coalesceKey(ev); ok {
 		h.holdDelta(ev, key)
@@ -118,13 +121,14 @@ func (h *Hub) Publish(ev trace.Event) {
 	h.fanout(ev)
 }
 
-// FlushCoalesce emits any buffered token delta. Tests call it instead of sleeping.
+// FlushCoalesce 立刻发出暂存的增量。测试用它代替等待。
 func (h *Hub) FlushCoalesce() {
 	h.cMu.Lock()
 	h.flushPendingLocked()
 	h.cMu.Unlock()
 }
 
+// holdDelta 把同一合并键的文本拼在一起，并保留更大的 index。键变了先冲掉上一笔，再起定时器。
 func (h *Hub) holdDelta(ev trace.Event, key string) {
 	h.cMu.Lock()
 	defer h.cMu.Unlock()
@@ -153,6 +157,7 @@ func (h *Hub) holdDelta(ev trace.Event, key string) {
 	h.timer = time.AfterFunc(coalesceWindow, func() { h.FlushCoalesce() })
 }
 
+// flushPendingLocked 在已持有合并锁时把暂存文本和 index 范围写回事件并扇出。扇出前会放开这把锁。
 func (h *Hub) flushPendingLocked() {
 	if h.timer != nil {
 		h.timer.Stop()
@@ -174,6 +179,7 @@ func (h *Hub) flushPendingLocked() {
 	h.cMu.Lock()
 }
 
+// fanout 先记入序号环，再发给该会话和通配订阅者。
 func (h *Hub) fanout(ev trace.Event) {
 	ev.Seq = h.record(ev)
 	h.mu.Lock()
@@ -190,6 +196,7 @@ func (h *Hub) fanout(ev trace.Event) {
 	}
 }
 
+// record 把事件放进序号环并返回新序号。环满了就按序号覆盖最老的位置。
 func (h *Hub) record(ev trace.Event) int64 {
 	h.logMu.Lock()
 	defer h.logMu.Unlock()
@@ -204,7 +211,7 @@ func (h *Hub) record(ev trace.Event) int64 {
 	return h.seq
 }
 
-// Head is the latest live seq, or 0 if nothing has been published.
+// Head 返回最新序号。没有发布过或 Hub 为 nil 时返回 0。
 func (h *Hub) Head() int64 {
 	if h == nil {
 		return 0
@@ -214,12 +221,7 @@ func (h *Hub) Head() int64 {
 	return h.seq
 }
 
-// LiveBatch is one pull from the live ring. Gap means the caller cannot page
-// forward: the ring rolled past the cursor, or the cursor is ahead of a
-// restarted seq space, so the trajectory has to be reloaded. More means this
-// page is the oldest liveSinceCap events after the cursor and the ring still
-// holds later matches — apply them, then pull again; do not reload. Head is
-// read under the same lock as Events.
+// LiveBatch 是一次从序号环拉取的结果。Gap 表示不能顺着补，More 表示这一页后面还有，Head 与事件在同一把锁下读出。
 type LiveBatch struct {
 	Events []trace.Event `json:"events"`
 	Head   int64         `json:"head"`
@@ -227,8 +229,7 @@ type LiveBatch struct {
 	More   bool          `json:"more,omitempty"`
 }
 
-// Batch returns the recorded events with seq > after, optionally filtered by
-// session, together with the ring head and the gap flag.
+// Batch 返回序号大于 after 的事件，可按会话过滤，并带上 head、Gap 和 More。Hub 为 nil 时返回空页。
 func (h *Hub) Batch(after int64, sessionID string) LiveBatch {
 	if h == nil {
 		return LiveBatch{Events: []trace.Event{}}
@@ -236,8 +237,7 @@ func (h *Hub) Batch(after int64, sessionID string) LiveBatch {
 	h.logMu.Lock()
 	defer h.logMu.Unlock()
 	b := LiveBatch{Events: make([]trace.Event, 0, 16), Head: h.seq}
-	// Seqs in the ring are contiguous and end at h.seq, so the oldest seq
-	// still held is h.seq-len+1. Anything in (after, oldest) was overwritten.
+	// 环里的序号连续，并以 h.seq 结尾，所以仍保留的最老序号是 h.seq 减去长度再加一。落在 (after, oldest) 里的已经被覆盖。
 	oldest := h.seq - int64(len(h.log)) + 1
 	b.Gap = after+1 < oldest || after > h.seq
 	for _, it := range h.log {
@@ -251,20 +251,19 @@ func (h *Hub) Batch(after int64, sessionID string) LiveBatch {
 	}
 	sort.Slice(b.Events, func(i, j int) bool { return b.Events[i].Seq < b.Events[j].Seq })
 	if len(b.Events) > liveSinceCap {
-		// Keep the oldest page after the cursor so the renderer can apply
-		// in order and pull the rest. Gap stays a hole, not a page cut.
+		// 保留游标之后最老的一页，渲染方按序应用再继续拉。Gap 表示空洞，不是这一页被截断。
 		b.Events = b.Events[:liveSinceCap]
 		b.More = true
 	}
 	return b
 }
 
-// Since returns recorded events with seq > after, optionally filtered by
-// session. It drops the gap signal; renderers should use Batch.
+// Since 只返回 Batch 里的事件，不带 Gap。要区分空洞和分页时应使用 Batch。
 func (h *Hub) Since(after int64, sessionID string) []trace.Event {
 	return h.Batch(after, sessionID).Events
 }
 
+// NoticeOf 做成界面通知。增量带上事件和帧；工具调用和结果走压缩字段；其余超过内联上限的只留序号。
 func NoticeOf(ev trace.Event) LiveNotice {
 	n := LiveNotice{Seq: ev.Seq, SessionID: ev.SessionID, Type: string(ev.Type)}
 	if liveDelta(ev) {
@@ -288,10 +287,7 @@ func NoticeOf(ev trace.Event) LiveNotice {
 	return n
 }
 
-// compactToolNotice is the Wails fast path for tool_call / tool_result: a
-// name, path, and line-count ride along so the process rail can move without
-// waiting for LiveSync. Heavy arguments, patches, and result bodies stay on
-// the ring for a later pull when they exceed the notice caps.
+// compactToolNotice 给工具调用和结果带上名称、路径和短字段。超限的参数、补丁和结果正文留在环上。
 func compactToolNotice(ev trace.Event) *trace.Event {
 	if ev.Type != trace.TypeToolCall && ev.Type != trace.TypeToolResult {
 		return nil
@@ -334,6 +330,7 @@ func compactToolNotice(ev trace.Event) *trace.Event {
 	return &out
 }
 
+// liveDelta 判断事件是不是应合并的实时增量，包括进度中的工具调用和助手流的片段。
 func liveDelta(ev trace.Event) bool {
 	if liveProgressCall(ev) {
 		return true
@@ -357,6 +354,7 @@ func liveDelta(ev trace.Event) bool {
 	}
 }
 
+// liveProgressCall 判断这是不是带 progress 的工具调用。
 func liveProgressCall(ev trace.Event) bool {
 	if ev.Type != trace.TypeToolCall || ev.Payload == nil {
 		return false
@@ -365,9 +363,7 @@ func liveProgressCall(ev trace.Event) bool {
 	return p
 }
 
-// mayInlineNotice is the Wails fast path. Tool bodies and settled assistant
-// letters are pull-only so Event.Emit never materializes a 20KB JSON blob on
-// the WebView UI thread. Tiny token slices still ride along.
+// mayInlineNotice 判断事件能否整份放进通知。已落定的助手和推理正文不内联。
 func mayInlineNotice(ev trace.Event) bool {
 	if liveProgressCall(ev) {
 		return true
@@ -389,6 +385,7 @@ func mayInlineNotice(ev trace.Event) bool {
 	}
 }
 
+// deliver 能写入通道就直接送。通道满了先把事件写入 Overflow；终态事件再另起发送，实时增量到此丢掉。
 func deliver(ch chan trace.Event, ev trace.Event, overflow string) {
 	defer func() { _ = recover() }()
 	select {
@@ -406,11 +403,12 @@ func deliver(ch chan trace.Event, ev trace.Event, overflow string) {
 	}()
 }
 
-// KeepHubEvent is true for terminal events that must still reach a slow UI.
+// KeepHubEvent 为真表示背压下这条事件仍要送到慢的界面。
 func KeepHubEvent(ev trace.Event) bool {
 	return keepUnderBackpressure(ev)
 }
 
+// keepUnderBackpressure 保留回合与步骤的起止、错误、审批、用户、注入、收件箱，以及来源是 update 的 system。带 delta 的增量不保留。
 func keepUnderBackpressure(ev trace.Event) bool {
 	if ev.Type == trace.TypeAssistantStream {
 		kind, _ := ev.Payload["kind"].(string)
@@ -431,6 +429,7 @@ func keepUnderBackpressure(ev trace.Event) bool {
 	}
 }
 
+// coalesceKey 给可合并的助手流或带 delta 的事件生成键。键相同的相邻增量会拼在一起。
 func coalesceKey(ev trace.Event) (string, bool) {
 	if ev.Payload == nil {
 		return "", false
@@ -465,6 +464,7 @@ func coalesceKey(ev trace.Event) (string, bool) {
 	return ev.SessionID + "\x00" + string(ev.Type) + "\x00" + id + "\x00" + round, true
 }
 
+// frameOf 从事件抽出实时帧，带上 index 范围和块类型。
 func frameOf(ev trace.Event) *StreamFrame {
 	if ev.Type == trace.TypeAssistantStream {
 		kind, _ := ev.Payload["kind"].(string)
@@ -524,6 +524,7 @@ func frameOf(ev trace.Event) *StreamFrame {
 	}
 }
 
+// payloadDeltaText 取出增量文本。助手流看 chunk，工具结果看 content，其余看 text。
 func payloadDeltaText(ev trace.Event) string {
 	if ev.Payload == nil {
 		return ""
@@ -549,6 +550,7 @@ func payloadDeltaText(ev trace.Event) string {
 	return s
 }
 
+// setDeltaText 把合并后的文本写回事件里对应的字段。
 func setDeltaText(ev *trace.Event, text string) {
 	if ev.Payload == nil {
 		ev.Payload = map[string]any{}
@@ -580,6 +582,7 @@ func setDeltaText(ev *trace.Event, text string) {
 	ev.Payload["text"] = text
 }
 
+// payloadHas 判断载荷里有没有这个键。
 func payloadHas(p map[string]any, key string) bool {
 	if p == nil {
 		return false
@@ -588,6 +591,7 @@ func payloadHas(p map[string]any, key string) bool {
 	return ok
 }
 
+// payloadMap 在值是 map 时返回它，否则返回 nil。
 func payloadMap(v any) map[string]any {
 	if v == nil {
 		return nil
@@ -598,6 +602,7 @@ func payloadMap(v any) map[string]any {
 	return nil
 }
 
+// cloneEvent 拷贝事件，并单独拷贝载荷 map。
 func cloneEvent(ev trace.Event) trace.Event {
 	out := ev
 	if ev.Payload == nil {
@@ -611,6 +616,7 @@ func cloneEvent(ev trace.Event) trace.Event {
 	return out
 }
 
+// spillOverflow 把事件追加进 Overflow 目录下该会话的 jsonl。目录为空则什么都不做。
 func spillOverflow(dir string, ev trace.Event) {
 	if dir == "" {
 		return

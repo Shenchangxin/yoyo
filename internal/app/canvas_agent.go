@@ -1,3 +1,5 @@
+// 画布助手桥。startCanvasAgent 把这一轮交给已绑定的视频会话 StartSend，画布桥不是第二条 runtime.Run。停止走 Interrupt，审批走 Gate.Resolve。Hub 上的回合事件写回视频引擎的 CanvasAgent 接口。
+
 package app
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
+// startCanvasAgent 复用或新建视频频道会话，绑定画布，并按 turn 设置模型、权限和点名技能。permission 为 auto 时会话权限是 AuthFull，否则 AuthAsk。然后 StartSend。ErrQueued 返回 nil。
 func (a *App) startCanvasAgent(turn video.CanvasAgentTurn) error {
 	if a == nil || a.Video == nil {
 		return fmt.Errorf("视频模块还没有就绪")
@@ -48,6 +51,7 @@ func (a *App) startCanvasAgent(turn video.CanvasAgentTurn) error {
 	return err
 }
 
+// stopCanvasAgent 对给定会话调用 Interrupt。会话 id 空白或 App 为空则返回。
 func (a *App) stopCanvasAgent(sessionID string) {
 	if a == nil || strings.TrimSpace(sessionID) == "" {
 		return
@@ -55,6 +59,7 @@ func (a *App) stopCanvasAgent(sessionID string) {
 	_ = a.Interrupt(sessionID)
 }
 
+// decideCanvasAgent 把 approve 解析成 capability.Once，其他决定解析成 Deny。没有 Gate 时返回没有审批网关。
 func (a *App) decideCanvasAgent(approvalID, decision string) error {
 	if a == nil || a.Gate == nil {
 		return fmt.Errorf("没有审批网关")
@@ -66,6 +71,7 @@ func (a *App) decideCanvasAgent(approvalID, decision string) error {
 	return a.Gate.Resolve(approvalID, d)
 }
 
+// canvasAgentSession 复用该画布已记住且仍存在的会话。否则在视频工作区新建频道为视频的会话，标题写为画布助手。
 func (a *App) canvasAgentSession(canvasID string) (string, error) {
 	if v, ok := a.agentSess.Load(canvasID); ok {
 		if id, _ := v.(string); id != "" {
@@ -84,6 +90,7 @@ func (a *App) canvasAgentSession(canvasID string) (string, error) {
 	return meta.ID, nil
 }
 
+// ensureCanvasAgentWatch 为会话订阅 Hub，并只启动一次 canvasAgentLoop。Hub 为空返回对话事件通道还没有就绪。
 func (a *App) ensureCanvasAgentWatch(sessionID string) error {
 	if a == nil || a.Hub == nil {
 		return fmt.Errorf("对话事件通道还没有就绪")
@@ -96,6 +103,7 @@ func (a *App) ensureCanvasAgentWatch(sessionID string) error {
 	return nil
 }
 
+// canvasAgentLoop 把同一 epoch 的流式文本、回合结束、错误、工具结果和审批写回视频引擎。epoch 变了的事件丢掉。退出时取消订阅并删掉监视标记。
 func (a *App) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub func()) {
 	defer unsub()
 	defer a.agentWatch.Delete(sessionID)
@@ -158,6 +166,7 @@ func (a *App) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub fun
 	}
 }
 
+// canvasAgentPrompt 写明画布 id，并按 read_only、auto 或其他权限加上约束。有点名技能时列出技能 id。
 func canvasAgentPrompt(turn video.CanvasAgentTurn) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "你正在 Yoyo 的视频画布里工作。当前画布 id 是 %s。请用已挂上的画布工具查看和修改这块画布，不要把工作区里的普通文件当成画布。\n", turn.CanvasID)
@@ -177,6 +186,7 @@ func canvasAgentPrompt(turn video.CanvasAgentTurn) string {
 	return b.String()
 }
 
+// assistantDelta 从事件的 chunk 里取 text。类型不是空也不是 text-delta 时返回空串。
 func assistantDelta(ev trace.Event) string {
 	if ev.Payload == nil {
 		return ""
@@ -192,6 +202,7 @@ func assistantDelta(ev trace.Event) string {
 	return text
 }
 
+// agentEventMessage 按 error、title、detail、message、text 的顺序取第一条非空文本。都没有则返回画布助手执行失败。
 func agentEventMessage(ev trace.Event) string {
 	if ev.Payload == nil {
 		return "画布助手执行失败"

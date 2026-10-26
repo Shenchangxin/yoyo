@@ -3,22 +3,8 @@ import { bundledLanguages, bundledLanguagesInfo, createHighlighter, type Bundled
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 /**
- * Syntax highlighting for Streamdown code blocks and tool previews.
- *
- * Replaces `codePlugin` from `@streamdown/code`, which keeps every highlight
- * result in a module-level Map that is never evicted. A long agent run
- * highlights a new code block (or tool preview) per step, so the renderer
- * retained every token array for the life of the window: the WebView2 memory
- * that only grew. That plugin also keys results by length plus the first and
- * last 100 characters, so two different blocks with the same length and edges
- * could be shown with each other's tokens.
- *
- * This module keeps the same plugin contract (Streamdown and the call sites do
- * not change). It caches results in a bounded LRU keyed by the full text, and
- * shares one highlighter that loads languages on demand. Evicting a highlight
- * only costs a re-tokenize. Chat history is never touched.
- *
- * The themes are fixed (THEMES); the `themes` argument of `highlight` is ignored.
+ * 拥有：Streamdown 代码块和工具预览的语法高亮。缓存是按全文做键的有界 LRU，并共用一个按需加载语言的高亮器。
+ * 不拥有：代码块的行渲染。替换 `@streamdown/code` 的 codePlugin：那个插件把每次高亮留在模块级 Map 里且从不逐出，长运行会按步增加代码块，WebView2 内存只增不减。它还用长度加首尾各 100 字做键，两段长度和边缘相同的不同代码可能显示成对方的 token。这里保持同一插件约定，调用处不用改。逐出只是再分词一次。聊天记录不动。主题固定为 THEMES，highlight 的 themes 参数被忽略。
  */
 
 const THEME_LIGHT = "github-light";
@@ -27,10 +13,11 @@ const THEMES: [ThemeInput, ThemeInput] = [THEME_LIGHT, THEME_DARK];
 const PLAIN = "text";
 const PLAIN_LANGS = new Set(["text", "plaintext", "txt", "plain"]);
 
-/** Past this size, render plain text: tokenizing megabytes stalls the UI thread. */
+/** MAX_HIGHLIGHT_CHARS 超过则渲染纯文本。分词兆字节会堵住界面线程。 */
 export const MAX_HIGHLIGHT_CHARS = 120_000;
-/** LRU budget. Tokens take roughly 10-20x the source size on the JS heap. */
+/** CODE_CACHE_MAX_ENTRIES LRU 条数上限。token 在 JS 堆上大约是源码的 10 到 20 倍。 */
 export const CODE_CACHE_MAX_ENTRIES = 160;
+/** CODE_CACHE_MAX_CHARS LRU 源码字符上限。 */
 export const CODE_CACHE_MAX_CHARS = 400_000;
 
 const ENGINE = createJavaScriptRegexEngine({ forgiving: true });
@@ -41,15 +28,18 @@ const KNOWN = new Set<string>(Object.keys(bundledLanguages));
 
 type Highlighter = Awaited<ReturnType<typeof createHighlighter>>;
 
+/** 去空白并小写。别名换成 shiki 的语言 id。 */
 function resolveLang(raw: string): string {
   const t = raw.trim().toLowerCase();
   return ALIASES[t] || t;
 }
 
+/** 在打包语言里，或是 text、plaintext、txt、plain。 */
 function isKnownLang(lang: string): boolean {
   return KNOWN.has(lang) || PLAIN_LANGS.has(lang);
 }
 
+/** 已知语言用它，否则用 text。 */
 function langOrPlain(raw: string): string {
   const lang = resolveLang(raw);
   return isKnownLang(lang) ? lang : PLAIN;
@@ -58,6 +48,7 @@ function langOrPlain(raw: string): string {
 let shared: Promise<Highlighter> | null = null;
 let ready: Highlighter | null = null;
 
+/** 共用一个高亮器。创建失败则丢掉承诺，下次再试。 */
 function getHighlighter(): Promise<Highlighter> {
   if (!shared) {
     shared = createHighlighter({ themes: THEMES, langs: [], engine: ENGINE }).then(
@@ -76,6 +67,7 @@ function getHighlighter(): Promise<Highlighter> {
 
 const loadingLangs = new Map<string, Promise<void>>();
 
+/** 纯文本或已经加载则返回。同一语言的加载合并成一个承诺。 */
 async function ensureLanguage(h: Highlighter, lang: string): Promise<void> {
   if (PLAIN_LANGS.has(lang) || h.getLoadedLanguages().includes(lang as BundledLanguage)) return;
   let p = loadingLangs.get(lang);
@@ -86,6 +78,7 @@ async function ensureLanguage(h: Highlighter, lang: string): Promise<void> {
   await p;
 }
 
+/** 用固定的亮色和暗色主题把代码分成 token。 */
 function render(h: Highlighter, code: string, lang: string): HighlightResult {
   return h.codeToTokens(code, {
     lang: lang as BundledLanguage,
@@ -93,15 +86,13 @@ function render(h: Highlighter, code: string, lang: string): HighlightResult {
   });
 }
 
-/* ---- bounded LRU -------------------------------------------------------- */
-
 type CacheEntry = { lang: string; code: string; tokens: HighlightResult };
 
-/** Map iteration order is insertion order: first key = least recently used. */
+/** Map 的迭代顺序是插入顺序，第一个键最久未用。 */
 const cache = new Map<string, CacheEntry>();
 let cacheChars = 0;
 
-/** 32-bit FNV-1a. Two seeds give a 64-bit key; hits still compare the full text. */
+/** 32 位 FNV-1a。两个种子拼成键；命中后仍比较全文。 */
 function fnv1a(s: string, seed: number): string {
   let h = seed >>> 0;
   for (let i = 0; i < s.length; i++) {
@@ -111,10 +102,12 @@ function fnv1a(s: string, seed: number): string {
   return (h >>> 0).toString(36);
 }
 
+/** 语言、长度和两段 FNV 拼成键。 */
 function cacheKey(lang: string, code: string): string {
   return `${lang}\u0000${code.length}\u0000${fnv1a(code, 0x811c9dc5)}${fnv1a(code, 0x9e3779b9)}`;
 }
 
+/** 键命中且语言和全文一致才返回，并把该项移到最近使用。 */
 function cacheGet(lang: string, code: string): HighlightResult | null {
   const key = cacheKey(lang, code);
   const hit = cache.get(key);
@@ -124,6 +117,7 @@ function cacheGet(lang: string, code: string): HighlightResult | null {
   return hit.tokens;
 }
 
+/** 写入后按条数和字符数淘汰最久未用。已有同键则先减去旧长度。 */
 function cachePut(lang: string, code: string, tokens: HighlightResult): void {
   const key = cacheKey(lang, code);
   const prev = cache.get(key);
@@ -142,9 +136,10 @@ function cachePut(lang: string, code: string, tokens: HighlightResult): void {
   }
 }
 
-/** Callers waiting on an in-flight highlight, keyed by exact language and text. */
+/** 等着同一次高亮完成的回调，键是语言加全文。 */
 const waiting = new Map<string, Set<(result: HighlightResult) => void>>();
 
+/** 加载语言、分词、写入缓存，并通知等待同一键的回调。失败时打出错误并清掉等待。 */
 function startLoad(lang: string, code: string, key: string): void {
   getHighlighter()
     .then(async (h) => {
@@ -161,20 +156,23 @@ function startLoad(lang: string, code: string, key: string): void {
     });
 }
 
-/* ---- plugin -------------------------------------------------------------- */
-
+/** codePlugin 给 Streamdown 用的 shiki 高亮插件。 */
 export const codePlugin: CodeHighlighterPlugin = {
   name: "shiki",
   type: "code-highlighter",
+  /** supportsLanguage 解析别名后是否为已知语言。 */
   supportsLanguage(language) {
     return isKnownLang(resolveLang(String(language)));
   },
+  /** getSupportedLanguages 打包语言的 id，不含别名。 */
   getSupportedLanguages() {
     return Array.from(KNOWN) as BundledLanguage[];
   },
+  /** getThemes 固定的亮色与暗色主题。 */
   getThemes() {
     return THEMES;
   },
+  /** highlight 超过 MAX_HIGHLIGHT_CHARS 返回空且不回调。缓存命中或语言已加载则同步返回。否则登记回调并开始加载，返回空。themes 参数忽略。 */
   highlight({ code, language }: HighlightOptions, callback?: (result: HighlightResult) => void) {
     if (code.length > MAX_HIGHLIGHT_CHARS) return null;
     const lang = langOrPlain(String(language));
@@ -200,7 +198,7 @@ export const codePlugin: CodeHighlighterPlugin = {
   },
 };
 
-/** Test and diagnostics hook: current cache occupancy. */
+/** codeCacheStats 测试和诊断用的当前缓存条数和字符数。 */
 export function codeCacheStats(): { entries: number; chars: number } {
   return { entries: cache.size, chars: cacheChars };
 }

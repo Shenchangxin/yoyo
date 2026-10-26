@@ -1,3 +1,8 @@
+/**
+ * 拥有：缓存命中比例、时长格式、调用平均，以及分片已知时对话可以为 0。
+ * 不拥有：用量的采集。
+ */
+
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -11,6 +16,7 @@ import {
 } from "./context-usage.ts";
 import type { SessionTrace, TraceEvent } from "./protocol.ts";
 
+/** 已报告时为缓存除以提示词，一位小数。未报告时为空。提示词为 0 且已报告则为 0。 */
 test("cacheHitPct is cached / prompt, null when unknown", () => {
   assert.equal(cacheHitPct(80, 100, true), 80);
   assert.equal(cacheHitPct(1, 3, true), 33.3);
@@ -21,6 +27,7 @@ test("cacheHitPct is cached / prompt, null when unknown", () => {
   assert.equal(cacheHitPct(12, 100), 12);
 });
 
+/** 空命中为破折号，整数不带小数。时长按毫秒、一位小数秒、整数秒和分秒。 */
 test("formatHitPct and formatDurationMs", () => {
   assert.equal(formatHitPct(null), "—");
   assert.equal(formatHitPct(80), "80%");
@@ -32,6 +39,7 @@ test("formatHitPct and formatDurationMs", () => {
   assert.equal(formatDurationMs(65_000), "1m 5s");
 });
 
+/** 只取出 model_usage。平均耗时和平均首 token 为两次的整数平均。最后一次的命中按缓存除以提示词。 */
 test("modelCallsOf reads usage rows and callStats averages timed calls", () => {
   const trace: SessionTrace = {
     sessionId: "s1",
@@ -65,6 +73,7 @@ test("modelCallsOf reads usage rows and callStats averages timed calls", () => {
   assert.equal(cacheHitPct(stats.last!.cachedTokens, stats.last!.promptTokens, true), 80);
 });
 
+/** 最后一条 user 到最后一条 turn_end 为 3500 毫秒。空列表为 0。 */
 test("lastTurnMs is the latest user to turn_end wall", () => {
   const events: TraceEvent[] = [
     ev({ type: "user", ts: "2026-01-01T00:00:00.000Z" }),
@@ -76,6 +85,7 @@ test("lastTurnMs is the latest user to turn_end wall", () => {
   assert.equal(lastTurnMs([]), 0);
 });
 
+/** slicesKnown 且 chatTokens 为 0 时，对话片为 0，笔记片为 notesTokens。 */
 test("a new session reports chat as zero when the ledger says so", () => {
   const br = contextBreakdown({
     tokens: 6000, budget: 100000, window: 128000, note: "", layers: [], elided: 0,
@@ -89,6 +99,7 @@ test("a new session reports chat as zero when the ledger says so", () => {
   assert.equal(br.slices.find((s) => s.id === "skills")?.tokens, 0);
 });
 
+/** 展开结果仍带上 cachedTokens 和 providerPrompt。50 除以 90 再按公式取一位是 55.6。 */
 test("contextBreakdown still reports cache fields", () => {
   const br = contextBreakdown({
     tokens: 100, budget: 200, window: 400, note: "", layers: [], elided: 0,
@@ -99,6 +110,7 @@ test("contextBreakdown still reports cache fields", () => {
   assert.equal(cacheHitPct(br.cachedTokens, br.providerPrompt, br.cacheReported), 55.6);
 });
 
+/** 补齐追踪事件缺省字段，便于只写与本例有关的项。 */
 function ev(partial: Partial<TraceEvent>): TraceEvent {
   return {
     index: 0,

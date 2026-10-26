@@ -1,3 +1,5 @@
+// 行为：测试画布修订号、资源登记、工具操作、外观品牌、历史绑定和插件目录查找。
+
 package video
 
 import (
@@ -9,6 +11,7 @@ import (
 	"testing"
 )
 
+// TestCanvasProjectRevisionAndCAS 检查画布修订号冲突、本机会话、文本回放，以及媒体落成资源；缺失的 CAS 对象恢复失败。
 func TestCanvasProjectRevisionAndCAS(t *testing.T) {
 	dir := t.TempDir()
 	cas := &memCAS{}
@@ -120,6 +123,7 @@ func TestCanvasProjectRevisionAndCAS(t *testing.T) {
 	}
 }
 
+// TestCanvasHTTPCreateProject 检查 POST canvas-projects 能建出带标题的画布。
 func TestCanvasHTTPCreateProject(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
@@ -137,10 +141,12 @@ func TestCanvasHTTPCreateProject(t *testing.T) {
 	}
 }
 
+// containsStr 判断字符串是否包含子串。
 func containsStr(s, sub string) bool {
 	return strings.Contains(s, sub)
 }
 
+// TestCanvasAgentToolsAndOps 检查画布工具名都在，并对绑定画布执行添加节点和排队生成。
 func TestCanvasAgentToolsAndOps(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
@@ -178,6 +184,7 @@ func TestCanvasAgentToolsAndOps(t *testing.T) {
 	}
 }
 
+// TestPublicAppearanceBranding 检查公开外观品牌是 Yoyo，且去品牌会去掉影策字样。
 func TestPublicAppearanceBranding(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
@@ -205,6 +212,7 @@ func TestPublicAppearanceBranding(t *testing.T) {
 	}
 }
 
+// TestProjectHistoryAndSession 检查新建画布出现在项目历史里，并按会话绑回画布。
 func TestProjectHistoryAndSession(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
@@ -240,6 +248,7 @@ func TestProjectHistoryAndSession(t *testing.T) {
 	}
 }
 
+// TestFindYingcePluginDir 检查 YOYO_YINGCE_PLUGINS 指向含插件包的目录时会被选中。
 func TestFindYingcePluginDir(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "plugins", "yingce")
@@ -255,6 +264,7 @@ func TestFindYingcePluginDir(t *testing.T) {
 	}
 }
 
+// TestDecodeProjectDocRejectsNull 检查 null 和空文档会被拒绝，缺少项目正文的 PUT 返回 400。
 func TestDecodeProjectDocRejectsNull(t *testing.T) {
 	if _, err := decodeProjectDoc([]byte("null")); err == nil {
 		t.Fatal("expected error")
@@ -268,6 +278,7 @@ func TestDecodeProjectDocRejectsNull(t *testing.T) {
 	}
 }
 
+// TestSaveCanvasPayloadUsesRevision 检查保存画布必须带上当前修订号，旧修订号会被拒绝。
 func TestSaveCanvasPayloadUsesRevision(t *testing.T) {
 	e := testEngine(t)
 	doc, err := e.createEmptyCanvas("板")

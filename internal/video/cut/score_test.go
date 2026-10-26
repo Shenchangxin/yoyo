@@ -1,7 +1,10 @@
+// score_test.go 检查高光窗口是否落在有语音的区间且互不重叠。
+
 package cut
 
 import "testing"
 
+// TestProposePrefersSpeechOverSilence 确认选出的片段落在静音之外，并且带有 energy 分数。
 func TestProposePrefersSpeechOverSilence(t *testing.T) {
 	dur := 30.0
 	silences := []Silence{{Start: 0, End: 8}, {Start: 22, End: 30}}
@@ -24,6 +27,7 @@ func TestProposePrefersSpeechOverSilence(t *testing.T) {
 	}
 }
 
+// TestProposeKeepsNonOverlap 确认三条片段相邻起点不早于上一条结束减去 0.6 秒。
 func TestProposeKeepsNonOverlap(t *testing.T) {
 	got := Propose(60, []float64{10, 20, 30, 40, 50}, nil, 3, 12)
 	if len(got) != 3 {
@@ -36,6 +40,7 @@ func TestProposeKeepsNonOverlap(t *testing.T) {
 	}
 }
 
+// TestSpeechRatio 确认前一半静音时语音占比落在 0.45 到 0.55。
 func TestSpeechRatio(t *testing.T) {
 	r := speechRatio(0, 10, []Silence{{Start: 0, End: 5}})
 	if r < 0.45 || r > 0.55 {

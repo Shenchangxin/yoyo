@@ -1,3 +1,6 @@
+// 聊天故障转移：按设置里的提供者和模型依次尝试。
+// 不解析 HTTP。已经吐出 token 后不再换下一条。app 的聊天提供者构造这里。
+
 package runtime
 
 import (
@@ -8,7 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
 
-// ChatRoute is one Settings provider + model the chat loop can try.
+// ChatRoute 是聊天循环可以尝试的一条设置：提供者标识、显示名、模型名和客户端。
 type ChatRoute struct {
 	ID     string
 	Name   string
@@ -16,12 +19,12 @@ type ChatRoute struct {
 	Client Client
 }
 
-// FailoverClient tries the selected route first, then other Settings models
-// and providers. It does not mix two models after tokens have already streamed.
+// FailoverClient 先试选中的路由，再试设置里的其它模型和其他提供者。token 已经流出之后，不再把两次模型的输出混在一起。
 type FailoverClient struct {
 	Routes []ChatRoute
 }
 
+// NewFailoverClient 在没有路由时返回 nil，只有一条时直接返回该客户端，多条时包成 FailoverClient。
 func NewFailoverClient(routes []ChatRoute) Client {
 	switch len(routes) {
 	case 0:
@@ -33,8 +36,7 @@ func NewFailoverClient(routes []ChatRoute) Client {
 	}
 }
 
-// PrimaryOpenAI returns the first OpenAI-compatible client in a chat route
-// chain so tests and diagnostics can inspect the selected provider.
+// PrimaryOpenAI 返回聊天路由链里第一个 OpenAI 兼容客户端，供测试和诊断查看选中的提供者。
 func PrimaryOpenAI(c Client) *OpenAIClient {
 	switch t := c.(type) {
 	case *OpenAIClient:
@@ -52,10 +54,13 @@ func PrimaryOpenAI(c Client) *OpenAIClient {
 	return nil
 }
 
+// Chat 走 ChatStream，不向外发出增量。
 func (f *FailoverClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	return f.ChatStream(ctx, req, nil)
 }
 
+// ChatStream 按路由顺序尝试。路由的 Model 非空时覆盖请求里的模型。
+// 已经有 IsToken 增量，或错误不值得转移，就停在当前结果。FailoverSkipProvider 为真时跳过同一 ID 的后续路由。
 func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if f == nil || len(f.Routes) == 0 {
 		return Message{}, fmt.Errorf("no chat providers")
@@ -109,6 +114,7 @@ func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit f
 	return Message{}, last
 }
 
+// callChat 在客户端实现 Streamer 时走 ChatStream，否则走 Chat。
 func callChat(ctx context.Context, c Client, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if s, ok := c.(Streamer); ok {
 		return s.ChatStream(ctx, req, emit)
@@ -116,6 +122,7 @@ func callChat(ctx context.Context, c Client, req ChatRequest, emit func(StreamCh
 	return c.Chat(ctx, req)
 }
 
+// nextLiveRoute 从 from 起找下一条客户端非空、且 ID 未被跳过的路由。
 func nextLiveRoute(routes []ChatRoute, from int, skip map[string]bool) (ChatRoute, bool) {
 	if from < 0 {
 		from = 0

@@ -1,3 +1,6 @@
+// 组装系统提示：身份、固定钉和会变的工作记忆。
+// 不发模型请求。前缀按身份加钉拼成，动态段另走 AssembleDynamic，不在这里改写前缀。loop 和上下文核调用这里。
+
 package runtime
 
 import (
@@ -14,16 +17,20 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/pwsh"
 )
 
+// dynMarker 是工作记忆消息的开头，setDynamic 用它替换上一条动态段。
 const dynMarker = "YOYO_WORKING_MEMORY"
 
+// AssembleSystem 只拼前缀和空的动态段，不带规则和已加载技能。
 func AssembleSystem(loop artifact.LoopPreset, fragments []artifact.PromptFragment, playbook artifact.Playbook, skills []artifact.Skill) string {
 	return Assemble(loop, fragments, playbook, skills, "", "", nil)
 }
 
+// Assemble 把稳定前缀和空计划的动态段接在一起。规则和已加载技能分别进入两段。
 func Assemble(loop artifact.LoopPreset, fragments []artifact.PromptFragment, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string, loaded []string) string {
 	return AssemblePrefix(loop, fragments, playbook, skills, rules, rulesSrc) + AssembleDynamic("", loaded, "", "", "")
 }
 
+// AssembleIdentity 拼声音、身份句、角色槽和循环预设。PlanMode 为真时写上只读工具名单。工具输出在文案里标成不可信。
 func AssembleIdentity(loop artifact.LoopPreset, fragments []artifact.PromptFragment) string {
 	var b strings.Builder
 	var voice []string
@@ -93,8 +100,8 @@ func AssembleIdentity(loop artifact.LoopPreset, fragments []artifact.PromptFragm
 	return b.String()
 }
 
-// AssembleEnvironment is host facts, not instructions. OS and cwd belong
-// in the prompt; compensating for a blind model with per-failure recipes does not.
+// AssembleEnvironment 是主机事实，不是指令。操作系统和当前目录属于提示；不靠逐次失败的补救配方去补偿看不见环境的模型。
+// Windows 上 windowsPosixShell 非空时多写一行 posix: git-bash。不在这里创建进程沙箱。
 func AssembleEnvironment(workspace string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "os: %s/%s\n", runtime.GOOS, runtime.GOARCH)
@@ -110,6 +117,7 @@ func AssembleEnvironment(workspace string) string {
 	return b.String()
 }
 
+// environmentShell 在 Windows 上用 pwsh.Fact，空则写 cmd。其它系统用 PATH 上的 bash，没有则写 sh。
 func environmentShell() string {
 	if runtime.GOOS == "windows" {
 		if f := pwsh.Fact(); f != "" {
@@ -123,6 +131,7 @@ func environmentShell() string {
 	return "sh"
 }
 
+// uniqueSlotTexts 去掉空白并按原文去重，保留第一次出现的顺序。
 func uniqueSlotTexts(in []string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -138,12 +147,11 @@ func uniqueSlotTexts(in []string) []string {
 }
 
 const (
+	// DefaultSkillCatalogBudget 是技能目录的默认字节预算，Harbor 用它。
 	DefaultSkillCatalogBudget = 8000
-	// skillCatalogDescCap is one line. Long descriptions belong in SKILL.md,
-	// which load_skill reads, not in the always-on catalog.
+	// skillCatalogDescCap 是一行描述的符文上限。长描述留在 SKILL.md，由 load_skill 读取，不放进常驻目录。
 	skillCatalogDescCap = 160
-	// ChatSkillCatalogBudget is the chat-lane catalog cap in bytes, about
-	// 1.2k tokens. Harbor keeps DefaultSkillCatalogBudget.
+	// ChatSkillCatalogBudget 是聊天车道的目录字节上限，约 1.2k token。Harbor 仍用 DefaultSkillCatalogBudget。
 	ChatSkillCatalogBudget = 4_800
 )
 
@@ -153,21 +161,23 @@ const skillCatalogRules = `The list below is the skills available this session (
 - If you skip an obvious catalog match, say why in one line. YOYO.md / AGENTS.md / a direct skip request still win.
 - Progressive disclosure: do not preload unrelated references. @skill is an override, not a prerequisite.`
 
-// PinsOpts controls catalog budget and chat-only trigger rules.
+// PinsOpts 控制目录预算和仅聊天使用的触发规则。
 type PinsOpts struct {
 	CatalogBudget int
 	Routing       string
 	ChatCatalog   bool
-	// Lane is "agent" or "video". The agent lane omits studio, drama, and cut skills from the catalog. Bodies stay loadable by name.
+	// Lane 为 agent 或 video。agent 车道从目录里省略 studio、drama 和 cut 技能。正文仍可按名字加载。
 	Lane string
-	// Extra is a short cache-stable pin (methodology one-liner).
+	// Extra 是一段短的、对缓存稳定的钉，例如方法论的一句话。
 	Extra string
 }
 
+// AssemblePins 用空的 PinsOpts 调用 AssemblePinsOpts。
 func AssemblePins(loop artifact.LoopPreset, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string) string {
 	return AssemblePinsOpts(loop, playbook, skills, rules, rulesSrc, PinsOpts{})
 }
 
+// AssemblePinsOpts 拼手册、技能目录、路由、额外钉和工作区规则。手册预算取 loop.PlaybookTokens，小于等于 0 时用 2000。规则来源为空时写成 YOYO.md。
 func AssemblePinsOpts(loop artifact.LoopPreset, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string, opts PinsOpts) string {
 	var b strings.Builder
 	pbBudget := loop.PlaybookTokens
@@ -207,6 +217,7 @@ func AssemblePinsOpts(loop artifact.LoopPreset, playbook artifact.Playbook, skil
 	return b.String()
 }
 
+// renderSkillCatalog 按名字排序后逐行写入，直到超过预算。预算小于等于 0 时用 DefaultSkillCatalogBudget。agent 车道跳过的技能和被预算挤掉的技能各记一行。
 func renderSkillCatalog(skills []artifact.Skill, opts PinsOpts) string {
 	sorted := append([]artifact.Skill(nil), skills...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
@@ -247,6 +258,7 @@ func renderSkillCatalog(skills []artifact.Skill, opts PinsOpts) string {
 	return b.String()
 }
 
+// catalogSkipsLane 只在 lane 为 agent 且名字以 studio-、drama- 或 cut- 开头时跳过。
 func catalogSkipsLane(name, lane string) bool {
 	if lane != "agent" {
 		return false
@@ -259,6 +271,7 @@ func catalogSkipsLane(name, lane string) bool {
 	}
 }
 
+// catalogLineCapped 把描述收成一行，超过 skillCatalogDescCap 个符文则截断。没有描述时只返回名字。
 func catalogLineCapped(s artifact.Skill) string {
 	desc := strings.Join(strings.Fields(s.Description), " ")
 	if utf8.RuneCountInString(desc) > skillCatalogDescCap {
@@ -270,6 +283,7 @@ func catalogLineCapped(s artifact.Skill) string {
 	return s.Name + ": " + desc
 }
 
+// pinsOptsFromTools 从工具上取目录预算、车道、路由和引导钉。ChatOverlay 使用 ChatSkillCatalogBudget，若 SkillCatalogBudget 更小且大于 0 则用更小的那个，并强制 ChatCatalog。
 func pinsOptsFromTools(tools *WorkspaceTools, chat bool) PinsOpts {
 	opts := PinsOpts{CatalogBudget: DefaultSkillCatalogBudget, ChatCatalog: chat}
 	if tools == nil {
@@ -292,15 +306,17 @@ func pinsOptsFromTools(tools *WorkspaceTools, chat bool) PinsOpts {
 	return opts
 }
 
-// AssemblePrefix is the cache-stable system head: identity + trusted pins.
+// AssemblePrefix 是对缓存稳定的系统头：身份加上可信钉。
 func AssemblePrefix(loop artifact.LoopPreset, fragments []artifact.PromptFragment, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string) string {
 	return AssembleIdentity(loop, fragments) + AssemblePins(loop, playbook, skills, rules, rulesSrc)
 }
 
+// AssembleDynamic 拼已加载技能、计划、笔记、检查点和今天，不带建议段。
 func AssembleDynamic(planText string, loaded []string, notes, checkpoint, today string) string {
 	return AssembleDynamicHint(planText, loaded, notes, checkpoint, today, "")
 }
 
+// AssembleDynamicHint 在动态段开头放建议，其余同 AssembleDynamic。笔记截到 2000 个符文，今天截到 400 个符文。
 func AssembleDynamicHint(planText string, loaded []string, notes, checkpoint, today, suggested string) string {
 	var b strings.Builder
 	if strings.TrimSpace(suggested) != "" {
@@ -347,6 +363,7 @@ func AssembleDynamicHint(planText string, loaded []string, notes, checkpoint, to
 	return b.String()
 }
 
+// setDynamic 去掉已有的 YOYO_WORKING_MEMORY 消息。dyn 非空时追加一条 RoleMemory，正文标成不可信的工作记忆。
 func setDynamic(msgs []Message, dyn string) []Message {
 	out := make([]Message, 0, len(msgs)+1)
 	for _, m := range msgs {
@@ -362,8 +379,8 @@ func setDynamic(msgs []Message, dyn string) []Message {
 	return append(out, Message{Role: RoleMemory, Content: body})
 }
 
-// ProjectMemoryPin is a path, not the file body. The model read_file's it
-// when the task depends on remembered project facts.
+// ProjectMemoryPin 是路径，不是文件正文。任务依赖记住的项目事实时，由模型自己 read_file。
+// 先看 YOYO.memory.md，再看 .yoyo/MEMORY.md。文件为空或读失败则试下一个，都没有则返回空串。
 func ProjectMemoryPin(workspace string) string {
 	if workspace == "" {
 		return ""
@@ -378,6 +395,7 @@ func ProjectMemoryPin(workspace string) string {
 	return ""
 }
 
+// lastCheckpoint 从历史末尾往前找含 Context checkpoint 的用户消息，截到 4000 个符文。
 func lastCheckpoint(hist []Message) string {
 	for i := len(hist) - 1; i >= 0; i-- {
 		if hist[i].Role == RoleUser && strings.Contains(hist[i].Content, "Context checkpoint") {

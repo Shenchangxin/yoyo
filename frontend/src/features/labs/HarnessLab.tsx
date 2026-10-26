@@ -1,3 +1,5 @@
+// 本文件拥有把指针切到在用、并对照两份哈希的实验室页。不拥有哈希怎么算、也不执行检出。调用方传入 harness、diff 和 onCheckout。
+
 import { useEffect, useState } from "react";
 import { pick, str } from "../../lib/normalize";
 import { useCopy } from "../../lib/i18n";
@@ -10,6 +12,7 @@ import { pointerLabel } from "../../lib/harness-copy";
 import { MaterialChangeList } from "../harness/Changes";
 import { useUI } from "../../lib/store";
 
+// HarnessLab 列出带哈希的指针。在用标成可信，其余可移到在用。实验室开关打开时才显示短哈希、字段表和手工对比。
 export function HarnessLab(props: {
   harness: any;
   diffA: string;
@@ -36,10 +39,11 @@ export function HarnessLab(props: {
       props.onB(refs.staging);
       props.onCompare(refs.active, refs.staging);
     }
-    // once when both hashes exist
+    // 在用和暂存两个哈希都在时只对比这一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refs.active, refs.staging]);
 
+  // 先以 l3 为假去检出。只有返回体标了 l3，或消息里含有 "L3 confirmation"，才记下待确认；其余错误继续抛出。表面列表缺省是 loop_preset/policy_pack。
   async function tryCheckout(hash: string) {
     try {
       await props.onCheckout(hash, false);

@@ -1,3 +1,5 @@
+// api 把 HTTP、WebSocket 和换行分隔的 JSON-RPC 接到应用核心上。
+// 工作者进程调用 ServeRPC 时，stdout 只写协议帧。
 package api
 
 import (
@@ -22,6 +24,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
+// Handler 组装 HTTP 路由：个人、页面、视频、偶像、会话、审批、工作区、技能、包、评测、进化、皮肤、远程配对和配置。
+// /rpc 与 /api/rpc 走 handleRPC，/ws 与 /api/ws 走 handleWS。会话事件流在 /api/sessions/{id}/events。
+// static 非空时挂到 /，并套上角色立绘和立牌中间件；a.Skins 非空时再挂皮肤资源。static 为空时根路径返回纯文本 yoyo api。
 func Handler(a *app.App, static http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mountPersonal(mux, a)
@@ -1233,6 +1238,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	return mux
 }
 
+// serveSSE 把 Hub 里该会话的事件写成 SSE。响应头是 text/event-stream，不缓存。订阅在函数返回时取消。上下文结束或通道关闭则停下。不支持 Flusher 时返回 500。
 func serveSSE(w http.ResponseWriter, r *http.Request, a *app.App, sessionID string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -1258,22 +1264,26 @@ func serveSSE(w http.ResponseWriter, r *http.Request, a *app.App, sessionID stri
 	}
 }
 
+// writeSSENotice 把 trace.Event 经 app.NoticeOf 编成 JSON，写成一行 data: 事件。
 func writeSSENotice(w http.ResponseWriter, ev trace.Event) {
 	b, _ := json.Marshal(app.NoticeOf(ev))
 	fmt.Fprintf(w, "data: %s\n\n", b)
 }
 
+// writeJSON 把 v 编码成 JSON，Content-Type 为 application/json。编码错误被忽略。
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeJSONStatus 先写 status，再把 v 编码成 JSON。
 func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeAppErr 遇到 L3 错误时写 403，正文带 l3、surfaces、from、to。遇到 runtime.ErrBudget 时写 429，正文带 budget、used、cap。其余错误写 500 和错误文本。
 func writeAppErr(w http.ResponseWriter, err error) {
 	if e, ok := app.AsL3(err); ok {
 		writeJSONStatus(w, 403, map[string]any{"error": e.Error(), "l3": true, "surfaces": e.Surfaces, "from": e.From, "to": e.To})
@@ -1287,6 +1297,7 @@ func writeAppErr(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), 500)
 }
 
+// restRPC 把 params 编成 JSON，用 ID 为 1 的 RPCRequest 调用 Dispatch。错误码 403 和 429 原样作为 HTTP 状态，其余错误是 500。成功时写出 Result。
 func restRPC(a *app.App, w http.ResponseWriter, r *http.Request, method string, params any) {
 	raw := []byte("{}")
 	if params != nil {

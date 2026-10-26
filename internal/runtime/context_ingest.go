@@ -1,3 +1,6 @@
+// 工具结果写入轨迹前的预览。全文先放进 spill，返回的才是截过的预览。循环在派发工具后调用。
+// 不负责 recall_context 的分页。
+
 package runtime
 
 import (
@@ -6,10 +9,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
-// Ingest truncates tool results by runes (ToolResultBudget, default 8_000).
-// Token-accurate truncation is a follow-up; see docs/architecture/context.md.
+// defaultIngestBudget 是工具结果预览的默认 rune 上限。Loop 的 ToolResultBudget 大于 0 时用那个值。
 const defaultIngestBudget = 8_000
 
+// ingestBudget 取 ToolResultBudget，否则返回 defaultIngestBudget。
 func ingestBudget(loop artifact.LoopPreset) int {
 	if loop.ToolResultBudget > 0 {
 		return loop.ToolResultBudget
@@ -17,9 +20,8 @@ func ingestBudget(loop artifact.LoopPreset) int {
 	return defaultIngestBudget
 }
 
-// ingestToolResult spills full bytes first, then returns a live/jsonl preview.
-// budget is the rune cap for ordinary tools (default ToolResultBudget).
-// noStub is set for recall_context so a 16k recall is not stubbed again.
+// ingestToolResult 先把全文写入 spill，再返回预览。budget 是 rune 上限，小于等于 0 时用 defaultIngestBudget。截断保留头尾。
+// 正文为空时返回 emptyToolAnchor。noStub 为真，或正文已经是占位时，预览保持原文。
 func ingestToolResult(spill *Spill, id, name, content string, budget int, noStub bool) (preview, spillID string) {
 	spillID = id
 	if strings.TrimSpace(content) == "" {

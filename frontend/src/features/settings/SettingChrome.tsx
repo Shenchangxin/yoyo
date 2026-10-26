@@ -1,3 +1,7 @@
+/**
+ * 拥有：设置页的分区、行、空态和保存条。
+ * 不拥有：具体字段的值。只排版，不调用 api。
+ */
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight } from "lucide-react";
@@ -6,11 +10,14 @@ import { useCopy } from "../../lib/i18n";
 import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import { cn } from "../../lib/utils";
 
-/** One control width inside a group, so fields in the same section share a left edge and a measure. */
+/** CONTROL_SM 是组内控件的统一宽度，同一分区的字段左边和尺度对齐。 */
 export const CONTROL_SM = "h-8 w-full text-[13px]";
+/** CONTROL_MD 沿用同一套控件宽度。 */
 export const CONTROL_MD = "h-8 w-full text-[13px]";
+/** CONTROL_LG 沿用同一套控件宽度。 */
 export const CONTROL_LG = "h-8 w-full text-[13px]";
 
+/** SettingsGroupLabel 画一组上面的小标题。 */
 export function SettingsGroupLabel({ children }: { children: ReactNode }) {
   return (
     <div className="mb-2 text-[11px] font-medium text-muted">
@@ -19,6 +26,7 @@ export function SettingsGroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
+/** SettingSection 把标题、说明和行收成一块。 */
 export function SettingSection({
   id,
   title,
@@ -38,11 +46,11 @@ export function SettingSection({
   actions?: ReactNode;
   headerActions?: ReactNode;
   children: ReactNode;
-  /** Drop the card shell when the section owns its own surface (code panels, grids). */
+  /** 这一段自己有表面时去掉卡片壳，例如代码面板和网格。 */
   bare?: boolean;
-  /** Inside a disclosure: no extra module gap. */
+  /** 放在折叠里时不再加一段间距。 */
   compact?: boolean;
-  /** Title, intro, and rows sit on a tighter rhythm (Generation catalog). */
+  /** 标题、说明和行用更紧的节奏，生成目录用这个。 */
   tight?: boolean;
 }) {
   const heading = title || headerActions ? (
@@ -96,10 +104,7 @@ export function SettingSection({
   );
 }
 
-/**
- * Form field. Default is a full-width split: label left, control right.
- * Pass `stack` when the control should take the whole row (paths, text areas).
- */
+/** SettingRow 是表单行，默认左标签右控件；stack 时控件占满整行。 */
 export function SettingRow({
   title,
   description,
@@ -145,7 +150,7 @@ export function SettingRow({
   );
 }
 
-/** Read-only status line — label left, value right, no control. */
+/** SettingValueRow 是只读状态行，左标签右值，没有控件。 */
 export function SettingValueRow({
   title,
   value,
@@ -164,7 +169,7 @@ export function SettingValueRow({
   );
 }
 
-/** Row that navigates or fires an action — carries the macOS disclosure chevron. */
+/** SettingActionRow 是会导航或触发动作的一行，导航时带箭头。 */
 export function SettingActionRow({
   title,
   description,
@@ -180,7 +185,7 @@ export function SettingActionRow({
   trailing?: ReactNode;
   border?: boolean;
   danger?: boolean;
-  /** Off for actions that commit in place (add, run) rather than navigate. */
+  /** 就地提交时关掉，例如添加和运行；导航才带箭头。 */
   chevron?: boolean;
 }) {
   return (
@@ -201,12 +206,12 @@ export function SettingActionRow({
   );
 }
 
-/** Empty copy inside a card, kept on the same rhythm as a row. */
+/** SettingEmpty 在卡片里放一行空态，节奏和普通行一样。 */
 export function SettingEmpty({ children, compact, border: _border }: { children: ReactNode; compact?: boolean; border?: boolean }) {
   return <p className={cn(compact ? "py-0.5" : "py-6", "text-left text-[13px] text-muted")}>{children}</p>;
 }
 
-/** Monospace output block with an optional toolbar — journal, doctor, JSON. */
+/** SettingCodePanel 是等宽输出，可以带工具条，用于日记、诊断和 JSON。 */
 export function SettingCodePanel({
   children,
   actions,
@@ -231,6 +236,7 @@ export function SettingCodePanel({
   );
 }
 
+/** SettingSegmented 是一组互斥选项。 */
 export function SettingSegmented<T extends string>({
   id,
   value,
@@ -281,7 +287,7 @@ export function SettingSegmented<T extends string>({
   );
 }
 
-/** Floating bar for the surfaces that need an explicit Save (secrets, budget). */
+/** SettingsSaveBar 是需要明确保存时浮出的条，用于密钥和预算这类表面。 */
 export function SettingsSaveBar({
   open,
   onSave,

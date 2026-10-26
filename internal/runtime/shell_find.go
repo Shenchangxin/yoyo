@@ -1,3 +1,6 @@
+// 把 unix find 的 -name 译成 glob 模式，并识别不该交给 Windows FIND.exe 的写法。
+// 不执行命令，也不调用 WorkspaceTools.resolve。Windows 上 tools.go 的 shell 在命中时改走 glob。
+
 package runtime
 
 import (
@@ -6,8 +9,8 @@ import (
 	"strings"
 )
 
-// parseUnixFindGlob maps `find <root> -name <pat>` onto a glob pattern.
-// Windows FIND.exe is a text search; models keep emitting unix find(1).
+// parseUnixFindGlob 把 `find <根> -name <模式>` 映成 glob。命令不是 find，或没有 -name/-iname，则返回 false。
+// 根为 . 或空时只返回模式。根本身含通配符则失败。Windows FIND.exe 的文本搜索（例如 find "needle" notes.txt）不改写。
 func parseUnixFindGlob(command string) (string, bool) {
 	argv := SplitShellArgv(command)
 	if len(argv) == 0 {
@@ -32,7 +35,7 @@ func parseUnixFindGlob(command string) (string, bool) {
 		case "-type", "-maxdepth", "-mindepth", "-mtime", "-size", "-user", "-group":
 			i++
 		case "-print", "-print0", "(", ")", "-o", "-or", "-a", "-and":
-			// expression noise
+			// 表达式噪声，跳过。
 		default:
 			if strings.HasPrefix(a, "-") {
 				continue
@@ -57,6 +60,8 @@ func parseUnixFindGlob(command string) (string, bool) {
 	return path.Join(root, "**", pattern), true
 }
 
+// unixFindMisuse 判断这是不是 unix find 的写法：含 -name、-type、-maxdepth 等，或以 . 或 ./ 为参数。
+// Windows FIND.exe 的文本搜索返回 false。
 func unixFindMisuse(command string) bool {
 	argv := SplitShellArgv(command)
 	if len(argv) == 0 {

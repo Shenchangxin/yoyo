@@ -1,3 +1,9 @@
+/**
+ * 拥有：默认快捷键，以及按键事件与快捷键字符串的匹配和显示。
+ * 不拥有：快捷键实际触发的命令。
+ */
+
+/** DEFAULT_KEYMAP 命令面板、新对话、设置、审阅、once、session、always、Escape，以及上下回合。 */
 export const DEFAULT_KEYMAP = {
   palette: "Mod+K",
   newChat: "Mod+N",
@@ -11,9 +17,12 @@ export const DEFAULT_KEYMAP = {
   nextTurn: "Alt+ArrowDown",
 } as const;
 
+/** KeymapId 默认表里的键名。 */
 export type KeymapId = keyof typeof DEFAULT_KEYMAP;
+/** Keymap 每个键名对应一条快捷键字符串。 */
 export type Keymap = Record<KeymapId, string>;
 
+/** mergeKeymap 用传入值盖住默认表。空字符串不覆盖。表外的键名忽略。 */
 export function mergeKeymap(raw?: Record<string, string> | null): Keymap {
   const next: Keymap = { ...DEFAULT_KEYMAP };
   if (!raw) return next;
@@ -24,6 +33,7 @@ export function mergeKeymap(raw?: Record<string, string> | null): Keymap {
   return next;
 }
 
+/** matchKey 最后一段是键，前面是修饰。Mod、CmdOrCtrl、Ctrl、Meta、Cmd 都看成按下了 Ctrl 或 Meta。Escape、逗号按键值匹配。反斜杠也认 Backslash。 */
 export function matchKey(e: KeyboardEvent, spec: string): boolean {
   const parts = spec.split("+").map((p) => p.trim()).filter(Boolean);
   if (!parts.length) return false;
@@ -43,6 +53,7 @@ export function matchKey(e: KeyboardEvent, spec: string): boolean {
   return k.toLowerCase() === keyName.toLowerCase();
 }
 
+/** displayShortcut Mac 上修饰键收成符号且不再用加号连接，其他平台保留加号。Escape 显示成 Esc，方向键显示成箭头。 */
 export function displayShortcut(spec: string): string {
   const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
   return spec
@@ -62,6 +73,7 @@ export function displayShortcut(spec: string): string {
     .join(mac ? "" : "+");
 }
 
+/** formatShortcut 从按键事件收成快捷键字符串。只按下修饰键时返回空。空格记成 Space。单字符一律记成大写。Shift 在键不是单字符，或单字符仍是小写时记入。 */
 export function formatShortcut(e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): string {
   const ignore = new Set(["Control", "Meta", "Shift", "Alt"]);
   if (ignore.has(e.key)) return "";

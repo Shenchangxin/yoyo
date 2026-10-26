@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短剧系列和集的选择菜单。不拥有短剧看板。
+ * 新建系列、新建集和绑定会话会改服务端。
+ */
 import { useCallback, useEffect, useState } from "react";
 import { Check, ChevronDown, Film, LayoutGrid, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +20,7 @@ type Episode = { id: string; drama_id: string; title: string; episode_number?: n
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
+/** DramaProjectChip 列出系列和集，并能新建或打开看板。 */
 export function DramaProjectChip(props: { disabled?: boolean }) {
   const copy = useCopy();
   const dramaId = useDramaSelection((s) => s.dramaId);
@@ -27,6 +32,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
 
+  /** 读取系列列表。 */
   const load = useCallback(async () => {
     const list = (await api.video.listDramas()) as Drama[];
     setDramas(Array.isArray(list) ? list : []);
@@ -54,6 +60,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
       ? shownSeriesTitle(drama.title, copy.video.untitled)
       : copy.video.noProject;
 
+  /** 按当前风格新建系列和一集，比例是 9:16。有会话就绑定。 */
   async function createDrama() {
     try {
       const d = await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
@@ -67,6 +74,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
     }
   }
 
+  /** 在当前系列下新建一集。有会话就绑定。 */
   async function createEpisode() {
     if (!dramaId) return;
     try {
@@ -80,6 +88,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
     }
   }
 
+  /** 选中这一集。有会话就绑定。 */
   function pickEpisode(d: Drama, ep: Episode) {
     setDramaId(d.id);
     setEpisodeId(ep.id);
@@ -133,6 +142,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
   );
 }
 
+/** 展开一个系列下的集。 */
 function DramaGroup(props: {
   drama: Drama;
   activeEpisode: string;

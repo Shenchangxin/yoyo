@@ -1,5 +1,9 @@
-/** Thin Markdown <-> HTML for the Pages TipTap wrapper. Not a second editor. */
+/**
+ * 拥有：页面 TipTap 外壳用的一层 Markdown 与 HTML 对转。
+ * 不拥有：编辑器本身和保存。不是第二个编辑器。本地转换，不改服务端。
+ */
 
+/** mdToHtml 把这一层支持的 Markdown 收成 HTML。空正文收成空段落。 */
 export function mdToHtml(src: string): string {
   const text = src.replace(/\r\n/g, "\n");
   if (!text.trim()) return "<p></p>";
@@ -7,6 +11,7 @@ export function mdToHtml(src: string): string {
   const out: string[] = [];
   let i = 0;
   let para: string[] = [];
+  /** 把攒着的段落写成一段 HTML。 */
   const flush = () => {
     if (!para.length) return;
     out.push(`<p>${inline(para.join(" "))}</p>`);
@@ -67,6 +72,7 @@ export function mdToHtml(src: string): string {
   return out.join("") || "<p></p>";
 }
 
+/** htmlToMd 把编辑器 HTML 收成这一层的 Markdown。 */
 export function htmlToMd(html: string): string {
   let s = html
     .replace(/<br\s*\/?>/gi, "\n")
@@ -93,6 +99,7 @@ export function htmlToMd(html: string): string {
   return s.replace(/\n{3,}/g, "\n\n").trim() + (s.trim() ? "\n" : "");
 }
 
+/** 把有序列表的项收成编号行。 */
 function numberedList(inner: string): string {
   let n = 0;
   const items = inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, li) => {
@@ -102,11 +109,13 @@ function numberedList(inner: string): string {
   return `\n${items}\n`;
 }
 
+/** 把无序列表的项收成横线行。 */
 function bulletList(inner: string): string {
   const items = inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, li) => `- ${li}\n`);
   return `\n${items}\n`;
 }
 
+/** 转义后再把粗体、斜体和行内代码换成标签。 */
 function inline(s: string): string {
   return escapeHtml(s)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
@@ -114,10 +123,12 @@ function inline(s: string): string {
     .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
+/** 转义 HTML 里的括号和与号。 */
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** 把转义过的括号、与号和空格还原。 */
 function decodeHtml(s: string): string {
   return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ");
 }

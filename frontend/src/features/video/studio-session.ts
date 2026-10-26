@@ -1,6 +1,10 @@
+/**
+ * 本文件拥有短片和工作区项目之间的会话对照。不拥有聊天记录，也不打开副驾。
+ * 它只读传入的列表，不改服务端。
+ */
 import type { VideoProject } from "../../lib/protocol";
 
-/** Bound copilot session for this short. Empty means it still needs its own chat. */
+/** studioSessionId 返回这条短片绑定的副驾会话。空字符串表示还要自己的聊天。 */
 export function studioSessionId(
   projectId: string,
   projects: Pick<VideoProject, "id" | "kind" | "sessionId">[],
@@ -11,6 +15,7 @@ export function studioSessionId(
   return (hit?.sessionId || "").trim();
 }
 
+/** asStudioProject 把一条短片收成工作区项目，种类固定为 studio。 */
 export function asStudioProject(p: {
   id: string;
   title?: string;

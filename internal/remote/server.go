@@ -1,3 +1,6 @@
+// 本文件拥有手机的 TLS WebSocket 和视频下载。第一帧是配对或恢复，之后是签名 RPC，另有 /remote/media。
+// 不签发配对码，也不接待浏览器的明文 HTTP。listen 把这两个路径挂到 TLS 端口。
+
 package remote
 
 import (
@@ -23,11 +26,13 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 )
 
+// sock 是一条已接受的 WebSocket。写出前先洗密钥，写操作互斥。
 type sock struct {
 	c  *websocket.Conn
 	mu sync.Mutex
 }
 
+// send 先 Scrub 再编码成文本帧。这次编码失败就不写。Scrub 因解码失败返回原值，而这次编码又能成功时，发出去的值没洗过。
 func (s *sock) send(ctx context.Context, v any) error {
 	b, err := json.Marshal(Scrub(v))
 	if err != nil {
@@ -38,6 +43,7 @@ func (s *sock) send(ctx context.Context, v any) error {
 	return s.c.Write(ctx, websocket.MessageText, b)
 }
 
+// inbound 是手机发来的一帧。配对和恢复的随机数先看 n，空了再看 nonce。RPC 只用 nonce。
 type inbound struct {
 	Type    string          `json:"type"`
 	ID      string          `json:"id"`
@@ -52,6 +58,10 @@ type inbound struct {
 	Confirm bool            `json:"confirm"`
 }
 
+// serveWS 先看私网来源，公网地址回 403。通过之后 WebSocket 的 Origin 用通配，不再按站点拒绝。
+// 第一帧必须是 pair 或 resume，否则回先配对并结束。恢复失败不会再当成配对。
+// pair 交给 stage，发 pair_wait，然后等到电脑允许、到达出示时的 Exp，或连接取消。拒绝回电脑拒绝了这台手机，到期回配对码已过期。
+// resume 验过已允许的设备密钥就直接 pair_ok。允许之后 pump 推送事件，并按帧调用 onRPC。
 func (n *Node) serveWS(w http.ResponseWriter, r *http.Request) {
 	if !privatePeer(r.RemoteAddr) {
 		http.Error(w, "lan only", http.StatusForbidden)
@@ -135,6 +145,7 @@ func (n *Node) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// pump 把 Hub 的全部事件收成 type 为 live 的帧，把状态订阅收成 type 为 state 的帧。Hub 为空就跳过实时这一路。app 为空就两路都不订。
 func (n *Node) pump(ctx context.Context, s *sock) {
 	if n.app != nil && n.app.Hub != nil {
 		ch, unsub := n.app.Hub.Subscribe("*")
@@ -173,6 +184,9 @@ func (n *Node) pump(ctx context.Context, s *sock) {
 	}()
 }
 
+// onRPC 处理配对之后的一帧。解不开就回无法解析，不记审计。
+// 设备已收回、nonce 不合用、验签失败、PhoneDenied，或需要确认却没带 confirm，都记失败审计，不更新 Seen。
+// 参数为空时按 {} 参与摘要。通过这些检查后交给 api.Dispatch，无论业务是否出错都更新 Seen。成功的回复带上当前 epoch。写出前仍走 send 的洗密钥。
 func (n *Node) onRPC(ctx context.Context, s *sock, dev *storedDevice, data []byte) {
 	var frame inbound
 	if json.Unmarshal(data, &frame) != nil {
@@ -225,11 +239,14 @@ func (n *Node) onRPC(ctx context.Context, s *sock, dev *storedDevice, data []byt
 	_ = s.send(ctx, reply)
 }
 
+// rpcMessage 拼 RPC 的签名原文：signDomain、rpc、id、方法、参数 SHA-256 的十六进制、秒级时间戳、nonce。行序不能换。
 func rpcMessage(id, method string, params []byte, ts int64, nonce string) []byte {
 	sum := sha256.Sum256(params)
 	return []byte(fmt.Sprintf("%s\nrpc\n%s\n%s\n%s\n%d\n%s", signDomain, id, method, hex.EncodeToString(sum[:]), ts, nonce))
 }
 
+// serveMedia 只接受私网来源。设备号、时间戳、nonce 和签名都在请求头里。
+// 签名原文是 signDomain、get、/remote/media、查询参数 path 的原文、时间戳、nonce。验签通过后才打开文件。文件正文不洗密钥。
 func (n *Node) serveMedia(w http.ResponseWriter, r *http.Request) {
 	if !privatePeer(r.RemoteAddr) {
 		http.Error(w, "lan only", http.StatusForbidden)
@@ -263,6 +280,8 @@ func (n *Node) serveMedia(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
+// openMedia 只打开主目录 video 下的普通文件。相对路径接到这个目录上，绝对路径也必须落在里面。
+// 越界、目录，或没有 home，都拒绝。
 func (n *Node) openMedia(path string) (*os.File, error) {
 	if n.app == nil || n.app.Home == nil {
 		return nil, errors.New("no home")

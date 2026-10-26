@@ -1,3 +1,6 @@
+// 本文件锁住 index.html 和目录根是同一份文档，以及多个标签里优先选正在看的那一页。
+// 由 go test 调用。
+
 package browser
 
 import (
@@ -8,8 +11,7 @@ import (
 	"testing"
 )
 
-// Chrome reports a served index.html as "/" after the file server redirects
-// it. Those must be the same document, or every click reloaded the game.
+// TestSameDocumentURLTreatsIndexAsRoot 锁住 / 与 index.html、以及子目录里的 index.html 是同一文档，myindex.html 和其他文件不是。
 func TestSameDocumentURLTreatsIndexAsRoot(t *testing.T) {
 	root := "http://127.0.0.1:9/"
 	index := "http://127.0.0.1:9/index.html"
@@ -27,6 +29,7 @@ func TestSameDocumentURLTreatsIndexAsRoot(t *testing.T) {
 	}
 }
 
+// TestShouldReloadLocalSkipsWhenOnlyIndexSpellingDiffers 锁住活着的页面只是 index 写法不同时不重新加载。
 func TestShouldReloadLocalSkipsWhenOnlyIndexSpellingDiffers(t *testing.T) {
 	live := "http://127.0.0.1:9/"
 	want := "http://127.0.0.1:9/index.html"
@@ -35,8 +38,7 @@ func TestShouldReloadLocalSkipsWhenOnlyIndexSpellingDiffers(t *testing.T) {
 	}
 }
 
-// With several tabs open, the preferred target must be the document we
-// navigated to even when Chrome reports it without "index.html".
+// TestPageWSPrefersServedIndexOverOtherTabs 锁住想要 index.html 时，会选中被报成 / 的那个 page，而不是另一个标签。
 func TestPageWSPrefersServedIndexOverOtherTabs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/list" && r.URL.Path != "/json" {
@@ -59,6 +61,7 @@ func TestPageWSPrefersServedIndexOverOtherTabs(t *testing.T) {
 	}
 }
 
+// TestNormalizeDocPath 锁住根和 index.html 收成空路径，子目录的 index 收成目录，百分号编码会解开。
 func TestNormalizeDocPath(t *testing.T) {
 	cases := map[string]string{
 		"/":                 "",

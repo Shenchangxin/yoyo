@@ -1,3 +1,6 @@
+// Package main 是 yoyo 命令行。root 挂上这些 cobra 子命令：version、init、run、harness、eval、evolve、session、replay、trace、serve、daemon、update、doctor、logs、pack。
+// harness 再挂 list、show、lineage、reveal、checkout、rollback、diff。session 再挂 list、dump。update 再挂 check、apply。pack 再挂 list、install、uninstall、enable、update。
+// bundledEvals 按这个顺序找评测目录：相对路径 evals，可执行文件目录下的 evals，该目录上一级的 evals，当前工作目录下的 evals。第一个是目录的转成绝对路径返回；都不是目录就返回字符串 evals。
 package main
 
 import (
@@ -24,6 +27,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
+// main 先处理 NSIS 辅助进程。诊断进程名还空、且不是 worker 时，写成命令行进程。然后执行 root，失败时把错误打到标准错误并以状态 1 退出。
 func main() {
 	if update.HandleNSISHelper() {
 		return
@@ -37,11 +41,14 @@ func main() {
 	}
 }
 
+// openApp 用环境变量 YOYO_HOME 和 bundledEvals 的目录打开应用。
 func openApp() (*app.App, error) {
 	evals := bundledEvals()
 	return app.Open(os.Getenv("YOYO_HOME"), evals)
 }
 
+// bundledEvals 按这个顺序找评测目录：相对路径 evals；能拿到可执行文件时，再加上它所在目录的 evals，以及该目录上一级的 evals；能拿到工作目录时，再加上工作目录下的 evals。
+// 第一个 Stat 成功且是目录的候选用 Abs 后返回。Abs 的错误被丢掉。一个都不是目录时返回字符串 evals。
 func bundledEvals() string {
 	candidates := []string{"evals"}
 	if exe, err := os.Executable(); err == nil {
@@ -60,6 +67,7 @@ func bundledEvals() string {
 	return "evals"
 }
 
+// root 建立 yoyo 命令，并按这个顺序挂上 version、init、run、harness、eval、evolve、session、replay、trace、serve、daemon、update、doctor、logs、pack。
 func root() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "yoyo",
@@ -69,6 +77,7 @@ func root() *cobra.Command {
 	return cmd
 }
 
+// versionCmd 是 version，打印 version.Version。
 func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
@@ -79,6 +88,7 @@ func versionCmd() *cobra.Command {
 	}
 }
 
+// initCmd 是 init。打开应用后打印 home 和 active。
 func initCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
@@ -96,6 +106,7 @@ func initCmd() *cobra.Command {
 	}
 }
 
+// runCmd 是 run，至少要一个参数，只把 args[0] 交给 Send。--workspace 非空时写入配置。--session 为空时新建会话。会话 id 打到标准错误。
 func runCmd() *cobra.Command {
 	var workspace, session string
 	cmd := &cobra.Command{
@@ -132,6 +143,8 @@ func runCmd() *cobra.Command {
 	return cmd
 }
 
+// harnessCmd 是 harness，子命令按挂上的顺序是 list、show、lineage、reveal、checkout、rollback、diff。
+// show 最多一个参数，空则用当前 active。reveal 最多一个参数，空哈希交给 RevealHarness。checkout 正好一个参数，--l3 为真时确认 L3。diff 正好两个参数。
 func harnessCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "harness", Short: "Inspect and switch harness snapshots"}
 	cmd.AddCommand(&cobra.Command{
@@ -278,6 +291,7 @@ func harnessCmd() *cobra.Command {
 	return cmd
 }
 
+// labClient 在 solver 去掉空白并小写后是 heuristic 或 fixture 时返回 HeuristicSolver，是 prompt-sensitive 或 prompt_sensitive 时返回 PromptSensitiveSolver。其他值，包括 live，返回 nil。
 func labClient(solver string) runtime.Client {
 	switch strings.ToLower(strings.TrimSpace(solver)) {
 	case "heuristic", "fixture":
@@ -289,6 +303,9 @@ func labClient(solver string) runtime.Client {
 	}
 }
 
+// evalCmd 是 eval。整次运行限时 20 分钟。--models 非空时走 BestOfModels，不再看后面的套件开关。
+// 否则在 --snapshot 非空且 --best 小于等于 1 时走 RunEvalHash。--best 大于 1 时走 BestOfNMut。剩下走 RunEvalMut。
+// 套件开关的优先顺序在 labEvalMut。--solver 默认 live。--snapshot 不移动 refs/active。
 func evalCmd() *cobra.Command {
 	var best int
 	var safety, tb, sealed, transfer, index, behavior bool
@@ -360,6 +377,11 @@ func evalCmd() *cobra.Command {
 	return cmd
 }
 
+// labEvalMut 按参数顺序选套件，先命中的生效：index、transfer、sealed、tb、behavior、safety，都没有则是 smoke 且变换为 nil。
+// index 用 eval.ApplyIndexTransferOnly，名字是 index-transfer。transfer 先 ApplySealed，再把 HeldIn 清空、HeldOut 换成原来的 Transfer、Transfer 和 Safety 清空。
+// sealed 用 eval.ApplySealed。tb 把 mkdir-note 加进 HeldIn、copy-seed 加进 HeldOut，Repeats 小于 2 时改成 2。
+// behavior 把 ID 写成 behavior-probes，HeldIn 换成 eval.BehaviorIDs，HeldOut、Transfer、Safety、EvolveIn 清空，Repeats 为 1。
+// safety 在 Safety 里还没有 no-escape 时追加它。
 func labEvalMut(index, transfer, sealed, tb, safety, behavior bool) (string, func(*artifact.EvalSuite)) {
 	switch {
 	case index:
@@ -410,6 +432,7 @@ func labEvalMut(index, transfer, sealed, tb, safety, behavior bool) (string, fun
 	}
 }
 
+// printEval 打印套件名、held-in、held-out、safety_fail、美元、令牌、墙钟、快照前 12 位和指纹，再逐条打印结果。Kind 为空时印成 -。
 func printEval(kind string, rep eval.RunReport) {
 	fmt.Printf("%s held-in %d/%d held-out %d/%d safety_fail=%d usd=%.4f tokens=%d/%d wall_ms=%d snap=%s fp=%s\n",
 		kind, rep.Metrics.HeldInPass, rep.Metrics.HeldInTotal, rep.Metrics.HeldOutPass, rep.Metrics.HeldOutTotal, rep.Metrics.SafetyFail,
@@ -423,6 +446,7 @@ func printEval(kind string, rep eval.RunReport) {
 	}
 }
 
+// shortHash 在长度大于 12 时只留前 12 个字节，否则原样返回。
 func shortHash(h string) string {
 	if len(h) > 12 {
 		return h[:12]
@@ -430,6 +454,7 @@ func shortHash(h string) string {
 	return h
 }
 
+// updateCmd 是 update，子命令是 check 和 apply。check 把 CheckUpdate 的结果缩进打印。apply 对当前可执行文件调用 ApplyStagedUpdate，ErrQuitNeeded 和 ErrOpenedPackage 不当成失败。
 func updateCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "update", Short: "Check and apply signed updates (never from the agent loop)"}
 	cmd.AddCommand(&cobra.Command{
@@ -468,6 +493,7 @@ func updateCmd() *cobra.Command {
 	return cmd
 }
 
+// doctorCmd 是 doctor。--export 非空时把脱敏支持包写到该路径并打印路径，否则缩进打印 Doctor。
 func doctorCmd() *cobra.Command {
 	var dest string
 	cmd := &cobra.Command{
@@ -496,6 +522,7 @@ func doctorCmd() *cobra.Command {
 	return cmd
 }
 
+// logsCmd 是 logs。没有参数或参数不是 path 时按 tail 处理。path 只打印日志文件路径。--limit 默认 80。可按 --level、--component、--session 过滤。
 func logsCmd() *cobra.Command {
 	var level, component, session string
 	var limit int
@@ -537,6 +564,8 @@ func logsCmd() *cobra.Command {
 	return cmd
 }
 
+// evolveCmd 是 evolve。--overlay 为真时交给 runOverlayEvolve，不跑套件循环。否则 rounds 小于等于 0 时改成 1，超时是轮数乘 15 分钟。
+// 默认只写 canary。--promote 才移动 refs/active。--k 默认 3。--overlay-k 默认 1。--overlay-mode 默认 agg。--reuse-turn 默认 true。
 func evolveCmd() *cobra.Command {
 	var k, rounds, baselines, overlayK int
 	var promote, sealed, behavior, index, overlay, reuseTurn, overlayLib bool
@@ -601,6 +630,9 @@ func evolveCmd() *cobra.Command {
 	return cmd
 }
 
+// runOverlayEvolve 要求 --session 非空，否则错误文案含 evolve --overlay requires --session。
+// --promote、--sealed、--behavior、--index、--baselines 大于 0，或命令行改过 --k、--rounds，会交给 OverlayFlagConflict。
+// --overlay-library 为真时只打印领域索引。overlayK 先收到 1 到 4。超时是该值乘 15 分钟，maxWall 更大时用 maxWall，再超过 1 小时就截成 1 小时。
 func runOverlayEvolve(cmd *cobra.Command, sessionID, task, solver string, reuseTurn bool, overlayK int, overlayMode string, overlayLib, promote, sealed, behavior, index bool, baselines int, maxUSD float64, maxWall time.Duration) error {
 	if strings.TrimSpace(sessionID) == "" {
 		return fmt.Errorf("evolve --overlay requires --session")
@@ -685,6 +717,7 @@ func runOverlayEvolve(cmd *cobra.Command, sessionID, task, solver string, reuseT
 	return nil
 }
 
+// sessionCmd 是 session，子命令是 list 和 dump。
 func sessionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session",
@@ -694,6 +727,7 @@ func sessionCmd() *cobra.Command {
 	return cmd
 }
 
+// sessionListCmd 是 session list。每行打印 id、事件数、溢出制品数、标题和轨迹路径。标题为空时印成 -。
 func sessionListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -716,6 +750,7 @@ func sessionListCmd() *cobra.Command {
 	}
 }
 
+// sessionDumpCmd 是 session dump，正好一个会话参数。--out 非空时把缩进 JSON 写到该路径，父目录按 0o755 创建，文件权限 0o644。--json 为真时再把同一份打到标准输出，且不转义 HTML。
 func sessionDumpCmd() *cobra.Command {
 	var asJSON bool
 	var outPath string
@@ -772,6 +807,7 @@ func sessionDumpCmd() *cobra.Command {
 	return cmd
 }
 
+// replayCmd 是 replay，正好一个参数。先 ResolveSessionID，再按时间、类型、来源和载荷逐行打印轨迹。
 func replayCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "replay [session]",
@@ -799,6 +835,7 @@ func replayCmd() *cobra.Command {
 	}
 }
 
+// traceCmd 是 trace，正好一个参数。ResolveSessionID 之后把 SessionTrace 缩进打印成 JSON。
 func traceCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "trace [session]",
@@ -825,6 +862,7 @@ func traceCmd() *cobra.Command {
 	}
 }
 
+// serveCmd 是 serve。--addr 默认 127.0.0.1:3080。--stdio 为真时走 api.ServeRPC，不再 ListenAndServe。静态文件来自 frontendStatic。remote.Bind 成功且节点非空时把静态目录交给它。
 func serveCmd() *cobra.Command {
 	var addr string
 	var stdio bool
@@ -854,6 +892,7 @@ func serveCmd() *cobra.Command {
 	return cmd
 }
 
+// daemonCmd 是 daemon，和 serve 用同一套 HTTP 处理。--addr 默认 127.0.0.1:3080。没有 --stdio。
 func daemonCmd() *cobra.Command {
 	var addr string
 	cmd := &cobra.Command{
@@ -879,6 +918,7 @@ func daemonCmd() *cobra.Command {
 	return cmd
 }
 
+// mustExe 返回当前可执行文件路径。os.Executable 失败时返回 .。
 func mustExe() string {
 	e, err := os.Executable()
 	if err != nil {
@@ -887,6 +927,7 @@ func mustExe() string {
 	return e
 }
 
+// frontendStatic 先看相对路径 frontend/dist，再看可执行文件目录下的 frontend/dist。第一个是目录的交给 FileServer。都不是目录时返回 nil。
 func frontendStatic() http.Handler {
 	for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(mustExe()), "frontend", "dist")} {
 		if st, err := os.Stat(dir); err == nil && st.IsDir() {

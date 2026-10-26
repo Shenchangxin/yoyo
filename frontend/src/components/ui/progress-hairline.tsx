@@ -1,6 +1,8 @@
+// 本文件拥有一条 2px 进度细线。不拥有进度从哪计算。调用方在工作仍在进行时传 indeterminate，否则传 value。
+
 import { cn } from "../../lib/utils";
 
-/** 2px track. Determinate width is evidence; indeterminate only while work is live. */
+// ProgressHairline 用宽度表示确定进度，并把它夹在 0 到 100。不确定态不报 aria-valuenow，也不设宽度。
 export function ProgressHairline({
   value,
   indeterminate,

@@ -1,3 +1,6 @@
+// 给实时总线和界面准备的轨迹投影。JSONL 仍由 emit 写入完整参数，这里只改副本。
+// UITrajectory 被界面读取。重写入参的压缩规则在 context_shape.go 的 compactCallArgs。
+
 package runtime
 
 import (
@@ -6,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// 实时副本的字节上限。助手和推理的已结算文本是 24000，工具结果正文是 1200，用户文本是 8000，补丁是 8000。delta 文本不按助手上限裁。
 const (
 	uiAssistantBytes = 24_000
 	uiResultBytes    = 1_200
@@ -13,9 +17,8 @@ const (
 	uiPatchBytes     = 8_000
 )
 
-// slimLiveEvent copies a heavy write_file/str_replace payload for the live
-// bus. jsonl keeps the full arguments (DumpSession / trajectory). Shipping
-// every file body through Wails + React is what wedged session 477c0d8b0b8ac64e.
+// slimLiveEvent 给实时总线复制一份变瘦的事件，不改调用方手里的 payload。heavyCallName 为真且参数非空时，把参数换成 compactCallArgs 的结果；压缩结果和原文一样、又不是合法 JSON 对象、但能抽出 path 时，参数改成只含 path 的对象。
+// 工具结果分别裁 content 和 patch。助手和推理先丢掉 stream。delta 为真时文本保持原样。已结算文本按 uiAssistantBytes 裁。用户文本按 uiUserBytes 裁。检查点事件若带 tail 就删掉 tail。
 func slimLiveEvent(ev trace.Event) trace.Event {
 	if ev.Payload == nil {
 		return ev
@@ -71,6 +74,7 @@ func slimLiveEvent(ev trace.Event) trace.Event {
 	}
 }
 
+// dropStreamTape 从副本里删除 stream。没有 payload 或没有这个键时原样返回。
 func dropStreamTape(ev trace.Event) trace.Event {
 	if ev.Payload == nil {
 		return ev
@@ -84,6 +88,7 @@ func dropStreamTape(ev trace.Event) trace.Event {
 	return ev
 }
 
+// slimPayloadString 按字节裁切一个字符串字段。cap 小于等于 0 或长度不超过 cap 时原样返回。裁切后在末尾加上换行和省略号，并把 bytes 设成原长度。
 func slimPayloadString(ev trace.Event, key string, cap int) trace.Event {
 	s, _ := ev.Payload[key].(string)
 	if cap <= 0 || len(s) <= cap {
@@ -96,6 +101,7 @@ func slimPayloadString(ev trace.Event, key string, cap int) trace.Event {
 	return ev
 }
 
+// clonePayload 浅拷贝 payload，避免改到 JSONL 里的那一份。
 func clonePayload(in map[string]any) map[string]any {
 	p := make(map[string]any, len(in)+1)
 	for k, v := range in {
@@ -104,8 +110,7 @@ func clonePayload(in map[string]any) map[string]any {
 	return p
 }
 
-// SlimTrajectory is the UI projection of a session jsonl: tool_call bodies
-// stay on disk, the renderer only sees path + a short stub.
+// SlimTrajectory 是会话 JSONL 的界面投影。工具调用的完整正文仍留在原切片里，返回值里的重写入调用只剩路径和短桩。空切片原样返回。
 func SlimTrajectory(evs []trace.Event) []trace.Event {
 	if len(evs) == 0 {
 		return evs
@@ -117,14 +122,12 @@ func SlimTrajectory(evs []trace.Event) []trace.Event {
 	return out
 }
 
-// UITrajectory is the renderer projection: slim write/result bodies and drop
-// ledger noise. Event identity stays intact so the process rail can fold
-// intermediate assistants and tools; payload slimming is what bounds Wails
-// and WebView memory. ProjectPage still windows older *user turns* by byte cap.
+// UITrajectory 是渲染器看到的轨迹：先瘦身写入和结果，再丢掉账本噪声，最后只留最后一条进展之后的最后一张错误卡片。事件条数和身份保留，进程轨仍能折叠中间的助手和工具；瘦的是 payload，用来限住 Wails 和 WebView 的内存。更早的用户回合仍由 ProjectPage 按字节开窗。
 func UITrajectory(evs []trace.Event) []trace.Event {
 	return dropSupersededErrors(dropUINoise(SlimTrajectory(evs)))
 }
 
+// dropUINoise 丢掉 file_change、turn_end、system、eval、evolve、usage。compact 只留 kind 为 checkpoint 的；payload 为 nil 的 compact 也丢掉。
 func dropUINoise(evs []trace.Event) []trace.Event {
 	out := make([]trace.Event, 0, len(evs))
 	for _, ev := range evs {
@@ -145,9 +148,7 @@ func dropUINoise(evs []trace.Event) []trace.Event {
 	return out
 }
 
-// dropSupersededErrors keeps at most the last error after the latest
-// user/assistant/tool progress. A Stopped chip is a turn status, not a
-// letter — resume and the next user message must not keep it on screen.
+// dropSupersededErrors 最多留下最后一条进展之后的最后一张错误。进展包括用户、助手、推理、工具调用、工具结果、turn_start、step_start、step_end。没有错误时原样返回。进展出现在错误之后时，这些错误全部去掉，恢复和后一条用户消息不会把停止卡片留在界面上。
 func dropSupersededErrors(evs []trace.Event) []trace.Event {
 	lastProgress := -1
 	hasError := false

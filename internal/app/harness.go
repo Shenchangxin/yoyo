@@ -1,3 +1,5 @@
+// harness 的播种、材料解码、检出和回滚。
+
 package app
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
+// Seed 在还没有 active 时写入默认循环、策略、提示、技能、playbook、评测套件和宿主工具，并把快照设为 active 与 head。
 func (a *App) Seed() error {
 	if a.Refs.GetOrEmpty(artifact.RefActive) != "" {
 		return nil
@@ -113,14 +116,17 @@ func (a *App) Seed() error {
 	return a.Refs.Set(artifact.ModelActive(fp), hash)
 }
 
+// Fingerprint 用供应商和模型拼出模型指纹。
 func Fingerprint(cfg Config) string {
 	return cfg.Provider + "/" + cfg.Model
 }
 
+// ActiveHash 返回 refs/active 上的快照哈希，没有则返回空串。
 func (a *App) ActiveHash() string {
 	return a.Refs.GetOrEmpty(artifact.RefActive)
 }
 
+// LoadSnapshot 按哈希读取快照。哈希为空时用当前 active。
 func (a *App) LoadSnapshot(hash string) (artifact.HarnessSnapshot, error) {
 	if hash == "" {
 		hash = a.ActiveHash()
@@ -128,24 +134,29 @@ func (a *App) LoadSnapshot(hash string) (artifact.HarnessSnapshot, error) {
 	return a.CAS.GetSnapshot(hash)
 }
 
+// Checkout 切换 active，不带 L3 确认。
 func (a *App) Checkout(hash string) error {
 	return a.CheckoutOpts(hash, CheckoutOpts{})
 }
 
+// CheckoutOpts 控制检出时是否已经确认 L3 变更。
 type CheckoutOpts struct {
 	ConfirmL3 bool
 }
 
+// ErrL3Required 表示策略包或循环拓扑变了，必须确认后才能检出。
 type ErrL3Required struct {
 	From     string   `json:"from"`
 	To       string   `json:"to"`
 	Surfaces []string `json:"surfaces"`
 }
 
+// Error 返回需要确认的 L3 表面列表。
 func (e ErrL3Required) Error() string {
 	return "L3 confirmation required to change " + strings.Join(e.Surfaces, ",")
 }
 
+// AsL3 判断错误是不是 ErrL3Required。
 func AsL3(err error) (ErrL3Required, bool) {
 	var e ErrL3Required
 	if errors.As(err, &e) {
@@ -154,6 +165,7 @@ func AsL3(err error) (ErrL3Required, bool) {
 	return ErrL3Required{}, false
 }
 
+// l3Surfaces 列出策略包或循环拓扑的差异。循环哈希相同则不再比较拓扑。
 func l3Surfaces(cas *artifact.Store, cur, next artifact.HarnessSnapshot) []string {
 	var out []string
 	if cur.PolicyPack != next.PolicyPack {
@@ -174,6 +186,7 @@ func l3Surfaces(cas *artifact.Store, cur, next artifact.HarnessSnapshot) []strin
 	return out
 }
 
+// CheckoutOpts 在需要 L3 且未确认时拒绝切换。通过后归档旧 active，写入新 active 和 head，并同步 WASM。
 func (a *App) CheckoutOpts(hash string, opts CheckoutOpts) error {
 	next, err := a.CAS.GetSnapshot(hash)
 	if err != nil {
@@ -210,6 +223,7 @@ func (a *App) CheckoutOpts(hash string, opts CheckoutOpts) error {
 	return nil
 }
 
+// Rollback 把 active 切回当前快照的父节点，并带上 L3 确认。没有父节点则失败。
 func (a *App) Rollback() error {
 	snap, err := a.LoadSnapshot(a.ActiveHash())
 	if err != nil {
@@ -221,15 +235,20 @@ func (a *App) Rollback() error {
 	return a.CheckoutOpts(snap.Parent, CheckoutOpts{ConfirmL3: true})
 }
 
+// errString 是可以用 Error 返回的字符串错误。
 type errString string
 
+// Error 返回错误字符串本身。
 func (e errString) Error() string { return string(e) }
 
 const (
-	errNoParent   errString = "no parent snapshot to roll back to"
+	// errNoParent 表示当前快照没有父节点，不能回滚。
+	errNoParent errString = "no parent snapshot to roll back to"
+	// errNoSnapshot 表示没有可物化的 harness 快照。
 	errNoSnapshot errString = "no harness snapshot to materialize"
 )
 
+// Materials 按快照哈希解出循环、提示片段、playbook、技能、评测套件和策略。任一解码失败就返回错误。
 func (a *App) Materials(hash string) (artifact.LoopPreset, []artifact.PromptFragment, artifact.Playbook, []artifact.Skill, artifact.EvalSuite, artifact.PolicyPack, error) {
 	snap, err := a.LoadSnapshot(hash)
 	if err != nil {

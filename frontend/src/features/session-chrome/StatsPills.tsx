@@ -1,10 +1,4 @@
-/**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized from deepseek-harness StatsPills (activity + usage).
- * Default detailed: "x 轮 y 步 · z tok/s" and "N tok · 缓存命中 P%".
- */
+/** 拥有这一轮的活动和用量药丸。不拥有计费。只投影统计，不改服务端。 */
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Database, Gauge } from "lucide-react";
@@ -21,6 +15,7 @@ import {
   type SessionStats,
 } from "../../lib/session-stats";
 
+/** 管一颗药丸的弹出说明开合。 */
 function useStatDialog() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -36,11 +31,13 @@ function useStatDialog() {
 
   useEffect(() => {
     if (!open) return;
+    /** 点到药丸和面板外面就收起。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
+    /** Escape 收起面板。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
@@ -55,6 +52,7 @@ function useStatDialog() {
   return { open, setOpen, rootRef, panelRef, pos };
 }
 
+/** 把说明画到药丸旁边。 */
 function StatDialog(props: {
   title: string;
   icon: ReactNode;
@@ -85,6 +83,7 @@ function StatDialog(props: {
   );
 }
 
+/** 画说明里的一行标签和值。 */
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
@@ -94,6 +93,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** 把两段用间隔点开，第二段空就只留第一段。 */
 function joined(first: string, second: string | null): ReactNode {
   if (!second) return first;
   return (
@@ -105,6 +105,7 @@ function joined(first: string, second: string | null): ReactNode {
   );
 }
 
+/** 有解码统计就用它，否则用当场的速度。 */
 function decodeSpeed(stats: SessionStats, liveTps: number, copy: Copy): string | null {
   if (stats.decodeMs > 0 && stats.decodeTokens > 0) {
     const tps = stats.decodeTokens / (stats.decodeMs / 1_000);
@@ -114,6 +115,7 @@ function decodeSpeed(stats: SessionStats, liveTps: number, copy: Copy): string |
   return null;
 }
 
+/** 用这一轮已用记号和已过时间算出速度。 */
 function liveTokensPerSec(ctx: ContextUsage | undefined, turnStatus: TurnStatus | null | undefined): number {
   const tok = ctx?.tokens || 0;
   const elapsed = turnStatus?.since ? Math.max(0, Date.now() - turnStatus.since) : 0;
@@ -122,22 +124,27 @@ function liveTokensPerSec(ctx: ContextUsage | undefined, turnStatus: TurnStatus 
   return (outTokens / elapsed) * 1000;
 }
 
+/** 把记号数收成简短文案。 */
 function tokenCount(n: number, copy: Copy): string {
   return copy.composer.tokenCount.replace("{count}", formatCompactTokens(n));
 }
 
+/** 把记号数收成完整文案。 */
 function exactCount(n: number, copy: Copy): string {
   return copy.composer.tokenCount.replace("{count}", formatExactTokens(n));
 }
 
+/** 画活动药丸的图标。 */
 function GaugeIcon() {
   return <Gauge size={14} strokeWidth={1} className="shrink-0 opacity-80" />;
 }
 
+/** 画用量药丸的图标。 */
 function DatabaseIcon() {
   return <Database size={14} strokeWidth={1} className="shrink-0 opacity-80" />;
 }
 
+/** 画一颗不打开说明的药丸。 */
 function PlainPill({ stat, icon, label }: { stat: string; icon: ReactNode; label: ReactNode }) {
   return (
     <span className="sc-pill-anchor" data-composer-stat={stat}>
@@ -149,6 +156,7 @@ function PlainPill({ stat, icon, label }: { stat: string; icon: ReactNode; label
   );
 }
 
+/** StatsPills 投影活动和用量两颗药丸。 */
 export const StatsPills = memo(function StatsPills(props: {
   stats?: SessionStats | null;
   ctx?: ContextUsage;
@@ -213,6 +221,7 @@ export const StatsPills = memo(function StatsPills(props: {
   );
 });
 
+/** 画活动药丸，打开后列出轮次和步。 */
 function ActivityButton(props: {
   counts: string;
   speed: string | null;
@@ -255,6 +264,7 @@ function ActivityButton(props: {
   );
 }
 
+/** 画用量药丸，打开后列出记号和缓存。 */
 function UsageButton(props: {
   totalText: string;
   cacheHitText: string | null;

@@ -1,5 +1,5 @@
-// Command ota builds signed ModelScope channel JSON from a GitHub Release dist/
-// directory (SHA256SUMS.txt + named installers).
+// ota 用发行目录里的 SHA256SUMS.txt 和安装包写出带签名的频道 JSON。不上传到 ModelScope。发布时调用 run。
+
 package main
 
 import (
@@ -18,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/update"
 )
 
+// main 执行 run。失败时把错误写到标准错误并以状态 1 退出。
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -25,6 +26,7 @@ func main() {
 	}
 }
 
+// run 在带 keygen 时只生成密钥。否则要求版本号，读取私钥和 SHA256SUMS，复制发行文件，并为该版本的每个频道写出 schema 为 1 的清单和签名。channels 参数不参与选择。
 func run(args []string) error {
 	fs := flag.NewFlagSet("ota", flag.ContinueOnError)
 	keygen := fs.Bool("keygen", false, "print a new Ed25519 keypair and exit")
@@ -105,6 +107,7 @@ func run(args []string) error {
 	return nil
 }
 
+// genKeys 生成一对 Ed25519 密钥，并打印十六进制的公钥和私钥。
 func genKeys() error {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -115,6 +118,7 @@ func genKeys() error {
 	return nil
 }
 
+// loadPriv 读取显式私钥，显式值为空时改读环境变量。该值若是可读文件则改用文件内容，再解析成私钥。
 func loadPriv(explicit string) (ed25519.PrivateKey, error) {
 	raw := strings.TrimSpace(explicit)
 	if raw == "" {
@@ -129,11 +133,13 @@ func loadPriv(explicit string) (ed25519.PrivateKey, error) {
 	return update.ParsePrivateKey(raw)
 }
 
+// parseChannels 忽略传入的频道原文，按版本返回要发布的频道。
 func parseChannels(raw, version string) []update.Channel {
 	_ = raw
 	return update.ChannelsForVersion(version)
 }
 
+// readSHA256SUMS 解析校验和文件。空文件返回错误。文件名只保留基名，校验和转成小写。
 func readSHA256SUMS(path string) (map[string]string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -165,6 +171,7 @@ func readSHA256SUMS(path string) (map[string]string, error) {
 	return out, nil
 }
 
+// buildPlatforms 按版本拼安装包文件名。目录里没有的文件跳过，同一键已经写入后不再覆盖。缺少 Windows 安装包、macOS dmg 或 Linux AppImage 则失败。
 func buildPlatforms(ver, dist string, sums map[string]string) (map[string]update.Asset, error) {
 	type spec struct {
 		key, file, kind string
@@ -214,6 +221,7 @@ func buildPlatforms(ver, dist string, sums map[string]string) (map[string]update
 	return out, nil
 }
 
+// copyRelease 把发行目录里的文件复制到目标目录，跳过子目录。
 func copyRelease(dist, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err

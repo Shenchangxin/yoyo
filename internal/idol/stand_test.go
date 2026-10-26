@@ -1,3 +1,6 @@
+// 本文件锁住 atlas 页名修正、立绘只下载一次，以及 /idol-stand/ 之外的请求交给下一个处理器。
+// 由 go test 调用。测试里的假 CDN 字节是数据。
+
 package idol
 
 import (
@@ -9,6 +12,7 @@ import (
 	"testing"
 )
 
+// TestPointAtlasAtDataPNG 锁住下一行是 size: 的 date.png 会改成 data.png，其他页名不动。
 func TestPointAtlasAtDataPNG(t *testing.T) {
 	in := "date.png\nsize: 1024,1024\narm\n  rotate: true\n"
 	got := pointAtlasAtDataPNG(in)
@@ -21,6 +25,7 @@ func TestPointAtlasAtDataPNG(t *testing.T) {
 	}
 }
 
+// TestStandCacheFetchesOnce 锁住同一份 atlas 第二次从磁盘读，并把 date.png 改成 data.png。逃出服装 id 的路径被拒绝。
 func TestStandCacheFetchesOnce(t *testing.T) {
 	var hits int
 	png := []byte("\x89PNG\r\n\x1a\nrest")
@@ -62,6 +67,7 @@ func TestStandCacheFetchesOnce(t *testing.T) {
 	}
 }
 
+// TestStandMiddleware 锁住 /idol-stand/stand/9/data.json 返回缓存里的 JSON，其他路径交给 next。
 func TestStandMiddleware(t *testing.T) {
 	dir := t.TempDir()
 	outfit := filepath.Join(dir, "stand", "9")

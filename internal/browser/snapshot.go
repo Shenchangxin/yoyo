@@ -1,3 +1,6 @@
+// 本文件把 Snapshot 渲染成四档观察：minimal、interactive、full、structured。
+// 空档位对远程 http(s) 用 interactive，对工作区页面用 full。不调用模型。
+
 package browser
 
 import (
@@ -8,15 +11,17 @@ import (
 )
 
 const (
-	SnapshotMinimal     = "minimal"
+	// SnapshotMinimal 只写地址、标题和可交互元素个数，值是 minimal。
+	SnapshotMinimal = "minimal"
+	// SnapshotInteractive 写地址、标题和可见控件，不写正文，值是 interactive。
 	SnapshotInteractive = "interactive"
-	SnapshotFull        = "full"
-	SnapshotStructured  = "structured"
+	// SnapshotFull 写正文，并在有控件时附上可见操作，值是 full。
+	SnapshotFull = "full"
+	// SnapshotStructured 写成带 url、title、elements 的缩进 JSON，值是 structured。
+	SnapshotStructured = "structured"
 )
 
-// NormalizeSnapshotLevel picks a DOM tier. Empty level defaults to
-// interactive for remote http(s) and full for workspace HTML, where
-// browser_verify still needs page text.
+// NormalizeSnapshotLevel 选定一档。空档位对远程 http(s) 用 interactive，其余（含工作区 HTML）用 full，因为校验仍要页面正文。已写明的四档原样返回小写。
 func NormalizeSnapshotLevel(level string, pageURL string) string {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case SnapshotMinimal, SnapshotInteractive, SnapshotFull, SnapshotStructured:
@@ -28,6 +33,7 @@ func NormalizeSnapshotLevel(level string, pageURL string) string {
 	return SnapshotFull
 }
 
+// isRemoteHTTP 在方案是 http 或 https，且主机不是 127.0.0.1、localhost、::1 时返回真。
 func isRemoteHTTP(raw string) bool {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -37,12 +43,12 @@ func isRemoteHTTP(raw string) bool {
 	return host != "127.0.0.1" && host != "localhost" && host != "::1"
 }
 
-// FormatSnapshot renders a Snapshot at one of the four observation levels.
+// FormatSnapshot 按一档把 Snapshot 写成文字。live 为假时先写一行说明隔离 Chrome 没在跑、这是上次的快照。有 Errors 就附在后面，有 Profile 就另起一行 profile=。
 func FormatSnapshot(snap Snapshot, level string, live bool) string {
 	level = NormalizeSnapshotLevel(level, snap.URL)
 	acts := snap.Elements
 	if len(acts) == 0 && strings.TrimSpace(snap.Actions) != "" {
-		// Actions were formatted already; keep them for interactive/full.
+		// 控件已经格式化过，interactive 和 full 继续用这段文字。
 	}
 	var b strings.Builder
 	if !live {
@@ -81,6 +87,7 @@ func FormatSnapshot(snap Snapshot, level string, live bool) string {
 	return strings.TrimSpace(b.String())
 }
 
+// countActions 优先数 Elements。没有时数 Actions 里的非空行。
 func countActions(snap Snapshot) int {
 	if n := len(snap.Elements); n > 0 {
 		return n
@@ -97,6 +104,7 @@ func countActions(snap Snapshot) int {
 	return n
 }
 
+// formatStructuredSnapshot 把地址、标题和元素编成缩进 JSON。编码失败时退回 Actions 文本。
 func formatStructuredSnapshot(snap Snapshot) string {
 	els := snap.Elements
 	if len(els) == 0 {
@@ -114,6 +122,7 @@ func formatStructuredSnapshot(snap Snapshot) string {
 	return string(raw)
 }
 
+// snapshotWithElements 在加锁快照上填上 ref 缓存里的全部元素，并把 Profile 换成配置名。
 func (h *Host) snapshotWithElements() Snapshot {
 	snap := h.snapshotLocked()
 	snap.Elements = h.refs.all()

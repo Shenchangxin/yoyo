@@ -1,7 +1,10 @@
+// refs_test.go 检查 @名字 替换、人名归一和时长估算。
+
 package video
 
 import "testing"
 
+// TestResolvePromptRefsLongestNameWins 确认较长的名字先匹配，URL 顺序与输入一致。
 func TestResolvePromptRefsLongestNameWins(t *testing.T) {
 	refs := []AssetRef{
 		{Name: "林", URL: "data:a"},
@@ -20,6 +23,7 @@ func TestResolvePromptRefsLongestNameWins(t *testing.T) {
 	}
 }
 
+// TestResolvePromptRefsWan 确认 wan 为真时 @名字 换成图N，名字本身不留在句子里。
 func TestResolvePromptRefsWan(t *testing.T) {
 	refs := []AssetRef{{Name: "阿宁", URL: "u1"}}
 	out, urls := ResolvePromptRefs("@阿宁推门。", refs, true)
@@ -31,6 +35,7 @@ func TestResolvePromptRefsWan(t *testing.T) {
 	}
 }
 
+// TestNormalizeNameStripsAlias 确认括号别名收成同一个键，含空白的名字不会收成空串。
 func TestNormalizeNameStripsAlias(t *testing.T) {
 	if NormalizeName("林小雨（主角）") != NormalizeName("林小雨") {
 		t.Fatal("alias should collapse")
@@ -40,6 +45,7 @@ func TestNormalizeNameStripsAlias(t *testing.T) {
 	}
 }
 
+// TestPlanDuration 确认 500 字对应 60 秒和 5 段，并检查对白下限、转场下限，以及 volcengine 的 15 秒上限和 aliyun 的 30 秒上限。
 func TestPlanDuration(t *testing.T) {
 	p := PlanDuration(string(make([]rune, 500)))
 	if p.TargetSeconds != 60 {

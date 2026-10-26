@@ -1,3 +1,5 @@
+// reach_status 在没有 CLI 时停在说明。doctor 的 JSON 按键排序。正文不推荐 curl。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestReachStatusWithoutCLI 确认 PATH 上没有 agent-reach 时不安装，并说明用宿主工具搜索。
 func TestReachStatusWithoutCLI(t *testing.T) {
 	prev := lookAgentReach
 	lookAgentReach = func() string { return "" }
@@ -20,6 +23,7 @@ func TestReachStatusWithoutCLI(t *testing.T) {
 	}
 }
 
+// TestReachStatusDoctorJSON 确认 doctor 的 JSON 被按键展开，SearchAPI 的状态写进正文。
 func TestReachStatusDoctorJSON(t *testing.T) {
 	prevLook, prevRun := lookAgentReach, runAgentReachDoctor
 	lookAgentReach = func() string { return filepath.Join("bin", "agent-reach") }
@@ -38,6 +42,7 @@ func TestReachStatusDoctorJSON(t *testing.T) {
 	}
 }
 
+// TestReachStatusNeverMentionsCurl 确认正文不含 curl。
 func TestReachStatusNeverMentionsCurl(t *testing.T) {
 	prev := lookAgentReach
 	lookAgentReach = func() string { return "" }

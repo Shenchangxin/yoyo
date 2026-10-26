@@ -1,3 +1,8 @@
+/**
+ * copy-zh 拥有简体中文界面文案，键与英文目录对齐。
+ * 不拥有英文原文，也不切换当前语言。
+ */
+
 import { type Copy } from "./copy";
 import { EXTRA_STYLE_NAMES_ZH } from "../features/video/drama-style-names-zh.ts";
 

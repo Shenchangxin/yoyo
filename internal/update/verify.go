@@ -1,3 +1,5 @@
+// 用 ed25519 验更新清单的字节。
+
 package update
 
 import (
@@ -6,8 +8,7 @@ import (
 	"fmt"
 )
 
-// Manifest is signed out-of-band. The agent loop has no tool that can
-// rotate keys or rewrite this package (TCB: updater is frozen).
+// Manifest 是更新清单：版本、通道、可选说明，以及按平台给出的资源。
 type Manifest struct {
 	Schema    int              `json:"schema,omitempty"`
 	Version   string           `json:"version"`
@@ -20,6 +21,7 @@ type Manifest struct {
 	Platforms map[string]Asset `json:"platforms,omitempty"`
 }
 
+// Asset 是某个平台的下载地址、文件名、SHA-256、大小和种类。
 type Asset struct {
 	URL      string `json:"url"`
 	Filename string `json:"filename,omitempty"`
@@ -28,6 +30,7 @@ type Asset struct {
 	Kind     string `json:"kind,omitempty"`
 }
 
+// ParseManifest 解析清单 JSON。缺少 version 时返回 "update: manifest missing version"。
 func ParseManifest(b []byte) (Manifest, error) {
 	var m Manifest
 	if err := json.Unmarshal(b, &m); err != nil {
@@ -39,6 +42,7 @@ func ParseManifest(b []byte) (Manifest, error) {
 	return m, nil
 }
 
+// Verify 用 ed25519 验清单字节。公钥长度不对返回 "update: bad public key"，正文为空返回 "update: empty body"，签名长度不对返回 "update: bad signature"，验签失败返回 "update: signature rejected"。
 func Verify(pub ed25519.PublicKey, payload, sig []byte) error {
 	if len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("update: bad public key")
@@ -55,6 +59,7 @@ func Verify(pub ed25519.PublicKey, payload, sig []byte) error {
 	return nil
 }
 
+// Sign 用 ed25519 私钥对清单字节签名。
 func Sign(priv ed25519.PrivateKey, payload []byte) []byte {
 	return ed25519.Sign(priv, payload)
 }

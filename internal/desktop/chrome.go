@@ -14,7 +14,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// InstallChrome adds native menus, a tray icon, and typed desktop notifications.
+// InstallChrome 装上托盘、菜单、全局热键和桌面通知，并把窗口焦点时清空通知历史。
+// 它监听 yoyo:do-quit 并调用 forceQuit。通知函数先发 yoyo:pulse。kind 为 loading、toast 为假、没有通知服务，或 toastAllowed 拒绝时，不发系统通知。用户点通知后 Raise 窗口，并按会话发出 yoyo:focus。
+// 同进程订阅 Hub，由 pumpDesktopEvents 发出 yoyo:item，状态变化发出 yoyo:state。RPC 模式下只转发 state.changed 为 yoyo:state、item.event 为 yoyo:item，approval.request 和 turn.completed 不转发。
 func InstallChrome(gui *application.App, win application.Window, svc *Service, ns *notifications.NotificationService) {
 	svc.gui = gui
 	svc.win = win
@@ -56,8 +58,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 		forceQuit(gui, svc, win)
 	})
 
-	// group is the conversation name: Windows shows it as the toast header and
-	// the Action Center group, where a raw session id would read as noise.
+	// group 是会话名。Windows 把它显示成通知标题和操作中心分组，裸会话 id 读起来像噪声。
 	notify := func(id, title, body, session, group, kind string, toast bool) {
 		gui.Event.Emit("yoyo:pulse", map[string]any{
 			"kind":    kind,
@@ -81,7 +82,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 			svc.noteToastSent()
 		}
 	}
-	// Coming back to the window is when the user has seen the toasts, so Action Center is emptied then.
+	// 窗口重新获得焦点时，用户已经回到应用里，这时清空操作中心。
 	win.OnWindowEvent(events.Common.WindowFocus, func(*application.WindowEvent) { svc.clearToastHistoryOnFocus() })
 	if ns != nil {
 		_, _ = ns.RequestNotificationAuthorization()
@@ -100,8 +101,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 			return
 		}
 		n := nativeCopy(svc.GetConfig().Locale)
-		// Only the kinds that show a conversation name pay for the session lookup;
-		// loading pulses fire on every tool call.
+		// 只有会带上会话名的种类才去查会话标题。loading 每次工具调用都会响，不查标题。
 		name := ""
 		group := "Yoyo"
 		if kind == "done" || kind == "approval" || kind == "error" {
@@ -192,8 +192,8 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 	}
 }
 
-// pumpDesktopEvents never lets a frozen WebView stall Hub consumption.
-// Live events drop if the renderer is still painting; turn_end still tries.
+// pumpDesktopEvents 用容量 256 的通道把 Hub 事件转成 yoyo:item，载荷是 app.NoticeOf，并调用 dispatch。
+// 通道满时，KeepHubEvent 为假的事件丢掉。为真的再试一次，仍满则也丢掉。保留的类型有 turn_end、turn_start、step_start、step_end、error、approval、user、inject、inbox，source 为 update 的 system，以及 assistant 流的 start 和 end。带 delta 的事件不保留。
 func pumpDesktopEvents(gui *application.App, ch <-chan trace.Event, dispatch func(typ, source, session string, payload map[string]any)) {
 	emit := make(chan trace.Event, 256)
 	go func() {
@@ -217,10 +217,12 @@ func pumpDesktopEvents(gui *application.App, ch <-chan trace.Event, dispatch fun
 	}
 }
 
+// showWindow 调用 Raise，把窗口从最小化或屏幕外拉回来并聚焦。
 func showWindow(win application.Window) {
 	Raise(win)
 }
 
+// sessionFromNote 优先读通知 UserInfo 里的 session。否则从 id 前缀 yoyo-turn-、yoyo-ask-、yoyo-err- 后面切出会话 id。都没有则返回空字符串。
 func sessionFromNote(id string, info map[string]any) string {
 	if info != nil {
 		if s, ok := info["session"].(string); ok && s != "" {
@@ -235,6 +237,7 @@ func sessionFromNote(id string, info map[string]any) string {
 	return ""
 }
 
+// payloadStr 读取 payload 里的字符串字段。payload 为空或类型不是字符串时返回空字符串。
 func payloadStr(p map[string]any, key string) string {
 	if p == nil {
 		return ""
@@ -243,6 +246,7 @@ func payloadStr(p map[string]any, key string) string {
 	return s
 }
 
+// firstPayloadStr 按 keys 的顺序返回第一个去掉空白后非空的字符串。
 func firstPayloadStr(p map[string]any, keys ...string) string {
 	for _, key := range keys {
 		if s := strings.TrimSpace(payloadStr(p, key)); s != "" {
@@ -252,6 +256,7 @@ func firstPayloadStr(p map[string]any, keys ...string) string {
 	return ""
 }
 
+// notifyError 优先返回 payload 的 title。没有 title 时把 error 收成一行，最多 160 个字。
 func notifyError(p map[string]any) string {
 	title := payloadStr(p, "title")
 	if title != "" {
@@ -260,8 +265,7 @@ func notifyError(p map[string]any) string {
 	return oneLine(payloadStr(p, "error"), 160)
 }
 
-// sessionTitle is the name of a conversation for notification text. It is ""
-// when the session is unknown (remote RPC mode) or still has a placeholder title.
+// sessionTitle 取会话标题，收成一行，最多 60 个字。id 为空、没有同进程 App、会话不存在，或标题是 session、video 时返回空字符串。RPC 模式下 App 为空，因此通知里没有会话名。
 func (s *Service) sessionTitle(id string) string {
 	if id == "" || s.App == nil {
 		return ""

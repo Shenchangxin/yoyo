@@ -1,3 +1,6 @@
+// 把操作者附上的文件收进工作区，并展开成提示文本或多模态图片段。
+// 路径是否在工作区内交给 mentions.go 的 jailPath，不调用 WorkspaceTools.resolve。工作区外的文件复制到 .yoyo/uploads。
+
 package runtime
 
 import (
@@ -12,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+// Attachment 是一条操作者附件。Path 和 DataB64 二选一；物化之后只留工作区内的相对路径。
 type Attachment struct {
 	Path    string
 	Name    string
@@ -19,10 +23,12 @@ type Attachment struct {
 	DataB64 string
 }
 
+// controlAttachment 识别名为 __request_id__ 的控制附件，它不是文件。
 func controlAttachment(att Attachment) bool {
 	return strings.TrimSpace(att.Name) == "__request_id__"
 }
 
+// ExpandAttachments 把附件收成提示文本。budget 小于等于 0 时用 2400 字节。超出预算时停下并写上截断标记。控制附件跳过。
 func ExpandAttachments(workspace string, atts []Attachment, budget int) string {
 	if budget <= 0 {
 		budget = 2400
@@ -51,8 +57,7 @@ func ExpandAttachments(workspace string, atts []Attachment, budget int) string {
 	return strings.TrimSpace(b.String())
 }
 
-// ImageParts turns image attachments into native multimodal parts so the
-// model sees pixels instead of "binary mime (N bytes)".
+// ImageParts 把图片附件收成原生多模态段，让模型看到像素，而不是 “binary mime (N bytes)”。
 func ImageParts(workspace string, atts []Attachment) []ContentPart {
 	var out []ContentPart
 	for i, att := range atts {
@@ -68,6 +73,7 @@ func ImageParts(workspace string, atts []Attachment) []ContentPart {
 	return out
 }
 
+// imagePart 把一张图收成 data URL。超过 2 MiB 的字节被截断。MIME 为空时写成 image/png。
 func imagePart(workspace string, att Attachment, i int) (ContentPart, bool) {
 	if !isImageAtt(att) {
 		return ContentPart{}, false
@@ -93,6 +99,7 @@ func imagePart(workspace string, att Attachment, i int) (ContentPart, bool) {
 	return ContentPart{Type: "image_url", ImageURL: url, MIME: mime, Text: label}, true
 }
 
+// isImageAtt 在 MIME 以 image/ 开头，或名字以 png、jpg、jpeg、gif、webp 结尾时返回真。
 func isImageAtt(att Attachment) bool {
 	mime := strings.ToLower(strings.TrimSpace(att.MIME))
 	if strings.HasPrefix(mime, "image/") {
@@ -107,6 +114,7 @@ func isImageAtt(att Attachment) bool {
 	return false
 }
 
+// attachmentBytes 有路径时经 jailPath 读取，否则解码 DataB64。
 func attachmentBytes(workspace string, att Attachment) ([]byte, string, error) {
 	mime := strings.TrimSpace(att.MIME)
 	if att.Path != "" {
@@ -124,6 +132,7 @@ func attachmentBytes(workspace string, att Attachment) ([]byte, string, error) {
 	return raw, mime, err
 }
 
+// attachmentChunk 把一条附件收成一段文本。路径走 jailPath。无路径的二进制在有工作区时写到 .yoyo/uploads。图片只留多模态说明，不倾倒字节。
 func attachmentChunk(workspace, path, name, mime, b64 string, i int) string {
 	label := name
 	if label == "" {
@@ -165,6 +174,7 @@ func attachmentChunk(workspace, path, name, mime, b64 string, i int) string {
 	return formatAttachment(label, mime, raw)
 }
 
+// formatAttachment 格式化一段附件。文本超过 800 字符时截断并提示改用 read_file。
 func formatAttachment(label, mime string, raw []byte) string {
 	if isImageMIME(mime) || looksImageName(label) {
 		return fmt.Sprintf("## attachment:%s\nimage attached as a multimodal part (%d bytes, %s)\n", label, len(raw), mime)
@@ -180,12 +190,10 @@ func formatAttachment(label, mime string, raw []byte) string {
 	return out + "\n"
 }
 
+// maxUploadBytes 是单份附件的上限，64 MiB。
 const maxUploadBytes = 64 << 20
 
-// MaterializeAttachments copies operator-picked files into the workspace jail
-// so later read_file / @file mentions succeed. Native pickers often return
-// absolute paths outside the project; File-API uploads arrive as data_b64
-// with no path at all. Both used to vanish from the transcript and the model.
+// MaterializeAttachments 把操作者选中的文件复制进工作区，使之后的 read_file 和 @file 能成功。系统选择器常返回项目外的绝对路径；文件接口的上传只有 data_b64，没有路径。这两种以前都会从记录和模型视野里消失。
 func MaterializeAttachments(workspace string, atts []Attachment) ([]Attachment, error) {
 	if len(atts) == 0 {
 		return atts, nil
@@ -204,8 +212,7 @@ func MaterializeAttachments(workspace string, atts []Attachment) ([]Attachment, 
 	return out, nil
 }
 
-// StampFileMentions appends @file:<rel> tokens for non-image attachments so
-// the user bubble peels a chip and ExpandMentions can preview the file.
+// StampFileMentions 为非图片附件追加 @file:<相对路径>，让用户气泡剥出芯片，并让 ExpandMentions 能预览文件。已有的 @file 和图片不重复添加。
 func StampFileMentions(message string, atts []Attachment) string {
 	seen := map[string]bool{}
 	for _, m := range ParseMentions(message) {
@@ -240,6 +247,7 @@ func StampFileMentions(message string, atts []Attachment) string {
 	return msg + "\n" + head
 }
 
+// materializeOne 处理一条附件。已在 jailPath 内的路径改成相对路径并清掉 DataB64。工作区外的普通文件复制到 .yoyo/uploads。目录拒绝。超过 maxUploadBytes 拒绝。工作区为空时原样返回。
 func materializeOne(workspace string, att Attachment, i int) (Attachment, error) {
 	label := att.Name
 	if label == "" {
@@ -311,6 +319,7 @@ func materializeOne(workspace string, att Attachment, i int) (Attachment, error)
 	return att, nil
 }
 
+// writeUpload 把字节写到 .yoyo/uploads，并返回相对工作区的斜杠路径。
 func writeUpload(workspace, label string, raw []byte) (string, error) {
 	dir := filepath.Join(workspace, ".yoyo", "uploads")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -327,6 +336,7 @@ func writeUpload(workspace, label string, raw []byte) (string, error) {
 	return filepath.ToSlash(rel), nil
 }
 
+// uniqueUploadPath 在同名文件已存在时追加 -2、-3，直到 9999。仍冲突则用进程号。
 func uniqueUploadPath(dir, name string) string {
 	base := sanitizeName(name)
 	dest := filepath.Join(dir, base)
@@ -347,10 +357,12 @@ func uniqueUploadPath(dir, name string) string {
 	return filepath.Join(dir, fmt.Sprintf("%s-%d%s", stem, os.Getpid(), ext))
 }
 
+// isImageMIME 判断 MIME 是否以 image/ 开头。
 func isImageMIME(mime string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(mime)), "image/")
 }
 
+// looksImageName 按扩展名判断是不是 png、jpg、jpeg、gif 或 webp。
 func looksImageName(name string) bool {
 	n := strings.ToLower(name)
 	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp"} {
@@ -361,6 +373,7 @@ func looksImageName(name string) bool {
 	return false
 }
 
+// looksBinary 在字节不是合法 UTF-8 或含 NUL 时返回真。
 func looksBinary(b []byte) bool {
 	if !utf8.Valid(b) {
 		return true
@@ -373,6 +386,7 @@ func looksBinary(b []byte) bool {
 	return false
 }
 
+// sanitizeName 只保留字母、数字、点、减号和下划线，其余换成下划线。结果为空时用 file。
 func sanitizeName(name string) string {
 	name = filepath.Base(name)
 	var b strings.Builder

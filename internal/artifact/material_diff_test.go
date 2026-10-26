@@ -1,3 +1,5 @@
+// 锁住内容差异会写出剧本条目、循环的 L3 字段和 L1 文案、笔记、技能、提示词和工具名。两份相同的快照在没有对象库时差异为空。
+
 package artifact
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestMaterialDiffPlaybookAndLoop 确认新增条目、分数变化、带 L3 的 max_turns、bootstrap 和笔记都会出现在文本里。
 func TestMaterialDiffPlaybookAndLoop(t *testing.T) {
 	s := NewStore(filepath.Join(t.TempDir(), "cas"))
 	pb1, err := s.Put(KindPlaybook, "main", Playbook{ID: "main", Bullets: []PlaybookBullet{{ID: "b1", Text: "check files", Helpful: 1}}})
@@ -48,6 +51,7 @@ func TestMaterialDiffPlaybookAndLoop(t *testing.T) {
 	}
 }
 
+// TestMaterialDiffSkillsAndPrompts 确认技能新增、提示词变化和工具名删除会出现。
 func TestMaterialDiffSkillsAndPrompts(t *testing.T) {
 	s := NewStore(filepath.Join(t.TempDir(), "cas"))
 	sk1, err := s.Put(KindSkill, "verify", Skill{Name: "verify-artifact", Description: "check outputs"})
@@ -80,6 +84,7 @@ func TestMaterialDiffSkillsAndPrompts(t *testing.T) {
 	}
 }
 
+// TestMaterialDiffUnchanged 确认两份相同快照在对象库为 nil 时差分为空。
 func TestMaterialDiffUnchanged(t *testing.T) {
 	snap := HarnessSnapshot{Note: "same", Tools: []string{"read"}}
 	if got := MaterialDiff(nil, snap, snap); len(got) != 0 {

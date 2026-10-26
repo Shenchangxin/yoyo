@@ -1,3 +1,6 @@
+// 本文件锁住 FamilyOf 的归族、Parse 丢掉纯音频模型、Load 在 CacheTTL 内不重复拉取，以及过期或失败时的行为。
+// 不访问真实的 models.dev。由 go test 调用。
+
 package modelcatalog
 
 import (
@@ -10,6 +13,7 @@ import (
 	"time"
 )
 
+// fixture 是一份 models.dev 形状的测试目录，含 openai、anthropic 和 moonshotai-cn。
 const fixture = `{
   "openai": {
     "id": "openai",
@@ -62,6 +66,7 @@ const fixture = `{
   }
 }`
 
+// TestFamilyOf 对照几条 id 的族名，包括版本号、o 系列、日期后缀和斜杠前缀。
 func TestFamilyOf(t *testing.T) {
 	cases := map[string]string{
 		"claude-sonnet-4-6":      "claude-sonnet",
@@ -80,6 +85,7 @@ func TestFamilyOf(t *testing.T) {
 	}
 }
 
+// TestParseMapsProvidersAndDropsAudio 要求 anthropic 映到 claude、moonshotai-cn 映到 kimi，并且 whisper-1 被丢掉。
 func TestParseMapsProvidersAndDropsAudio(t *testing.T) {
 	c, err := Parse([]byte(fixture))
 	if err != nil {
@@ -112,6 +118,7 @@ func TestParseMapsProvidersAndDropsAudio(t *testing.T) {
 	}
 }
 
+// TestLoadCacheTTLAndStale 要求 CacheTTL 内第二次 Load 不再调用 Get，refresh 会再拉一次，失败时退回 Stale 目录。
 func TestLoadCacheTTLAndStale(t *testing.T) {
 	t.Setenv("YOYO_MODELS_DEV_URL", "")
 	t.Cleanup(func() { live.Store(nil); Get = defaultGet })
@@ -151,7 +158,7 @@ func TestLoadCacheTTLAndStale(t *testing.T) {
 		t.Fatalf("stale fallback: %+v %v", stale, err)
 	}
 
-	// expire cache by rewriting fetchedAt
+	// 把磁盘上的 FetchedAt 改到现在减去 CacheTTL 再减 1 小时，使缓存过期。
 	p := filepath.Join(dir, cacheName)
 	var onDisk Catalog
 	b, _ := os.ReadFile(p)
@@ -168,6 +175,7 @@ func TestLoadCacheTTLAndStale(t *testing.T) {
 	}
 }
 
+// TestLoadHTTP 用本地测试服务器走 defaultGet，要求 gpt-4o 的上下文长度是 128000。
 func TestLoadHTTP(t *testing.T) {
 	t.Setenv("YOYO_MODELS_DEV_URL", "")
 	t.Cleanup(func() { live.Store(nil); Get = defaultGet; URL = DefaultURL })
@@ -189,6 +197,7 @@ func TestLoadHTTP(t *testing.T) {
 	}
 }
 
+// keys 收集提供者名字，供失败信息打印。
 func keys(m map[string]map[string]Entry) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

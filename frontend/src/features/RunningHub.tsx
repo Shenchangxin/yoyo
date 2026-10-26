@@ -1,7 +1,10 @@
+// 本文件拥有正在跑的会话入口和耗时。不拥有会话是否在跑。调用方传入 threads、status 和 onSelect。窄屏不显示。
+
 import { useEffect, useMemo, useState } from "react";
 import { useCopy } from "../lib/i18n";
 import type { RunStatus, Thread } from "../lib/protocol";
 
+// RunningHub 没有线程时不渲染。标题空了就显示 id 的前 8 位。有线程时每 1000 毫秒刷新一次现在。
 export function RunningHub(props: {
   threads: Thread[];
   status?: RunStatus[];
@@ -10,6 +13,7 @@ export function RunningHub(props: {
   const copy = useCopy();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  // 下一拍再监听按下和 Escape，避免打开它的那一下立刻关掉。卸下或合上时摘掉监听。
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
@@ -81,6 +85,7 @@ export function RunningHub(props: {
   );
 }
 
+// 没有时间或解析失败就返回空字符串。满一分钟才带上分钟，秒数用 now 减开始时间。
 function formatElapsed(iso: string | undefined, now: number): string {
   if (!iso) return "";
   const t = Date.parse(iso);

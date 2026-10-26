@@ -1,3 +1,5 @@
+// 用 httptest 检查各站的列表、下载和高可用地址展开。
+
 package skillmarket
 
 import (
@@ -11,6 +13,7 @@ import (
 	"testing"
 )
 
+// TestParseInstallID 确认各站前缀能拆开，空 id 不是站，InstallSlug 取最后一段。
 func TestParseInstallID(t *testing.T) {
 	cases := []struct {
 		in, hub, remote string
@@ -44,6 +47,7 @@ func TestParseInstallID(t *testing.T) {
 	}
 }
 
+// TestLoadHubSearchOnly 确认 SkillsMP 和 Markdown Registry 在无查询时是 SearchOnly，且带上全部站列表。
 func TestLoadHubSearchOnly(t *testing.T) {
 	c, err := LoadHub(t.TempDir(), LoadOpts{Hub: HubSkillsMP})
 	if err != nil {
@@ -61,6 +65,7 @@ func TestLoadHubSearchOnly(t *testing.T) {
 	}
 }
 
+// TestListAndFetchClawHub 确认列表、搜索和下载能拿到 pdf，并且 zip 文件不会进入结果。
 func TestListAndFetchClawHub(t *testing.T) {
 	skill := "---\nname: pdf\ndescription: PDF toolkit for tests.\n---\n\nUse pypdf.\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +122,7 @@ func TestListAndFetchClawHub(t *testing.T) {
 	}
 }
 
+// TestListAndFetchSkillHub 确认 ClawSkillHub 列表 id，以及安装响应去重后是两个文件。
 func TestListAndFetchSkillHub(t *testing.T) {
 	skill := "---\nname: demo\ndescription: SkillHub fixture for tests.\n---\n\nHello.\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +158,7 @@ func TestListAndFetchSkillHub(t *testing.T) {
 	}
 }
 
+// TestListGitHubHub 确认 anthropics/skills 的树能列出 pdf，并下载 SKILL.md 和脚本。
 func TestListGitHubHub(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/trees/") {
@@ -185,6 +192,7 @@ func TestListGitHubHub(t *testing.T) {
 	}
 }
 
+// TestMarkdownRegistryAndSkillsMP 确认两边都能列出条目，Registry 还能下载到 SKILL.md。
 func TestMarkdownRegistryAndSkillsMP(t *testing.T) {
 	md := "---\nname: pdf\ndescription: Registry PDF skill for tests.\n---\n\nPDF.\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +236,7 @@ func TestMarkdownRegistryAndSkillsMP(t *testing.T) {
 	}
 }
 
+// TestInstallRecordKeepsRemote 确认 .market.json 留下 ClawHub 的 remote。
 func TestInstallRecordKeepsRemote(t *testing.T) {
 	raw := []byte("---\nname: pdf\ndescription: Fixture pack used by hub install tests.\n---\n\nDo pdf.\n")
 	_, scan := ScanSkillMD(raw, "pdf")
@@ -249,6 +258,7 @@ func TestInstallRecordKeepsRemote(t *testing.T) {
 	}
 }
 
+// TestParseGitHubURL 确认 tree 地址给出目录，blob 到 SKILL.md 时目录去掉文件名。
 func TestParseGitHubURL(t *testing.T) {
 	gh, ok := parseGitHubURL("https://github.com/openclaw/openclaw/tree/main/skills/nano-pdf")
 	if !ok || gh.Repo != "openclaw/openclaw" || gh.Dir != "skills/nano-pdf" {
@@ -260,6 +270,7 @@ func TestParseGitHubURL(t *testing.T) {
 	}
 }
 
+// TestFetchGitHubDirSkipsOversized 确认超过 1 MiB 的 references 被跳过，SKILL.md 和脚本仍在。
 func TestFetchGitHubDirSkipsOversized(t *testing.T) {
 	skill := "---\nname: pdf\ndescription: PDF toolkit for tests.\n---\n\nUse scripts/extract.py.\n"
 	script := "print(1)\n"
@@ -308,6 +319,7 @@ func TestFetchGitHubDirSkipsOversized(t *testing.T) {
 	}
 }
 
+// TestExpandHA 确认 raw 地址展开出 jsDelivr、镜像和 gh-proxy，API 只加 gh-proxy，本机地址不展开。
 func TestExpandHA(t *testing.T) {
 	raw := "https://raw.githubusercontent.com/anthropics/skills/main/skills/pdf/SKILL.md"
 	got := expandHA(raw)
@@ -331,6 +343,7 @@ func TestExpandHA(t *testing.T) {
 	}
 }
 
+// TestSkillHubCNListAndFetch 确认列表 id 带 namespace，下载得到两个文件。
 func TestSkillHubCNListAndFetch(t *testing.T) {
 	skill := "---\nname: find-skill-skillhub\ndescription: Search SkillHub CN for tests.\n---\n\nFind skills.\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -367,6 +380,7 @@ func TestSkillHubCNListAndFetch(t *testing.T) {
 	}
 }
 
+// TestClawHubListWithoutOwner 确认没有 owner 时 ID 是 clawhub 加 slug。
 func TestClawHubListWithoutOwner(t *testing.T) {
 	row := clawListItem{Slug: "self-improving-agent", DisplayName: "self-improving agent", Summary: "learn"}
 	it, ok := itemFromClawList(row)
@@ -375,6 +389,7 @@ func TestClawHubListWithoutOwner(t *testing.T) {
 	}
 }
 
+// TestCatalogLimit 确认空查询默认浏览上限、有查询默认搜索上限，以及显式上限和 5000 的封顶。
 func TestCatalogLimit(t *testing.T) {
 	if catalogLimit("", 0) != defaultBrowseLimit || catalogLimit("pdf", 0) != defaultSearchLimit {
 		t.Fatal(catalogLimit("", 0), catalogLimit("pdf", 0))
@@ -384,6 +399,7 @@ func TestCatalogLimit(t *testing.T) {
 	}
 }
 
+// TestClawHubFollowsCursor 确认列表会跟着 nextCursor 取下一页。
 func TestClawHubFollowsCursor(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/skills" {
@@ -411,6 +427,7 @@ func TestClawHubFollowsCursor(t *testing.T) {
 	}
 }
 
+// TestSkillHubCNPages 确认第一页满 100 条后还会要第 2 页，凑满 total。
 func TestSkillHubCNPages(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/skills" {
@@ -441,6 +458,7 @@ func TestSkillHubCNPages(t *testing.T) {
 	}
 }
 
+// TestListGitHubSkillsKeepsCollidingSlugs 确认同名 web 位于不同目录时保留两条，ID 用完整目录。
 func TestListGitHubSkillsKeepsCollidingSlugs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, "/git/trees/") {
@@ -473,6 +491,7 @@ func TestListGitHubSkillsKeepsCollidingSlugs(t *testing.T) {
 	}
 }
 
+// TestAppendTreeSkills 确认已有 slug 不重复，树里新的 SKILL.md 会被追加。
 func TestAppendTreeSkills(t *testing.T) {
 	items := []Item{{Slug: "github", Name: "github", Category: "Tools"}}
 	tree := gitTree{}
@@ -491,14 +510,17 @@ func TestAppendTreeSkills(t *testing.T) {
 	}
 }
 
+// clawListJSON 拼一条带 owner 的 ClawHub 列表 JSON。
 func clawListJSON(slug string) string {
 	return `{"ownerHandle":"owner","slug":"` + slug + `","displayName":"` + slug + `","summary":"` + slug + `","latestVersion":{"version":"1.0.0"},"stats":{"downloads":1,"stars":1}}`
 }
 
+// skillHubCNJSON 拼一条带 namespace 的 SkillHub 中国列表 JSON。
 func skillHubCNJSON(handle, slug string) string {
 	return `{"name":"` + slug + `","slug":"` + slug + `","description_zh":"` + slug + `","category":"ai-agent","downloads":1,"stars":1,"version":"1.0.0","namespace":{"handle":"` + handle + `"}}`
 }
 
+// TestParseJSDelivrTree 确认文件名去掉前导斜杠，两条都留下。
 func TestParseJSDelivrTree(t *testing.T) {
 	tree, err := parseJSDelivrTree([]byte(`{"files":[{"name":"/skills/pdf/SKILL.md","size":12},{"name":"/README.md","size":4}]}`))
 	if err != nil || len(tree.Tree) != 2 || tree.Tree[0].Path != "skills/pdf/SKILL.md" {
@@ -506,6 +528,7 @@ func TestParseJSDelivrTree(t *testing.T) {
 	}
 }
 
+// testHTTPGet 对测试服务器做 GET，状态码大于等于 300 时返回 skill market 错误。
 func testHTTPGet(rawURL string) ([]byte, error) {
 	resp, err := http.Get(rawURL)
 	if err != nil {
@@ -520,10 +543,13 @@ func testHTTPGet(rawURL string) ([]byte, error) {
 
 type statusErr string
 
+// Error 返回这段状态文本。
 func (e statusErr) Error() string { return string(e) }
 
+// errStatus 包出带 "skill market: " 前缀的错误。
 func errStatus(s string) error { return statusErr("skill market: " + s) }
 
+// TestLiveCatalogSize 在 YOYO_LIVE_SKILLS 为空时跳过。否则检查几个站的真实目录至少达到各自的条数。
 func TestLiveCatalogSize(t *testing.T) {
 	if os.Getenv("YOYO_LIVE_SKILLS") == "" {
 		t.Skip("set YOYO_LIVE_SKILLS=1 to list real hub catalogs")
@@ -558,6 +584,7 @@ func TestLiveCatalogSize(t *testing.T) {
 	}
 }
 
+// TestLiveFetchCompleteness 在 YOYO_LIVE_SKILLS 为空时跳过。否则从真实站下载并安装，需要脚本的包不能判成不完整。
 func TestLiveFetchCompleteness(t *testing.T) {
 	if os.Getenv("YOYO_LIVE_SKILLS") == "" {
 		t.Skip("set YOYO_LIVE_SKILLS=1 to fetch real hub packs")
@@ -621,6 +648,7 @@ func TestLiveFetchCompleteness(t *testing.T) {
 	}
 }
 
+// jsonString 把字符串编成 JSON 字符串字面量，转义引号、反斜杠和换行。
 func jsonString(s string) string {
 	b := strings.Builder{}
 	b.WriteByte('"')

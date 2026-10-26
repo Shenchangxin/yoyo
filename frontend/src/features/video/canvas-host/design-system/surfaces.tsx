@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有画布上的岛、菜单、气泡、对话框和工作台表面。
+ * 不拥有里面的业务。它们只是界面投影，不改服务端。
+ */
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 
 import { AppModal } from "@yingce/components/ui/product/app-modal/app-modal";
@@ -5,18 +9,22 @@ import { cn } from "@yingce/lib/utils";
 
 type SurfaceProps = HTMLAttributes<HTMLDivElement> & { children: ReactNode };
 
+/** Island 是一块岛表面。 */
 export function Island({ className, ...props }: SurfaceProps) {
   return <div className={cn("sg-island", className)} {...props} />;
 }
 
+/** MenuSurface 是带菜单角色的表面。 */
 export function MenuSurface({ className, ...props }: SurfaceProps) {
   return <div role="menu" className={cn("sg-menu p-1", className)} {...props} />;
 }
 
+/** PopoverSurface 是气泡表面。 */
 export function PopoverSurface({ className, ...props }: SurfaceProps) {
   return <div className={cn("sg-popover p-3", className)} {...props} />;
 }
 
+/** DialogSurface 包一层对话框，默认宽度 480。 */
 export function DialogSurface({
   open,
   title,
@@ -48,6 +56,7 @@ export function DialogSurface({
   );
 }
 
+/** WorkbenchSurface 包一层没有页脚的工作台对话框。 */
 export function WorkbenchSurface({
   open,
   title,
@@ -78,6 +87,7 @@ export function WorkbenchSurface({
   );
 }
 
+/** AttachedPanel 是贴在触发器旁边的面板。 */
 export function AttachedPanel({ className, style, children }: { className?: string; style?: CSSProperties; children: ReactNode }) {
   return (
     <div className={cn("sg-popover overflow-hidden", className)} style={style}>
@@ -86,6 +96,7 @@ export function AttachedPanel({ className, style, children }: { className?: stri
   );
 }
 
+/** MenuItem 是一行菜单项，可以带图标、快捷键和危险态。 */
 export function MenuItem({
   icon,
   label,

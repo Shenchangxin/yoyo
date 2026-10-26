@@ -1,3 +1,5 @@
+// 锁住投影配对、recall 分页后的尾部、检查点不再回放全文、溢出同一轮恢复，以及连续两次溢出即停。
+
 package runtime
 
 import (
@@ -16,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// pairingOK 检查助手的 tool call 都有非空的 role=tool，且没有插在下一轮助手之前的未配对 id。
 func pairingOK(msgs []Message) error {
 	pending := map[string]bool{}
 	for i, m := range msgs {
@@ -46,6 +49,7 @@ func pairingOK(msgs []Message) error {
 	return nil
 }
 
+// TestC1ShapePairingFuzz 用固定种子随机抄本，确认 Shape 不改条数，Legalize 之后配对完整。
 func TestC1ShapePairingFuzz(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 	loop := DefaultLoop()
@@ -65,6 +69,7 @@ func TestC1ShapePairingFuzz(t *testing.T) {
 	}
 }
 
+// TestIllegalTranscriptFixtures 确认缺结果、空正文、孤立 tool、配对中插入用户，以及空 id，经过 Legalize 后都能配对。
 func TestIllegalTranscriptFixtures(t *testing.T) {
 	fixtures := [][]Message{
 		{
@@ -99,6 +104,7 @@ func TestIllegalTranscriptFixtures(t *testing.T) {
 	}
 }
 
+// randomTranscript 生成带随机缺结果和孤立 tool 的抄本，供配对模糊测试使用。
 func randomTranscript(rng *rand.Rand) []Message {
 	n := 4 + rng.Intn(18)
 	msgs := []Message{{Role: RoleSystem, Content: "sys"}}
@@ -140,6 +146,7 @@ func randomTranscript(rng *rand.Rand) []Message {
 	return msgs
 }
 
+// TestC2RecallKeepsTailOfHugeDump 确认超大 spill 按默认页读回时仍能看到末尾标记，派发结果和 JSONL 里记下的正文一致。
 func TestC2RecallKeepsTailOfHugeDump(t *testing.T) {
 	dir := t.TempDir()
 	sp := NewSpill(filepath.Join(dir, "spill"))
@@ -186,6 +193,7 @@ func TestC2RecallKeepsTailOfHugeDump(t *testing.T) {
 	}
 }
 
+// TestIngestStubsOnlyOverBudget 确认未超 rune 上限的结果原样返回，超限的预览带占位并保留尾部。
 func TestIngestStubsOnlyOverBudget(t *testing.T) {
 	sp := NewSpill(t.TempDir())
 	small := strings.Repeat("a", 400)
@@ -203,6 +211,7 @@ func TestIngestStubsOnlyOverBudget(t *testing.T) {
 	}
 }
 
+// TestC3CompactDropsPreCheckpointBodies 确认检查点重建不再带回检查点前的整段工具正文，尾部用户句还在。
 func TestC3CompactDropsPreCheckpointBodies(t *testing.T) {
 	dir := t.TempDir()
 	st := trace.NewStore(dir)
@@ -238,6 +247,7 @@ func TestC3CompactDropsPreCheckpointBodies(t *testing.T) {
 	}
 }
 
+// TestC6SchemaCapDropsTokensAndWritesCatalog 确认未启用的额外工具不进 tools 数组，schema token 更少，并写出 MCP 索引。
 func TestC6SchemaCapDropsTokensAndWritesCatalog(t *testing.T) {
 	ws := t.TempDir()
 	extra := map[string]ExtraTool{}
@@ -272,6 +282,7 @@ func TestC6SchemaCapDropsTokensAndWritesCatalog(t *testing.T) {
 	}
 }
 
+// TestC7LedgerLabelsWindowSeparately 确认 Window 和 Budget 分开填，预算不会被写成模型窗口。
 func TestC7LedgerLabelsWindowSeparately(t *testing.T) {
 	rep := ShapeReport{Budget: 24_000}
 	fillLedger(&rep, "prefix-bytes", "dyn", nil, 1_000_000)
@@ -286,6 +297,7 @@ func TestC7LedgerLabelsWindowSeparately(t *testing.T) {
 	}
 }
 
+// TestC8PlaybookStableAcrossCheckpoint 确认检查点前后，带 playbook 的前缀字节不变。
 func TestC8PlaybookStableAcrossCheckpoint(t *testing.T) {
 	pb := artifact.Playbook{ID: "p", Bullets: []artifact.PlaybookBullet{
 		{ID: "b1", Text: "prefer grep", Helpful: 3},
@@ -310,6 +322,7 @@ type overflowThenOK struct {
 	last ChatRequest
 }
 
+// Chat 第一次返回上下文超长，之后返回 recovered，并留下最后一次请求。
 func (o *overflowThenOK) Chat(_ context.Context, req ChatRequest) (Message, error) {
 	o.last = req
 	o.n++
@@ -321,11 +334,13 @@ func (o *overflowThenOK) Chat(_ context.Context, req ChatRequest) (Message, erro
 
 type alwaysOverflow struct{ n int }
 
+// Chat 每次都返回上下文超长，并记下调用次数。
 func (a *alwaysOverflow) Chat(_ context.Context, _ ChatRequest) (Message, error) {
 	a.n++
 	return Message{}, fmt.Errorf("context_length_exceeded")
 }
 
+// TestSecondTurnKeepsBothUsersAndSkipsEmptyShape 确认第二轮模型请求里两句用户都在且第一句只出现一次，JSONL 有两条用户，空 note 的 shape 事件不写。
 func TestSecondTurnKeepsBothUsersAndSkipsEmptyShape(t *testing.T) {
 	st := trace.NewStore(t.TempDir())
 	c := &recordingClient{}
@@ -406,6 +421,7 @@ func TestSecondTurnKeepsBothUsersAndSkipsEmptyShape(t *testing.T) {
 	}
 }
 
+// TestResumeContinuesWithoutNewUser 确认用户为空且历史里已有用户时可以继续，JSONL 仍只有一条用户。
 func TestResumeContinuesWithoutNewUser(t *testing.T) {
 	st := trace.NewStore(t.TempDir())
 	c := &recordingClient{}
@@ -449,6 +465,7 @@ func TestResumeContinuesWithoutNewUser(t *testing.T) {
 	}
 }
 
+// TestResumeEmptyHistoryErrors 确认没有用户也没有历史时返回 nothing to continue。
 func TestResumeEmptyHistoryErrors(t *testing.T) {
 	_, err := Run(context.Background(), RunRequest{
 		SessionID: "s", User: "", Workspace: t.TempDir(), Loop: DefaultLoop(),
@@ -459,6 +476,7 @@ func TestResumeEmptyHistoryErrors(t *testing.T) {
 	}
 }
 
+// TestLiveEventsStampTSAndUniqueUserIDs 确认实时事件带时间戳，两次用户事件的 id 不同。
 func TestLiveEventsStampTSAndUniqueUserIDs(t *testing.T) {
 	st := trace.NewStore(t.TempDir())
 	c := &recordingClient{}
@@ -520,11 +538,13 @@ type recordingClient struct {
 	last ChatRequest
 }
 
+// Chat 记下最后一次请求并返回一句 ok。
 func (c *recordingClient) Chat(_ context.Context, req ChatRequest) (Message, error) {
 	c.last = req
 	return Message{Role: RoleAssistant, Content: "ok"}, nil
 }
 
+// TestC9OverflowRecoversSameTurn 确认第一次溢出后同一轮做检查点并重试，第二次得到 recovered。
 func TestC9OverflowRecoversSameTurn(t *testing.T) {
 	dir := t.TempDir()
 	st := trace.NewStore(dir)
@@ -560,6 +580,7 @@ func TestC9OverflowRecoversSameTurn(t *testing.T) {
 	}
 }
 
+// TestOverflowCircuitBreaker 确认连续两次溢出就停，模型只被调用两次。
 func TestOverflowCircuitBreaker(t *testing.T) {
 	client := &alwaysOverflow{}
 	_, err := Run(context.Background(), RunRequest{
@@ -576,6 +597,7 @@ func TestOverflowCircuitBreaker(t *testing.T) {
 	}
 }
 
+// TestIsContextOverflowDoesNotMatchParamName 确认单独的 max_tokens 不算溢出，context_length_exceeded 算。
 func TestIsContextOverflowDoesNotMatchParamName(t *testing.T) {
 	if IsContextOverflow(fmt.Errorf("invalid max_tokens")) {
 		t.Fatal("bare max_tokens should not trip overflow recovery")
@@ -585,6 +607,7 @@ func TestIsContextOverflowDoesNotMatchParamName(t *testing.T) {
 	}
 }
 
+// TestPromptCacheKeyOnPayload 确认请求体和 X-Prompt-Cache-Key 都带上 CacheKey。
 func TestPromptCacheKeyOnPayload(t *testing.T) {
 	var gotBody, gotHeader string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -612,6 +635,7 @@ func TestPromptCacheKeyOnPayload(t *testing.T) {
 	}
 }
 
+// TestBindSpillMirrorsIntoWorkspace 确认 BindSpill 把正文镜像到工作区 spill，发现索引列出该 id。
 func TestBindSpillMirrorsIntoWorkspace(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -628,6 +652,7 @@ func TestBindSpillMirrorsIntoWorkspace(t *testing.T) {
 	}
 }
 
+// TestCompactThenResumeDoesNotArmSensitiveSolver 确认检查点重建的历史不会让 PromptSensitiveSolver 写出文件，HeuristicSolver 仍会写出 hello.txt。
 func TestCompactThenResumeDoesNotArmSensitiveSolver(t *testing.T) {
 	st := trace.NewStore(t.TempDir())
 	sp := NewSpill(t.TempDir())

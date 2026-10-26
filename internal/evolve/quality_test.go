@@ -1,3 +1,5 @@
+// 锁住准入会拒绝 held 编号、仓库概览、照抄说明、多种载荷和 tool_use。宣言未命中时 hit 为 0。同一表面只留得分更高的一条。
+
 package evolve
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/eval"
 )
 
+// TestAdmitQualityGates 要求 held 编号、概览、照抄说明、两种载荷和 tool_use 都被拒绝。
 func TestAdmitQualityGates(t *testing.T) {
 	held := map[string]bool{"so-01-uniform": true, "hi-01-index": true}
 	pb := artifact.Playbook{ID: "main"}
@@ -42,6 +45,7 @@ func TestAdmitQualityGates(t *testing.T) {
 	}
 }
 
+// TestManifestoHitZero 要求预测要修的题没有通过时命中为 0、未命中为 1。
 func TestManifestoHitZero(t *testing.T) {
 	p := Proposal{PredictedFixes: []string{"write-hello"}}
 	rep := eval.RunReport{Results: []eval.TaskResult{{ID: "write-hello", Pass: false}}}
@@ -51,6 +55,7 @@ func TestManifestoHitZero(t *testing.T) {
 	}
 }
 
+// TestExclusiveSurfacesKeepsBest 要求同一 playbook 表面只留通过数更高的提议，instruction 另留一条。
 func TestExclusiveSurfacesKeepsBest(t *testing.T) {
 	a := Trial{Proposal: Proposal{ID: "a", Surface: "playbook"}, Metrics: eval.Metrics{HeldInPass: 1, HeldOutPass: 0}}
 	b := Trial{Proposal: Proposal{ID: "b", Surface: "playbook"}, Metrics: eval.Metrics{HeldInPass: 2, HeldOutPass: 1}}

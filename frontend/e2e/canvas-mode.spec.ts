@@ -1,14 +1,22 @@
+/**
+ * 拥有：视频轨上打开画布、短片工作台和短剧桌的端到端用例。
+ * 不拥有：这些界面怎么画。每条 test 的标题就是这则用例在断言什么。
+ */
+
 import { expect, test, type Page } from "@playwright/test";
 import { mockApi } from "./mock";
 
+/** island 定位画布工作室外壳。 */
 function island(page: Page) {
   return page.getByTestId("canvas-studio-shell");
 }
 
+/** openVideo 点名为 Video 的按钮，进入视频轨。 */
 async function openVideo(page: Page) {
   await page.getByRole("button", { name: "Video" }).click();
 }
 
+/** openVideoChat 打开视频轨，并等到创作桌出现。 */
 async function openVideoChat(page: Page) {
   await openVideo(page);
   await expect(page.getByTestId("create-desk")).toBeVisible();

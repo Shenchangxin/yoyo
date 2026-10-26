@@ -1,3 +1,5 @@
+// engine_test.go 锁住剧集去重、任务恢复、密钥不进连接设置，以及供应商同步进画布目录。用内存存储，不访问真实供应商。
+
 package video
 
 import (
@@ -17,6 +19,7 @@ type memCAS struct {
 	m map[string][]byte
 }
 
+// PutRaw 用新标识保存一份字节副本。
 func (m *memCAS) PutRaw(b []byte) (string, error) {
 	if m.m == nil {
 		m.m = map[string][]byte{}
@@ -25,6 +28,8 @@ func (m *memCAS) PutRaw(b []byte) (string, error) {
 	m.m[h] = append([]byte(nil), b...)
 	return h, nil
 }
+
+// GetRaw 按标识取回字节。没有该标识时返回不存在。
 func (m *memCAS) GetRaw(hash string) ([]byte, error) {
 	b, ok := m.m[hash]
 	if !ok {
@@ -32,17 +37,24 @@ func (m *memCAS) GetRaw(hash string) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// Path 返回临时目录下以该标识为名的路径。
 func (m *memCAS) Path(hash string) string { return filepath.Join(os.TempDir(), hash) }
 
 type memVault struct{ m map[string]string }
 
+// Lease 把取密钥的请求转给 Get。
 func (v *memVault) Lease(name string) (string, error) { return v.Get(name) }
+
+// Set 把名字和值记在内存里。
 func (v *memVault) Set(name, value string) {
 	if v.m == nil {
 		v.m = map[string]string{}
 	}
 	v.m[name] = value
 }
+
+// Get 按名字取值。映射为空或值为空串时返回不存在。
 func (v *memVault) Get(name string) (string, error) {
 	if v.m == nil || v.m[name] == "" {
 		return "", os.ErrNotExist
@@ -50,6 +62,7 @@ func (v *memVault) Get(name string) (string, error) {
 	return v.m[name], nil
 }
 
+// testEngine 在临时目录打开引擎，测试结束时关闭。
 func testEngine(t *testing.T) *Engine {
 	t.Helper()
 	dir := t.TempDir()
@@ -61,6 +74,7 @@ func testEngine(t *testing.T) *Engine {
 	return e
 }
 
+// TestDramaCRUDAndDedupe 确认同名角色合并成 1 条并留下新外形，镜头和打包结果里的角色也是这一条。
 func TestDramaCRUDAndDedupe(t *testing.T) {
 	e := testEngine(t)
 	d, err := e.CreateDrama(Drama{Title: "雨巷", Style: "3d", AspectRatio: "16:9"})
@@ -104,6 +118,7 @@ func TestDramaCRUDAndDedupe(t *testing.T) {
 	}
 }
 
+// TestJobResumeQueued 确认没有远端标识的 running 任务在恢复后变成 queued。
 func TestJobResumeQueued(t *testing.T) {
 	e := testEngine(t)
 	now := Now()
@@ -121,6 +136,7 @@ func TestJobResumeQueued(t *testing.T) {
 	}
 }
 
+// TestJobResumeKeepsRemotePoll 确认带 RemoteID 的 running 任务在恢复后变成 polling。
 func TestJobResumeKeepsRemotePoll(t *testing.T) {
 	e := testEngine(t)
 	now := Now()
@@ -138,6 +154,7 @@ func TestJobResumeKeepsRemotePoll(t *testing.T) {
 	}
 }
 
+// TestShotRefsSceneThenCastThenProp 确认镜头引用的顺序是场景、角色、道具，提示词里依次变成 @图片1、@图片2、@图片3。
 func TestShotRefsSceneThenCastThenProp(t *testing.T) {
 	e := testEngine(t)
 	d, err := e.CreateDrama(Drama{Title: "槽序", Style: "3d", AspectRatio: "16:9"})
@@ -192,6 +209,7 @@ func TestShotRefsSceneThenCastThenProp(t *testing.T) {
 	}
 }
 
+// tinyJPEG 编码一张边长 8、质量 70 的 JPEG。
 func tinyJPEG() []byte {
 	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
 	var buf bytes.Buffer
@@ -199,6 +217,7 @@ func tinyJPEG() []byte {
 	return buf.Bytes()
 }
 
+// TestProviderKeyStaysInVault 确认密钥写在保险库里，连接设置不等于该密钥，且保险库键包含这一行的标识。
 func TestProviderKeyStaysInVault(t *testing.T) {
 	e := testEngine(t)
 	v := e.Vault.(*memVault)
@@ -226,6 +245,7 @@ func TestProviderKeyStaysInVault(t *testing.T) {
 	}
 }
 
+// TestUpdateDramaPersistsAspect 确认创建时画幅为 9:16，更新后为 1:1。
 func TestUpdateDramaPersistsAspect(t *testing.T) {
 	e := testEngine(t)
 	d, err := e.CreateDrama(Drama{Title: "画幅", AspectRatio: "9:16"})
@@ -244,6 +264,7 @@ func TestUpdateDramaPersistsAspect(t *testing.T) {
 	}
 }
 
+// TestUpdateDramaKeepsDescription 确认只更新标题时简介和类型仍保留。
 func TestUpdateDramaKeepsDescription(t *testing.T) {
 	e := testEngine(t)
 	d, err := e.CreateDrama(Drama{Title: "简介", Description: "原简介", Genre: "都市"})
@@ -262,6 +283,7 @@ func TestUpdateDramaKeepsDescription(t *testing.T) {
 	}
 }
 
+// TestSkipRewriteCopiesSource 确认跳过改写后剧本等于分集原文。
 func TestSkipRewriteCopiesSource(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "跳过"})
@@ -275,6 +297,7 @@ func TestSkipRewriteCopiesSource(t *testing.T) {
 	}
 }
 
+// TestNarratorHasNoStill 确认旁白不能生成静帧，补齐缺失素材时也不会给旁白排队。
 func TestNarratorHasNoStill(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "旁白"})
@@ -309,6 +332,7 @@ func TestNarratorHasNoStill(t *testing.T) {
 	}
 }
 
+// TestPatchShotUsesProviderDuration 确认把时长补丁写成 8 后读回仍是 8。
 func TestPatchShotUsesProviderDuration(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "时长"})
@@ -332,6 +356,7 @@ func TestPatchShotUsesProviderDuration(t *testing.T) {
 	}
 }
 
+// TestImportHuobaoColumnNamesAndLinks 确认导入 1 部剧和 1 集且画幅为 9:16，旁白不算已关联角色，镜头时长至少 8 并绑了场景和一条角色。
 func TestImportHuobaoColumnNamesAndLinks(t *testing.T) {
 	e := testEngine(t)
 	srcPath := filepath.Join(t.TempDir(), "huobao.sqlite")
@@ -399,6 +424,7 @@ INSERT INTO storyboard_characters(storyboard_id,character_id) VALUES(1,1);
 	}
 }
 
+// pipelineStatus 从流水线 JSON 里取出该阶段的 status。阶段不存在时返回空串。
 func pipelineStatus(raw, stage string) string {
 	m := map[string]any{}
 	_ = json.Unmarshal([]byte(raw), &m)
@@ -409,6 +435,7 @@ func pipelineStatus(raw, stage string) string {
 	return fmt.Sprint(st["status"])
 }
 
+// TestWriteBackMarksAssetsDone 确认图像任务写回后，素材阶段的状态为 done。
 func TestWriteBackMarksAssetsDone(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "完成"})
@@ -431,6 +458,7 @@ func TestWriteBackMarksAssetsDone(t *testing.T) {
 	}
 }
 
+// TestBundleHydratesProviders 确认新建分集没有图像供应商，打包后填上默认供应商和模型 gpt-image-2。
 func TestBundleHydratesProviders(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "适配器"})
@@ -454,6 +482,7 @@ func TestBundleHydratesProviders(t *testing.T) {
 	}
 }
 
+// TestGenerateMissingShotsContinues 确认两条镜头里只有带视频提示词的那条会生成任务。
 func TestGenerateMissingShotsContinues(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "批量镜头"})
@@ -477,6 +506,7 @@ func TestGenerateMissingShotsContinues(t *testing.T) {
 	}
 }
 
+// TestPatchEpisodeKeepsContent 确认补丁写入图像供应商和模型后，分集原文仍在。
 func TestPatchEpisodeKeepsContent(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "补丁"})
@@ -497,6 +527,7 @@ func TestPatchEpisodeKeepsContent(t *testing.T) {
 	}
 }
 
+// TestEpisodePicksProviderModel 确认生成素材时用分集选定的供应商、模型和该供应商自己的保险库键。
 func TestEpisodePicksProviderModel(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "多模型"})
@@ -528,6 +559,7 @@ func TestEpisodePicksProviderModel(t *testing.T) {
 	}
 }
 
+// TestSecondAdapterKeepsOwnName 确认两条同名适配器的显示名和保险库键都不相同。
 func TestSecondAdapterKeepsOwnName(t *testing.T) {
 	e := testEngine(t)
 	a, err := e.UpsertProvider(Provider{ServiceType: "image", Provider: "openai", Name: "OpenAI Image", BaseURL: "https://a", Model: "gpt-image-2", IsActive: true}, "k1")
@@ -546,6 +578,7 @@ func TestSecondAdapterKeepsOwnName(t *testing.T) {
 	}
 }
 
+// TestProviderSyncsIntoCanvasCatalog 确认供应商写入画布频道和模型目录，改名改模型后频道跟随，删除供应商只去掉镜像频道。
 func TestProviderSyncsIntoCanvasCatalog(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.UpsertProvider(Provider{
@@ -619,6 +652,7 @@ func TestProviderSyncsIntoCanvasCatalog(t *testing.T) {
 	}
 }
 
+// TestChatAndMultiCapShowInModelCatalog 确认对话模型只出现在 text、图像模型只出现在 image、视频模型只出现在 video，且目录项的 available 为 true。
 func TestChatAndMultiCapShowInModelCatalog(t *testing.T) {
 	e := testEngine(t)
 	chat, err := e.UpsertProvider(Provider{
@@ -691,6 +725,7 @@ func TestChatAndMultiCapShowInModelCatalog(t *testing.T) {
 	}
 }
 
+// TestChatModelsShowAsImageWhenNamed 确认名为 gpt-image-1 的模型从对话连接进入图像供应商和 image 目录，gpt-4.1 留在 text，当前图像供应商就是这条连接。
 func TestChatModelsShowAsImageWhenNamed(t *testing.T) {
 	e := testEngine(t)
 	chat, err := e.UpsertProvider(Provider{
@@ -750,6 +785,7 @@ func TestChatModelsShowAsImageWhenNamed(t *testing.T) {
 	}
 }
 
+// containsAll 在 have 包含每一个 want 时返回真。
 func containsAll(have []string, want ...string) bool {
 	set := map[string]bool{}
 	for _, h := range have {
@@ -763,6 +799,7 @@ func containsAll(have []string, want ...string) bool {
 	return true
 }
 
+// TestCreateEpisodeInheritsLooks 确认第二集打包时带上第一集的同一条角色和场景，且都标成已关联。
 func TestCreateEpisodeInheritsLooks(t *testing.T) {
 	e := testEngine(t)
 	d, err := e.CreateDrama(Drama{Title: "连载", Style: "3d", AspectRatio: "9:16"})
@@ -797,6 +834,7 @@ func TestCreateEpisodeInheritsLooks(t *testing.T) {
 	}
 }
 
+// TestPatchShotPersistsShotNumber 确认交换镜号后，列表先是镜号 1 的 B，再是镜号 2 的 A。
 func TestPatchShotPersistsShotNumber(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "序"})
@@ -820,6 +858,7 @@ func TestPatchShotPersistsShotNumber(t *testing.T) {
 	}
 }
 
+// TestCreateDramaAndEpisodeKeepEmptyTitles 确认剧和分集可以没有标题，空标题分集的集号是 1，补丁能写上标题再清回空串。
 func TestCreateDramaAndEpisodeKeepEmptyTitles(t *testing.T) {
 	e := testEngine(t)
 	d, err := e.CreateDrama(Drama{Style: "3d", AspectRatio: "9:16"})

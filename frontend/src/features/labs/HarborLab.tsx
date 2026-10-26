@@ -1,3 +1,5 @@
+// 本文件拥有评测报告的三步结果和再跑入口。不拥有评测怎么跑。调用方传入 report、best 和 onRun。
+
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { asArray, num, pick, str } from "../../lib/normalize";
@@ -18,6 +20,7 @@ import type { HarborKind } from "../../lib/protocol";
 import { LabCard, LabChip, LabFrame, LabTable, StoryRow } from "./LabFrame";
 import { useUI } from "../../lib/store";
 
+// HarborLab 忙时只显示加载。安全项始终可跑；其余种类和模型输入只在实验室开关打开时出现。非实验室只列出未通过的结果。
 export function HarborLab(props: {
   busy: string | null;
   error?: string;
@@ -40,6 +43,7 @@ export function HarborLab(props: {
   const why = safety > 0 ? copy.harbor.whySafety : props.report ? copy.harbor.whyEvidence : "";
   const headline = checkHeadline(copy, metrics);
   const [modelsOpen, setModelsOpen] = useState(false);
+  // 忙着时打开全局模块加载，卸下或不再忙时关掉。
   useEffect(() => {
     if (!props.busy) return;
     useUI.getState().setModuleLoading(true);

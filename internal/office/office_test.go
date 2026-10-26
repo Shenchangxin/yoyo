@@ -1,3 +1,6 @@
+// 本文件锁住表格公式求值、演示文稿页数、PDF 与 docx 的往返，以及 Query 拒绝 HTML。
+// 不调用外部办公软件。由 go test 调用。
+
 package office
 
 import (
@@ -7,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestXlsxFormulaEvaluatesIndependently 要求 SUM(A1:B1) 在 C1 上得到 30。
 func TestXlsxFormulaEvaluatesIndependently(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "report.xlsx")
@@ -22,6 +26,7 @@ func TestXlsxFormulaEvaluatesIndependently(t *testing.T) {
 	}
 }
 
+// TestPptxHasSlides 要求三页标题生成的文稿，SlideCount 至少是 3。
 func TestPptxHasSlides(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "deck.pptx")
@@ -37,6 +42,7 @@ func TestPptxHasSlides(t *testing.T) {
 	}
 }
 
+// TestPDFRoundTrip 要求 Query 能读到标题和正文，并且 EditReplace 把 Friday 换成 Monday 后仍能读到。
 func TestPDFRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "brief.pdf")
@@ -59,6 +65,7 @@ func TestPDFRoundTrip(t *testing.T) {
 	}
 }
 
+// TestQueryRejectsHTML 要求对 html 文件返回的错误里含有 not an office document。
 func TestQueryRejectsHTML(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "game.html")
@@ -71,6 +78,7 @@ func TestQueryRejectsHTML(t *testing.T) {
 	}
 }
 
+// TestDocxRoundTrip 要求带标题和正文的 docx 经 Query 后不是空串。
 func TestDocxRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "n.docx")

@@ -1,3 +1,8 @@
+/**
+ * 拥有：对话怎么排成行、虚拟滚动和卡片。
+ * 不拥有：工具步骤的内部排版，那些在 ProcessGroup。只投影条目，复制走剪贴板，不调用 api。
+ */
+
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, RotateCcw, ShieldAlert } from "lucide-react";
@@ -41,6 +46,7 @@ import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outl
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
 import { useStudioSelection } from "./video/workshop-store";
 
+/** 从最后一行往前找，返回最近一条流式片段的 key。没有就返回空字符串。 */
 function lastStreamKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i];
@@ -51,6 +57,7 @@ function lastStreamKey(rows: LayoutRow[]): string {
   return "";
 }
 
+/** 在这一层和嵌套的 work 里，从后往前找 stream 的 key。 */
 function streamKeyInParts(parts: AgentPart[]): string {
   for (let j = parts.length - 1; j >= 0; j--) {
     const part = parts[j];
@@ -63,6 +70,7 @@ function streamKeyInParts(parts: AgentPart[]): string {
   return "";
 }
 
+/** 返回最后一块过程所在的下标。嵌套在 work 里时返回这块 work 的下标。没有返回 -1。 */
 function lastProcessIndex(parts: AgentPart[]): number {
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i];
@@ -75,6 +83,7 @@ function lastProcessIndex(parts: AgentPart[]): number {
   return -1;
 }
 
+/** 最后一条 type 为 error 的 key。没有就返回空字符串。 */
 function lastErrorKey(items: Item[]): string {
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].type === "error") return items[i].key;
@@ -82,6 +91,7 @@ function lastErrorKey(items: Item[]): string {
   return "";
 }
 
+/** 最后一行 agent 的 key。没有就返回空字符串。 */
 function lastAgentKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i].kind === "agent") return rows[i].key;
@@ -89,14 +99,17 @@ function lastAgentKey(rows: LayoutRow[]): string {
   return "";
 }
 
+/** 这些片段里有没有 artifact。 */
 function turnHasArtifact(parts: AgentPart[]): boolean {
   return parts.some((p) => p.kind === "artifact");
 }
 
+/** 这一行是不是用户消息。 */
 function isUserRow(row: LayoutRow): boolean {
   return row.kind === "user";
 }
 
+/** 第一行不加顶距。紧凑时用户行 pt-4、其余 pt-2。普通时用户行 pt-10，用户后面的 agent 行 pt-4，连续 agent 行 pt-5。 */
 function rowSpace(rows: LayoutRow[], i: number, compact?: boolean): string {
   const row = rows[i];
   const prev = rows[i - 1];
@@ -111,6 +124,7 @@ function rowSpace(rows: LayoutRow[], i: number, compact?: boolean): string {
   return "pt-4";
 }
 
+/** 第一块不加顶距。过程和 work 紧跟普通条目时用 pt-2.5，否则 pt-1.5。 */
 function partSpace(parts: AgentPart[], i: number): string {
   if (i === 0) return "";
   const prev = parts[i - 1];
@@ -126,6 +140,7 @@ function partSpace(parts: AgentPart[], i: number): string {
   return "pt-2";
 }
 
+/** Transcript 在没有可见条目、没在跑、也没有待批时显示空态。showThinking 为假时丢掉 reasoning。紧凑模式不给用户行复制、恢复和分叉。 */
 export function Transcript(props: {
   items: Item[];
   showThinking?: boolean;
@@ -338,6 +353,7 @@ export function Transcript(props: {
   );
 }
 
+/** 折起来时过程不再标成进行中。展开时，只有最后一轮、且这块过程自己在动或它是最后一块且还没有流式正文时，才标成进行中。 */
 function TurnWork({
   part,
   running,
@@ -411,6 +427,7 @@ function TurnWork({
   );
 }
 
+/** 结构、策略和是否显示思考没变时，沿用上次排好的行，再用当前条目把内容填回去。 */
 function useStableLayout(items: Item[], running: boolean, policy: ReturnType<typeof presentationPolicyFor>, showThinking: boolean): LayoutRow[] {
   const sig = `${structureSig(items, running)}\n${policy.mode}\t${policy.collapseTiming}\t${showThinking ? 1 : 0}`;
   const ref = useRef({ sig: "", rows: [] as LayoutRow[] });
@@ -420,14 +437,12 @@ function useStableLayout(items: Item[], running: boolean, policy: ReturnType<typ
   return hydrateLayout(ref.current.rows, items);
 }
 
+/** 陪伴侧空列表只占住剩余高度，不画问候。 */
 function CompactCopilotEmpty({ className }: { className: string }) {
   return <div className={cn(className, "min-h-0 flex-1")} />;
 }
 
-/**
- * Empty thread. Sits just above the composer so the greeting, the hints and
- * the input read as one block instead of a headline floating in a void.
- */
+/** 空线程贴在输入框上方，问候、提示和输入读成一块。 */
 function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (text: string) => void }) {
   const copy = useCopy();
   const surface = useUI((s) => s.surface);
@@ -532,6 +547,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   );
 }
 
+/** 虚拟列表里的一行：估算高度和怎么画。 */
 type TranscriptRow = {
   key: string;
   kind?: "user" | "agent" | "solo" | "ask" | "working";
@@ -541,10 +557,12 @@ type TranscriptRow = {
   render: () => ReactNode;
 };
 
+/** 按正文字数估算高度，夹在 520 和 2400 之间，底数是 160 加长度乘 0.48。 */
 function agentEstimate(copyText: string): number {
   return Math.max(520, Math.min(2400, 160 + Math.round((copyText?.length || 0) * 0.48)));
 }
 
+/** 跟底阈值是 80。跳转序号变了就先停止跟随。锚在列表末尾。 */
 function TranscriptLane({
   className,
   compact,
@@ -603,6 +621,7 @@ function TranscriptLane({
     scrollEndThreshold: 80,
     scrollMargin,
   });
+  /** 没在跟随且这次是瞬间滚动、调用方也不要求跟随时，直接返回。 */
   const followEnd = useCallback((behavior: "instant" | "smooth" = "instant") => {
     const el = scrollRef.current;
     const ctl = followCtl.current;
@@ -611,6 +630,7 @@ function TranscriptLane({
     ctl.toBottom(el, scrollMetrics(el), behavior);
     setEscaped(!ctl.active);
   }, [follow]);
+  /** 滚轮、按下或触摸开始后，不再按跳转目标锁住当前回合。 */
   const releaseJump = useCallback(() => {
     jumpHeld.current = false;
   }, []);
@@ -653,6 +673,7 @@ function TranscriptLane({
     if (idx < 0) return;
     appliedJump.current = nonce;
     jumpHeld.current = true;
+    /** 跳转已经被松开就不再滚动。否则把这一行对齐到列表开头。 */
     const align = () => {
       if (!jumpHeld.current) return;
       virtualizer.scrollToIndex(idx, { align: "start" });
@@ -663,6 +684,7 @@ function TranscriptLane({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    /** 滚动停稳后按当前位置决定还跟不跟底。 */
     const onEnd = () => {
       const ctl = followCtl.current;
       if (!ctl) return;
@@ -680,11 +702,13 @@ function TranscriptLane({
       el.removeEventListener('scrollend', onEnd);
     };
   }, [releaseJump]);
+  /** 同一个 key 不重复上报。 */
   const reportActive = useCallback((key: string) => {
     if (!key || key === lastActive.current) return;
     lastActive.current = key;
     onActiveTurn?.(key);
   }, [onActiveTurn]);
+  /** 跳转还按着时上报跳转目标。离底部不到 80 像素时上报最后一条带 turnKey 的行。否则按视口顶往下最多 64 像素或高度 16% 的那条线选。 */
   const spyTurns = useCallback(() => {
     const root = scrollRef.current;
     if (!root || !onActiveTurn) return;
@@ -709,6 +733,7 @@ function TranscriptLane({
     const best = pickActiveTurnKey(nodes, line);
     if (best) reportActive(best);
   }, [rows, onActiveTurn, reportActive, jumpTo?.key]);
+  /** 同一帧只排一次。 */
   const queueSpy = useCallback(() => {
     if (spyRaf.current) return;
     spyRaf.current = requestAnimationFrame(() => {
@@ -723,6 +748,7 @@ function TranscriptLane({
       spyRaf.current = 0;
     };
   }, [queueSpy, rows.length]);
+  /** 滚到顶不足 48 像素且还有更早内容时加载，加载完按高度差把滚动位置补回去。 */
   const onScroll = () => {
     const el = scrollRef.current;
     const ctl = followCtl.current;
@@ -805,6 +831,7 @@ function TranscriptLane({
   );
 }
 
+/** 还在生成时只留一行空白。否则悬停或焦点才显示复制，以及可选的打开审查。 */
 function TurnActions({
   text,
   live,
@@ -844,6 +871,7 @@ function TurnActions({
   );
 }
 
+/** ask_user 要先有非空回答才能以 once 提交。其余审批用条目上的命令、路径或级别当标题。 */
 function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: string, decision: string, answer?: string) => void }) {
   const copy = useCopy();
   const ask = item.action === "ask_user";
@@ -949,9 +977,11 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   );
 }
 
+/** 回合操作按钮的共用样式。 */
 const turnActionBtn =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground disabled:opacity-40";
 
+/** 没有文字就不渲染。写入成功后勾选保持 1400 毫秒。失败弹出复制失败。 */
 function CopyAction({ text }: { text: string }) {
   const copy = useCopy();
   const [done, setDone] = useState(false);
@@ -984,6 +1014,7 @@ function CopyAction({ text }: { text: string }) {
   );
 }
 
+/** canceled、max_turns、plan_open 用柔和样式。细节和标题相同就不展开。可重试且给了 onRetry 才显示重试。 */
 function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   const copy = useCopy();
   const classified = classifyItem(item);
@@ -1032,6 +1063,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   );
 }
 
+/** 没有正文、也没有恢复或分叉回调时不渲染。正在跑其中一个时不再接受第二次。 */
 function UserMsgActions({
   text,
   from,
@@ -1045,6 +1077,7 @@ function UserMsgActions({
 }) {
   const copy = useCopy();
   const [busy, setBusy] = useState<"restore" | "fork" | "">("");
+  /** 没有来源、没有回调或已经在跑时直接返回。结束后清掉忙碌标记。 */
   const run = async (kind: "restore" | "fork", fn?: (from: string) => void | Promise<void>) => {
     if (!from || !fn || busy) return;
     setBusy(kind);
@@ -1101,6 +1134,7 @@ function UserMsgActions({
   );
 }
 
+/** 优先用 note，否则拼保留、省略、补回的数量。都没有时用压缩文案。 */
 function CompactRow({ item }: { item: Item }) {
   const copy = useCopy();
   const p = item.payload || {};
@@ -1124,6 +1158,7 @@ function CompactRow({ item }: { item: Item }) {
   );
 }
 
+/** 文件夹、技能、harness、会话各用自己的图标，其余用文件图标。 */
 function MentionGlyph({ kind }: { kind: MentionKind }) {
   const cls = "size-3 shrink-0 opacity-80";
   if (kind === "folder") return <Folder className={cls} />;
@@ -1133,6 +1168,7 @@ function MentionGlyph({ kind }: { kind: MentionKind }) {
   return <FileText className={cls} />;
 }
 
+/** 把完成的提及和附件收成芯片，剩下的正文照原文显示。图片只取带 image_url 且类型是图片的部分。 */
 function UserPrompt({
   text,
   parts,
@@ -1180,6 +1216,7 @@ function UserPrompt({
   );
 }
 
+/** 用户的改道消息去掉固定前缀后居中。turn_end、system、plan、file_change、ask_user、approval 不在这里画。 */
 const ItemRow = memo(function ItemRow({
   item,
   streaming,
@@ -1256,6 +1293,7 @@ const ItemRow = memo(function ItemRow({
   return null;
 });
 
+/** 没有产物对就返回 null。一次多显示 ARTIFACT_PAGE 条，更早的用按钮展开。 */
 function ArtifactTimeline({
   items,
   running,
@@ -1299,6 +1337,7 @@ function ArtifactTimeline({
   );
 }
 
+/** 页面审查和浏览器截图交给各自的卡片。代码改动或还在等待结果时不自动展开。 */
 function ArtifactCard({
   call,
   result,
@@ -1320,8 +1359,7 @@ function ArtifactCard({
   const openCall = !!call && !result;
   const pending = openCall && running;
   const interrupted = openCall && !running;
-  // Code-change cards fold until the operator opens the diff. Other previews
-  // (HTML pages, MCP apps, documents) still open on their own.
+  /** 代码改动卡片先折着，等操作者打开差异。其余预览（网页、MCP 应用、文档）自己展开。 */
   const codeChange = isCodeChangeTool(name);
   const [open, setOpen] = useState(() => !codeChange && !pending && artifactPreviewOpen(view));
   const detail = toolDetail(result || call || item);

@@ -1,3 +1,5 @@
+// probe.go 用 ffmpeg 和 ffprobe 读时长、场景切点和静音区间。
+
 package cut
 
 import (
@@ -7,14 +9,19 @@ import (
 	"strings"
 )
 
+// 这些正则从 ffmpeg 输出里取场景时间、静音起止和时长。
 var (
+	// reScenePTS 匹配 pts_time 后面的秒数。
 	reScenePTS   = regexp.MustCompile(`pts_time:([0-9.]+)`)
+	// reSilenceSt 匹配 silence_start 后面的秒数。
 	reSilenceSt  = regexp.MustCompile(`silence_start:\s*([0-9.]+)`)
+	// reSilenceEnd 匹配 silence_end 后面的秒数。
 	reSilenceEnd = regexp.MustCompile(`silence_end:\s*([0-9.]+)`)
+	// reDuration 匹配 Duration 行里的时、分、秒。
 	reDuration   = regexp.MustCompile(`Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)`)
 )
 
-// Duration returns media length in seconds.
+// Duration 返回媒体秒数。ffprobe 路径非空且路径里不含 ffmpeg 时读 format=duration；否则从 ffmpeg -i 的 Duration 行解析时分秒。
 func (b Bin) Duration(path string) (float64, error) {
 	if err := b.probeOK(); err != nil {
 		return 0, err
@@ -52,7 +59,7 @@ func (b Bin) Duration(path string) (float64, error) {
 	return d, nil
 }
 
-// Scenes returns cut points (seconds) from ffmpeg scene detect.
+// Scenes 用 ffmpeg 的场景检测返回切点秒数。阈值小于等于 0 时用 0.28。小于等于 0 的时间丢掉，按两位小数去重。没有切点时返回空切片。
 func (b Bin) Scenes(path string, threshold float64) ([]float64, error) {
 	if err := b.ok(); err != nil {
 		return nil, err
@@ -82,7 +89,7 @@ func (b Bin) Scenes(path string, threshold float64) ([]float64, error) {
 	return times, nil
 }
 
-// Silences returns muted ranges from silencedetect.
+// Silences 用 silencedetect=noise=-35dB:d=0.4 返回静音区间。开始和结束按出现顺序配对，只保留结束晚于开始的段。没有静音时返回空切片。
 func (b Bin) Silences(path string) ([]Silence, error) {
 	if err := b.ok(); err != nil {
 		return nil, err
@@ -109,7 +116,7 @@ func (b Bin) Silences(path string) ([]Silence, error) {
 	return outS, nil
 }
 
-// Analyze fills a Breakdown from one file.
+// Analyze 读时长，并用阈值 0.28 填场景切点。静音检测成功时也写进结果。时长失败则整次失败；场景或静音失败时对应字段留空。
 func (b Bin) Analyze(path string) (Breakdown, error) {
 	bd := Breakdown{}
 	d, err := b.Duration(path)

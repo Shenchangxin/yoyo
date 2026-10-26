@@ -1,21 +1,22 @@
-// Package layout 是画布节点排布的确定性几何实现，供画布 Agent 的"整理 / 归类 / 新增落位"使用。
-//
-// 这里刻意与前端 web/src/lib/canvas/canvas-layout.ts 保持同一套常量与算法语义：
-// 前端"自动整理节点"按钮与 Agent 的整理工具必须给出同样的结果，否则同一个画布在两条
-// 路径下会得到不同的布局。修改任一侧常量或算法时，另一侧要同步（两侧各自有黄金用例）。
-//
-// 本包只做几何，不读取画布文档、不判断权限、不写库。
+// layout.go 是画布节点排布的确定性几何实现，供画布 Agent 的整理、归类和新增落位使用。
+// 这里与前端 web/src/lib/canvas/canvas-layout.ts 保持同一套常量与算法语义，使前端自动整理和 Agent 整理得到同样的结果。修改任一侧常量或算法时，另一侧要同步，两侧各自有黄金用例。
+// 本文件只做几何，不读取画布文档、不判断权限、不写库。
+
 package layout
 
 import "sort"
 
+// 这些间距与前端 canvas-layout.ts 的常量相同。
 const (
-	// 与 canvas-layout.ts 的常量一一对应。
+	// FlowColumnGap 是依赖分层时列与列的间距，120。
 	FlowColumnGap = 120
+	// LaneGap 是泳道之间的间距，96。
 	LaneGap       = 96
+	// LaneNodeGap 是泳道内节点的间距，36。
 	LaneNodeGap   = 36
+	// GridNodeGap 是网格里节点的间距，32。
 	GridNodeGap   = 32
-	// 新增节点与已有节点之间的最小空隙（落位避让用）。
+	// PlacementGap 是新增落位时与已有节点的最小空隙，40。
 	PlacementGap = 40
 )
 
@@ -50,29 +51,46 @@ type Edge struct {
 // Mode 是整理模式。
 type Mode string
 
+// 整理模式的取值。
 const (
+	// ModeAuto 是自动整理 auto。
 	ModeAuto   Mode = "auto"
+	// ModeFlow 是按依赖从左到右 flow。
 	ModeFlow   Mode = "flow"
+	// ModeByLane 是按媒体类型分泳道 byType。
 	ModeByLane Mode = "byType"
+	// ModeRow 是单行 row。
 	ModeRow    Mode = "row"
+	// ModeColumn 是单列 column。
 	ModeColumn Mode = "column"
+	// ModeGrid 是方阵 grid。
 	ModeGrid   Mode = "grid"
 )
 
 // AlignMode 是对齐 / 等距分布模式。
 type AlignMode string
 
+// 对齐和等距分布的取值。
 const (
+	// AlignLeft 是左对齐 left。
 	AlignLeft        AlignMode = "left"
+	// AlignCenterX 是水平居中 centerX。
 	AlignCenterX     AlignMode = "centerX"
+	// AlignRight 是右对齐 right。
 	AlignRight       AlignMode = "right"
+	// AlignTop 是顶对齐 top。
 	AlignTop         AlignMode = "top"
+	// AlignCenterY 是垂直居中 centerY。
 	AlignCenterY     AlignMode = "centerY"
+	// AlignBottom 是底对齐 bottom。
 	AlignBottom      AlignMode = "bottom"
+	// AlignDistributeX 是水平等距 distributeX。
 	AlignDistributeX AlignMode = "distributeX"
+	// AlignDistributeY 是垂直等距 distributeY。
 	AlignDistributeY AlignMode = "distributeY"
 )
 
+// width 在宽度大于 0 时用原值，否则用 340。
 func (n Node) width() float64 {
 	if n.Width > 0 {
 		return n.Width
@@ -80,6 +98,7 @@ func (n Node) width() float64 {
 	return 340
 }
 
+// height 在高度大于 0 时用原值，否则用 240。
 func (n Node) height() float64 {
 	if n.Height > 0 {
 		return n.Height
@@ -87,6 +106,7 @@ func (n Node) height() float64 {
 	return 240
 }
 
+// minX 返回节点里最小的 X。调用时节点不能为空。
 func minX(nodes []Node) float64 {
 	value := nodes[0].X
 	for _, node := range nodes[1:] {
@@ -97,6 +117,7 @@ func minX(nodes []Node) float64 {
 	return value
 }
 
+// minY 返回节点里最小的 Y。调用时节点不能为空。
 func minY(nodes []Node) float64 {
 	value := nodes[0].Y
 	for _, node := range nodes[1:] {
@@ -107,6 +128,7 @@ func minY(nodes []Node) float64 {
 	return value
 }
 
+// maxWidth 返回节点宽度的最大值，空切片返回 0。
 func maxWidth(nodes []Node) float64 {
 	value := 0.0
 	for _, node := range nodes {
@@ -117,6 +139,7 @@ func maxWidth(nodes []Node) float64 {
 	return value
 }
 
+// maxHeight 返回节点高度的最大值，空切片返回 0。
 func maxHeight(nodes []Node) float64 {
 	value := 0.0
 	for _, node := range nodes {
@@ -150,6 +173,7 @@ func Auto(nodes []Node, edges []Edge) map[string]Position {
 	return ByLane(nodes)
 }
 
+// connected 在两端都落在这批节点里的连线至少有一条时为真。
 func connected(nodes []Node, edges []Edge) bool {
 	ids := make(map[string]bool, len(nodes))
 	for _, node := range nodes {
@@ -277,6 +301,7 @@ func Flow(nodes []Node, edges []Edge) map[string]Position {
 	return result
 }
 
+// nodesInLayer 取出分层号等于 value 的节点。
 func nodesInLayer(nodes []Node, layer map[string]int, value int) []Node {
 	subset := make([]Node, 0, len(nodes))
 	for _, node := range nodes {
@@ -287,6 +312,7 @@ func nodesInLayer(nodes []Node, layer map[string]int, value int) []Node {
 	return subset
 }
 
+// laneNodes 取出泳道等于 lane 的节点。
 func laneNodes(nodes []Node, lane string) []Node {
 	subset := make([]Node, 0, len(nodes))
 	for _, node := range nodes {
@@ -501,6 +527,7 @@ func Bands(bands []Band, gap float64) map[string]Position {
 	return result
 }
 
+// findNode 按标识找节点。没有时返回空节点。
 func findNode(nodes []Node, id string) Node {
 	for _, node := range nodes {
 		if node.ID == id {
@@ -608,6 +635,7 @@ func FreeSlot(width, height float64, lane string, occupied []Node, preferred *Po
 	return Position{X: startX, Y: startY}
 }
 
+// ceilSqrt 返回不小于平方根的整数。小于等于 0 时返回 0。
 func ceilSqrt(value int) int {
 	if value <= 0 {
 		return 0
@@ -619,6 +647,7 @@ func ceilSqrt(value int) int {
 	return root
 }
 
+// ceilDiv 做向上取整的整数除法。除数小于等于 0 时返回 0。
 func ceilDiv(value, divisor int) int {
 	if divisor <= 0 {
 		return 0

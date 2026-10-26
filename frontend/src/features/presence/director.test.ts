@@ -1,8 +1,10 @@
+/** 拥有工作台状态到情绪编号的断言。不拥有绘制。不改服务端。 */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { afterDoneEmotion, loadEmotion, presenceLine, presenceOf, thinkEmotion, wanderEmotion, type PresenceInput } from "./director.ts";
 import type { Item } from "../../lib/protocol.ts";
 
+/** 造一条测试条目，补上缺的字段。 */
 function item(partial: Partial<Item> & Pick<Item, "type">): Item {
   return {
     key: partial.key || "k",
@@ -17,15 +19,18 @@ function item(partial: Partial<Item> & Pick<Item, "type">): Item {
   };
 }
 
+/** 造一份已启动、没在跑的输入，再盖上要测的字段。 */
 function base(over: Partial<PresenceInput> = {}): PresenceInput {
   return { booted: true, running: false, items: [], approvals: 0, now: 1_000_000, ...over };
 }
 
 describe("presenceOf", () => {
+  /** 工作台还没好时用启动表情。 */
   it("boots before the workstation is ready", () => {
     assert.equal(presenceOf(base({ booted: false })).emotionId, "05");
   });
 
+  /** 正在听时优先于工具。 */
   it("prefers voice listening over tools", () => {
     assert.equal(
       presenceOf(base({
@@ -37,6 +42,7 @@ describe("presenceOf", () => {
     );
   });
 
+  /** 思考、搜索、壳和正在流出的回复各对上表情。 */
   it("maps thinking, search, shell, and streaming reply", () => {
     assert.equal(presenceOf(base({ running: true })).emotionId, "30");
     assert.equal(
@@ -92,6 +98,7 @@ describe("presenceOf", () => {
     );
   });
 
+  /** 刚收到会闪一下，做完有收尾，空闲久了睡觉。 */
   it("flashes receive then done, sleeps when unfocused", () => {
     const now = 5_000_000;
     assert.equal(
@@ -123,6 +130,7 @@ describe("presenceOf", () => {
     assert.equal(presenceOf(base()).emotionId, wanderEmotion(1_000_000, 0));
   });
 
+  /** 待批准、错误、模块加载和打断各有表情。 */
   it("holds approval, errors, module load, and interrupt", () => {
     assert.equal(presenceOf(base({ approvals: 1 })).emotionId, "35");
     assert.equal(
@@ -167,6 +175,7 @@ describe("presenceOf", () => {
 });
 
 describe("wanderEmotion", () => {
+  /** 空闲脸会轮换，再沉进瞌睡。 */
   it("cycles ambient faces then drowses into sleep", () => {
     assert.equal(wanderEmotion(0, 0), "02");
     assert.equal(wanderEmotion(6200, 0), "10");
@@ -180,6 +189,7 @@ describe("wanderEmotion", () => {
 });
 
 describe("loadEmotion / thinkEmotion / afterDoneEmotion", () => {
+  /** 加载、思考和做完都先停在第一拍，再往下走。 */
   it("keeps first-beat faces, then walks a slower choreography", () => {
     assert.equal(loadEmotion(0), "36");
     assert.equal(loadEmotion(3000), "45");
@@ -198,6 +208,7 @@ describe("loadEmotion / thinkEmotion / afterDoneEmotion", () => {
 
 describe("presenceLine", () => {
   const labels = { idle: "Around", working: "Working", think: "Thinking", eval: "Running eval" };
+  /** 已知提示用文案，活着的工具名接在工作前缀后面。 */
   it("uses known tips and prefixes live tools", () => {
     assert.equal(presenceLine({ emotionId: "02", live: false, tips: "idle" }, labels), "Around");
     assert.equal(presenceLine({ emotionId: "30", live: true, tips: "think" }, labels), "Thinking");

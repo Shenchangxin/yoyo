@@ -1,3 +1,6 @@
+// main 是窗口进程，用 Wails 打开主窗口，单实例 ID 是 com.yoyo.workstation。
+// YOYO_WORKER=1 时不创建窗口，把 stdin 和 stdout 交给 JSON-RPC，stdout 是协议。
+// YOYO_ISOLATE=1 时再启动同一可执行文件并带 YOYO_WORKER=1。健康检查超过 8 秒或失败则退回同进程。这不是安全沙箱，工作者仍握有 vault 和工具。
 package main
 
 import (
@@ -30,6 +33,7 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// fail 在 err 非空时把诊断写到 stderr，并以状态 1 退出。err 为空则直接返回。
 func fail(err error) {
 	if err == nil {
 		return
@@ -39,13 +43,12 @@ func fail(err error) {
 	os.Exit(1)
 }
 
+// attachRemoteUI 先找磁盘上的 frontend/dist：当前目录，以及可执行文件旁边的 frontend/dist。index.html 是文件就交给 node.UseStatic。两处都没有时，用编译进二进制的 frontend/dist。
 func attachRemoteUI(node *remote.Node) {
 	if node == nil {
 		return
 	}
-	// The phone reads the files on disk when they exist, so a frontend rebuild
-	// reaches WeChat after the process restarts. The packaged app falls back
-	// to the copy embedded at compile time.
+	// 手机端在磁盘上已经有前端文件时直接读它们，所以前端重新构建后，进程一重启就能到微信。打包的程序没有这份目录时，退回编译进二进制的 frontend/dist。
 	for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(executablePath()), "frontend", "dist")} {
 		if st, err := os.Stat(filepath.Join(dir, "index.html")); err == nil && !st.IsDir() {
 			node.UseStatic(http.FileServer(http.Dir(dir)))
@@ -59,6 +62,7 @@ func attachRemoteUI(node *remote.Node) {
 	node.UseStatic(http.FileServer(http.FS(sub)))
 }
 
+// executablePath 返回 os.Executable 的路径。取失败时返回 "."。
 func executablePath() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -67,6 +71,9 @@ func executablePath() string {
 	return exe
 }
 
+// main 先让 update.HandleNSISHelper 处理安装器辅助进程，接管则直接返回。然后设置 YOYO_DESKTOP=1。
+// YOYO_WORKER=1 时不创建窗口：打开 App，remote.Bind 成功就用 attachRemoteUI 挂上静态页，再把 stdin 和 stdout 交给 api.ServeRPC。stdout 是协议。
+// 否则 openDesktop 打开桌面服务，创建名为 Yoyo 的 Wails 应用和主窗口。单实例 ID 是 com.yoyo.workstation，第二实例启动时 desktop.Raise 已有窗口。
 func main() {
 	if update.HandleNSISHelper() {
 		return
@@ -183,6 +190,7 @@ func main() {
 	}
 }
 
+// openDesktop 在 YOYO_ISOLATE=1 时调用 desktop.OpenIsolated，由它再启动同一可执行文件并带 YOYO_WORKER=1。否则在本进程 app.Open，并用 desktop.NewService 包住同一个 App。
 func openDesktop(home, evals string) (*desktop.Service, *app.App, error) {
 	if os.Getenv("YOYO_ISOLATE") == "1" {
 		return desktop.OpenIsolated(home, evals)
@@ -194,6 +202,7 @@ func openDesktop(home, evals string) (*desktop.Service, *app.App, error) {
 	return desktop.NewService(core), core, nil
 }
 
+// skinAssetMiddleware 返回套在静态资源上的中间件：视频媒体、角色立绘、偶像立牌，最里面是皮肤。core 为空时按 homeRoot 打开 home，取皮肤库和 idols/stands。
 func skinAssetMiddleware(core *app.App, homeRoot string) func(http.Handler) http.Handler {
 	var store *skin.Store
 	if core != nil && core.Skins != nil {
@@ -222,6 +231,7 @@ func skinAssetMiddleware(core *app.App, homeRoot string) func(http.Handler) http
 	}
 }
 
+// resolveEvals 优先返回 YOYO_EVALS。否则依次看当前目录和可执行文件目录下的 evals 子目录，都不是目录时返回相对路径 evals。
 func resolveEvals() string {
 	if v := os.Getenv("YOYO_EVALS"); v != "" {
 		return v
@@ -240,6 +250,7 @@ func resolveEvals() string {
 	return evals
 }
 
+// dirExists 在路径存在且是目录时返回真。
 func dirExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()

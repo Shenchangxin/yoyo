@@ -1,3 +1,5 @@
+// layout_test.go 锁住泳道顺序、依赖从左到右、分带、对齐和空位避让。不读画布文档。
+
 package layout
 
 import (
@@ -5,10 +7,12 @@ import (
 	"testing"
 )
 
+// node 用标识、泳道和矩形造一个节点。
 func node(id, lane string, x, y, w, h float64) Node {
 	return Node{ID: id, Lane: lane, X: x, Y: y, Width: w, Height: h}
 }
 
+// assertPosition 确认该节点的坐标与期望相差不超过 0.001。
 func assertPosition(t *testing.T, positions map[string]Position, id string, x, y float64) {
 	t.Helper()
 	position, ok := positions[id]
@@ -20,7 +24,7 @@ func assertPosition(t *testing.T, positions map[string]Position, id string, x, y
 	}
 }
 
-// 与前端 layoutCanvasAuto 的媒体泳道分支对齐：text / image / video / audio 从上到下分区。
+// TestByLaneKeepsLaneOrderAndAvoidsOverlap 确认与前端 layoutCanvasAuto 的媒体泳道一致：text、image、video、audio 自上而下，且没有重叠。
 func TestByLaneKeepsLaneOrderAndAvoidsOverlap(t *testing.T) {
 	nodes := []Node{
 		node("text-1", "text", 0, 0, 340, 240),
@@ -43,7 +47,7 @@ func TestByLaneKeepsLaneOrderAndAvoidsOverlap(t *testing.T) {
 	}
 }
 
-// 与前端 layoutCanvasFlow 对齐：依赖方向从左到右，层内同泳道竖向堆叠。
+// TestFlowLaysOutDependenciesLeftToRight 确认与前端 layoutCanvasFlow 一致：同一层横坐标相同，依赖节点在右侧，带回边时第一层节点仍在。
 func TestFlowLaysOutDependenciesLeftToRight(t *testing.T) {
 	nodes := []Node{
 		node("text-1", "text", 0, 0, 340, 240),
@@ -70,6 +74,7 @@ func TestFlowLaysOutDependenciesLeftToRight(t *testing.T) {
 	}
 }
 
+// TestAutoFallsBackToLanesWithoutConnections 确认没有有效连线时按泳道排在同一行，有连线时左右分开。
 func TestAutoFallsBackToLanesWithoutConnections(t *testing.T) {
 	nodes := []Node{node("image-1", "image", 0, 0, 720, 405), node("image-2", "image", 800, 0, 720, 405)}
 	edges := []Edge{{From: "image-1", To: "missing"}} // 集合外的连线不算
@@ -85,7 +90,7 @@ func TestAutoFallsBackToLanesWithoutConnections(t *testing.T) {
 	}
 }
 
-// Bands 是"只做位置分带"的归类：每组一条带，带间留 gap，组内不重叠。
+// TestBandsSeparatesGroups 确认每组一条带，带内按泳道上下分开，下一条带在下方且左对齐，整体不重叠。
 func TestBandsSeparatesGroups(t *testing.T) {
 	bands := []Band{
 		{Label: "A", Mode: ModeByLane, Nodes: []Node{node("a1", "image", 0, 0, 720, 405), node("a2", "video", 800, 0, 720, 405)}},
@@ -113,6 +118,7 @@ func TestBandsSeparatesGroups(t *testing.T) {
 	}
 }
 
+// TestAlignDistributesAndCenters 确认左对齐后横坐标都是 0，纵向等距后相邻间隙相等。
 func TestAlignDistributesAndCenters(t *testing.T) {
 	nodes := []Node{node("a", "text", 0, 0, 100, 100), node("b", "text", 300, 400, 100, 100), node("c", "text", 900, 900, 100, 100)}
 	left := Align(nodes, AlignLeft)
@@ -131,6 +137,7 @@ func TestAlignDistributesAndCenters(t *testing.T) {
 	}
 }
 
+// TestFreeSlotAvoidsExistingNodes 确认被占用的优选坐标会让开且不重叠，空闲的优选坐标原样返回，没有节点时落在原点。
 func TestFreeSlotAvoidsExistingNodes(t *testing.T) {
 	occupied := []Node{node("image-1", "image", 0, 0, 720, 405)}
 
@@ -158,6 +165,7 @@ func TestFreeSlotAvoidsExistingNodes(t *testing.T) {
 	}
 }
 
+// withPositions 把算好的位置写回节点副本。
 func withPositions(nodes []Node, positions map[string]Position) []Node {
 	applied := make([]Node, 0, len(nodes))
 	for _, item := range nodes {

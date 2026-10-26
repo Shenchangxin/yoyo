@@ -1,3 +1,8 @@
+/**
+ * 拥有：桌面壳层的冒烟用例，从启动、会话、审查窗到陪伴窗。
+ * 不拥有：这些界面的实现。每条 test 的标题就是这则用例在断言什么。
+ */
+
 import { expect, test } from "@playwright/test";
 import { mockApi } from "./mock";
 

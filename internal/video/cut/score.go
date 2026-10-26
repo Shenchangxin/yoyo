@@ -1,3 +1,5 @@
+// score.go 按场景切点和语音占比挑选不重叠的高光窗口。
+
 package cut
 
 import (
@@ -6,9 +8,7 @@ import (
 	"sort"
 )
 
-// Propose picks up to count highlight windows using scene cuts, speech
-// (inverse silence), and duration fitness. Equal-time slicing is only the
-// last resort when the source has no scene or silence data.
+// Propose 挑出至多 count 个窗口。count 小于等于 0 时用 3，大于 12 时用 12。target 小于等于 0 时用 20 秒，并且不超过片长。片长小于等于 0.5 秒时返回空切片。没有场景也没有静音时才等分。按分数从高到低贪心选取，重叠间隙 0.6 秒，最后按开始时间排序，标题写成 clip 加序号。
 func Propose(dur float64, scenes []float64, silences []Silence, count int, target float64) []Clip {
 	if dur <= 0.5 {
 		return []Clip{}
@@ -41,6 +41,7 @@ func Propose(dur float64, scenes []float64, silences []Silence, count int, targe
 	return picked
 }
 
+// candidateWindows 用场景点和静音结束做边界。距两端 0.35 秒以内的点丢掉，相邻不足 0.25 秒的合并。短于 2.4 秒的段丢掉。不超过目标 1.35 倍的段整段保留，理由是 scene；更长的按步长滑窗，步长是目标的 0.45 倍和 4 秒中的较大者，理由是 window。
 func candidateWindows(dur float64, scenes []float64, silences []Silence, target float64) []Clip {
 	bounds := []float64{0}
 	for _, s := range scenes {
@@ -91,6 +92,7 @@ func candidateWindows(dur float64, scenes []float64, silences []Silence, target 
 	return out
 }
 
+// equalFallback 把片长等分成 count 段，每段不超过目标和步长，短于 2.4 秒就停止。理由写成 fallback。
 func equalFallback(dur float64, count int, target float64) []Clip {
 	step := dur / float64(count)
 	span := target
@@ -112,6 +114,7 @@ func equalFallback(dur float64, count int, target float64) []Clip {
 	return out
 }
 
+// scoreClip 用 0.55 的语音占比、0.35 的时长贴合和 0.10 的时长分给片段打分，并写入 hook、information、emotion、completeness、energy。时长达到 12 秒 completeness 为 5，达到 6 秒为 4，否则为 3。理由为空时写成 score。
 func scoreClip(c Clip, target float64, silences []Silence) Clip {
 	d := c.Dur()
 	if d <= 0 {
@@ -143,6 +146,7 @@ func scoreClip(c Clip, target float64, silences []Silence) Clip {
 	return c
 }
 
+// speechRatio 返回窗口里非静音的比例。没有静音数据时返回 0.72。时长小于等于 0 时返回 0。结果夹在 0 和 1 之间。
 func speechRatio(start, end float64, silences []Silence) float64 {
 	d := end - start
 	if d <= 0 {
@@ -169,6 +173,7 @@ func speechRatio(start, end float64, silences []Silence) float64 {
 	return r
 }
 
+// greedyNonOverlap 按当前顺序取不重叠的片段，重叠判定留出 minGap，取满 n 个就停。
 func greedyNonOverlap(cands []Clip, n int, minGap float64) []Clip {
 	var out []Clip
 	for _, c := range cands {
@@ -190,6 +195,7 @@ func greedyNonOverlap(cands []Clip, n int, minGap float64) []Clip {
 	return out
 }
 
+// clampScore 把数值四舍五入后夹到 1 和 5。
 func clampScore(v float64) int {
 	n := int(math.Round(v))
 	if n < 1 {

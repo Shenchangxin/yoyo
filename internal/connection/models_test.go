@@ -1,7 +1,10 @@
+// 锁住模型名到能力的推断，以及单一能力连接不会把自定义模型名漏成聊天。
+
 package connection
 
 import "testing"
 
+// TestCapOfModel 确认一批模型 id 被分到预期的能力。
 func TestCapOfModel(t *testing.T) {
 	cases := map[string]string{
 		"gpt-4.1":                 CapChat,
@@ -33,6 +36,7 @@ func TestCapOfModel(t *testing.T) {
 	}
 }
 
+// TestModelsForSplitsMultiCap 确认同时声明多种能力时，模型按能力拆开，能力列表含这些声明。
 func TestModelsForSplitsMultiCap(t *testing.T) {
 	c := Connection{
 		Capabilities: []string{CapChat},
@@ -54,6 +58,7 @@ func TestModelsForSplitsMultiCap(t *testing.T) {
 	}
 }
 
+// TestSingleCapKeepsCustomNames 确认只声明图像时，自定义模型名留在图像侧，不漏进聊天。
 func TestSingleCapKeepsCustomNames(t *testing.T) {
 	c := Connection{
 		Capabilities: []string{CapImage},
@@ -68,6 +73,7 @@ func TestSingleCapKeepsCustomNames(t *testing.T) {
 	}
 }
 
+// TestInferProtocolMusicStockAsr 确认音乐、素材和语音识别供应商推断出预期协议。
 func TestInferProtocolMusicStockAsr(t *testing.T) {
 	cases := []struct {
 		vendor, cap, want string
@@ -105,6 +111,7 @@ func TestInferProtocolMusicStockAsr(t *testing.T) {
 	}
 }
 
+// contains 报告 have 里是否有 want。
 func contains(have []string, want string) bool {
 	for _, h := range have {
 		if h == want {
@@ -114,6 +121,7 @@ func contains(have []string, want string) bool {
 	return false
 }
 
+// containsAll 要求每个 want 都在 have 里。
 func containsAll(have []string, want ...string) bool {
 	for _, w := range want {
 		if !contains(have, w) {

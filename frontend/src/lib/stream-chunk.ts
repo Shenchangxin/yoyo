@@ -1,10 +1,15 @@
-/** Closed StreamChunk union + BlockAssembler, matching the harness assembler. */
+/**
+ * 拥有：与 harness 组装器对齐的封闭流片段，以及把增量收成内容块。
+ * 不拥有：实时通知的游标，以及把块折进转录条目。
+ */
 
+/** ContentBlock 组装完成后的一块：正文、推理或工具调用。 */
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "tool-call"; id: string; name: string; arguments: string };
 
+/** StreamChunk 封闭的流片段：块开始、增量、块结束、用量和结束原因。 */
 export type StreamChunk =
   | { type: "block-start"; index: number; blockType: string }
   | { type: "text-delta"; index: number; text: string }
@@ -14,6 +19,7 @@ export type StreamChunk =
   | { type: "usage"; usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number } }
   | { type: "finish"; reason: { kind: string } };
 
+/** AssistantStreamRecord 落在条目上的打包流：按时间增量压紧的文本、推理、工具参数，或单独一块。 */
 export type AssistantStreamRecord =
   | { type: "text-chunks"; time0: number; index: number; dt: number[]; texts: string[] }
   | { type: "reasoning-chunks"; time0: number; index: number; dt: number[]; texts: string[] }
@@ -29,11 +35,13 @@ type PartialBlock = {
   block?: ContentBlock;
 };
 
+/** BlockAssembler 按序号把流片段收成内容块。结束原因为 max-tokens 时丢掉工具调用。 */
 export class BlockAssembler {
   private partials = new Map<number, PartialBlock>();
   private order: number[] = [];
   private finishKind = "stop";
 
+  /** push 按片段种类累积一块。已经收束的块不再接受增量。 */
   push(chunk: StreamChunk): void {
     switch (chunk.type) {
       case "block-start":
@@ -71,6 +79,7 @@ export class BlockAssembler {
     }
   }
 
+  /** 取出或建出该序号的半成品块。 */
   private ensure(index: number, blockType: string): PartialBlock {
     let p = this.partials.get(index);
     if (!p) {
@@ -81,6 +90,7 @@ export class BlockAssembler {
     return p;
   }
 
+  /** 半成品收成内容块。工具调用缺少 id 时用序号占位。 */
   private assemble(p: PartialBlock, index: number): ContentBlock {
     if (p.block) return p.block;
     if (p.blockType === "reasoning") return { type: "reasoning", text: p.text };
@@ -95,7 +105,7 @@ export class BlockAssembler {
     return { type: "text", text: p.text };
   }
 
-  /** Rehydrate a live attempt from already-assembled blocks without closing the last one. */
+  /** hydrateFromBlocks 用已经组装好的块恢复一次进行中的尝试。最后一块保持未收束，前面的块收束。 */
   hydrateFromBlocks(blocks: ContentBlock[]): void {
     this.partials.clear();
     this.order = [];
@@ -109,12 +119,14 @@ export class BlockAssembler {
     });
   }
 
+  /** blocks 按出现顺序交出内容块。结束原因为 max-tokens 时去掉工具调用。 */
   blocks(): ContentBlock[] {
     const all = this.order.map((i) => this.assemble(this.partials.get(i)!, i));
     if (this.finishKind !== "max-tokens") return all;
     return all.filter((b) => b.type !== "tool-call");
   }
 
+  /** interruptedBlocks 只留下中断时已经有正文的文本和推理块。 */
   interruptedBlocks(): ContentBlock[] {
     return this.order
       .map((i) => {
@@ -128,6 +140,7 @@ export class BlockAssembler {
   }
 }
 
+/** expandAssistantStream 把打包记录展开成带时间的流片段。dt 是后一块相对前一块的时间增量。 */
 export function expandAssistantStream(records: AssistantStreamRecord[]): { time: number; chunk: StreamChunk }[] {
   const out: { time: number; chunk: StreamChunk }[] = [];
   for (const rec of records || []) {
@@ -154,6 +167,7 @@ export function expandAssistantStream(records: AssistantStreamRecord[]): { time:
   return out;
 }
 
+/** textFromBlocks 把指定种类的块正文串起来。缺省串正文块。 */
 export function textFromBlocks(blocks: ContentBlock[] | undefined, kind: "text" | "reasoning" = "text"): string {
   if (!blocks?.length) return "";
   let s = "";
@@ -163,6 +177,7 @@ export function textFromBlocks(blocks: ContentBlock[] | undefined, kind: "text" 
   return s;
 }
 
+/** parseStreamChunk 从原始对象读出流片段。不认识的种类返回空。 */
 export function parseStreamChunk(raw: any): StreamChunk | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const type = String(raw.type || "");
@@ -192,6 +207,7 @@ export function parseStreamChunk(raw: any): StreamChunk | undefined {
   }
 }
 
+/** 把原始对象收成内容块。缺省当正文。 */
 function parseContentBlock(raw: any): ContentBlock {
   const type = String(raw?.type || "text");
   if (type === "reasoning") return { type, text: String(raw?.text || "") };
@@ -201,6 +217,7 @@ function parseContentBlock(raw: any): ContentBlock {
   return { type: "text", text: String(raw?.text || "") };
 }
 
+/** parseContentBlocks 把数组收成内容块。不是数组则返回空。 */
 export function parseContentBlocks(raw: any): ContentBlock[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   return raw.map(parseContentBlock);

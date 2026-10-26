@@ -1,3 +1,5 @@
+// 锁住合并会同时留下指令槽和另一条剧本，而单独写入剧本的快照不带走指令修改。循环的 MaxTurns 保持原值。
+
 package evolve
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestMergeProposalsKeepsOrthogonalL1 要求合并后引导语和新增剧本都在，且 MaxTurns 仍是 8。
 func TestMergeProposalsKeepsOrthogonalL1(t *testing.T) {
 	cas := artifact.NewStore(t.TempDir())
 	loopH, err := cas.Put(artifact.KindLoopPreset, "d", artifact.LoopPreset{ID: "d", MaxTurns: 8, Bootstrap: "old"})

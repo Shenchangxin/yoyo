@@ -1,3 +1,5 @@
+// remotion_test.go 检查 Remotion 状态、工程脚手架、缺少 Node 时的安装，以及预设风格。
+
 package video
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestRemotionStatusNeverBundled 确认状态里 bundled 为假，hint 非空，并且空引擎不会报成已托管安装。
 func TestRemotionStatusNeverBundled(t *testing.T) {
 	st := RemotionStatus()
 	if st["bundled"] != false {
@@ -19,6 +22,7 @@ func TestRemotionStatusNeverBundled(t *testing.T) {
 	}
 }
 
+// fmtSprint 把值当成字符串。nil 返回空串。
 func fmtSprint(v any) string {
 	if v == nil {
 		return ""
@@ -27,6 +31,7 @@ func fmtSprint(v any) string {
 	return s
 }
 
+// TestWriteRemotionProject 确认脚手架写出清单和源码，且没有 node_modules 时 managedRemotionReady 为假。
 func TestWriteRemotionProject(t *testing.T) {
 	e := testEngine(t)
 	if err := e.writeRemotionProject(); err != nil {
@@ -44,6 +49,7 @@ func TestWriteRemotionProject(t *testing.T) {
 	}
 }
 
+// TestInstallRemotionNeedsNode 把 node 和 npm 设成 - 后，安装阶段为 error，错误非空，ready 不为真。
 func TestInstallRemotionNeedsNode(t *testing.T) {
 	e := testEngine(t)
 	e.rmNode = "-"
@@ -64,6 +70,7 @@ func TestInstallRemotionNeedsNode(t *testing.T) {
 	}
 }
 
+// TestPresetStyles 确认预设不少于 200 条、取值不重复，且 PrefixStyle 会改写传入的提示词。
 func TestPresetStyles(t *testing.T) {
 	seeds := PresetStyles()
 	if len(seeds) < 200 {

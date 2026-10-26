@@ -1,3 +1,6 @@
+// 本文件锁住 Wait 与 Run 的等待：空闲熔断、墙钟熔断、实时片段、短命令结束，以及取消时杀掉进程。
+// 不检查各平台 probe 的 Sandbox。由 go test 调用。
+
 package isolation
 
 import (
@@ -10,6 +13,7 @@ import (
 	"time"
 )
 
+// TestWaitIdleSilenceReturns 要求静默达到 idle 后返回，进程仍在后台，且耗时不超过 2 秒。
 func TestWaitIdleSilenceReturns(t *testing.T) {
 	cmd := sleeper(t, 5*time.Second)
 	start := time.Now()
@@ -23,6 +27,7 @@ func TestWaitIdleSilenceReturns(t *testing.T) {
 	killProcess(t, cmd)
 }
 
+// TestWaitBlockReturnsWhileAlive 要求墙钟达到 block 后返回，即使 ping 仍在输出，且耗时不超过 2 秒。
 func TestWaitBlockReturnsWhileAlive(t *testing.T) {
 	cmd := pingLoop(t)
 	start := time.Now()
@@ -36,6 +41,7 @@ func TestWaitBlockReturnsWhileAlive(t *testing.T) {
 	killProcess(t, cmd)
 }
 
+// TestWaitNotifyChunks 要求 onChunk 至少收到一块非空输出，且完整结果里仍有 hi。
 func TestWaitNotifyChunks(t *testing.T) {
 	cmd := echoHi()
 	var n int
@@ -55,6 +61,7 @@ func TestWaitNotifyChunks(t *testing.T) {
 	}
 }
 
+// TestWaitEchoFinishes 要求短命令在 idle 和 block 都是 2 秒时仍然正常结束，Background 为 false，输出含 hi。
 func TestWaitEchoFinishes(t *testing.T) {
 	cmd := echoHi()
 	o := Wait(context.Background(), cmd, 2*time.Second, 2*time.Second)
@@ -69,6 +76,7 @@ func TestWaitEchoFinishes(t *testing.T) {
 	}
 }
 
+// TestRunStillKillsOnCancel 要求 ctx 在 200 毫秒超时后 Run 返回错误，且不会堵过 2 秒。
 func TestRunStillKillsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -83,6 +91,7 @@ func TestRunStillKillsOnCancel(t *testing.T) {
 	}
 }
 
+// sleeper 启动一个睡够 d 的进程；不足 1 秒按 1 秒算。Windows 用 powershell 的 Start-Sleep，其他平台用 sleep。
 func sleeper(t *testing.T, d time.Duration) *exec.Cmd {
 	t.Helper()
 	sec := int(d / time.Second)
@@ -95,6 +104,7 @@ func sleeper(t *testing.T, d time.Duration) *exec.Cmd {
 	return exec.Command("sleep", strconv.Itoa(sec))
 }
 
+// pingLoop 向 127.0.0.1 发 20 次 ping，用来在墙钟熔断返回时进程仍有输出。
 func pingLoop(t *testing.T) *exec.Cmd {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -103,6 +113,7 @@ func pingLoop(t *testing.T) *exec.Cmd {
 	return exec.Command("ping", "-c", "20", "127.0.0.1")
 }
 
+// echoHi 启动一条马上打印 hi 并退出的命令。
 func echoHi() *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		return exec.Command("cmd", "/C", "echo hi")
@@ -110,6 +121,7 @@ func echoHi() *exec.Cmd {
 	return exec.Command("echo", "hi")
 }
 
+// killProcess 结束熔断测试留下的进程。
 func killProcess(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()
 	if cmd != nil && cmd.Process != nil {

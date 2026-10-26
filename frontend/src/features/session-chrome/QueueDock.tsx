@@ -1,13 +1,11 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized from deepseek-harness packages/client/ui-conversation QueueDock.
- * Wired to Yoyo's in-memory next-turn queue (not Cordis inbox).
+ * 拥有：下一轮内存队列的停靠条。接到的是内存里的下一轮队列，不是 Cordis 收件箱。
+ * 不拥有：入队。取消和排序交给外面，不调用 api。
  */
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import type { Copy } from "../../lib/copy";
 
+/** QueueDock 列出排队的下一轮，取消和排序交给外面。 */
 export function QueueDock(props: {
   items: { id?: string; text?: string; plan?: boolean }[];
   onCancel?: (id: string) => void;

@@ -1,3 +1,5 @@
+// 下载安装包到目录，支持断点续传和 SHA-256。
+
 package update
 
 import (
@@ -14,10 +16,13 @@ import (
 	"time"
 )
 
+// MaxPackageBytes 是安装包字节上限，512<<20，即 512 MiB。
 const MaxPackageBytes = 512 << 20
 
+// ProgressFunc 在下载过程中收到已完成字节和总字节。
 type ProgressFunc func(done, total int64)
 
+// Download 把资源下载到 destDir。文件名取 Filename，空则取 URL 的基名，仍空则用 yoyo-update.bin。resolve 地址失败时再试数据集 API。都失败且没有更早错误时返回 "update: download failed"。空 URL 返回 "update: empty asset url"。
 func Download(ctx context.Context, asset Asset, destDir string, progress ProgressFunc) (string, error) {
 	if asset.URL == "" {
 		return "", fmt.Errorf("update: empty asset url")
@@ -48,6 +53,7 @@ func Download(ctx context.Context, asset Asset, destDir string, progress Progres
 	return "", last
 }
 
+// candidateURLs 先放原地址。能从 resolve 路径推出 API 地址且与原地址不同时再追加。
 func candidateURLs(raw string) []string {
 	out := []string{raw}
 	if fallback := APIFileURLFromResolve(raw); fallback != "" && fallback != raw {
@@ -56,13 +62,14 @@ func candidateURLs(raw string) []string {
 	return out
 }
 
+// APIFileURLFromResolve 把 .../datasets/<repo>/resolve/<rev>/<file> 换成同主机的 /api/v1/datasets/<repo>/repo。没有 /resolve/ 时返回空串。
 func APIFileURLFromResolve(raw string) string {
 	const marker = "/resolve/"
 	i := strings.Index(raw, marker)
 	if i < 0 {
 		return ""
 	}
-	// .../datasets/{repo}/resolve/{rev}/{file}
+	// 路径形如 .../datasets/{repo}/resolve/{rev}/{file}。
 	head := raw[:i]
 	rest := raw[i+len(marker):]
 	rev, file, ok := strings.Cut(rest, "/")
@@ -83,6 +90,7 @@ func APIFileURLFromResolve(raw string) string {
 	return strings.TrimRight(head, "/") + "/api/v1/datasets/" + repo + "/repo?" + q.Encode()
 }
 
+// downloadURL 把响应写到 dest 加 .tmp，已有临时文件时带 Range 续传。ctx 为 nil 时限时 25 分钟。超过 MaxPackageBytes 返回 "update: package larger than ... bytes"。wantSHA 非空且摘要不符返回 "update: sha256 mismatch"。成功后把临时文件改名为 dest。
 func downloadURL(ctx context.Context, rawURL, dest, wantSHA string, expect int64, progress ProgressFunc) error {
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -185,6 +193,7 @@ func downloadURL(ctx context.Context, rawURL, dest, wantSHA string, expect int64
 	return nil
 }
 
+// finishDownload 把已经下完的临时文件核对 SHA-256 后改名为 dest。超过 MaxPackageBytes 时删掉临时文件并返回错误。
 func finishDownload(tmp, dest, wantSHA string) error {
 	f, err := os.Open(tmp)
 	if err != nil {
@@ -224,6 +233,7 @@ type progressReader struct {
 	on    ProgressFunc
 }
 
+// Read 读入字节，累加已完成数量，并调用进度回调。
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.n += int64(n)

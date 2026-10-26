@@ -1,3 +1,5 @@
+// 行为：测试技能 Markdown 和 ZIP 安装，以及插件开关在重开引擎后仍保持。
+
 package video
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestInstallSkillKeepsMarkdownBody 检查 Markdown 安装保留正文，空文件会被拒绝。
 func TestInstallSkillKeepsMarkdownBody(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
@@ -55,6 +58,7 @@ func TestInstallSkillKeepsMarkdownBody(t *testing.T) {
 	}
 }
 
+// TestInstallSkillZipReadsEntry 检查 ZIP 里的 SKILL.md 能装上，并且搜索和分类计数符合预期。
 func TestInstallSkillZipReadsEntry(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
@@ -114,6 +118,7 @@ func TestInstallSkillZipReadsEntry(t *testing.T) {
 	}
 }
 
+// TestPluginActivationPersists 检查插件开关会写下来，重开引擎后仍然保持。
 func TestPluginActivationPersists(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})

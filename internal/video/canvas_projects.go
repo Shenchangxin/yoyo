@@ -1,3 +1,5 @@
+// 行为：短剧项目、章节单元、素材和文件夹的读写，以及本机会话和对象存储设置。
+
 package video
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/connection"
 )
 
+// dramaProjectRecord 复制短剧项目字段并去掉 units。没有状态时标成 active。
 func dramaProjectRecord(p map[string]any) map[string]any {
 	out := map[string]any{}
 	for k, v := range p {
@@ -26,6 +29,7 @@ func dramaProjectRecord(p map[string]any) map[string]any {
 	return out
 }
 
+// dramaProjectSummaries 把短剧项目收成列表摘要，计数字段先置 0。
 func dramaProjectSummaries(list []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(list))
 	for _, p := range list {
@@ -40,6 +44,7 @@ func dramaProjectSummaries(list []map[string]any) []map[string]any {
 	return out
 }
 
+// unitToMap 把单元记录和额外 JSON 收成前端用的 map。
 func unitToMap(u canvasUnitRec) map[string]any {
 	item := map[string]any{
 		"id": u.ID, "projectId": u.ProjectID, "kind": u.Kind, "title": u.Title,
@@ -55,6 +60,7 @@ func unitToMap(u canvasUnitRec) map[string]any {
 	return item
 }
 
+// listDramaProjects 列出未删除的短剧项目，按更新时间倒序。
 func (e *Engine) listDramaProjects() []map[string]any {
 	var recs []canvasUnitRec
 	for _, u := range loadCol[canvasUnitRec](e, colUnits) {
@@ -78,6 +84,7 @@ func (e *Engine) listDramaProjects() []map[string]any {
 	return out
 }
 
+// upsertDramaProject 创建或更新一条短剧项目记录。
 func (e *Engine) upsertDramaProject(in map[string]any) map[string]any {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -105,6 +112,7 @@ func (e *Engine) upsertDramaProject(in map[string]any) map[string]any {
 	return in
 }
 
+// getDramaProject 读取短剧项目，并附上它的单元。
 func (e *Engine) getDramaProject(id string) (map[string]any, error) {
 	u, err := getDoc[canvasUnitRec](e, colUnits, id)
 	if err != nil || u.Kind != "project" || u.DeletedAt != "" {
@@ -120,6 +128,7 @@ func (e *Engine) getDramaProject(id string) (map[string]any, error) {
 	return item, nil
 }
 
+// deleteDramaProject 把项目及其单元标成已删除。
 func (e *Engine) deleteDramaProject(id string) error {
 	now := Now()
 	for _, u := range loadCol[canvasUnitRec](e, colUnits) {
@@ -131,6 +140,7 @@ func (e *Engine) deleteDramaProject(id string) error {
 	return nil
 }
 
+// listProjectUnits 列出项目下未删除的非项目单元，按排序和创建时间排列。
 func (e *Engine) listProjectUnits(projectID string) []map[string]any {
 	var recs []canvasUnitRec
 	for _, u := range loadCol[canvasUnitRec](e, colUnits) {
@@ -153,6 +163,7 @@ func (e *Engine) listProjectUnits(projectID string) []map[string]any {
 	return out
 }
 
+// upsertProjectUnit 创建或更新项目下的一个单元。
 func (e *Engine) upsertProjectUnit(projectID string, in map[string]any) map[string]any {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -182,6 +193,7 @@ func (e *Engine) upsertProjectUnit(projectID string, in map[string]any) map[stri
 	return in
 }
 
+// deleteProjectUnit 把单元标成已删除。
 func (e *Engine) deleteProjectUnit(id string) error {
 	rec, err := getDoc[canvasUnitRec](e, colUnits, id)
 	if err != nil {
@@ -191,6 +203,7 @@ func (e *Engine) deleteProjectUnit(id string) error {
 	return e.putDoc(colUnits, id, rec)
 }
 
+// matchAsset 按种类、分类、文件夹、状态和搜索词判断素材是否入选。
 func matchAsset(a canvasAssetRec, kind, category, folderID, status, q string, uncategorized bool, excludeKind string) bool {
 	if a.DeletedAt != "" {
 		return false
@@ -233,6 +246,7 @@ func matchAsset(a canvasAssetRec, kind, category, folderID, status, q string, un
 	return true
 }
 
+// assetToMap 把素材记录和额外 JSON 收成前端用的 map。
 func assetToMap(a canvasAssetRec) map[string]any {
 	item := map[string]any{}
 	var extra map[string]any
@@ -252,6 +266,7 @@ func assetToMap(a canvasAssetRec) map[string]any {
 	return item
 }
 
+// listAssetsPage 分页列出匹配的素材，并附上种类、分类和文件夹计数。
 func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page, pageSize int, uncategorized bool, excludeKind string) map[string]any {
 	if page < 1 {
 		page = 1
@@ -286,6 +301,7 @@ func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page
 	}
 }
 
+// scanAssetFacets 在当前筛选下统计种类、分类和文件夹数量。
 func (e *Engine) scanAssetFacets(kind, status, q, excludeKind string) (map[string]int, map[string]int, map[string]int) {
 	kinds := map[string]int{}
 	cats := map[string]int{}
@@ -305,6 +321,7 @@ func (e *Engine) scanAssetFacets(kind, status, q, excludeKind string) (map[strin
 	return kinds, cats, folders
 }
 
+// upsertAsset 创建或更新一条素材。
 func (e *Engine) upsertAsset(in map[string]any) map[string]any {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -331,6 +348,7 @@ func (e *Engine) upsertAsset(in map[string]any) map[string]any {
 	return in
 }
 
+// getAsset 读取未删除的素材。
 func (e *Engine) getAsset(id string) (map[string]any, error) {
 	a, err := getDoc[canvasAssetRec](e, colAssets, id)
 	if err != nil || a.DeletedAt != "" {
@@ -339,6 +357,7 @@ func (e *Engine) getAsset(id string) (map[string]any, error) {
 	return assetToMap(a), nil
 }
 
+// deleteAsset 把素材标成已删除。
 func (e *Engine) deleteAsset(id string) error {
 	a, err := getDoc[canvasAssetRec](e, colAssets, id)
 	if err != nil {
@@ -348,6 +367,7 @@ func (e *Engine) deleteAsset(id string) error {
 	return e.putDoc(colAssets, id, a)
 }
 
+// listAssetFolders 列出未删除的素材文件夹，按位置排序。
 func (e *Engine) listAssetFolders() []map[string]any {
 	var recs []canvasFolderRec
 	for _, f := range loadCol[canvasFolderRec](e, colFolders) {
@@ -363,6 +383,7 @@ func (e *Engine) listAssetFolders() []map[string]any {
 	return out
 }
 
+// upsertAssetFolder 创建或改名一个素材文件夹。
 func (e *Engine) upsertAssetFolder(id, name string) map[string]any {
 	if id == "" {
 		id = NewID()
@@ -382,6 +403,7 @@ func (e *Engine) upsertAssetFolder(id, name string) map[string]any {
 	return map[string]any{"id": id, "name": name, "position": rec.Position, "createdAt": rec.CreatedAt, "updatedAt": now}
 }
 
+// deleteAssetFolder 把文件夹标成已删除。
 func (e *Engine) deleteAssetFolder(id string) error {
 	f, err := getDoc[canvasFolderRec](e, colFolders, id)
 	if err != nil {
@@ -391,6 +413,7 @@ func (e *Engine) deleteAssetFolder(id string) error {
 	return e.putDoc(colFolders, id, f)
 }
 
+// moveAssetsFolder 把多条素材改到同一个文件夹。
 func (e *Engine) moveAssetsFolder(ids []any, folderID string) {
 	now := Now()
 	for _, id := range ids {
@@ -402,6 +425,7 @@ func (e *Engine) moveAssetsFolder(ids []any, folderID string) {
 	}
 }
 
+// setAssetFolder 同时改素材记录和额外 JSON 里的文件夹。
 func (e *Engine) setAssetFolder(a canvasAssetRec, folderID, now string) error {
 	a.FolderID = folderID
 	a.UpdatedAt = now
@@ -422,6 +446,7 @@ func (e *Engine) setAssetFolder(a canvasAssetRec, folderID, now string) error {
 	return e.putDoc(colAssets, a.ID, a)
 }
 
+// localUser 返回本机固定用户 yoyo。
 func (e *Engine) localUser() map[string]any {
 	now := Now()
 	return map[string]any{
@@ -430,6 +455,7 @@ func (e *Engine) localUser() map[string]any {
 	}
 }
 
+// authSession 返回本机登录会话、运行限制和功能开关。
 func (e *Engine) authSession() map[string]any {
 	return map[string]any{
 		"user":          e.localUser(),
@@ -443,6 +469,7 @@ func (e *Engine) authSession() map[string]any {
 	}
 }
 
+// disabledOSS 有活动的 S3 连接时返回其公开设置，否则返回未启用的本地 CAS。
 func (e *Engine) disabledOSS() map[string]any {
 	if e.Conn != nil {
 		if c, err := e.Conn.Active("storage", ""); err == nil && c.Protocol == "s3" {
@@ -469,6 +496,7 @@ func (e *Engine) disabledOSS() map[string]any {
 	}
 }
 
+// applyOSS 把对象存储设置写成连接。未启用或选 CAS 时切回本地默认。
 func (e *Engine) applyOSS(in map[string]any) map[string]any {
 	if e.Conn == nil {
 		return e.disabledOSS()
@@ -509,6 +537,7 @@ func (e *Engine) applyOSS(in map[string]any) map[string]any {
 	return e.disabledOSS()
 }
 
+// testOSS 探测当前活动的存储连接是否可达。
 func (e *Engine) testOSS() map[string]any {
 	if e.Conn == nil {
 		return map[string]any{"ok": false, "message": "no connections"}

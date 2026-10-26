@@ -1,8 +1,11 @@
+// 本文件拥有页面顶栏的左右槽、标题和窗口按钮。不拥有标题的文案，也不实现最小化。App 传入 left、title、right 和 macPad。
+
 import type { ReactNode } from "react";
 import { browserSurface, chrome } from "../../lib/chrome";
 import { cn } from "../../lib/utils";
 import { WindowControls } from "./WindowControls";
 
+// PageHeader 高 12。macPad 为真时左侧留出 76px。双击时，若不是浏览器面，调用 chrome.toggleMaximise。右侧始终挂 WindowControls。
 export function PageHeader(props: {
   left?: ReactNode;
   title?: ReactNode;

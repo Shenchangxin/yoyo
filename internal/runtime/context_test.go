@@ -1,3 +1,5 @@
+// 锁住 Shape 不改原文、spill 能按 id 读回、工作区规则能拼进提示，以及 gitignore 和补丁的基本行为。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestShapeDoesNotMutateAndStubs 确认 Compact 不改调用方的工具正文，投影里出现占位。
 func TestShapeDoesNotMutateAndStubs(t *testing.T) {
 	loop := DefaultLoop()
 	loop.CompactionTokens = 200
@@ -35,6 +38,7 @@ func TestShapeDoesNotMutateAndStubs(t *testing.T) {
 	}
 }
 
+// TestSpillRecall 确认 Put 的全文能 Get 回来，recall_context 的默认页里也有这段短正文。
 func TestSpillRecall(t *testing.T) {
 	dir := t.TempDir()
 	sp := NewSpill(filepath.Join(dir, "spill"))
@@ -50,6 +54,7 @@ func TestSpillRecall(t *testing.T) {
 	}
 }
 
+// TestWorkspaceRulesAssemble 确认拼好的提示里同时有规则来源和规则正文。
 func TestWorkspaceRulesAssemble(t *testing.T) {
 	s := Assemble(DefaultLoop(), nil, artifact.Playbook{}, nil, "always use tabs", "YOYO.md", nil)
 	if !strings.Contains(s, "YOYO.md") || !strings.Contains(s, "always use tabs") {
@@ -57,6 +62,7 @@ func TestWorkspaceRulesAssemble(t *testing.T) {
 	}
 }
 
+// TestLoadWorkspaceRules 确认根上的 YOYO.md 作为第一份命中返回。
 func TestLoadWorkspaceRules(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "YOYO.md"), []byte("prefer grep over shell"), 0o644); err != nil {
@@ -68,6 +74,7 @@ func TestLoadWorkspaceRules(t *testing.T) {
 	}
 }
 
+// TestGitignoreGlob 确认被 .gitignore 点名的文件不出现在 glob 结果里，未被忽略的文件还在。
 func TestGitignoreGlob(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("secret.txt\n"), 0o644); err != nil {
@@ -92,6 +99,7 @@ func TestGitignoreGlob(t *testing.T) {
 	}
 }
 
+// TestApplyPatchAddAndUpdate 确认补丁能新增文件，再更新时记下一行增一行删。
 func TestApplyPatchAddAndUpdate(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -118,6 +126,7 @@ func TestApplyPatchAddAndUpdate(t *testing.T) {
 	}
 }
 
+// jsonQuote 给测试里的补丁文本加 JSON 字符串引号。
 func jsonQuote(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)

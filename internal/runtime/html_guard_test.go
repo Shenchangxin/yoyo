@@ -1,3 +1,5 @@
+// HTML 追加若会把文字留在 </html> 之后则拒绝。覆盖只警告。封存的 game-world 可玩文件拒绝改写。
+
 package runtime
 
 import (
@@ -7,12 +9,14 @@ import (
 	"testing"
 )
 
+// mustWrite 按给定模式写入并返回工具结果，失败则终止测试。
 func mustWrite(t *testing.T, tools *WorkspaceTools, rel, mode, content string) ToolResult {
 	t.Helper()
 	raw := `{"path":"` + rel + `","mode":"` + mode + `","content":` + jsonString(content) + `}`
 	return tools.Call("write_file", raw)
 }
 
+// jsonString 把字符串编成 JSON 字面量。
 func jsonString(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
@@ -32,6 +36,7 @@ func jsonString(s string) string {
 	return b.String()
 }
 
+// readWorkspaceFile 读工作区里的文件，失败则终止测试。
 func readWorkspaceFile(t *testing.T, dir, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(dir, rel))
@@ -41,9 +46,7 @@ func readWorkspaceFile(t *testing.T, dir, rel string) string {
 	return string(b)
 }
 
-// The failure this guards: part one closes the page, part two begins with
-// </script></body></html> and then carries the rest of the script. Browsers
-// render that rest as text after the document, and nothing reported it.
+// TestAppendRefusesPartThatClosesPageEarly 确认第一段提前闭合、第二段以 </script></body></html> 开头再带脚本时被拒绝，避免浏览器把后文渲染到文档外。
 func TestAppendRefusesPartThatClosesPageEarly(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -61,6 +64,7 @@ func TestAppendRefusesPartThatClosesPageEarly(t *testing.T) {
 	}
 }
 
+// TestAppendRefusesAfterClosedDocument 确认文档已经闭合后再追加会被拒绝。
 func TestAppendRefusesAfterClosedDocument(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -73,6 +77,7 @@ func TestAppendRefusesAfterClosedDocument(t *testing.T) {
 	}
 }
 
+// TestAppendAllowsPartsThatKeepDocumentOpen 确认追加后文档仍开着时允许写入。
 func TestAppendAllowsPartsThatKeepDocumentOpen(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -87,6 +92,7 @@ func TestAppendAllowsPartsThatKeepDocumentOpen(t *testing.T) {
 	}
 }
 
+// TestAppendRefusesPartContainingEarlyClose 确认本段自己提前闭合，使后续文字落在 </html> 之后时被拒绝。
 func TestAppendRefusesPartContainingEarlyClose(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -99,6 +105,7 @@ func TestAppendRefusesPartContainingEarlyClose(t *testing.T) {
 	}
 }
 
+// TestAppendCaseInsensitiveClose 确认大写的 </HTML> 同样挡住追加。
 func TestAppendCaseInsensitiveClose(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -110,6 +117,7 @@ func TestAppendCaseInsensitiveClose(t *testing.T) {
 	}
 }
 
+// TestAppendIgnoresNonHTMLFiles 确认非 html 文件不受闭合检查。
 func TestAppendIgnoresNonHTMLFiles(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -121,6 +129,7 @@ func TestAppendIgnoresNonHTMLFiles(t *testing.T) {
 	}
 }
 
+// TestOverwriteWarnsWhenTextFollowsClose 确认覆盖后 </html> 之后仍有文字时返回警告。
 func TestOverwriteWarnsWhenTextFollowsClose(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -133,6 +142,7 @@ func TestOverwriteWarnsWhenTextFollowsClose(t *testing.T) {
 	}
 }
 
+// TestOverwriteCleanDocumentHasNoWarning 确认干净闭合的覆盖没有警告。
 func TestOverwriteCleanDocumentHasNoWarning(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}

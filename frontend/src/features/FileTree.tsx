@@ -1,11 +1,15 @@
+// 本文件拥有把文件路径收成树、从差异里读增删改，以及这棵树的展开。不拥有文件列表怎么来。调用方传入 nodes 和 onSelect。
+
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
 import { cn } from "../lib/utils";
 import { readLocalMap, writeLocalMap } from "../lib/local-map";
 import type { FileHit } from "../lib/protocol";
 
+// FileMark 是差异标记：M 修改，A 新增，D 删除。
 export type FileMark = "M" | "A" | "D";
 
+// TreeNode 是一层目录或文件。目录的 children 装着下一层。
 export type TreeNode = {
   name: string;
   path: string;
@@ -13,9 +17,11 @@ export type TreeNode = {
   children: TreeNode[];
 };
 
+// nestHits 按路径排序后去重。目录进目录表，文件挂到父目录；没有斜杠的放在根上。同层目录排在文件前。
 export function nestHits(hits: FileHit[]): TreeNode[] {
   const dirs = new Map<string, TreeNode>();
   const root: TreeNode[] = [];
+  // 目录已在表里就返回它。否则挂到父目录，路径里没有斜杠就放进根。
   const ensureDir = (path: string): TreeNode => {
     const existing = dirs.get(path);
     if (existing) return existing;
@@ -43,6 +49,7 @@ export function nestHits(hits: FileHit[]): TreeNode[] {
     if (i < 0) root.push(node);
     else ensureDir(p.slice(0, i)).children.push(node);
   }
+  // 同层先目录后文件，名字按 localeCompare，并递归子层。
   const sortNodes = (nodes: TreeNode[]) => {
     nodes.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "dir" ? -1 : 1));
     nodes.forEach((n) => sortNodes(n.children));
@@ -51,8 +58,10 @@ export function nestHits(hits: FileHit[]): TreeNode[] {
   return root;
 }
 
+// fileMarks 空路径和 dev/null 不计。已经是 A 或 D 的不再改。new file mode 记 A，deleted file mode 记 D，diff --git 记 M。+++ b/ 才写入路径，随后 pending 回到 M。files 里还没出现的记成 M。
 export function fileMarks(diff: string, files: string[]): Record<string, FileMark> {
   const out: Record<string, FileMark> = {};
+  // 空路径和 dev/null 跳过。已经记成 A 或 D 的不再改。
   const set = (p: string, m: FileMark) => {
     const n = normPath(p);
     if (!n || n === "dev/null") return;
@@ -77,6 +86,7 @@ export function fileMarks(diff: string, files: string[]): Record<string, FileMar
   return out;
 }
 
+// ancestorPaths 返回每一层父路径，不含自己。
 export function ancestorPaths(path: string): string[] {
   const parts = normPath(path).split("/").filter(Boolean);
   const out: string[] = [];
@@ -84,6 +94,7 @@ export function ancestorPaths(path: string): string[] {
   return out;
 }
 
+// FileTree 没有节点时不渲染。持久化键是 yoyo-file-tree: 加 persistKey。还没有存过时，顶层目录默认展开。expandPaths 里的路径强制展开。
 export function FileTree(props: {
   nodes: TreeNode[];
   selected?: string;
@@ -134,6 +145,7 @@ export function FileTree(props: {
   );
 }
 
+// 点目录只切换展开，点文件才 onSelect。左内边距是 8 加深度乘 12。自己没标记但子孙有标记时只画一个点。
 function TreeRow(props: {
   node: TreeNode;
   depth: number;
@@ -191,11 +203,13 @@ function TreeRow(props: {
   );
 }
 
+// 自己或任一子孙带标记就返回真。
 function childMark(n: TreeNode, marks: Record<string, FileMark>): boolean {
   if (marks[n.path]) return true;
   return n.children.some((c) => childMark(c, marks));
 }
 
+// A 用绿色，D 用红色，M 用琥珀色，没有标记返回空字符串。
 function markClass(mark?: FileMark): string {
   if (mark === "A") return "text-emerald-500";
   if (mark === "D") return "text-red-400";
@@ -203,12 +217,14 @@ function markClass(mark?: FileMark): string {
   return "";
 }
 
+// A 读成 added，D 读成 deleted，其余读成 modified。
 function markLabel(mark: FileMark): string {
   if (mark === "A") return "added";
   if (mark === "D") return "deleted";
   return "modified";
 }
 
+// normPath 把反斜杠换成斜杠，并去掉开头的 ./。
 export function normPath(p: string): string {
   return (p || "").replace(/\\/g, "/").replace(/^\.\//, "");
 }

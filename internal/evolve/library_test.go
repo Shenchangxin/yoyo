@@ -1,3 +1,5 @@
+// 锁住经验三字段缺一不落盘、领域目录互相隔离、held 编号和评分词不入库，以及只有 confounded 时不可迁移。
+
 package evolve
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestHasExperienceRequiresThreeFields 要求缺 Evidence 时为假，三字段都在时为真。
 func TestHasExperienceRequiresThreeFields(t *testing.T) {
 	if HasExperience(Experience{Cue: "c", Lesson: "l"}) {
 		t.Fatal("missing evidence")
@@ -16,6 +19,7 @@ func TestHasExperienceRequiresThreeFields(t *testing.T) {
 	}
 }
 
+// TestDomainSlugIsolatesPaths 要求只取最后一段，路径穿越变成不含点点的名字，空路径为 libraryUnknown。
 func TestDomainSlugIsolatesPaths(t *testing.T) {
 	if DomainSlug(filepath.Join("tmp", "alpha")) != "alpha" {
 		t.Fatalf("%s", DomainSlug(filepath.Join("tmp", "alpha")))
@@ -31,6 +35,7 @@ func TestDomainSlugIsolatesPaths(t *testing.T) {
 	}
 }
 
+// TestLibraryNOENTRYDoesNotWrite 要求缺 Evidence 时 Add 返回假且不建 INDEX.md。
 func TestLibraryNOENTRYDoesNotWrite(t *testing.T) {
 	root := t.TempDir()
 	lib := &Library{Root: root, Domain: "alpha"}
@@ -43,6 +48,7 @@ func TestLibraryNOENTRYDoesNotWrite(t *testing.T) {
 	}
 }
 
+// TestLibraryAddAndDomainIsolation 要求 alpha 能读到自己的索引，beta 的 Context 为空且没有 INDEX.md。
 func TestLibraryAddAndDomainIsolation(t *testing.T) {
 	root := t.TempDir()
 	a := &Library{Root: root, Domain: "alpha"}
@@ -66,6 +72,7 @@ func TestLibraryAddAndDomainIsolation(t *testing.T) {
 	}
 }
 
+// TestLibraryHeldOutIsNOENTRY 要求经验正文含 held 编号时 Add 返回假。
 func TestLibraryHeldOutIsNOENTRY(t *testing.T) {
 	root := t.TempDir()
 	lib := &Library{Root: root, Domain: "alpha"}
@@ -79,6 +86,7 @@ func TestLibraryHeldOutIsNOENTRY(t *testing.T) {
 	}
 }
 
+// TestLibraryViewListsCue 要求 View 列出该领域的一条，且 Cue 非空。
 func TestLibraryViewListsCue(t *testing.T) {
 	root := t.TempDir()
 	lib := &Library{Root: root, Domain: "alpha"}
@@ -95,6 +103,7 @@ func TestLibraryViewListsCue(t *testing.T) {
 	}
 }
 
+// TestExperienceConfoundedIsNotTransferable 要求只有 confounded 时不可迁移，有 helped 时可以。
 func TestExperienceConfoundedIsNotTransferable(t *testing.T) {
 	exp := Experience{
 		Cue: "c", Lesson: "l", Evidence: "e",
@@ -109,6 +118,7 @@ func TestExperienceConfoundedIsNotTransferable(t *testing.T) {
 	}
 }
 
+// TestLibraryGraderTokenIsNOENTRY 要求正文含评分禁用词时 Add 返回假。
 func TestLibraryGraderTokenIsNOENTRY(t *testing.T) {
 	root := t.TempDir()
 	lib := &Library{Root: root, Domain: "alpha"}

@@ -1,8 +1,11 @@
+// 本文件拥有关于对话框里的版本、模型和隔离状态。不拥有这些字段怎么来。调用方传入 info 和 onClose。
+
 import { useCopy } from "../lib/i18n";
 import { Button } from "../components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import { MarkWell } from "./shell/YoyoMark";
 
+// About 在打开变为假时调用 onClose。空值显示破折号。隔离取 info.isolated。工作区取 workspace_ready，没有再取 workspaceReady。
 export function About(props: {
   open: boolean;
   info: Record<string, any>;

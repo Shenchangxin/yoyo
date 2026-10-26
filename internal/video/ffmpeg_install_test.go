@@ -1,3 +1,5 @@
+// ffmpeg_install_test.go 锁住压缩包文件名、解压时跳过逃出目录的条目，以及从本地服务器安装后的落盘。不访问真实的 ModelScope。
+
 package video
 
 import (
@@ -15,6 +17,7 @@ import (
 	"testing"
 )
 
+// TestFFmpegArchiveName 确认列出的系统和架构对应压缩包名，plan9 和 386 会失败。
 func TestFFmpegArchiveName(t *testing.T) {
 	cases := []struct {
 		goos, goarch, want string
@@ -40,6 +43,7 @@ func TestFFmpegArchiveName(t *testing.T) {
 	}
 }
 
+// TestPickFFmpegArchive 确认能按系统和架构从文件列表里挑出压缩包，列表为空时仍返回该平台的文件名。
 func TestPickFFmpegArchive(t *testing.T) {
 	files := []string{
 		"README.md",
@@ -64,6 +68,7 @@ func TestPickFFmpegArchive(t *testing.T) {
 	}
 }
 
+// TestExtractFFmpegZipNestedAndDLL 确认嵌套目录里的 ffmpeg.exe、ffprobe.exe 和 avcodec.dll 被解出，说明文件和逃出目录的条目不落盘，并且同一目录可以再解一次。
 func TestExtractFFmpegZipNestedAndDLL(t *testing.T) {
 	raw := makeFFmpegZip(t, map[string][]byte{
 		"ffmpeg-7.1/bin/ffmpeg.exe":  []byte("ffmpeg-bin"),
@@ -101,6 +106,7 @@ func TestExtractFFmpegZipNestedAndDLL(t *testing.T) {
 	}
 }
 
+// TestExtractFFmpegZipBackslashNames 确认反斜杠路径仍能解出 ffmpeg.exe 和 ffprobe.exe。
 func TestExtractFFmpegZipBackslashNames(t *testing.T) {
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)
@@ -138,6 +144,7 @@ func TestExtractFFmpegZipBackslashNames(t *testing.T) {
 	}
 }
 
+// TestFFmpegInstallSnapshotClearsStaleError 确认已经填了 FFMPEG 路径时，快照阶段为 ready，且先前的错误被清空。
 func TestFFmpegInstallSnapshotClearsStaleError(t *testing.T) {
 	e := testEngine(t)
 	e.FFMPEG = filepath.Join(e.Dir, "bin", "ffmpeg.exe")
@@ -149,6 +156,7 @@ func TestFFmpegInstallSnapshotClearsStaleError(t *testing.T) {
 	}
 }
 
+// TestParseFFmpegRepoTree 确认只保留 blob 文件，路径和 Sha256 与输入一致。
 func TestParseFFmpegRepoTree(t *testing.T) {
 	raw := []byte(`{"Code":200,"Data":{"Files":[
 		{"Name":"ffmpeg-windows-x86_64.zip","Path":"ffmpeg-windows-x86_64.zip","Type":"blob","Size":123,"Sha256":"abc","IsLFS":true},
@@ -160,6 +168,7 @@ func TestParseFFmpegRepoTree(t *testing.T) {
 	}
 }
 
+// TestInstallFFmpegBundleFromModelScopeShape 确认安装后 bin 里有 ffmpeg 和 ffprobe，快照中的 archive 是 linux 的 x86_64 压缩包。
 func TestInstallFFmpegBundleFromModelScopeShape(t *testing.T) {
 	payload := makeFFmpegZip(t, map[string][]byte{
 		"bin/ffmpeg":  []byte("ffmpeg-bin"),
@@ -209,6 +218,7 @@ func TestInstallFFmpegBundleFromModelScopeShape(t *testing.T) {
 	}
 }
 
+// makeFFmpegZip 把名字到内容的映射打成 zip 字节。
 func makeFFmpegZip(t *testing.T, files map[string][]byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer

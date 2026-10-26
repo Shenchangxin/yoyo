@@ -1,3 +1,4 @@
+/** 拥有指针相对宠物的视线，以及闲置脸上的切换。不拥有情绪球本体，也不另开模型循环。本地计算，不改服务端。 */
 import { useLayoutEffect, useRef } from "react";
 import type { MoodMate } from "./types";
 
@@ -6,13 +7,13 @@ const AMBIENT = new Set([
   "10", "11", "12", "14", "15", "18", "19", "20",
   "22", "23", "24", "25", "29", "48",
 ]);
-/** Pointer speed in CSS pixels per millisecond that reads as a dart. */
+/** 指针快到这个程度时，算一次猛地看过来。 */
 const DART_SPEED = 1.85;
 const GAZE_EPS = 0.004;
 const FAR_GAZE = 0.28;
 const SHY_MS = 1800;
 
-/** Blend far-desk glance into on-pet look so crossing the blob does not snap. */
+/** gazeGain 把远处一瞥收成看向宠物，穿过身体时不突然跳变。 */
 export function gazeGain(dist: number, size: number): number {
   const inner = Math.max(size * 0.2, 16);
   const outer = Math.max(size * 1.05, 72);
@@ -22,6 +23,7 @@ export function gazeGain(dist: number, size: number): number {
   return FAR_GAZE + (1 - FAR_GAZE) * s;
 }
 
+/** gazeFromPoint 把指针相对盒子的位置收成视线。 */
 export function gazeFromPoint(rect: { left: number; top: number; width: number; height: number }, x: number, y: number): { nx: number; ny: number } {
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
@@ -37,6 +39,7 @@ export function gazeFromPoint(rect: { left: number; top: number; width: number; 
   };
 }
 
+/** gazeFromScreen 用窗口在屏幕上的原点，再走同一套视线。 */
 export function gazeFromScreen(
   rect: { left: number; top: number; width: number; height: number },
   screenX: number,
@@ -56,20 +59,24 @@ export function gazeFromScreen(
   );
 }
 
+/** isIdleEmotion 判断这个表情是不是闲置组。 */
 export function isIdleEmotion(id: string): boolean {
   return AMBIENT.has(id);
 }
 
+/** curiousId 把闲置脸换成好奇，干活的脸不动。 */
 export function curiousId(id: string): string {
   return isIdleEmotion(id) ? "03" : id;
 }
 
+/** dartId 只在闲置脸碰上很快的指针时换成受惊。 */
 export function dartId(id: string, speed: number): string {
   if (!isIdleEmotion(id) || speed < DART_SPEED) return id;
   if (id === "00" || id === "06") return "07";
   return "13";
 }
 
+/** lingerId 在闲置脸上停留久了就换成害羞。 */
 export function lingerId(id: string, lingering: boolean, heldMs = SHY_MS): string {
   if (!lingering || !isIdleEmotion(id)) return curiousId(id);
   if (heldMs >= 4600) return "22";
@@ -77,6 +84,7 @@ export function lingerId(id: string, lingering: boolean, heldMs = SHY_MS): strin
   return "14";
 }
 
+/** usePresencePointer 跟着指针改视线和脸。 */
 export function usePresencePointer(opts: {
   mateRef: { current: MoodMate | null };
   hostRef: { current: HTMLElement | null };
@@ -101,6 +109,7 @@ export function usePresencePointer(opts: {
   const onAct = useRef(opts.onActivity);
   onAct.current = opts.onActivity;
 
+  /** 按悬停、速度和停留换表情。 */
   const face = (hovering: boolean, speed = 0, lingering = false, heldMs = 0) => {
     const mate = opts.mateRef.current;
     if (!mate || opts.reduced || opts.glyph) return;
@@ -131,11 +140,13 @@ export function usePresencePointer(opts: {
 
   useLayoutEffect(() => {
     if (opts.follow === false || opts.reduced) return;
+    /** 取当前宿主元素。 */
     const host = () => opts.hostRef.current;
     let raf = 0;
     let pending: { x: number; y: number; screen: boolean; ox?: number; oy?: number } | null = null;
     let lastNear = false;
 
+    /** 按指针位置更新视线和脸。 */
     const point = (x: number, y: number, screen: boolean, ox?: number, oy?: number) => {
       const mate = opts.mateRef.current;
       const el = host();
@@ -191,20 +202,24 @@ export function usePresencePointer(opts: {
       }
     };
 
+    /** 把挂起的指针点消化掉。 */
     const flush = () => {
       raf = 0;
       const p = pending;
       pending = null;
       if (p) point(p.x, p.y, p.screen, p.ox, p.oy);
     };
+    /** 把指针点留到下一帧。 */
     const schedule = (x: number, y: number, screen: boolean, ox?: number, oy?: number) => {
       pending = { x, y, screen, ox, oy };
       if (!raf) raf = requestAnimationFrame(flush);
     };
 
+    /** 记下窗口内的指针。 */
     const onMove = (e: PointerEvent) => schedule(e.clientX, e.clientY, false);
     if (!opts.screenFollow) window.addEventListener("pointermove", onMove, { passive: true });
 
+    /** 指针离开就放下视线。 */
     const onLeave = () => {
       opts.mateRef.current?.clearGaze?.();
       lastGaze.current = { nx: 99, ny: 99 };

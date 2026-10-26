@@ -1,3 +1,5 @@
+// 把交易 CSV 汇总成收支。正数当支出，负数当收入，不做汇率换算。
+
 package personal
 
 import (
@@ -10,8 +12,10 @@ import (
 	"time"
 )
 
+// amountPat 匹配可选正负号、整数，以及最多两位小数。
 var amountPat = regexp.MustCompile(`^[-+]?\d+(?:\.\d{1,2})?$`)
 
+// SpendRow 是 CSV 里的一笔交易。
 type SpendRow struct {
 	ID          string  `json:"id"`
 	Date        string  `json:"date"`
@@ -20,6 +24,7 @@ type SpendRow struct {
 	Category    string  `json:"category"`
 }
 
+// SpendReport 是汇总结果。AmountConvention 写明正数是支出、负数是收入。
 type SpendReport struct {
 	Income           float64         `json:"income"`
 	Spending         float64         `json:"spending"`
@@ -31,16 +36,19 @@ type SpendReport struct {
 	AmountConvention string          `json:"amount_convention"`
 }
 
+// SpendCategory 是一个支出类别及其金额。
 type SpendCategory struct {
 	Name   string  `json:"name"`
 	Amount float64 `json:"amount"`
 }
 
+// SpendPeriod 是交易日期的起止，格式为 2006-01-02。
 type SpendPeriod struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
+// analyzeSpending 要求表头含 date、description、amount、category。正文 1 到 5000 行，原文超过 500000 字节则拒绝。正数累加为支出，负数的绝对值累加为收入。
 func analyzeSpending(csv string) (SpendReport, error) {
 	var zero SpendReport
 	if len(csv) > 500000 {
@@ -136,6 +144,7 @@ func analyzeSpending(csv string) (SpendReport, error) {
 	}, nil
 }
 
+// parseCSV 解析逗号分隔和双引号转义。引号未闭合，或引号位置不合法时返回错误。全空白行丢掉。
 func parseCSV(s string) ([][]string, error) {
 	var rows [][]string
 	var row []string

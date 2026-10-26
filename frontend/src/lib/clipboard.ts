@@ -1,4 +1,9 @@
-/** Copy plain text. navigator.clipboard often fails in the Wails webview. */
+/**
+ * 拥有：把纯文本写入剪贴板。Wails 网页视图里 navigator.clipboard 经常失败，这时改用 execCommand。
+ * 不拥有：从剪贴板读取，以及决定复制哪段文字。
+ */
+
+/** writeClipboard 写入纯文本。空文本返回假。剪贴板接口失败时，用隐藏文本域执行 copy。 */
 export async function writeClipboard(text: string): Promise<boolean> {
   const value = text ?? "";
   if (!value) return false;
@@ -8,7 +13,7 @@ export async function writeClipboard(text: string): Promise<boolean> {
       return true;
     }
   } catch {
-    /* execCommand fallback */
+    /* 改用 execCommand */
   }
   try {
     const el = document.createElement("textarea");

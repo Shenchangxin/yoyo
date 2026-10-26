@@ -1,3 +1,5 @@
+// 序号环的连续尾部、空洞、分页和空 Hub。
+
 package app
 
 import (
@@ -6,12 +8,14 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// publishN 连续发布 n 条用户事件。
 func publishN(h *Hub, sid string, n int) {
 	for i := 0; i < n; i++ {
 		h.Publish(trace.Event{SessionID: sid, Type: trace.TypeUser})
 	}
 }
 
+// TestBatchReturnsContiguousTailWithoutGap 确认游标还在环内时按会话返回后续事件，且不标空洞。
 func TestBatchReturnsContiguousTailWithoutGap(t *testing.T) {
 	h := NewHub()
 	publishN(h, "a", 3) // seq 1..3
@@ -31,10 +35,10 @@ func TestBatchReturnsContiguousTailWithoutGap(t *testing.T) {
 	}
 }
 
+// TestBatchFlagsGapWhenRingRolledPastCursor 确认游标落在环已覆盖的序号上时标成空洞，贴着最老序号则不是。
 func TestBatchFlagsGapWhenRingRolledPastCursor(t *testing.T) {
 	h := NewHub()
-	// Ring keeps seq 11..4106. Only seq 4106 belongs to "a", so the boundary
-	// check is not confused with the per-session cap.
+	// 环滚动之后只剩最后一条属于 a，用来把空洞和按会话过滤区分开。
 	publishN(h, "b", liveLogCap+9)
 	publishN(h, "a", 1)
 
@@ -50,6 +54,7 @@ func TestBatchFlagsGapWhenRingRolledPastCursor(t *testing.T) {
 	}
 }
 
+// TestBatchPagesOldestAndSetsMore 确认超出一页时保留最老的一页并标 More，下一拉拿到余下的。
 func TestBatchPagesOldestAndSetsMore(t *testing.T) {
 	h := NewHub()
 	publishN(h, "a", liveSinceCap+5)
@@ -76,15 +81,17 @@ func TestBatchPagesOldestAndSetsMore(t *testing.T) {
 	}
 }
 
+// TestBatchFlagsCursorAheadOfHead 确认游标超过 head 时标成空洞且没有事件。
 func TestBatchFlagsCursorAheadOfHead(t *testing.T) {
 	h := NewHub()
 	publishN(h, "a", 2)
-	// A cursor past the head means the seq space restarted under the caller.
+	// 游标超过 head，表示调用方看到的序号空间已经重新开始。
 	if b := h.Batch(999, "a"); !b.Gap || len(b.Events) != 0 {
 		t.Fatalf("cursor ahead of head: gap=%v n=%d", b.Gap, len(b.Events))
 	}
 }
 
+// TestBatchNilHubIsEmptyAndComplete 确认 nil Hub 返回空页，且不标空洞。
 func TestBatchNilHubIsEmptyAndComplete(t *testing.T) {
 	var h *Hub
 	b := h.Batch(0, "a")
@@ -93,6 +100,7 @@ func TestBatchNilHubIsEmptyAndComplete(t *testing.T) {
 	}
 }
 
+// TestSinceKeepsLegacyShape 确认 Since 只返回序号大于游标的事件。
 func TestSinceKeepsLegacyShape(t *testing.T) {
 	h := NewHub()
 	publishN(h, "a", 3)

@@ -1,3 +1,6 @@
+// 短剧的分集方案。按原文切出草稿、改边界、拆开、合并，确认后才写成集。
+// 不改写剧本，也不生成画面。
+
 package video
 
 import (
@@ -6,6 +9,7 @@ import (
 	"unicode/utf8"
 )
 
+// GetPlan 按剧编号读取分集方案。一部剧只认第一条。没有时返回 plan not found。
 func (e *Engine) GetPlan(dramaID string) (EpisodePlan, error) {
 	for _, p := range loadCol[EpisodePlan](e, colPlans) {
 		if p.DramaID == dramaID {
@@ -15,6 +19,7 @@ func (e *Engine) GetPlan(dramaID string) (EpisodePlan, error) {
 	return EpisodePlan{}, fmt.Errorf("plan not found")
 }
 
+// savePlan 写回方案并刷新更新时间。没有编号或创建时间时补上。
 func (e *Engine) savePlan(p EpisodePlan) (EpisodePlan, error) {
 	p.UpdatedAt = Now()
 	if p.CreatedAt == "" {
@@ -26,6 +31,8 @@ func (e *Engine) savePlan(p EpisodePlan) (EpisodePlan, error) {
 	return p, e.putDoc(colPlans, p.ID, p)
 }
 
+// ProposeEpisodes 按原文重写草稿方案。已经确认的方案拒绝再提案。
+// 没给切分就按章节或窗口自己切。给了切分就吸到邻近的断点上，切完仍不合法就退回自己切。短的并进上一集，超长的再拆开。
 func (e *Engine) ProposeEpisodes(dramaID string, proposed []PlanEpisode) (EpisodePlan, error) {
 	src, err := e.GetSource(dramaID)
 	if err != nil {
@@ -77,6 +84,7 @@ func (e *Engine) ProposeEpisodes(dramaID string, proposed []PlanEpisode) (Episod
 	return e.savePlan(plan)
 }
 
+// PatchPlan 用传入的集界替换草稿。已确认的方案拒绝修改。集界会吸到断点上并重新编号。
 func (e *Engine) PatchPlan(dramaID string, episodes []PlanEpisode) (EpisodePlan, error) {
 	plan, err := e.GetPlan(dramaID)
 	if err != nil {
@@ -98,6 +106,7 @@ func (e *Engine) PatchPlan(dramaID string, episodes []PlanEpisode) (EpisodePlan,
 	return e.savePlan(plan)
 }
 
+// SplitPlanEpisode 把第 n 集从中间拆开，标题加上「上」「下」。中间切不开就保持原样。已确认的方案拒绝拆。
 func (e *Engine) SplitPlanEpisode(dramaID string, n int) (EpisodePlan, error) {
 	plan, err := e.GetPlan(dramaID)
 	if err != nil {
@@ -142,6 +151,7 @@ func (e *Engine) SplitPlanEpisode(dramaID string, n int) (EpisodePlan, error) {
 	return e.savePlan(plan)
 }
 
+// MergePlanEpisodes 把第 n 集和紧跟着的下一集合并。钩子、梗概和角色编号并到前一集。已确认就拒绝。没有紧跟着的下一集时，集界不变，仍写回。
 func (e *Engine) MergePlanEpisodes(dramaID string, n int) (EpisodePlan, error) {
 	plan, err := e.GetPlan(dramaID)
 	if err != nil {
@@ -174,6 +184,8 @@ func (e *Engine) MergePlanEpisodes(dramaID string, n int) (EpisodePlan, error) {
 	return e.savePlan(plan)
 }
 
+// CommitEpisodes 把草稿写成真正的集。已经确认过就原样返回。方案是空的，或这部剧已经有集，就拒绝。
+// 中途创建失败时，这次新建的集会删掉。成功后队列清空。
 func (e *Engine) CommitEpisodes(dramaID string) (EpisodePlan, error) {
 	plan, err := e.GetPlan(dramaID)
 	if err != nil {
@@ -218,6 +230,7 @@ func (e *Engine) CommitEpisodes(dramaID string) (EpisodePlan, error) {
 	return e.savePlan(plan)
 }
 
+// NextScriptEpisode 从队列位置起找第一集还没有剧本的集。方案不存在或还没确认时返回假。
 func (e *Engine) NextScriptEpisode(dramaID string) (Episode, bool) {
 	plan, err := e.GetPlan(dramaID)
 	if err != nil || plan.Status != "committed" {
@@ -245,6 +258,7 @@ func (e *Engine) NextScriptEpisode(dramaID string) (Episode, bool) {
 	return Episode{}, false
 }
 
+// AdvanceScriptQueue 在剧本队列里把指针移到刚写完的那一集之后。队列不是 scripts 时原样返回。走完最后一集就清空队列种类。
 func (e *Engine) AdvanceScriptQueue(dramaID, doneEpisodeID string) (EpisodePlan, error) {
 	plan, err := e.GetPlan(dramaID)
 	if err != nil {
@@ -265,6 +279,7 @@ func (e *Engine) AdvanceScriptQueue(dramaID, doneEpisodeID string) (EpisodePlan,
 	return e.savePlan(plan)
 }
 
+// StartScriptQueue 把已确认的方案放进剧本队列，指针回到第一集。还没确认就拒绝。
 func (e *Engine) StartScriptQueue(dramaID string) (EpisodePlan, error) {
 	plan, err := e.GetPlan(dramaID)
 	if err != nil {
@@ -278,6 +293,7 @@ func (e *Engine) StartScriptQueue(dramaID string) (EpisodePlan, error) {
 	return e.savePlan(plan)
 }
 
+// heuristicEpisodes 在没有提案时自己切集。有两个以上章节就按章节切，否则按窗口切到断点上。太短的并进上一集，超长的再拆。标题优先用标题行，否则写成「第 n 集」。
 func heuristicEpisodes(text string) []PlanEpisode {
 	runes := []rune(text)
 	n := len(runes)
@@ -363,6 +379,7 @@ func heuristicEpisodes(text string) []PlanEpisode {
 	return out
 }
 
+// clampPlanEpisodes 把集界吸到断点上，并掉过短的一段，拆开超长的一段，然后重新编号。目标秒数超出 1 到 120 就按字数重估。
 func clampPlanEpisodes(text string, eps []PlanEpisode, seams []int) []PlanEpisode {
 	n := utf8.RuneCountInString(text)
 	runes := []rune(text)
@@ -408,6 +425,7 @@ func clampPlanEpisodes(text string, eps []PlanEpisode, seams []int) []PlanEpisod
 	return renumberPlan(out)
 }
 
+// renumberPlan 按顺序把集号写成 1 起。标题空着就写成「第 n 集」。
 func renumberPlan(eps []PlanEpisode) []PlanEpisode {
 	for i := range eps {
 		eps[i].N = i + 1
@@ -418,6 +436,7 @@ func renumberPlan(eps []PlanEpisode) []PlanEpisode {
 	return eps
 }
 
+// uniqueIDs 去掉空白和重复的编号，保留第一次出现的顺序。
 func uniqueIDs(ids []string) []string {
 	seen := map[string]bool{}
 	var out []string

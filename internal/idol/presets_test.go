@@ -1,7 +1,11 @@
+// 本文件锁住媒体地址拼接、端点比较、音色随模型收口，以及已知端点推断和自定义端点保留。
+// 由 go test 调用。
+
 package idol
 
 import "testing"
 
+// TestMediaURLJoinsOpenAIRoots 锁住没有版本的根会加上 /v1，已有 /v1 或 /v4 时不再加第二个版本。
 func TestMediaURLJoinsOpenAIRoots(t *testing.T) {
 	cases := []struct{ endpoint, suffix, want string }{
 		{"https://api.openai.com", "audio/speech", "https://api.openai.com/v1/audio/speech"},
@@ -19,6 +23,7 @@ func TestMediaURLJoinsOpenAIRoots(t *testing.T) {
 	}
 }
 
+// TestSameEndpointIgnoresOnlyV1 锁住末尾 /v1 可以忽略，/v4 必须留在路径里，空端点不能对上。
 func TestSameEndpointIgnoresOnlyV1(t *testing.T) {
 	if !SameEndpoint("https://api.openai.com", "https://api.openai.com/v1/") {
 		t.Fatal("openai root should match its /v1 preset")
@@ -34,6 +39,7 @@ func TestSameEndpointIgnoresOnlyV1(t *testing.T) {
 	}
 }
 
+// TestVoicesFollowTheModel 锁住 tts-1 不提供 verse 和 ash，gpt-4o-mini-tts 提供 verse，tts-1-hd 提供 alloy。
 func TestVoicesFollowTheModel(t *testing.T) {
 	p, ok := Preset("openai-speech")
 	if !ok {
@@ -52,6 +58,7 @@ func TestVoicesFollowTheModel(t *testing.T) {
 	}
 }
 
+// TestApplyClampsVoiceToTheModel 锁住 openai-speech 配 tts-1 时，verse 会被收成该模型列表里的第一项 alloy，端点写成目录地址。
 func TestApplyClampsVoiceToTheModel(t *testing.T) {
 	got := ApplyServicePresets(Services{
 		SpeechProvider: "openai-speech",
@@ -66,6 +73,7 @@ func TestApplyClampsVoiceToTheModel(t *testing.T) {
 	}
 }
 
+// TestApplyKeepsACustomEndpoint 锁住未知供应商 id 会被清掉，本地端点、模型和音色保持原样。
 func TestApplyKeepsACustomEndpoint(t *testing.T) {
 	got := ApplyServicePresets(Services{
 		SpeechProvider: "nope",
@@ -78,6 +86,7 @@ func TestApplyKeepsACustomEndpoint(t *testing.T) {
 	}
 }
 
+// TestInferKnownPresetAndKeepPrivateModel 锁住已知端点加目录里的模型会填上供应商 id，私有模型和克隆音色保持自定义，只给 MiniMax 根地址时补上目录里的第一项模型和音色。
 func TestInferKnownPresetAndKeepPrivateModel(t *testing.T) {
 	known := InferProviders(Services{SpeechBaseURL: "https://api.openai.com", SpeechModel: "tts-1", SpeechVoice: "nova"})
 	if known.SpeechProvider != "openai-speech" {
@@ -106,6 +115,7 @@ func TestInferKnownPresetAndKeepPrivateModel(t *testing.T) {
 	}
 }
 
+// TestMatchPresetPrefersEndpoint 锁住端点对上时优先于供应商名，端点为空时回落到供应商，两边都空则没有匹配。
 func TestMatchPresetPrefersEndpoint(t *testing.T) {
 	if got := MatchPreset("asr", "openai", "https://api.groq.com/openai/v1"); got != "groq-asr" {
 		t.Fatalf("endpoint should win, got %q", got)

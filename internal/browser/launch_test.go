@@ -1,3 +1,6 @@
+// 本文件锁住有头窗口死掉后改回隔离 Chrome、启动参数里的调试端口，以及 DevToolsActivePort 的读取和超时。
+// 测试里的 9333 只是端口文件的样例数字。由 go test 调用。
+
 package browser
 
 import (
@@ -13,6 +16,7 @@ import (
 	"time"
 )
 
+// TestHeadedForAutomationDropsDeadTakeover 锁住活着的有头窗口保持有头，死掉的有头改回无头，本来的无头保持无头。
 func TestHeadedForAutomationDropsDeadTakeover(t *testing.T) {
 	if !headedForAutomation(true, true) {
 		t.Fatal("live takeover window must stay headed")
@@ -25,6 +29,7 @@ func TestHeadedForAutomationDropsDeadTakeover(t *testing.T) {
 	}
 }
 
+// TestChromeLaunchArgsIncludeDebugAllowlist 锁住无头参数含 --remote-allow-origins=*、调试端口和 --headless=new，有头参数不开 headless、带 --new-window，并且不设置 --remote-debugging-address。
 func TestChromeLaunchArgsIncludeDebugAllowlist(t *testing.T) {
 	args := chromeLaunchArgs(`C:\tmp\profile`, 0, false, "")
 	joined := strings.Join(args, " ")
@@ -58,6 +63,7 @@ func TestChromeLaunchArgsIncludeDebugAllowlist(t *testing.T) {
 	}
 }
 
+// TestReadDevToolsActivePort 锁住端口文件第一行 9333 能读成整数端口。
 func TestReadDevToolsActivePort(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "DevToolsActivePort")
@@ -70,6 +76,7 @@ func TestReadDevToolsActivePort(t *testing.T) {
 	}
 }
 
+// TestWaitDevToolsPortTimesOut 锁住没有端口文件时等待会超时，错误里含有 chrome debug port did not come up。
 func TestWaitDevToolsPortTimesOut(t *testing.T) {
 	dir := t.TempDir()
 	_, err := waitDevToolsPort(dir, time.Now().Add(40*time.Millisecond))
@@ -78,6 +85,7 @@ func TestWaitDevToolsPortTimesOut(t *testing.T) {
 	}
 }
 
+// TestIsCDPGone 锁住关闭的网络连接算断开，协议层的非法 URL 不算。
 func TestIsCDPGone(t *testing.T) {
 	if !isCDPGone(fmt.Errorf("failed to write JSON message: failed to marshal JSON: failed to write msg: failed to write frame: use of closed network connection")) {
 		t.Fatal("expected gone")
@@ -87,6 +95,7 @@ func TestIsCDPGone(t *testing.T) {
 	}
 }
 
+// TestWaitChromeDebugUsesHintPortWithoutPortFile 锁住 hint 端口已经在听 /json/version 时，不必有 DevToolsActivePort 文件。
 func TestWaitChromeDebugUsesHintPortWithoutPortFile(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/json/version" {
@@ -111,6 +120,7 @@ func TestWaitChromeDebugUsesHintPortWithoutPortFile(t *testing.T) {
 	}
 }
 
+// TestWaitChromeDebugIgnoresStalePortFile 锁住文件里的端口没在听时，等待仍会超时。
 func TestWaitChromeDebugIgnoresStalePortFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "DevToolsActivePort")

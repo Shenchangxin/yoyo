@@ -1,3 +1,8 @@
+/**
+ * 拥有：材料轨的端到端用例，包括总览、提议和证明。
+ * 不拥有：晋升公式。每条 test 的标题就是这则用例在断言什么。
+ */
+
 import { expect, test } from "@playwright/test";
 import { mockApi } from "./mock";
 

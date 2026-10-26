@@ -1,3 +1,8 @@
+/**
+ * 拥有：按会话订阅实时转录。种子页、全局序号游标、缺口回拉和重同步都在这里。
+ * 不拥有：把事件折成条目，那在 stream-fold；一条通知该丢弃、跳过、应用还是回拉，那在 stream-cursor。
+ */
+
 import * as api from "./client";
 import type { Item } from "./protocol";
 import {
@@ -10,42 +15,63 @@ import {
 import { classifyLive } from "./stream-cursor";
 
 export {
+  /** BROWSE_TRANSCRIPT_TURNS 浏览旧窗口时可展开到的用户轮数，定义在 stream-fold。 */
   BROWSE_TRANSCRIPT_TURNS,
+  /** HOT_TRANSCRIPT_TURNS 热窗口的用户轮数，定义在 stream-fold。 */
   HOT_TRANSCRIPT_TURNS,
+  /** UI_TEXT_CAP 界面上一条正文的长度上限，定义在 stream-fold。 */
   UI_TEXT_CAP,
+  /** closesAssistant 这些条目之后不能再把助手正文并到同一轮，定义在 stream-fold。 */
   closesAssistant,
+  /** dropTrailingErrors 去掉末尾错误芯片，定义在 stream-fold。 */
   dropTrailingErrors,
+  /** dropTurnErrors 操作者恢复回合时先去掉错误芯片，定义在 stream-fold。 */
   dropTurnErrors,
+  /** foldTurnErrors 一回合只留最后一张错误芯片，定义在 stream-fold。 */
   foldTurnErrors,
+  /** eventFingerprint 事件去重用的指纹，定义在 stream-fold。 */
   eventFingerprint,
+  /** foldLiveIntoSeed 把实时条目重放到轨迹种子上，定义在 stream-fold。 */
   foldLiveIntoSeed,
+  /** isTranscriptNoise 不进转录正文的事件，定义在 stream-fold。 */
   isTranscriptNoise,
+  /** itemFromEvent 把一条原始事件收成条目，定义在 stream-fold。 */
   itemFromEvent,
+  /** lastUserTurns 只留末尾若干个用户回合，定义在 stream-fold。 */
   lastUserTurns,
+  /** mergeItem 把一条实时或重放事件折进转录，定义在 stream-fold。 */
   mergeItem,
+  /** mergePendingUsers 保留种子还没追上的乐观用户气泡，定义在 stream-fold。 */
   mergePendingUsers,
+  /** withLiveTail 浏览旧窗口时仍把进行中的热包留在末尾，定义在 stream-fold。 */
   withLiveTail,
+  /** parseLiveNotice 剥开通知信封，定义在 stream-fold。 */
   parseLiveNotice,
+  /** replayEvents 把原始事件重放成转录，定义在 stream-fold。 */
   replayEvents,
+  /** unwrapEvent 只剥 Wails 信封，定义在 stream-fold。 */
   unwrapEvent,
+  /** eventText 从事件里取出纯文本，定义在 stream-fold。 */
   eventText,
+  /** userTurnCount 非引导的用户回合数，定义在 stream-fold。 */
   userTurnCount,
 } from "./stream-fold";
 
+/** emptyTrajectoryPage 空的轨迹页。事件列表为空，序号都是零。 */
 export function emptyTrajectoryPage(): TrajectoryPageView {
   return { events: [], headSeq: 0, tailSeq: 0, older: false, hubSeq: 0 };
 }
 
+/** 拉取种子页。失败时返回空窗。空窗还能靠实时通知补上，整份轨迹 JSONL 不能倒进桌面 webview。 */
 async function loadSeedPage(sessionId: string): Promise<TrajectoryPageView> {
   try {
     return await api.trajectoryPage(sessionId);
   } catch {
-    // Never dump Trajectory() into the desktop webview. An empty window is
-    // recoverable via live notices; a 10MB JSONL is not.
     return emptyTrajectoryPage();
   }
 }
 
+/** TrajectoryPageView 一页轨迹。headSeq 与 tailSeq 是这一页的序号范围，older 表示前面还有，hubSeq 是枢纽已应用到的序号。 */
 export type TrajectoryPageView = {
   events: any[];
   headSeq: number;
@@ -54,19 +80,19 @@ export type TrajectoryPageView = {
   hubSeq: number;
 };
 
-/** `resync`: the window on screen is live; merge into it instead of replacing it. */
+/** SeedOptions resync 为真时，屏幕上的窗口仍是活的，应并进去，不要整页换掉。 */
 export type SeedOptions = { resync: boolean };
 
-// Open session streams by id. While a turn is known to be running the UI asks
-// for a catch-up, so a dropped tail event is repaired without waiting for the
-// next notice to expose the gap.
+/** 按会话登记补齐回调。已知有回合在跑时，界面会要一次补齐，丢掉的尾部不必等下一条通知露出缺口。 */
 const catchUps = new Map<string, Set<() => void>>();
 
+/** catchUpSession 触发该会话已登记的补齐。 */
 export function catchUpSession(sessionId: string): void {
   const fns = catchUps.get(sessionId);
   if (fns) for (const fn of fns) fn();
 }
 
+/** subscribeSession 订阅一段会话的实时转录。先种下轨迹页，再按游标吃通知。返回停止函数。 */
 export function subscribeSession(
   sessionId: string,
   onItem: (item: Item) => void,
@@ -74,8 +100,7 @@ export function subscribeSession(
 ): () => void {
   let alive = true;
   let stopLive = () => {};
-  // Global hub seq applied so far. Advanced only by in-order notices, pulls and
-  // seeds; the rules live in stream-cursor.ts.
+  // 已经按序应用过的全局枢纽序号。只由按序通知、回拉和种子推进。分类规则在 stream-cursor。
   let cursor = 0;
   let seeded = false;
   let pulling = false;
@@ -84,6 +109,7 @@ export function subscribeSession(
   const seen = new Set<string>();
   const lastIndex = new Map<string, number>();
 
+  /** 记下这一帧的序号。开始和结束帧不算缺口。序号跳过已见的下一号时返回真，调用方应回拉。 */
   const noteFrame = (item: Item, frame?: { index?: number; index_from?: number; kind?: string; attempt_id?: string }) => {
     const kind = frame?.kind || String(item.payload?.kind || "");
     if (item.type === "assistant_stream" && kind !== "chunk") return false;
@@ -97,8 +123,10 @@ export function subscribeSession(
     return gapped;
   };
 
+  /** 原始事件收成条目，并带上流帧。 */
   const toItem = (event: any, frame?: Parameters<typeof attachStreamFrame>[1]) => attachStreamFrame(itemFromEvent(event), frame);
 
+  /** 指纹没见过才交给调用方。见过太多时清掉集合，避免一直涨。 */
   const applyItem = (raw: any, item: Item) => {
     if (seen.size > 4000) seen.clear();
     const fp = eventFingerprint(raw);
@@ -107,6 +135,7 @@ export function subscribeSession(
     onItem(item);
   };
 
+  /** 把一页种子重放成条目。resync 为真时让调用方并进屏幕上的窗口。 */
   const applySeed = (raws: any[], page: TrajectoryPageView | undefined, resync: boolean) => {
     (raws || []).forEach((raw) => seen.add(eventFingerprint(raw)));
     const items = replayEvents(raws || []);
@@ -116,12 +145,11 @@ export function subscribeSession(
     seeded = true;
   };
 
-  // One event from a pull, in seq order. Pulled events are whole trace events,
-  // so their seq travels on the event itself.
+  /** 按序号应用回拉到的一条。回拉事件是完整追踪事件，序号在事件自己身上。已经由实时通知应用过的序号跳过。 */
   const applyPulled = (raw: any) => {
     const notice = parseLiveNotice(raw);
     const seq = notice.seq;
-    if (seq > 0 && seq <= cursor) return; // already applied via a live notice
+    if (seq > 0 && seq <= cursor) return; // 已经由实时通知应用过
     if (seq > cursor) cursor = seq;
     if (!notice.event) return;
     const item = toItem(notice.event, notice.frame);
@@ -130,10 +158,11 @@ export function subscribeSession(
     applyItem(event, item);
   };
 
-  // Apply the ring tail after the cursor. A hole (gap) reloads the trajectory.
-  // A page (more) is applied in order, then pulled again — jumping to head
-  // would skip the rest of a long turn. The follow-up pull of a resync
-  // passes mayResync=false so an overflowing ring cannot loop against itself.
+  /**
+   * 回拉游标之后的环缓冲尾部。缺口则重载轨迹。
+   * 还有下一页时按序应用再拉，跳到头部会漏掉长回合的其余部分。
+   * 重同步之后的回拉传入 mayResync 为假，避免溢出的环和自己绕圈。
+   */
   const pullSince = async (mayResync = true): Promise<void> => {
     if (!alive) return;
     if (pulling) {
@@ -148,7 +177,7 @@ export function subscribeSession(
         pullAgain = false;
         const batch = await api.liveSync(sessionId, cursor).catch(() => null);
         if (!alive) return;
-        if (!batch) break; // transport error: keep the cursor, a later notice retries
+        if (!batch) break; // 传输失败时留住游标，以后的通知再试
         if (batch.gap && mayResync) {
           gapped = true;
           break;
@@ -170,16 +199,14 @@ export function subscribeSession(
     if (gapped && alive) void resync();
   };
 
-  // The trajectory is the durable record. When the live tail has a hole, reload
-  // it and merge it with what is on screen, so streamed text in flight survives.
+  /** 轨迹是持久记录。实时尾部有洞时重载它，并和屏幕上的内容合并，进行中的流式正文得以保留。 */
   const resync = async (): Promise<void> => {
     if (resyncing || !alive) return;
     resyncing = true;
     try {
       const page: TrajectoryPageView | null = await api.trajectoryPage(sessionId).catch(() => null);
       if (!alive || !page) return;
-      // Take the page's cursor even if it is lower: a restarted hub numbers from
-      // zero again, and keeping a higher cursor would freeze the stream.
+      // 即使页上的游标更小也采用。重启后的枢纽从零重新编号，留着更大的游标会把流冻住。
       cursor = page.hubSeq || 0;
       applySeed(page.events, page, true);
     } finally {
@@ -188,9 +215,8 @@ export function subscribeSession(
     if (alive) void pullSince(false);
   };
 
+  /** 处理一条实时通知。种子落地之前什么都不应用，种子自己的回拉会把页上 hubSeq 之后的事件从环里重放，包括此刻到达的。 */
   const onLive = (raw: any) => {
-    // Nothing is applied before the seed. The seed's pull replays every event
-    // after the page's hubSeq from the ring, including the ones that arrive now.
     if (!seeded) return;
     const notice = parseLiveNotice(raw);
     const own = !notice.sessionId || notice.sessionId === sessionId;
@@ -217,6 +243,7 @@ export function subscribeSession(
     }
   };
 
+  /** 打开会话：种下轨迹页，再回拉种子之后的环。 */
   const open = async (): Promise<void> => {
     const page = await loadSeedPage(sessionId);
     if (!alive) return;
@@ -241,14 +268,14 @@ export function subscribeSession(
         const token = sessionStorage.getItem("yoyo_browser");
         if (token) eventsURL += `?ys=${encodeURIComponent(token)}`;
       } catch {
-        /* private mode keeps the cookie path */
+        /* 隐私模式走 cookie，不把令牌放进地址 */
       }
       const es = new EventSource(eventsURL, { withCredentials: true });
       es.onmessage = (msg) => {
         try {
           onLive(JSON.parse(msg.data));
         } catch {
-          /* ignore malformed */
+          /* 畸形消息忽略 */
         }
       };
       stopLive = () => es.close();
@@ -257,6 +284,7 @@ export function subscribeSession(
       return;
     }
 
+    /** 没有桌面事件时，定时重拉种子页。 */
     const tick = async () => {
       const page = await loadSeedPage(sessionId);
       if (!alive) return;
@@ -267,6 +295,7 @@ export function subscribeSession(
     stopLive = () => window.clearInterval(t);
   })();
 
+  /** 已种下且仍存活时再回拉一次。 */
   const catchUp = () => {
     if (alive && seeded) void pullSince();
   };
@@ -282,6 +311,7 @@ export function subscribeSession(
   };
 }
 
+/** subscribeStopped 订阅会话停止。回调拿到会话 id。 */
 export function subscribeStopped(onStop: (sessionId: string) => void): () => void {
   let off: (() => void) | undefined;
   let alive = true;
@@ -300,6 +330,7 @@ export function subscribeStopped(onStop: (sessionId: string) => void): () => voi
   };
 }
 
+/** subscribeItems 订阅全部会话的条目通知，不按游标过滤。 */
 export function subscribeItems(onItem: (item: Item) => void): () => void {
   let off: (() => void) | undefined;
   let alive = true;
@@ -318,6 +349,7 @@ export function subscribeItems(onItem: (item: Item) => void): () => void {
   };
 }
 
+/** subscribeSessions 会话列表变化时回调。 */
 export function subscribeSessions(onChange: () => void): () => void {
   let off: any;
   let alive = true;
@@ -332,6 +364,7 @@ export function subscribeSessions(onChange: () => void): () => void {
   };
 }
 
+/** subscribeState 订阅运行时状态主题。桌面用事件并稍作合并，浏览器没有桌面桥时改为轮询。 */
 export function subscribeState(onChange: (topic: string) => void): () => void {
   let off: any;
   let alive = true;
@@ -360,6 +393,7 @@ export function subscribeState(onChange: (topic: string) => void): () => void {
   };
 }
 
+/** 端到端测试或非桌面环境不接 Wails 事件。其余时候动态加载运行时。 */
 async function wailsEvents(): Promise<any | null> {
   const viteE2E = (import.meta as any)?.env?.VITE_E2E;
   if (viteE2E) return null;

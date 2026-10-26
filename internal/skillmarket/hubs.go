@@ -1,3 +1,4 @@
+// Package skillmarket 从多个技能站拉目录并安装源文件。市场技能写到调用方传入的 homeSkills/<slug>，旁边有 .market.json。Work Buddy 的目录来自 CATALOG.md。
 package skillmarket
 
 import (
@@ -12,19 +13,31 @@ import (
 )
 
 const (
-	HubWorkBuddy    = "workbuddy"
-	HubClawHub      = "clawhub"
+	// HubWorkBuddy 是 Work Buddy 站的 id，值为 workbuddy。
+	HubWorkBuddy = "workbuddy"
+	// HubClawHub 是 ClawHub 站的 id，值为 clawhub。
+	HubClawHub = "clawhub"
+	// HubClawSkillHub 是 clawskillhub.com 的 id，值为 clawskillhub。
 	HubClawSkillHub = "clawskillhub"
-	HubSkillsMP     = "skillsmp"
-	HubAnthropic    = "anthropic"
-	HubOsmani       = "osmani"
+	// HubSkillsMP 是 SkillsMP 站的 id，值为 skillsmp。
+	HubSkillsMP = "skillsmp"
+	// HubAnthropic 是 anthropics/skills 的 id，值为 anthropic。
+	HubAnthropic = "anthropic"
+	// HubOsmani 是 addyosmani/agent-skills 的 id，值为 osmani。
+	HubOsmani = "osmani"
+	// HubClaudeSkills 是 alirezarezvani/claude-skills 的 id，值为 claude-skills。
 	HubClaudeSkills = "claude-skills"
-	HubMDR          = "mdr"
-	HubTessl        = "tessl"
-	HubVercel       = "vercel"
-	HubSkillHubCN   = "skillhubcn"
+	// HubMDR 是 Markdown Registry 的 id，值为 mdr。
+	HubMDR = "mdr"
+	// HubTessl 是 Tessl 的 id，值为 tessl。
+	HubTessl = "tessl"
+	// HubVercel 是 vercel-labs/agent-skills 的 id，值为 vercel。
+	HubVercel = "vercel"
+	// HubSkillHubCN 是 skillhub.cn 的 id，值为 skillhubcn。
+	HubSkillHubCN = "skillhubcn"
 )
 
+// HubInfo 是一个技能站的 id、显示名、主页、署名，以及能不能浏览和搜索。
 type HubInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -34,6 +47,7 @@ type HubInfo struct {
 	Search      bool   `json:"search"`
 }
 
+// LoadOpts 指定要加载的站、查询、是否刷新缓存，以及条数上限。
 type LoadOpts struct {
 	Hub     string
 	Query   string
@@ -41,6 +55,7 @@ type LoadOpts struct {
 	Limit   int
 }
 
+// PackResult 是拉到的文件、跳过警告、页面地址、目录名和所有者。
 type PackResult struct {
 	Files   []PackFile
 	Warn    string
@@ -49,6 +64,7 @@ type PackResult struct {
 	Owner   string
 }
 
+// HubCatalog 返回内置技能站列表，顺序就是界面里的顺序。
 func HubCatalog() []HubInfo {
 	return []HubInfo{
 		{
@@ -142,6 +158,7 @@ func HubCatalog() []HubInfo {
 	}
 }
 
+// LookupHub 按小写 id 找站。workbuddyskills 归到 Work Buddy，skillhub 与 skillhub.space 归到 ClawSkillHub，skillhub.cn 与 tencent 归到 SkillHub 中国，skills.sh 归到 Vercel。空 id 返回 false。
 func LookupHub(id string) (HubInfo, bool) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	switch id {
@@ -165,6 +182,7 @@ func LookupHub(id string) (HubInfo, bool) {
 	return HubInfo{}, false
 }
 
+// NormalizeHub 返回 LookupHub 认的 id。认不出时返回 HubWorkBuddy。
 func NormalizeHub(id string) string {
 	if info, ok := LookupHub(id); ok {
 		return info.ID
@@ -172,11 +190,13 @@ func NormalizeHub(id string) string {
 	return HubWorkBuddy
 }
 
+// IsHub 在 LookupHub 能找到该 id 时返回 true。
 func IsHub(id string) bool {
 	_, ok := LookupHub(id)
 	return ok
 }
 
+// ItemID 拼出 hub:remote。remote 去掉首尾斜杠和前缀 @。remote 为空时只返回站 id。
 func ItemID(hub, remote string) string {
 	hub = NormalizeHub(hub)
 	remote = strings.TrimSpace(strings.TrimPrefix(remote, "@"))
@@ -187,6 +207,7 @@ func ItemID(hub, remote string) string {
 	return hub + ":" + remote
 }
 
+// ParseInstallID 解析安装 id。空串得到 HubWorkBuddy 和空 remote。hub:remote 且 hub 是已知站时拆开。否则整段当作 Work Buddy 的 remote。
 func ParseInstallID(s string) (hub, remote string) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "@")
@@ -202,6 +223,7 @@ func ParseInstallID(s string) (hub, remote string) {
 	return HubWorkBuddy, s
 }
 
+// InstallSlug 取路径最后一段，再交给 SanitizeSlug。
 func InstallSlug(remote string) string {
 	remote = strings.TrimSpace(strings.ReplaceAll(remote, "\\", "/"))
 	remote = strings.Trim(remote, "/")
@@ -219,6 +241,7 @@ const (
 	maxCatalogPages    = 40
 )
 
+// catalogLimit 在 requested 大于 0 时采用它，但不超过 5000。未指定时，有查询用 500，浏览用 2000。
 func catalogLimit(query string, requested int) int {
 	if requested > 0 {
 		if requested > maxCatalogLimit {
@@ -232,6 +255,7 @@ func catalogLimit(query string, requested int) int {
 	return defaultBrowseLimit
 }
 
+// LoadHub 加载一个站的目录。不能搜索的站会丢掉查询。Work Buddy 走 loadWorkBuddy。只能搜索又不能浏览且查询为空时，返回 SearchOnly、不发请求。缓存未过期且没有 Refresh 时直接用缓存。拉取失败但有旧条目时，在 Source 后加 " (stale)" 并带上 Warning。
 func LoadHub(cacheDir string, opts LoadOpts) (Catalog, error) {
 	hub := NormalizeHub(opts.Hub)
 	query := strings.TrimSpace(opts.Query)
@@ -276,6 +300,7 @@ func LoadHub(cacheDir string, opts LoadOpts) (Catalog, error) {
 	return stampCatalog(c, hub, query), nil
 }
 
+// fetchHubCatalog 按站调用对应的列表函数。未知站返回 "unknown skill hub"。
 func fetchHubCatalog(hub, query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	switch hub {
@@ -304,6 +329,7 @@ func fetchHubCatalog(hub, query string, limit int) (Catalog, error) {
 	}
 }
 
+// FetchFrom 按站下载一份技能的源文件。remote 为空返回 "invalid skill id"。未知站返回 "unknown skill hub"。
 func FetchFrom(hub, remote string) (PackResult, error) {
 	hub = NormalizeHub(hub)
 	remote = strings.TrimSpace(strings.TrimPrefix(remote, "@"))
@@ -341,6 +367,7 @@ func FetchFrom(hub, remote string) (PackResult, error) {
 	}
 }
 
+// stampCatalog 填上站 id、全部站列表、查询和署名。只能搜索又不能浏览且查询为空时把 SearchOnly 设为真。条目缺 ID 时用 ItemID 补上。
 func stampCatalog(c Catalog, hub, query string) Catalog {
 	info, _ := LookupHub(hub)
 	c.Hub = hub
@@ -372,6 +399,7 @@ func stampCatalog(c Catalog, hub, query string) Catalog {
 	return c
 }
 
+// hubCacheName 在查询为空时返回 catalog-v4-<hub>.json。否则把站和查询的 SHA-256 前 6 字节编进文件名。
 func hubCacheName(hub, query string) string {
 	q := strings.TrimSpace(strings.ToLower(query))
 	if q == "" {
@@ -381,6 +409,7 @@ func hubCacheName(hub, query string) string {
 	return "catalog-v4-" + hub + "-" + hex.EncodeToString(sum[:6]) + ".json"
 }
 
+// getJSON 用 Get 拉正文并解进 dest。空正文返回 "empty response"。以 < 开头返回 "expected JSON, got HTML"。
 func getJSON(rawURL string, dest any) error {
 	raw, err := Get(rawURL)
 	if err != nil {
@@ -399,6 +428,7 @@ func getJSON(rawURL string, dest any) error {
 	return nil
 }
 
+// joinURL 用斜杠接上路径段，去掉每段两侧的斜杠。
 func joinURL(base string, parts ...string) string {
 	u := strings.TrimRight(base, "/")
 	for _, p := range parts {
@@ -411,6 +441,7 @@ func joinURL(base string, parts ...string) string {
 	return u
 }
 
+// clip 去掉首尾空白。n 小于等于 0 或字符串不长于 n 时原样返回，否则截到 n 并加上省略号。
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if n <= 0 || len(s) <= n {
@@ -419,6 +450,7 @@ func clip(s string, n int) string {
 	return strings.TrimSpace(s[:n]) + "…"
 }
 
+// splitOwnerSlug 把 owner/slug 拆开。没有斜杠时 owner 为空，slug 经过 SanitizeSlug。
 func splitOwnerSlug(id string) (owner, slug string) {
 	id = strings.TrimSpace(strings.TrimPrefix(id, "@"))
 	id = strings.Trim(strings.ReplaceAll(id, "\\", "/"), "/")

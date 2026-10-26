@@ -1,3 +1,5 @@
+// 本文件拥有命令面板里的动作、视频入口、设置项和会话。不拥有这些动作的实现。App 在打开时传入 threads 和回调。
+
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import {
@@ -28,6 +30,7 @@ import { Kbd } from "../components/ui/kbd";
 import { shownSeriesTitle } from "./video/drama-lib";
 import { useStudioSelection } from "./video/workshop-store";
 
+// CommandPalette 在打开变为假时调用 onClose。退出没有 onQuit 时调用 chrome.close。暂停调用 setPaused(true)。视频工程去掉 kind 为 game 的，最多 12 条。会话去掉子代理，最多 20 条。打开短片桌时先把 studioId 清空。
 export function CommandPalette(props: {
   open: boolean;
   threads: Thread[];

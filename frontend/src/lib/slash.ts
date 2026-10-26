@@ -1,10 +1,17 @@
+/**
+ * 拥有：从光标处识别斜杠命令，以及按前缀过滤命令目录。
+ * 不拥有：命令的执行，以及提及菜单。
+ */
+
 import type { Copy } from "./copy";
 
+/** SlashCommand 一条斜杠命令及其提示。 */
 export type SlashCommand = {
   cmd: string;
   hint: string;
 };
 
+/** slashCatalog 按文案表拼出可补全的命令目录。 */
 export function slashCatalog(copy: Copy): SlashCommand[] {
   return [
     { cmd: "/new", hint: copy.slash.new },
@@ -31,12 +38,13 @@ export function slashCatalog(copy: Copy): SlashCommand[] {
   ];
 }
 
-/** `/token` at the caret: line start or after whitespace, same as harness. */
+/** slashQuery 光标处的 `/token`：行首或空白之后，与 harness 相同。没有则返回空。结果为小写。 */
 export function slashQuery(value: string): string | null {
   const m = /(?:^|\s)(\/[^\s]*)$/.exec(value);
   return m?.[1] ? m[1].toLowerCase() : null;
 }
 
+/** filterSlash 留下命令或去掉斜杠后的名字以前缀开头的项。 */
 export function filterSlash(prefix: string, items: SlashCommand[]): SlashCommand[] {
   return items.filter((s) => s.cmd.startsWith(prefix) || s.cmd.slice(1).startsWith(prefix.slice(1)));
 }

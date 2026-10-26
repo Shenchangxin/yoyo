@@ -1,3 +1,5 @@
+// package.go 检查上传的插件 zip，只解析清单和文件，不执行其中的代码。
+
 package protocol
 
 import (
@@ -11,25 +13,28 @@ import (
 	"strings"
 )
 
+// 包格式名和各类体积上限。
 const (
+	// PluginPackageFormat 是包格式名 yingce.plugin/package-v1。
 	PluginPackageFormat    = "yingce.plugin/package-v1"
+	// PluginPackageMaxBytes 是整个包的上限，48 MiB。
 	PluginPackageMaxBytes  = 48 << 20
+	// PluginManifestMaxBytes 是 manifest.json 的上限，512 KiB。
 	PluginManifestMaxBytes = 512 << 10
+	// pluginPackageMaxFiles 是包内文件数上限，256。
 	pluginPackageMaxFiles  = 256
+	// pluginPackageMaxEntry 是单个文件解压后的上限，16 MiB。
 	pluginPackageMaxEntry  = 16 << 20
 )
 
-// PluginPackage is the transport envelope for every uploaded plugin. The
-// manifest remains the single capability contract; files are optional runtime
-// artifacts addressed by manifest.entry.
+// PluginPackage 是上传插件的传输信封。清单仍是唯一的能力合同。文件是可选的运行产物，由 manifest.entry 指向。
 type PluginPackage struct {
 	Manifest    Manifest
 	ManifestRaw []byte
 	Files       map[string][]byte
 }
 
-// ParsePluginPackage validates the package container and returns its manifest
-// and files. Uploaded code is never executed by this function.
+// ParsePluginPackage 检查 zip 容器并返回清单和文件。这个函数不执行上传的代码。空包、超过 PluginPackageMaxBytes、文件数不在 1 到 256、符号链接、单文件超过 16 MiB、缺少 manifest.json 或清单不合法都会失败。
 func ParsePluginPackage(data []byte) (PluginPackage, error) {
 	if len(data) == 0 || len(data) > PluginPackageMaxBytes {
 		return PluginPackage{}, fmt.Errorf("plugin package must be between 1 and %d bytes", PluginPackageMaxBytes)
@@ -99,6 +104,7 @@ func ParsePluginPackage(data []byte) (PluginPackage, error) {
 	return PluginPackage{Manifest: manifest, ManifestRaw: manifestRaw, Files: files}, nil
 }
 
+// validatePluginPackagePath 拒绝空路径、反斜杠、绝对路径和 ..。只允许 manifest.json、README.md、LICENSE，以及 web/、backend/、assets/、docs/ 下面的相对路径。
 func validatePluginPackagePath(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || strings.ContainsRune(name, '\\') || strings.HasPrefix(name, "/") || path.IsAbs(name) || path.Clean(name) != name || strings.HasPrefix(name, "../") || name == ".." {
@@ -110,6 +116,7 @@ func validatePluginPackagePath(name string) (string, error) {
 	return "", fmt.Errorf("plugin package path %q is outside the allowed package roots", name)
 }
 
+// validatePluginPackageRuntime 在后端是 rpc 时要求包里有可执行产物，是 wasm 时要求条目以 .wasm 结尾且文件在包内。有网页文件或 runtime.web 时，manifest.entry 必须落在 web/ 里，并且 runtime.web 等于 sandbox 或 worker。
 func validatePluginPackageRuntime(manifest Manifest, files map[string][]byte) error {
 	backend := strings.TrimSpace(manifest.Runtime.Backend)
 	if backend == "rpc" || backend == "wasm" {

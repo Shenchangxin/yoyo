@@ -1,3 +1,5 @@
+// 未知会话、分叉、材料解码、打断和删除子会话。
+
 package app
 
 import (
@@ -15,6 +17,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestSendUnknownSessionDoesNotMintID 向不存在的会话发送应失败，而不是新建一个 id。
 func TestSendUnknownSessionDoesNotMintID(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -27,6 +30,7 @@ func TestSendUnknownSessionDoesNotMintID(t *testing.T) {
 	}
 }
 
+// TestForkPinsHarness 确认分叉后的 harness 策略是钉住，哈希来自源会话或当前 active。
 func TestForkPinsHarness(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -49,6 +53,7 @@ func TestForkPinsHarness(t *testing.T) {
 	}
 }
 
+// TestForkSessionFromKeepsFromUserMessage 确认从正文片段分叉时，新轨迹从那条用户消息开始。
 func TestForkSessionFromKeepsFromUserMessage(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -79,6 +84,7 @@ func TestForkSessionFromKeepsFromUserMessage(t *testing.T) {
 	}
 }
 
+// TestForkSessionFromSeq 确认按用户事件序号分叉时，新轨迹从第二条用户消息开始。
 func TestForkSessionFromSeq(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -122,6 +128,7 @@ func TestForkSessionFromSeq(t *testing.T) {
 	}
 }
 
+// TestForkSessionFromUnknownTurnErrors 确认找不到分叉点时失败，并且不留下分叉会话。
 func TestForkSessionFromUnknownTurnErrors(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -147,6 +154,7 @@ func TestForkSessionFromUnknownTurnErrors(t *testing.T) {
 	}
 }
 
+// TestForkSessionFromFirstUserKeepsHistory 确认从第一条用户消息分叉时，后面的历史还在。
 func TestForkSessionFromFirstUserKeepsHistory(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -173,6 +181,7 @@ func TestForkSessionFromFirstUserKeepsHistory(t *testing.T) {
 	}
 }
 
+// TestRestoreSessionFilesUnknownTurnErrors 确认按不存在的序号恢复文件会失败。
 func TestRestoreSessionFilesUnknownTurnErrors(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -189,6 +198,7 @@ func TestRestoreSessionFilesUnknownTurnErrors(t *testing.T) {
 	}
 }
 
+// TestMaterialsDecodeFailsVisible 确认快照里的循环哈希无法解码时，Materials 返回错误。
 func TestMaterialsDecodeFailsVisible(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -209,6 +219,7 @@ func TestMaterialsDecodeFailsVisible(t *testing.T) {
 	}
 }
 
+// TestHubSpillOverflow 确认订阅通道接不住时，事件会写进 Overflow 目录。
 func TestHubSpillOverflow(t *testing.T) {
 	dir := t.TempDir()
 	h := NewHub()
@@ -224,6 +235,7 @@ func TestHubSpillOverflow(t *testing.T) {
 	<-ch
 }
 
+// TestSeedAdvertisesHostTools 确认播种的快照带有宿主工具名。
 func TestSeedAdvertisesHostTools(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -240,6 +252,7 @@ func TestSeedAdvertisesHostTools(t *testing.T) {
 	_ = artifact.KindToolSpec
 }
 
+// TestSendAppliesChatHorizon 发送一长串工具步骤后，回合仍能结束并得到 done。
 func TestSendAppliesChatHorizon(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -271,6 +284,7 @@ func TestSendAppliesChatHorizon(t *testing.T) {
 	}
 }
 
+// TestChatTurnContextHasNoDeadline 确认异步回合的上下文没有墙钟截止。
 func TestChatTurnContextHasNoDeadline(t *testing.T) {
 	ctx, cancel := chatTurnContext()
 	defer cancel()
@@ -279,10 +293,12 @@ func TestChatTurnContextHasNoDeadline(t *testing.T) {
 	}
 }
 
+// blockChat 是会一直等到上下文取消的假客户端。
 type blockChat struct {
 	started chan struct{}
 }
 
+// Chat 先通知已经进入模型调用，然后等到上下文取消。
 func (b *blockChat) Chat(ctx context.Context, req runtime.ChatRequest) (runtime.Message, error) {
 	if b.started != nil {
 		select {
@@ -295,6 +311,7 @@ func (b *blockChat) Chat(ctx context.Context, req runtime.ChatRequest) (runtime.
 	return runtime.Message{}, ctx.Err()
 }
 
+// TestInterruptCancelsInFlightSend 确认 Interrupt 会取消正在等待的发送，原因是取消。
 func TestInterruptCancelsInFlightSend(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -332,6 +349,7 @@ func TestInterruptCancelsInFlightSend(t *testing.T) {
 	}
 }
 
+// TestDeleteSessionCascadesTaskChildren 确认删除父会话时，任务前缀的子会话 meta 一并删除。
 func TestDeleteSessionCascadesTaskChildren(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

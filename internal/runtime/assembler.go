@@ -1,3 +1,6 @@
+// 把流式块组装成 ContentBlock。允许只有增量、没有开始和结束帧的协议。
+// 某一序号已被结束帧关闭后，再来的增量被忽略。loop 在读模型流时调用这里。
+
 package runtime
 
 import (
@@ -5,6 +8,7 @@ import (
 	"strings"
 )
 
+// partialBlock 是一个尚未收口或已由结束帧定稿的块。
 type partialBlock struct {
 	blockType         string
 	text              string
@@ -14,9 +18,7 @@ type partialBlock struct {
 	block             *ContentBlock
 }
 
-// BlockAssembler is the single canonical assembly algorithm from StreamChunk
-// to ContentBlock. Tolerant of delta-only protocols (no block-start/end);
-// deltas arriving for an index already closed by block-end are ignored.
+// BlockAssembler 是从 StreamChunk 到 ContentBlock 的唯一组装算法。容忍只有增量的协议（没有块开始和结束）；某个序号已被结束帧关闭后再到的增量会被忽略。
 type BlockAssembler struct {
 	partials map[int]*partialBlock
 	order    []int
@@ -24,10 +26,12 @@ type BlockAssembler struct {
 	finish   *FinishReason
 }
 
+// NewBlockAssembler 返回空的组装器。
 func NewBlockAssembler() *BlockAssembler {
 	return &BlockAssembler{partials: map[int]*partialBlock{}}
 }
 
+// Push 吃进一块流。同一序号的开始帧只采纳第一次。结束帧之后该序号的增量被丢掉。用量和结束原因各保留最后一次。
 func (a *BlockAssembler) Push(chunk StreamChunk) {
 	if a.partials == nil {
 		a.partials = map[int]*partialBlock{}
@@ -78,6 +82,7 @@ func (a *BlockAssembler) Push(chunk StreamChunk) {
 	}
 }
 
+// ensure 取出或创建该序号的半成品，并在新建时记下顺序。
 func (a *BlockAssembler) ensure(index int, blockType string) *partialBlock {
 	p := a.partials[index]
 	if p == nil {
@@ -88,6 +93,7 @@ func (a *BlockAssembler) ensure(index int, blockType string) *partialBlock {
 	return p
 }
 
+// assemble 在已有结束帧时用那一帧。工具调用没有 id 时用 call- 加序号。
 func (a *BlockAssembler) assemble(p *partialBlock, index int) ContentBlock {
 	if p.block != nil {
 		return *p.block
@@ -108,6 +114,7 @@ func (a *BlockAssembler) assemble(p *partialBlock, index int) ContentBlock {
 	}
 }
 
+// all 按流顺序返回全部块，包括工具调用。
 func (a *BlockAssembler) all() []ContentBlock {
 	out := make([]ContentBlock, 0, len(a.order))
 	for _, idx := range a.order {
@@ -120,8 +127,7 @@ func (a *BlockAssembler) all() []ContentBlock {
 	return out
 }
 
-// Blocks returns assembled blocks in stream order. Max-token truncation
-// drops tool-call blocks that cannot be executed safely.
+// Blocks 按流顺序返回组装好的块。输出 token 上限截断时丢掉工具调用块，因为那些块不能安全执行。
 func (a *BlockAssembler) Blocks() []ContentBlock {
 	all := a.all()
 	if a.Finish().Kind != FinishMaxTokens {
@@ -137,9 +143,7 @@ func (a *BlockAssembler) Blocks() []ContentBlock {
 	return out
 }
 
-// InterruptedBlocks is the prefix an interrupted stream can safely finalize:
-// closed and open text/reasoning with non-whitespace content. Tool calls are
-// omitted because interruption precedes dispatch.
+// InterruptedBlocks 是被打断的流可以安全收口的前缀：已关闭和仍开着的、含非空白内容的文本或推理。工具调用被省略，因为打断发生在分发之前。
 func (a *BlockAssembler) InterruptedBlocks() []ContentBlock {
 	var out []ContentBlock
 	for _, idx := range a.order {
@@ -162,12 +166,13 @@ func (a *BlockAssembler) InterruptedBlocks() []ContentBlock {
 	return out
 }
 
+// Usage 返回最近一次用量块。还没有则返回 nil。
 func (a *BlockAssembler) Usage() *TokenUsage { return a.usage }
 
+// Finish 返回结束原因。还没有则是正常停止。
 func (a *BlockAssembler) Finish() FinishReason {
 	if a.finish == nil {
 		return FinishReason{Kind: FinishStop}
 	}
 	return *a.finish
 }
-

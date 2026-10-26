@@ -1,3 +1,5 @@
+// 向模型要最多 k 条 L1 提议，失败时退回按簇生成的启发式片段。准入在 quality.go，写入在 admit.go。本文件不跑 Harbor。
+
 package evolve
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// Proposal 是一条待准入的 L1 改动。五种载荷至多一种：片段、剧本条目、技能、指令文本、中间件文本。
 type Proposal struct {
 	ID              string                   `json:"id"`
 	TargetCluster   string                   `json:"target_cluster"`
@@ -28,11 +31,13 @@ type Proposal struct {
 	MiddlewareText  string                   `json:"middleware_text,omitempty"`
 }
 
+// PassSummary 是证据里一条已通过题的编号和备注。
 type PassSummary struct {
 	TaskID string `json:"task_id"`
 	Note   string `json:"note,omitempty"`
 }
 
+// PriorTrial 是档案里先前一次试用的摘要，供提议者看见。
 type PriorTrial struct {
 	Hash     string `json:"hash"`
 	Surface  string `json:"surface"`
@@ -40,10 +45,12 @@ type PriorTrial struct {
 	Accepted bool   `json:"accepted"`
 }
 
+// proposerSystem 是提议者的系统提示。正文是发给模型的英文约束，这里不改它。
 const proposerSystem = `You propose bounded L1 harness edits. Reply with JSON array of 1-3 objects:
 [{"surface":"prompt_fragment|playbook|skill|instruction|middleware","slot":"verification|failure_recovery|runtime|bootstrap","text":"...","expected":"...","risk":"...","audit":"...","predicted_fixes":["task-id"],"at_risk":["task-id"]}]
 Rules: one surface per object; predicted_fixes must come from repeated fail-vs-pass behavior across tasks, not from copying a task instruction; do not rewrite the control loop; do not touch evaluator/secrets/kernel; do not mention held-out task ids.`
 
+// Propose 向模型要 JSON 提议。k 小于等于 0 时用 3。客户端为 nil、对话失败或解析结果为空时改用 HeuristicPropose。结果长于 k 时截到 k。
 func Propose(ctx context.Context, client runtime.Client, model string, bundle EvidenceBundle, k int) ([]Proposal, error) {
 	if k <= 0 {
 		k = 3
@@ -72,6 +79,7 @@ func Propose(ctx context.Context, client runtime.Client, model string, bundle Ev
 	return parsed, nil
 }
 
+// HeuristicPropose 为前 k 个簇各做一条 prompt_fragment。没有簇时返回一条槽位为 verification 的默认片段。
 func HeuristicPropose(bundle EvidenceBundle, k int) []Proposal {
 	var out []Proposal
 	for i, c := range bundle.Clusters {
@@ -110,6 +118,7 @@ func HeuristicPropose(bundle EvidenceBundle, k int) []Proposal {
 	return out
 }
 
+// heuristicText 按机制返回一句固定片段文案。
 func heuristicText(mech string) string {
 	switch mech {
 	case "missing_artifact":
@@ -123,6 +132,7 @@ func heuristicText(mech string) string {
 	}
 }
 
+// slotFor 把重试和空转机制放到 failure_recovery，把缺产物放到 verification，其余放到 runtime。
 func slotFor(mech string) string {
 	switch mech {
 	case "unproductive_retry", "stalled_tool_loop":
@@ -134,6 +144,7 @@ func slotFor(mech string) string {
 	}
 }
 
+// parseProposals 从回复里截出 JSON 数组。解析失败时改走 parseProposalsLegacy。没有 text 的对象丢弃。中间件的 MiddlewareN 写成 2。未知 surface 收成 prompt_fragment。
 func parseProposals(content string) []Proposal {
 	content = strings.TrimSpace(content)
 	start := strings.Index(content, "[")
@@ -180,6 +191,7 @@ func parseProposals(content string) []Proposal {
 	return out
 }
 
+// parseProposalsLegacy 解析字符串到字符串的对象数组。技能和剧本同样落载荷，其余收成 prompt_fragment。
 func parseProposalsLegacy(raw string) []Proposal {
 	var maps []map[string]string
 	if err := json.Unmarshal([]byte(raw), &maps); err != nil {
@@ -212,11 +224,13 @@ func parseProposalsLegacy(raw string) []Proposal {
 	return out
 }
 
+// strMap 取出字符串字段，类型不对时返回空串。
 func strMap(m map[string]any, k string) string {
 	v, _ := m[k].(string)
 	return v
 }
 
+// strSlice 把任意值里的非空字符串收成切片。不是数组时返回 nil。
 func strSlice(v any) []string {
 	arr, ok := v.([]any)
 	if !ok {
@@ -231,6 +245,7 @@ func strSlice(v any) []string {
 	return out
 }
 
+// or 在 a 为空时返回 b。
 func or(a, b string) string {
 	if a == "" {
 		return b
@@ -238,6 +253,7 @@ func or(a, b string) string {
 	return a
 }
 
+// sanitizeHeldOut 从 PredictedFixes 和 AtRisk 里去掉 held 编号。不改提议正文。held 为空时原样返回。
 func sanitizeHeldOut(p Proposal, held map[string]bool) Proposal {
 	if len(held) == 0 {
 		return p
@@ -247,6 +263,7 @@ func sanitizeHeldOut(p Proposal, held map[string]bool) Proposal {
 	return p
 }
 
+// dropHeld 丢掉出现在 held 里的编号。
 func dropHeld(ids []string, held map[string]bool) []string {
 	var out []string
 	for _, id := range ids {

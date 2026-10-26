@@ -1,3 +1,8 @@
+/**
+ * 拥有：产品站里那扇假窗口，用来演示提问、差异、短片和材料指针。
+ * 不拥有：真正的会话和文件写入。点选只改这一页的状态。
+ */
+
 import { useEffect, useState } from "react";
 import type { Copy, GateKind, Scene } from "./copy";
 import { ShotLight } from "./stage-canvas";
@@ -25,6 +30,7 @@ type Props = {
 
 const GATES: GateKind[] = ["once", "session", "always", "deny"];
 
+/** Workstation 按 scene 换中间那一栏，标题栏上的模块名跟着文案走。 */
 export function Workstation(props: Props) {
   const { t, scene, onScene } = props;
   const phase = 3;
@@ -92,6 +98,7 @@ export function Workstation(props: Props) {
   );
 }
 
+/** Ask 演示一次提问和审批。phase 在 0 和 3 之间时发送钮画成停止。 */
 function Ask({ t, phase, gate, onGate }: { t: Copy; phase: number; gate: GateKind; onGate: (k: GateKind) => void }) {
   const hint = {
     once: t.gate.onceHint,
@@ -161,6 +168,7 @@ function Ask({ t, phase, gate, onGate }: { t: Copy; phase: number; gate: GateKin
   );
 }
 
+/** Diff 演示勾选两段差异。没有选中或已经点过应用时，按钮不可用。hunks 变化会把已应用状态清掉。 */
 function Diff({ t, hunks, onHunk }: { t: Copy; hunks: [boolean, boolean]; onHunk: (index: 0 | 1) => void }) {
   const [kept, setKept] = useState(false);
   const n = hunks.filter(Boolean).length;
@@ -191,6 +199,7 @@ function Diff({ t, hunks, onHunk }: { t: Copy; hunks: [boolean, boolean]; onHunk
   );
 }
 
+/** Hunk 是一段可勾选的删除行和新增行。 */
 function Hunk({ on, onToggle, del, add }: { on: boolean; onToggle: () => void; del: string; add: string }) {
   return (
     <button type="button" className={on ? "hunk is-on" : "hunk"} aria-pressed={on} onClick={onToggle}>
@@ -201,6 +210,7 @@ function Hunk({ on, onToggle, del, add }: { on: boolean; onToggle: () => void; d
   );
 }
 
+/** Drama 在创作、成片和画布三个页签之间切换，并列出示例分集。 */
 function Drama({
   t,
   episode,
@@ -288,6 +298,7 @@ function Drama({
   );
 }
 
+/** TrustPane 演示 staging、canary 和 active 三个名字。只有 promoted 且当前是 active 时显示完成说明。点 checkout 由外层把指针改成 active。 */
 function TrustPane({
   t,
   promoted,

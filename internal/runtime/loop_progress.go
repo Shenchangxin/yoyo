@@ -1,3 +1,6 @@
+// SoftHorizon 上的停滞计数和催促：整文件重写、重复错误、空转等待、反复打开同一页、微步点击，以及检查输出是否变化。
+// Run 在每批工具之后调用这里。硬循环（SoftHorizon 为假）下，这些催促函数直接返回空串。停止次数由 Run 用 hitMax 比较。
+
 package runtime
 
 import (
@@ -5,18 +8,19 @@ import (
 	"strings"
 )
 
-const rewriteStallHits = 3
-const errorRepeatHits = 3
-const waitLoopHits = 2
-const idleActionHits = 3
-const rewriteStallStopHits = 6
-const errorRepeatStopHits = 6
-const waitLoopStopHits = 4
-const idleActionStopHits = 8
-const checkFailNudgeHits = 2
-const checkFailStopHits = 5
-const checkFailIdleStop = 18
-const checkFailBackstopHits = 8
+// 催促阈值和停止阈值。催促只追加用户消息。停止由 Run 在 SoftHorizon 下比较 hitMax。
+const rewriteStallHits = 3      // 同一路径的写入次数达到 3 就催促改用 str_replace
+const errorRepeatHits = 3       // 同一错误签名达到 3 就催促换做法
+const waitLoopHits = 2          // wait 达到 2 次就催促停止空转
+const idleActionHits = 3        // 同一页面 browser_open 达到 3 次就催促
+const rewriteStallStopHits = 6  // 同一路径无进展写入达到 6 次，Run 以 StopStuck 结束
+const errorRepeatStopHits = 6   // 同一错误签名达到 6 次，Run 以 StopStuck 结束
+const waitLoopStopHits = 4      // wait 达到 4 次，Run 以 StopStuck 结束
+const idleActionStopHits = 8    // 同一页面打开达到 8 次，Run 以 StopStuck 结束
+const checkFailNudgeHits = 2    // 同一份失败观察达到 2 次就催促并开始拒绝重跑
+const checkFailStopHits = 5     // 改验证器且观察不变达到 5 次，checkWatch.stuck 返回 true
+const checkFailIdleStop = 18    // 失败之后没有改产品文件的轮数达到 18，stuck 返回 true
+const checkFailBackstopHits = 8 // 已经警告后，用别的命令重印同一份报告达到 8 次，stuck 返回 true
 
 const rewriteStallPrefixEN = "You have rewritten "
 const rewriteStallPrefixZH = "你已经反复整文件覆盖 "
@@ -41,6 +45,7 @@ const idleActionPrefixZH = "你已经反复打开同一页面"
 const idleActionNudgeEN = "You already opened this page (%s, %d times). browser_open reloads and wipes clicks. Call browser_snapshot then browser_act (ref=) for the remaining path — they do not reload. Do not browser_open the same HTML unless the file changed."
 const idleActionNudgeZH = "你已经反复打开同一页面（%s，%d 次）。browser_open 会整页重载并清掉点击。剩余路径先 browser_snapshot，再用 browser_act（ref=）——它们不会重载。除非文件改过，不要再 browser_open 同一份 HTML。"
 
+// clickMicroHits 是 8。连续微步点击达到 8 次才催促收成一次 browser_act。
 const clickMicroHits = 8
 const clickMicroPrefixEN = "You have been clicking one selector per turn"
 const clickMicroPrefixZH = "你已经连续微步点击"
@@ -57,6 +62,7 @@ const instrumentPrefixZH = "失败检查指向产品文件"
 const instrumentNudgeEN = "The failing check cites the product, not the verifier. Do not rewrite qa/verify or treat a node -e probe as a fix — edit the cited product (usually html/js/css under build/) so the same check's observation changes."
 const instrumentNudgeZH = "失败检查指向产品文件，不是验证器。不要再改 qa/verify 或用 node -e 探针当修复——去改检查所引用的产品（通常是 build/ 下的 html/js/css），让同一次检查的观测结果发生变化。"
 
+// persistWorkingMemory 把去掉系统消息后的笔记写进 spill，并写发现索引。没有 spill 时原样返回 notes。Next 取计划里第一条未完成步骤。
 func persistWorkingMemory(req RunRequest, messages []Message, notes string) string {
 	spill := spillOf(req)
 	if spill == nil {
@@ -69,6 +75,7 @@ func persistWorkingMemory(req RunRequest, messages []Message, notes string) stri
 	return n.Markdown()
 }
 
+// firstOpenPlanStep 返回第一条未完成清单在方括号之后的文字。没有未完成步骤时返回空串。
 func firstOpenPlanStep(plan string) string {
 	for _, line := range strings.Split(plan, "\n") {
 		st, ok := planLineStatus(line)
@@ -87,17 +94,8 @@ func firstOpenPlanStep(plan string) string {
 	return ""
 }
 
-// recordProgress updates the rewrite-stall counters for one round and reports
-// whether the round advanced the work. Advancing means a plan step changed or
-// a write actually changed a file. A failed or no-op write counts against its
-// path, because it is an attempt that changed nothing, and that is what a
-// stall is. Counting attempts instead (as this used to) ended turns that were
-// making real edits to one large file.
-//
-// hits counts every write attempt per path since the last plan step. It drives
-// the rewrite nudge, which also applies to productive rewrites: rewriting one
-// file over and over without updating the plan is worth a nudge. fails counts
-// only attempts that changed nothing, and only those can end the turn.
+// recordProgress 更新这一轮的重写计数，并报告工作有没有前进。前进是指计划文本变了，或一次写入真的改了文件。失败或没有变化的写入仍记在该路径上，因为停滞就是这些没有改动的尝试。按尝试次数直接结束回合，会把还在改同一个大文件的回合停掉。
+// hits 计的是自上次计划步骤以来每个路径的全部写入尝试，催促也覆盖仍在产生改动的反复重写。fails 只计没有改动的尝试，Run 只用这份计数结束回合。lastPlan 非 nil 且计划文本变了时，两份计数都清空并返回 true，同一批里的写入不再入账。
 func recordProgress(hits, fails map[string]int, calls []ToolCall, results []Message, tools *WorkspaceTools, lastPlan *string) bool {
 	advanced := false
 	for _, tc := range calls {
@@ -140,12 +138,14 @@ func recordProgress(hits, fails map[string]int, calls []ToolCall, results []Mess
 	return changed
 }
 
+// clearCounts 删掉 map 里的全部键。m 为 nil 时 range 什么都不做。
 func clearCounts(m map[string]int) {
 	for k := range m {
 		delete(m, k)
 	}
 }
 
+// isWriteCall 对 write_file、str_replace、apply_patch、office_edit 返回 true。
 func isWriteCall(name string) bool {
 	switch name {
 	case "write_file", "str_replace", "apply_patch", "office_edit":
@@ -155,8 +155,7 @@ func isWriteCall(name string) bool {
 	}
 }
 
-// writeChanged reports whether a write result describes a file that changed:
-// not an error and not the "unchanged" receipt.
+// writeChanged 判断写入结果是不是真的改了文件。去掉空白后为空、以前缀 ERROR 开头，或以前缀 unchanged 加空格开头，都返回 false。
 func writeChanged(content string) bool {
 	c := strings.TrimSpace(content)
 	if c == "" || strings.HasPrefix(c, "ERROR") {
@@ -165,6 +164,7 @@ func writeChanged(content string) bool {
 	return !strings.HasPrefix(c, "unchanged ")
 }
 
+// rewriteStallNudge 在 SoftHorizon 下，对达到 rewriteStallHits 的路径里计数最高的那条发催促。SoftHorizon 为假或没有这样的路径时返回空串。
 func rewriteStallNudge(req RunRequest, hits map[string]int) string {
 	if !req.SoftHorizon {
 		return ""
@@ -181,6 +181,7 @@ func rewriteStallNudge(req RunRequest, hits map[string]int) string {
 	return fmt.Sprintf(voiceNudge(req, rewriteStallNudgeEN, rewriteStallNudgeZH), path, n)
 }
 
+// recordToolErrors 按 errorSignature 给本批结果计数。hits 为 nil，或签名为空时跳过。Run 在整批都是查阅时不调用它。
 func recordToolErrors(hits map[string]int, results []Message) {
 	if hits == nil {
 		return
@@ -194,6 +195,8 @@ func recordToolErrors(hits map[string]int, results []Message) {
 	}
 }
 
+// errorSignature 把一条工具结果收成重复计数用的签名。检查项 FAIL 收成 check fail: 加标识列表。status 或 outcome 为 fail 时用固定签名。
+// 浏览器点不中按种类归并，不按每次不同的选择器原文。其余 ERROR: 正文截到 80 字节。不是 ERROR:、也不属于 truncated json、context stub、message too big 的正文返回空串。
 func errorSignature(content string) string {
 	s := strings.TrimSpace(content)
 	if ids := failCheckIDs(s); len(ids) > 0 {
@@ -229,9 +232,7 @@ func errorSignature(content string) string {
 		return "chrome debug port"
 	case strings.Contains(lower, "message too big"):
 		return "payload too big"
-	// Browser misses name the selector, so the raw text differs on every
-	// attempt and a repeat of the same failure never reached the threshold
-	// (session 3b9f1bbb660e4236: six selector guesses, no stop). Group by kind.
+	// 浏览器没命中时原文里带着选择器，每次猜测都不同，同一类失败凑不齐阈值。会话 3b9f1bbb660e4236 猜了六次选择器也没有停。这里按种类归并。
 	case strings.Contains(lower, "matched no element"):
 		return "browser: no match"
 	case strings.Contains(lower, "is covered by"):
@@ -255,12 +256,14 @@ func errorSignature(content string) string {
 	}
 }
 
+// failureBody 只把已经是小写的 truncated json、context stub、message too big 当成失败正文。没有 ERROR: 前缀时，errorSignature 只认这三类。
 func failureBody(lower string) bool {
 	return strings.Contains(lower, "truncated json") ||
 		strings.Contains(lower, "context stub") ||
 		strings.Contains(lower, "message too big")
 }
 
+// hitMax 返回 map 里的最大计数。hits 为 nil 或为空时返回 0。
 func hitMax(hits map[string]int) int {
 	n := 0
 	for _, c := range hits {
@@ -271,6 +274,7 @@ func hitMax(hits map[string]int) int {
 	return n
 }
 
+// errorRepeatNudge 在 SoftHorizon 下，对达到 errorRepeatHits 且不是 check fail: 前缀的最高签名发催促。检查失败交给 observationNudge。
 func errorRepeatNudge(req RunRequest, hits map[string]int) string {
 	if !req.SoftHorizon {
 		return ""
@@ -287,6 +291,7 @@ func errorRepeatNudge(req RunRequest, hits map[string]int) string {
 	return fmt.Sprintf(voiceNudge(req, errorRepeatNudgeEN, errorRepeatNudgeZH), sig)
 }
 
+// recordWaits 给本批里的每个 wait 在键 wait 上加一。hits 为 nil 时什么都不做。
 func recordWaits(hits map[string]int, calls []ToolCall) {
 	if hits == nil {
 		return
@@ -298,6 +303,7 @@ func recordWaits(hits map[string]int, calls []ToolCall) {
 	}
 }
 
+// waitLoopNudge 在 SoftHorizon 且 wait 的计数不小于 waitLoopHits 时返回空转催促。hits 为 nil 时返回空串。
 func waitLoopNudge(req RunRequest, hits map[string]int) string {
 	if !req.SoftHorizon || hits == nil {
 		return ""
@@ -308,10 +314,7 @@ func waitLoopNudge(req RunRequest, hits map[string]int) string {
 	return voiceNudge(req, waitLoopNudgeEN, waitLoopNudgeZH)
 }
 
-// idleProgressCall reports whether one call moved the task forward. A click or
-// keypress must have worked, and a write must have changed a file. A failed
-// str_replace moved nothing, so it must not clear the idle count; before this,
-// any write call did, and an agent could loop on failing edits forever.
+// idleProgressCall 判断这一次调用有没有把任务往前推。点击或按键必须没有 ERROR 前缀，写入必须 writeChanged。失败的 str_replace 不算前进，不能清掉空转计数；以前任意写入都会清，失败编辑就能一直转。
 func idleProgressCall(tc ToolCall, result string) bool {
 	switch tc.Name {
 	case "browser_click", "browser_type", "browser_fill", "browser_act", "browser_verify",
@@ -324,6 +327,7 @@ func idleProgressCall(tc ToolCall, result string) bool {
 	}
 }
 
+// recordIdleActions 在本批有一次前进时清空计数。否则给每个 browser_open 的地址加一。hits 为 nil 时什么都不做。
 func recordIdleActions(hits map[string]int, calls []ToolCall, results []Message) {
 	if hits == nil {
 		return
@@ -351,6 +355,7 @@ func recordIdleActions(hits map[string]int, calls []ToolCall, results []Message)
 	}
 }
 
+// idleActionKey 对 browser_open 返回 browser_open: 加小写地址。地址先取 url，空则取 path。不是 browser_open 或地址为空时返回空串。
 func idleActionKey(tc ToolCall) string {
 	if tc.Name != "browser_open" {
 		return ""
@@ -367,6 +372,7 @@ func idleActionKey(tc ToolCall) string {
 	return "browser_open:" + raw
 }
 
+// idleActionNudge 在 SoftHorizon 下，对达到 idleActionHits 的地址里计数最高的那条发催促。hits 为 nil 时返回空串。
 func idleActionNudge(req RunRequest, hits map[string]int) string {
 	if !req.SoftHorizon || hits == nil {
 		return ""
@@ -383,6 +389,7 @@ func idleActionNudge(req RunRequest, hits map[string]int) string {
 	return fmt.Sprintf(voiceNudge(req, idleActionNudgeEN, idleActionNudgeZH), key, n)
 }
 
+// clickMicroRound 在本批非空、至少有一次点击类调用，且其余只是截图或快照时返回 true。出现任何别的工具就返回 false。空批返回 false。
 func clickMicroRound(calls []ToolCall) bool {
 	if len(calls) == 0 {
 		return false
@@ -400,6 +407,7 @@ func clickMicroRound(calls []ToolCall) bool {
 	return hasClick
 }
 
+// recordClickMicro 在微步点击轮把计数加一。本批含 browser_act 或 browser_verify 时把计数清零。只有截图或快照时保持原计数。出现其他工具也清零。n 为 nil 或调用为空时什么都不做。
 func recordClickMicro(n *int, calls []ToolCall) {
 	if n == nil || len(calls) == 0 {
 		return
@@ -424,6 +432,7 @@ func recordClickMicro(n *int, calls []ToolCall) {
 	}
 }
 
+// clickMicroNudge 在 SoftHorizon 且 n 不小于 clickMicroHits 时返回催促，否则返回空串。
 func clickMicroNudge(req RunRequest, n int) string {
 	if !req.SoftHorizon || n < clickMicroHits {
 		return ""
@@ -431,6 +440,7 @@ func clickMicroNudge(req RunRequest, n int) string {
 	return fmt.Sprintf(voiceNudge(req, clickMicroNudgeEN, clickMicroNudgeZH), n)
 }
 
+// planFirstOverlay 在方法论模式返回空串。否则在计划仍开着时附上 plan-first 技能正文。
 func planFirstOverlay(t *WorkspaceTools) string {
 	if t != nil && t.Methodology {
 		return ""
@@ -438,10 +448,12 @@ func planFirstOverlay(t *WorkspaceTools) string {
 	return skillOverlay(t, "plan-first", t != nil && PlanOpen(planTextOf(t)))
 }
 
+// verifyArtifactOverlay 在 VerifyHint 为真时附上 verify-artifact 技能正文。
 func verifyArtifactOverlay(t *WorkspaceTools) string {
 	return skillOverlay(t, "verify-artifact", t != nil && t.VerifyHint)
 }
 
+// failCheckIDs 从 FAIL 行和 `"name": "FAIL"` 字段收集检查标识，小写、去重。fail、pass、not_run 和空标识丢掉。
 func failCheckIDs(content string) []string {
 	var ids []string
 	seen := map[string]struct{}{}
@@ -474,10 +486,7 @@ func failCheckIDs(content string) []string {
 	return ids
 }
 
-// checkIdent is a check name such as render or coreLoop. A section heading
-// like "FAIL 明细:" is not one: session 9ec78b5c78561d94 printed that heading
-// on every run, so the watch treated render FAIL and render PASS as the same
-// observation.
+// checkIdent 判断是不是检查名，例如 render 或 coreLoop。像 FAIL 明细: 这种小节标题不是：会话 9ec78b5c78561d94 每次运行都印这行，观察会被当成没变。空串或长度超过 32 返回 false。首字符必须是字母，其后可以是字母、数字、下划线或连字符。
 func checkIdent(id string) bool {
 	if id == "" || len(id) > 32 {
 		return false
@@ -494,8 +503,7 @@ func checkIdent(id string) bool {
 	return true
 }
 
-// jsonFailKey reads one `"render": "FAIL"` field. "status" is the rollup, not
-// a check, so a run that fixes render and still fails outcome changes signature.
+// jsonFailKey 从一行里读出 `"render": "FAIL"` 这种字段。status 是汇总，不是检查项，所以 render 修好但 outcome 仍失败时签名会变。键不是合法检查名，或值不是 FAIL，就返回 false。
 func jsonFailKey(line string) (string, bool) {
 	line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ","))
 	if !strings.HasPrefix(line, `"`) {
@@ -517,6 +525,7 @@ func jsonFailKey(line string) (string, bool) {
 	return key, true
 }
 
+// checkWatch 记住最近一份失败观察。identical 为真表示这份摘要和上一份逐字相同。allowRerun 为真表示产品文件改过，同一条脚本可以再跑一次。
 type checkWatch struct {
 	sig         string
 	digest      string
@@ -531,14 +540,12 @@ type checkWatch struct {
 	allowRerun  bool
 }
 
+// note 记下这一批的失败观察。接收者为 nil 时什么都不做。
 func (w *checkWatch) note(calls []ToolCall, results []Message) {
 	if w == nil {
 		return
 	}
-	// Reading qa/verification.json (or any FAIL dump) is not re-running the
-	// check. Counting those reads as hits stopped harbor turns after one
-	// failed Watch: the JSON still said "outcome":"FAIL", so SoftHorizon
-	// fired "the same check kept failing" before the product could change.
+	// 读 qa/verification.json 或任何 FAIL 转储不是在重跑检查。把这些读取算进次数，会在一次失败的 Watch 之后停住评测回合：JSON 里仍写着 outcome FAIL，产品还没改，SoftHorizon 就报同一条检查一直失败。
 	if inspectsOnly(calls) {
 		return
 	}
@@ -563,7 +570,7 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 				w.bypassHits++
 			}
 		} else {
-			// A different failing report is a changed observation.
+			// 另一份失败报告就是观察变了，计数从 1 重新开始。
 			w.digest, w.sig, w.hits = digest, sig, 1
 			w.identical = false
 			w.warned = false
@@ -597,21 +604,19 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 	w.idle++
 }
 
+// stuck 在还没有失败签名时返回 false。同一条检查原样重跑本身不在这里判停。改验证器达到 checkFailStopHits，或失败后空转达到 checkFailIdleStop，返回 true。已经警告之后，绕开封锁重印同一份报告达到 checkFailBackstopHits，也返回 true。
 func (w *checkWatch) stuck() bool {
 	if w == nil || w.sig == "" {
 		return false
 	}
-	// Re-running one check with the same output is blocked, not fatal.
-	// Rewriting the verifier, idling without an edit, or bypassing the
-	// block with another command that reprints the same report still stops.
+	// 同一份输出再跑一次检查只是被拒绝，这里不因此返回 true。改写验证器、没有编辑就空转，或用另一条命令重印同一份报告，仍会停。
 	if w.harnessHits >= checkFailStopHits || w.idle >= checkFailIdleStop {
 		return true
 	}
 	return w.warned && w.bypassHits >= checkFailBackstopHits
 }
 
-// repeatBlock refuses the next run of the same script after an identical
-// report. A product edit clears it for one more run.
+// repeatBlock 在相同报告已经警告过之后，返回要拒绝的脚本和拒绝文案。产品文件改过一次后 allowRerun 为真，这次返回空串，让那条脚本再跑一次。未警告、脚本为空或文案为空时也返回空串。
 func (w *checkWatch) repeatBlock() (script, refusal string) {
 	if w == nil || !w.warned || w.allowRerun || w.script == "" || w.refusal == "" {
 		return "", ""
@@ -619,10 +624,12 @@ func (w *checkWatch) repeatBlock() (script, refusal string) {
 	return w.script, w.refusal
 }
 
+// reason 返回观察没有变化时的停止说明。
 func (w *checkWatch) reason() string {
 	return "the same check kept failing without the observation changing"
 }
 
+// observationNudge 在 SoftHorizon 下发检查催促。同一份观察的次数不小于 checkFailNudgeHits 且还不能重跑时，记下 warned 和拒绝文案并返回它。否则若这批在写验证器路径，返回改产品文件的催促。其余情况返回空串。
 func observationNudge(req RunRequest, w *checkWatch, calls []ToolCall) string {
 	if !req.SoftHorizon || w == nil || w.sig == "" {
 		return ""
@@ -638,6 +645,7 @@ func observationNudge(req RunRequest, w *checkWatch, calls []ToolCall) string {
 	return ""
 }
 
+// failObservation 把 FAIL 行和 JSON 里的 FAIL 字段收成一份摘要，空白折叠成单个空格。没有失败行时返回空串。
 func failObservation(content string) string {
 	var lines []string
 	for _, line := range strings.Split(content, "\n") {
@@ -653,6 +661,7 @@ func failObservation(content string) string {
 	return strings.Join(lines, "\n")
 }
 
+// checkScript 从 shell 参数里抽出 qa 脚本路径。没有脚本但调用了 browser_verify 时返回 browser_verify。都没有时返回空串。
 func checkScript(calls []ToolCall) string {
 	script := ""
 	verify := false
@@ -676,6 +685,7 @@ func checkScript(calls []ToolCall) string {
 	return ""
 }
 
+// harnessScriptIn 在文本里找验证器路径下的 .js、.cjs 或 .mjs。找到就返回该路径，否则返回空串。
 func harnessScriptIn(text string) string {
 	text = normSlash(text)
 	for _, f := range strings.FieldsFunc(text, func(r rune) bool {
@@ -696,9 +706,7 @@ func harnessScriptIn(text string) string {
 	return ""
 }
 
-// seedCheckWatch replays this turn's history so a continued turn blocks the
-// script whose last report was already identical, instead of running it until
-// the stop card. Harness and idle counters stay on this turn only.
+// seedCheckWatch 重放这一轮已有的历史，使继续下来的回合直接拒绝上一份相同报告的脚本，而不是再跑到停止卡片。重放之后把 harnessHits、idle、bypassHits 清零，这三项只计本轮。相同观察已经达到催促次数时补发一次 observationNudge。
 func seedCheckWatch(req RunRequest, w *checkWatch, messages []Message) {
 	if w == nil {
 		return
@@ -726,6 +734,7 @@ func seedCheckWatch(req RunRequest, w *checkWatch, messages []Message) {
 	}
 }
 
+// extractWritePaths 从 write_file、str_replace、edit_file、create_file 和 apply_patch 的参数里取出路径。其他工具返回 nil。补丁先看 *** Update/Add/Delete File 行。
 func extractWritePaths(tc ToolCall) []string {
 	switch tc.Name {
 	case "write_file", "str_replace", "edit_file", "create_file":
@@ -740,6 +749,7 @@ func extractWritePaths(tc ToolCall) []string {
 	}
 }
 
+// patchFilePaths 收集补丁里 Update、Add、Delete 文件行上的路径。参数是 JSON 且带 patch 字段时先用该字段。
 func patchFilePaths(args string) []string {
 	text := args
 	if m := parseToolArgs(args); len(m) > 0 {
@@ -761,6 +771,7 @@ func patchFilePaths(args string) []string {
 	return out
 }
 
+// writesHarness 在任一写入路径是验证器路径时返回 true。
 func writesHarness(calls []ToolCall) bool {
 	for _, tc := range calls {
 		for _, p := range extractWritePaths(tc) {
@@ -772,6 +783,7 @@ func writesHarness(calls []ToolCall) bool {
 	return false
 }
 
+// writesProduct 在任一写入路径是产品文件时返回 true。验证器路径不算产品。
 func writesProduct(calls []ToolCall) bool {
 	for _, tc := range calls {
 		for _, p := range extractWritePaths(tc) {
@@ -783,6 +795,7 @@ func writesProduct(calls []ToolCall) bool {
 	return false
 }
 
+// inspectsOnly 在调用非空且全部是 read_file、list_dir、grep、glob、search_files、read_artifact 时返回 true。空批返回 false。
 func inspectsOnly(calls []ToolCall) bool {
 	if len(calls) == 0 {
 		return false
@@ -797,6 +810,7 @@ func inspectsOnly(calls []ToolCall) bool {
 	return true
 }
 
+// isHarnessPath 判断路径是不是验证器。含 /qa/、以 qa/ 开头、落在 __tests__ 或 tests 里，文件名含 verify 或 whitebox，或检查用的 .mjs 文件名含 check、spec、test，都返回 true。
 func isHarnessPath(p string) bool {
 	p = normSlash(p)
 	base := p
@@ -816,6 +830,7 @@ func isHarnessPath(p string) bool {
 	return false
 }
 
+// isProductPath 在路径不是验证器，且后缀是 js、mjs、cjs、html、css、ts、tsx、jsx 之一时返回 true。
 func isProductPath(p string) bool {
 	if isHarnessPath(p) {
 		return false
@@ -829,10 +844,12 @@ func isProductPath(p string) bool {
 	return false
 }
 
+// normSlash 把反斜杠换成斜杠，转成小写，并去掉开头的 ./。
 func normSlash(p string) string {
 	return strings.TrimPrefix(strings.ToLower(strings.ReplaceAll(p, "\\", "/")), "./")
 }
 
+// skillOverlay 在聊天覆盖层打开、条件为真、技能尚未加载且正文非空时，返回带 Skill 标题的正文。否则返回空串。
 func skillOverlay(t *WorkspaceTools, name string, cond bool) string {
 	if t == nil || !t.ChatOverlay || !cond || name == "" {
 		return ""

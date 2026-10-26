@@ -1,3 +1,5 @@
+// 从 GitHub 的 git tree 拉取技能目录。单文件超过 1 MiB、整包超过 16 MiB 或文件数达到 400 即失败。
+
 package skillpack
 
 import (
@@ -17,9 +19,10 @@ const (
 	maxFileBytes = 1 << 20
 )
 
-// Get fetches a URL. Tests may override.
+// Get 拉取一个 URL 的正文。测试可以替换它。
 var Get = defaultGet
 
+// PackFile 是包里的一个相对路径和它的字节。
 type PackFile struct {
 	Rel  string
 	Data []byte
@@ -34,6 +37,7 @@ type ghTree struct {
 	} `json:"tree"`
 }
 
+// fetchGitHub 用 api.github.com 的递归 tree 列出文件，再从 raw.githubusercontent.com 下载。repo 必须是 owner/name。ref 空则用 main，skillsRel 空则用 skills。跳过不通过 validRel 的路径。单文件超过 1 MiB 返回 "<rel> larger than 1MiB"。总字节超过 16 MiB 返回 "pack larger than 16MiB"。文件数达到 400 返回 "pack has more than 400 files"。没有 SKILL.md 返回 "pack has no SKILL.md"。成功时第二个返回值是树的 SHA。
 func fetchGitHub(repo, ref, skillsRel string) ([]PackFile, string, error) {
 	repo = strings.Trim(strings.ReplaceAll(repo, "\\", "/"), "/")
 	if repo == "" || strings.Count(repo, "/") != 1 {
@@ -102,10 +106,12 @@ func fetchGitHub(repo, ref, skillsRel string) ([]PackFile, string, error) {
 	return files, tree.SHA, nil
 }
 
+// rawGitHubURL 拼出 raw.githubusercontent.com 上的文件地址。
 func rawGitHubURL(repo, ref, path string) string {
 	return "https://raw.githubusercontent.com/" + repo + "/" + ref + "/" + strings.TrimPrefix(path, "/")
 }
 
+// defaultGet 用 45 秒超时 GET。User-Agent 是 Yoyo-Workstation。YOYO_GITHUB_TOKEN 或 GITHUB_TOKEN 非空时带 Bearer。api.github.com 再加 Accept application/vnd.github+json 和 X-GitHub-Api-Version 2022-11-28。状态码大于等于 300 返回 "pack fetch: " 加状态。正文最多读到 16 MiB 再多 1 字节。
 func defaultGet(rawURL string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -131,6 +137,7 @@ func defaultGet(rawURL string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, maxPackBytes+1))
 }
 
+// githubAuthToken 先读 YOYO_GITHUB_TOKEN，再读 GITHUB_TOKEN。都空则返回空串。
 func githubAuthToken() string {
 	for _, k := range []string{"YOYO_GITHUB_TOKEN", "GITHUB_TOKEN"} {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
@@ -140,6 +147,7 @@ func githubAuthToken() string {
 	return ""
 }
 
+// packHasSkillMD 在任一文件的基名是 skill.md（不区分大小写）时返回 true。
 func packHasSkillMD(files []PackFile) bool {
 	for _, f := range files {
 		if strings.EqualFold(pathBase(f.Rel), "skill.md") {
@@ -149,6 +157,7 @@ func packHasSkillMD(files []PackFile) bool {
 	return false
 }
 
+// pathBase 返回相对路径的最后一段。
 func pathBase(rel string) string {
 	rel = strings.ReplaceAll(rel, "\\", "/")
 	if i := strings.LastIndex(rel, "/"); i >= 0 {

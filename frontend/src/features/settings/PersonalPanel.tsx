@@ -1,3 +1,7 @@
+/**
+ * 拥有：个人档案、记忆、任务、工作和目标的设置。
+ * 不拥有：偶像服务。增删改会调用 api 改状态。
+ */
 import { useEffect, useState } from "react";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
@@ -7,6 +11,7 @@ import { Input } from "../../components/ui/input";
 import { SettingEmpty, SettingRow, SettingSection, SettingsGroupLabel } from "./SettingChrome";
 import { profileLabel, profileOf } from "../../lib/profile-label";
 
+/** PersonalSettings 把档案、记忆、任务和工作各段拼在一起。 */
 export function PersonalSettings() {
   const copy = useCopy();
   return (
@@ -25,10 +30,12 @@ export function PersonalSettings() {
   );
 }
 
+/** 编辑工作档案。 */
 function ProfileSection() {
   const copy = useCopy();
   const [rows, setRows] = useState<any[]>([]);
   const [active, setActive] = useState<any | null>(null);
+  /** 重新拉取档案。 */
   const refresh = () => {
     void api.profilesList().then((list) => {
       setRows((Array.isArray(list) ? list : []).map(profileOf));
@@ -98,10 +105,12 @@ function ProfileSection() {
   );
 }
 
+/** 编辑记忆条目。 */
 function MemorySection() {
   const copy = useCopy();
   const [items, setItems] = useState<any[]>([]);
   const [text, setText] = useState("");
+  /** 重新拉取记忆。 */
   const refresh = () => {
     void api.memoryList().then(setItems).catch(() => {});
   };
@@ -171,11 +180,13 @@ function MemorySection() {
   );
 }
 
+/** 编辑定时任务。 */
 function JobSection() {
   const copy = useCopy();
   const [jobs, setJobs] = useState<any[]>([]);
   const [prompt, setPrompt] = useState("");
   const [spec, setSpec] = useState("30m");
+  /** 重新拉取定时任务。 */
   const refresh = () => {
     void api.scheduleList().then(setJobs).catch(() => {});
   };
@@ -270,8 +281,10 @@ function JobSection() {
   );
 }
 
+/** 拉取个人页用的快照。 */
 function usePersonalSnap() {
   const [snap, setSnap] = useState<any>({});
+  /** 重新拉取个人快照。 */
   const refresh = () => {
     void api.personalSnapshot().then(setSnap).catch(() => {});
   };
@@ -281,6 +294,7 @@ function usePersonalSnap() {
   return { snap, refresh };
 }
 
+/** 投影工作文档。 */
 function WorkSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
@@ -367,6 +381,7 @@ function WorkSection() {
   );
 }
 
+/** 投影等待审阅的提案。 */
 function ProposalSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
@@ -404,6 +419,7 @@ function ProposalSection() {
   );
 }
 
+/** 投影新的想法。 */
 function IdeaSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
@@ -441,6 +457,7 @@ function IdeaSection() {
   );
 }
 
+/** 编辑目标。 */
 function GoalSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
@@ -516,6 +533,7 @@ function GoalSection() {
   );
 }
 
+/** 编辑监视项。 */
 function WatchSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();

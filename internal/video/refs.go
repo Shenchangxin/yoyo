@@ -1,3 +1,5 @@
+// refs.go 把提示词里的 @名字 换成与参考图序号对齐的记号。
+
 package video
 
 import (
@@ -6,16 +8,16 @@ import (
 	"strings"
 )
 
-// AssetRef is a named still used as a multimodal reference slot.
+// AssetRef 是一张带名字的静帧，用作多模态参考槽。
 type AssetRef struct {
 	Name string
-	URL  string // data URL or http(s)
+	URL  string // 数据 URL 或 http(s)
 }
 
+// atName 匹配 @ 后面一段不含空白和 @ 的名字。
 var atName = regexp.MustCompile(`@([^\s@]+)`)
 
-// ResolvePromptRefs rewrites @Name to @图片NName (or Wan 图N) so the model
-// token lines up with reference_image_urls[N-1]. Longer names win.
+// ResolvePromptRefs 把 @名字 改写成 @图片N 加原名，wan 为真时改成图N。序号从 1 起，与返回的 URL 切片下标 N-1 对齐。较长的名字先匹配。没有可用参考时原样返回提示词，URL 为 nil。
 func ResolvePromptRefs(prompt string, refs []AssetRef, wan bool) (rewritten string, urls []string) {
 	ordered := uniqueNamed(refs)
 	if len(ordered) == 0 {
@@ -53,6 +55,7 @@ func ResolvePromptRefs(prompt string, refs []AssetRef, wan bool) (rewritten stri
 	return rewritten, urls
 }
 
+// uniqueNamed 丢掉空名字、空 URL 和重复名字，保留第一次出现的顺序。
 func uniqueNamed(refs []AssetRef) []AssetRef {
 	seen := map[string]bool{}
 	var out []AssetRef
@@ -67,6 +70,7 @@ func uniqueNamed(refs []AssetRef) []AssetRef {
 	return out
 }
 
+// itoa 把非负整数转成十进制文本。
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

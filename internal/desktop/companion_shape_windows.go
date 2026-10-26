@@ -1,5 +1,7 @@
 //go:build windows
 
+// companion_shape_windows.go 拥有 Windows 上宠物窗口的区域裁剪、组合样式和光标换算。命中几何在 companion_hit.go。companion.go 在显示和调整时调用 applyCompanionShape。
+
 package desktop
 
 import (
@@ -41,10 +43,12 @@ var (
 	shapeParentH           int
 )
 
+// procReady 在过程已加载且 Find 成功时返回真。
 func procReady(p *syscall.LazyProc) bool {
 	return p != nil && p.Find() == nil
 }
 
+// enumCompanionShape 是 EnumChildWindows 的回调。它按 companionChildRegion 决定清掉子窗口区域、跳过，或给子窗口贴宠物区域。返回 1 以继续枚举。
 func enumCompanionShape(hwnd uintptr, lparam uintptr) uintptr {
 	if !procReady(procGetWindowRect) {
 		return 1
@@ -56,9 +60,7 @@ func enumCompanionShape(hwnd uintptr, lparam uintptr) uintptr {
 	}
 	w := int(wr.right - wr.left)
 	h := int(wr.bottom - wr.top)
-	// Nested Chromium widgets are often a few dozen pixels, or still the
-	// previous size while the parent has already resized. Scaling the pet
-	// clip onto them hides the call page. During a call, drop that clip.
+	// 嵌套的 Chromium 窗口常常只有几十像素，或者父窗口已经改了大小而子窗口还是旧尺寸。把宠物裁剪缩放到它们上面会挡住通话页。通话中丢掉这份旧裁剪。
 	switch companionChildRegion(w, h, shapeParentW, shapeParentH, companionInteractive.Load()) {
 	case companionChildClear:
 		clearWindowRgn(w32.HWND(hwnd))
@@ -70,6 +72,7 @@ func enumCompanionShape(hwnd uintptr, lparam uintptr) uintptr {
 	return 1
 }
 
+// clearWindowRgn 调用 SetWindowRgn 把区域设成空，从而去掉旧裁剪。句柄为 0 或函数没加载时返回。
 func clearWindowRgn(hwnd w32.HWND) {
 	if hwnd == 0 || !procReady(procSetWindowRgn) {
 		return
@@ -77,6 +80,7 @@ func clearWindowRgn(hwnd w32.HWND) {
 	_, _, _ = procSetWindowRgn.Call(uintptr(hwnd), 0, 1)
 }
 
+// setWindowCompanionRgn 按窗口矩形创建宠物区域并 SetWindowRgn。创建失败则返回。SetWindowRgn 失败时删掉区域对象。
 func setWindowCompanionRgn(hwnd w32.HWND, caption bool) {
 	if hwnd == 0 || !procReady(procSetWindowRgn) || !procReady(procGetWindowRect) {
 		return
@@ -101,6 +105,7 @@ func setWindowCompanionRgn(hwnd w32.HWND, caption bool) {
 	}
 }
 
+// companionHWND 从 WebviewWindow 取出原生句柄。类型不对或窗口为空时返回 0。
 func companionHWND(win application.Window) w32.HWND {
 	wv, ok := win.(*application.WebviewWindow)
 	if !ok || wv == nil {
@@ -109,6 +114,7 @@ func companionHWND(win application.Window) w32.HWND {
 	return w32.HWND(uintptr(wv.NativeWindow()))
 }
 
+// restoreCompanionComposition 给宠物窗口加上 WS_EX_NOREDIRECTIONBITMAP。专注穿透开着时再加上 WS_EX_LAYERED 和 WS_EX_TRANSPARENT。否则去掉这两项。样式有变化时用 SetWindowPos 刷框架。
 func restoreCompanionComposition(win application.Window) {
 	hwnd := companionHWND(win)
 	if hwnd == 0 {
@@ -117,8 +123,7 @@ func restoreCompanionComposition(win application.Window) {
 	style := w32.GetWindowLongPtr(hwnd, w32.GWL_EXSTYLE)
 	next := style | wsExNoRedirectionBitmap
 	if companionClickThrough.Load() {
-		// Persistent click-through for Focus Mode. Hover-toggling WS_EX_TRANSPARENT
-		// un-paints the WebView2 blob; a stable flag does not.
+		// 专注模式用稳定的点击穿透。悬停时来回切换 WS_EX_TRANSPARENT 会让 WebView2 的宠物不再绘制；标志保持不动则不会。
 		next |= wsExLayered | wsExTransparent
 	} else {
 		next &^= wsExLayered
@@ -130,6 +135,7 @@ func restoreCompanionComposition(win application.Window) {
 	}
 }
 
+// applyCompanionShape 先恢复组合样式，再给父窗口和每个子窗口贴区域。caption 为真时枚举回调收到非 0 的 lparam。
 func applyCompanionShape(win application.Window, caption bool) {
 	restoreCompanionComposition(win)
 	hwnd := companionHWND(win)
@@ -153,11 +159,10 @@ func applyCompanionShape(win application.Window, caption bool) {
 	}
 }
 
-// setCompanionPassthrough is a no-op on Windows. Toggling WS_EX_TRANSPARENT on
-// the WebView2 child tree both fails to punch through the Chromium HWND and
-// un-paints the blob on hover. Click-through comes from SetWindowRgn instead.
+// setCompanionPassthrough 在 Windows 上是空操作。悬停切换 WS_EX_TRANSPARENT 既穿不透 Chromium 窗口，也会让宠物不再绘制。点击穿透靠 SetWindowRgn。
 func setCompanionPassthrough(application.Window, bool) {}
 
+// createCompanionRgn 在通话中创建整窗圆角区域，半径 24。空闲时按宠物占位做圆角矩形，字幕打开时再并上字幕胶囊。GDI 的直径用圆角的两倍，避免裁成圆。
 func createCompanionRgn(winW, winH int, caption bool) uintptr {
 	if !procReady(procCreateRoundRectRgn) {
 		return 0
@@ -168,8 +173,7 @@ func createCompanionRgn(winW, winH int, caption bool) uintptr {
 		return rgn
 	}
 	x, y, w, h := companionPetRegionRect(float64(winW), float64(winH), caption)
-	// GDI wants the ellipse diameter. A diameter of min(w,h) is a circle
-	// clip — the blob hips sit outside that disk.
+	// GDI 要的是椭圆直径。直径取宽高的较小值会裁成圆，宠物胯部会落在圆外面。
 	rad := companionRegionCornerRadius(w, h, min(float64(winW)/float64(companionW), float64(winH)/companionDesignH(caption)))
 	dia := int32(rad*2 + 0.5)
 	if dia < 16 {
@@ -221,6 +225,7 @@ func createCompanionRgn(winW, winH int, caption bool) uintptr {
 	return blob
 }
 
+// companionCursorLocalNative 用 GetCursorPos 和 GetWindowRect 算出光标在窗口里的坐标，以及窗口宽高。句柄或调用失败时返回假。
 func companionCursorLocalNative(win application.Window) (lx, ly, ww, wh float64, ok bool) {
 	hwnd := companionHWND(win)
 	if hwnd == 0 || !procReady(procGetCursorPos) || !procReady(procGetWindowRect) {
@@ -239,6 +244,7 @@ func companionCursorLocalNative(win application.Window) (lx, ly, ww, wh float64,
 	return float64(pt.x - wr.left), float64(pt.y - wr.top), float64(wr.right - wr.left), float64(wr.bottom - wr.top), true
 }
 
+// leftMouseDown 用 GetAsyncKeyState 看左键高位是否按下。函数没加载时返回假。
 func leftMouseDown() bool {
 	if !procReady(procGetAsyncKeyState) {
 		return false
@@ -247,6 +253,7 @@ func leftMouseDown() bool {
 	return v&0x8000 != 0
 }
 
+// dpiAt 用 MonitorFromPoint 和 GetDpiForMonitor 取该点的有效 DPI。取不到或低于 96 时用 GetDpiForSystem，仍低于 96 则返回 96。
 func dpiAt(x, y int32) int {
 	hmon, _, _ := procMonitorFromPoint.Call(uintptr(int32(x)), uintptr(int32(y)), monitorDefaultNearest)
 	if hmon != 0 && procGetDpiForMonitor.Find() == nil {

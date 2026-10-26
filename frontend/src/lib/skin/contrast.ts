@@ -1,5 +1,11 @@
 import type { TokenMap } from "./schema.ts";
 
+/**
+ * 拥有：前景和次要文字相对背景的对比度，以及壁纸上要加多厚的纱才能读清字。
+ * 不拥有：把纱写到文档，以及从图片采样亮度。
+ */
+
+/** ContrastReport 前景和次要文字的对比度。pass 为假时 reason 说明哪一条没过。 */
 export type ContrastReport = {
   foreground: number;
   muted: number;
@@ -7,6 +13,7 @@ export type ContrastReport = {
   reason?: string;
 };
 
+/** 解析 #rgb 或 #rrggbb，通道换成 0 到 1。其他写法返回空。 */
 function parseRGB(s: string | undefined): [number, number, number] | null {
   if (!s || !s.startsWith("#")) return null;
   const h = s.slice(1);
@@ -16,14 +23,17 @@ function parseRGB(s: string | undefined): [number, number, number] | null {
   return null;
 }
 
+/** sRGB 通道转线性光。 */
 function lin(v: number): number {
   return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 }
 
+/** 相对亮度。 */
 function lum(c: [number, number, number]): number {
   return 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
 }
 
+/** 两个颜色的对比度。 */
 function ratio(a: [number, number, number], b: [number, number, number]): number {
   const l1 = lum(a);
   const l2 = lum(b);
@@ -32,6 +42,7 @@ function ratio(a: [number, number, number], b: [number, number, number]): number
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/** hslToHex 把色相和百分比饱和度、亮度收成 #rrggbb。 */
 export function hslToHex(h: number, sPct: number, lPct: number): string {
   const s = Math.min(1, Math.max(0, sPct / 100));
   const l = Math.min(1, Math.max(0, lPct / 100));
@@ -52,13 +63,14 @@ export function hslToHex(h: number, sPct: number, lPct: number): string {
   return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
+/** 两个相对亮度的对比度。 */
 function contrastLum(a: number, b: number): number {
   const hi = Math.max(a, b);
   const lo = Math.min(a, b);
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** Smallest veil (0 = raw wallpaper, 1 = solid palette) so fg/muted stay readable over a wallpaper of `wallLum`. */
+/** veilForReadability 最小纱厚度。0 是裸壁纸，1 是纯调色板。前景至少 4.5，次要文字至少 3。自动结果封顶，亮图在暗色里仍能看见，滑条仍可再加厚。 */
 export function veilForReadability(wallLum: number, bgLum: number, fgLum: number, mutedLum?: number): number {
   const needed = (ink: number, minRatio: number) => {
     if (contrastLum(ink, wallLum) >= minRatio) return 0;
@@ -79,14 +91,16 @@ export function veilForReadability(wallLum: number, bgLum: number, fgLum: number
   };
   let v = needed(fgLum, 4.5);
   if (mutedLum != null) v = Math.max(v, needed(mutedLum, 3));
-  // Cap Auto so a bright photo stays visible in dark mode; the slider can still go higher.
+  // 自动纱封顶，亮图在暗色里仍能看见；滑条仍可再加厚。
   return Math.min(0.58, Math.max(0, v));
 }
 
+/** relativeLuminance 把 0 到 255 的通道换成相对亮度。 */
 export function relativeLuminance(r: number, g: number, b: number): number {
   return lum([r / 255, g / 255, b / 255]);
 }
 
+/** contrastOf 用背景对照前景和次要文字。前景低于 4.5 或次要文字低于 3 时不通过。解析不出的颜色不参与。 */
 export function contrastOf(tokens: TokenMap): ContrastReport {
   const bg = parseRGB(tokens["--background"]);
   const fg = parseRGB(tokens["--foreground"]);

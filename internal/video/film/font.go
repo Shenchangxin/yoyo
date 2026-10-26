@@ -1,3 +1,5 @@
+// 代码画面上的字。按操作系统找一份能写中文的字体，同字号只建一次。
+
 package film
 
 import (
@@ -17,6 +19,7 @@ var (
 	faces    map[float64]font.Face
 )
 
+// textFace 返回这个字号的字体。第一次才去读文件。字号小于等于 0，或没找到字体，就返回 nil。
 func textFace(size float64) font.Face {
 	fontOnce.Do(loadFont)
 	if fontData == nil || size <= 0 {
@@ -38,6 +41,7 @@ func textFace(size float64) font.Face {
 	return face
 }
 
+// loadFont 按候选路径读第一份能解析的字体。字体集合用其中的第一套。
 func loadFont() {
 	for _, path := range fontCandidates() {
 		raw, err := os.ReadFile(path)
@@ -57,6 +61,7 @@ func loadFont() {
 	}
 }
 
+// fontCandidates 按操作系统给出中文字体路径。Windows 看雅黑、黑体和宋体，macOS 看苹方等，其余看 Noto 和文泉驿。
 func fontCandidates() []string {
 	switch runtime.GOOS {
 	case "windows":

@@ -1,3 +1,6 @@
+// 本文件锁住本地文件服务能提供 HTML 和相对资源，同一文档不因片段不同而重新加载，以及路径不能逃出目录。
+// 由 go test 调用。
+
 package browser
 
 import (
@@ -9,6 +12,7 @@ import (
 	"testing"
 )
 
+// TestServeFileURLServesWorkspaceHTML 锁住 serveFileURL 返回的地址能取回写入的 HTML。
 func TestServeFileURLServesWorkspaceHTML(t *testing.T) {
 	dir := t.TempDir()
 	page := filepath.Join(dir, "game.html")
@@ -35,6 +39,7 @@ func TestServeFileURLServesWorkspaceHTML(t *testing.T) {
 	}
 }
 
+// TestServeFileURLServesRelativeAsset 锁住同目录的 game.js 也能通过文件服务取到。
 func TestServeFileURLServesRelativeAsset(t *testing.T) {
 	dir := t.TempDir()
 	page := filepath.Join(dir, "index.html")
@@ -66,6 +71,7 @@ func TestServeFileURLServesRelativeAsset(t *testing.T) {
 	}
 }
 
+// TestSameDocumentURLIgnoresFragment 锁住片段不同仍是同一文档，路径不同或一边为空则不是。
 func TestSameDocumentURLIgnoresFragment(t *testing.T) {
 	u := "http://127.0.0.1:9/index.html"
 	if !sameDocumentURL(u, u) {
@@ -82,6 +88,7 @@ func TestSameDocumentURLIgnoresFragment(t *testing.T) {
 	}
 }
 
+// TestShouldReloadLocal 锁住 Chrome 不在或想要的地址为空时要导航，同一文档不导航，不同文件要导航。
 func TestShouldReloadLocal(t *testing.T) {
 	u := "http://127.0.0.1:9/index.html"
 	if !shouldReloadLocal(false, u, u) {
@@ -98,6 +105,7 @@ func TestShouldReloadLocal(t *testing.T) {
 	}
 }
 
+// TestShowingLocalFalseWithoutChrome 锁住没有 CDP 时不会声称正在显示那个本地文件。
 func TestShowingLocalFalseWithoutChrome(t *testing.T) {
 	dir := t.TempDir()
 	page := filepath.Join(dir, "index.html")
@@ -117,6 +125,7 @@ func TestShowingLocalFalseWithoutChrome(t *testing.T) {
 	}
 }
 
+// TestWithinDirRejectsEscape 锁住逃出根目录的路径被拒绝，同一目录里的文件可以通过。
 func TestWithinDirRejectsEscape(t *testing.T) {
 	root := t.TempDir()
 	if withinDir(root, filepath.Join(root, "..", "other")) {

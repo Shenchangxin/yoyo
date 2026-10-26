@@ -9,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 )
 
+// SetPaused 在 RPC 非空时调用 app.pause.set，否则 App.SetPaused。暂停时关掉宠物通话。无论成败都 refreshChrome。
 func (s *Service) SetPaused(paused bool) error {
 	var err error
 	if s.RPC != nil {
@@ -23,6 +24,7 @@ func (s *Service) SetPaused(paused bool) error {
 	return err
 }
 
+// IsPaused 在 RPC 非空时调用 health 并读取 paused。否则走 App.IsPaused。
 func (s *Service) IsPaused() bool {
 	if s.RPC != nil {
 		v, _ := s.call("health", nil)
@@ -33,6 +35,7 @@ func (s *Service) IsPaused() bool {
 	return s.App.IsPaused()
 }
 
+// PagesList 在 RPC 非空时调用 pages.list，否则走 App.PagesList。
 func (s *Service) PagesList(q, spaceID string) []pages.Meta {
 	if s.RPC != nil {
 		v, _ := s.call("pages.list", map[string]any{"q": q, "space_id": spaceID})
@@ -42,6 +45,7 @@ func (s *Service) PagesList(q, spaceID string) []pages.Meta {
 	return s.App.PagesList(q, spaceID)
 }
 
+// PagesGet 在 RPC 非空时调用 pages.get，否则走 App.PagesGet。
 func (s *Service) PagesGet(spaceID, id string) (pages.Page, error) {
 	if s.RPC != nil {
 		v, err := s.call("pages.get", map[string]any{"id": id, "space_id": spaceID})
@@ -50,6 +54,7 @@ func (s *Service) PagesGet(spaceID, id string) (pages.Page, error) {
 	return s.App.PagesGet(spaceID, id)
 }
 
+// PagesSave 在 RPC 非空时调用 pages.save，并带上 expected_revision。否则走 App.PagesSave。
 func (s *Service) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 	if s.RPC != nil {
 		body := map[string]any{
@@ -62,6 +67,7 @@ func (s *Service) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 	return s.App.PagesSave(p, expected)
 }
 
+// PagesDelete 在 RPC 非空时调用 pages.delete，否则走 App.PagesDelete。
 func (s *Service) PagesDelete(spaceID, id string) error {
 	if s.RPC != nil {
 		_, err := s.call("pages.delete", map[string]any{"id": id, "space_id": spaceID})
@@ -70,6 +76,7 @@ func (s *Service) PagesDelete(spaceID, id string) error {
 	return s.App.PagesDelete(spaceID, id)
 }
 
+// PagesReviews 在 RPC 非空时调用 pages.reviews，否则走 App.PagesReviews。
 func (s *Service) PagesReviews() []pages.Review {
 	if s.RPC != nil {
 		v, _ := s.call("pages.reviews", nil)
@@ -79,6 +86,7 @@ func (s *Service) PagesReviews() []pages.Review {
 	return s.App.PagesReviews()
 }
 
+// PagesPropose 在 RPC 非空时调用 pages.propose，否则走 App.PagesPropose。
 func (s *Service) PagesPropose(sessionID, title, content, pageID, spaceID, parentID string, expected int) (pages.Review, error) {
 	if s.RPC != nil {
 		v, err := s.call("pages.propose", map[string]any{
@@ -90,6 +98,7 @@ func (s *Service) PagesPropose(sessionID, title, content, pageID, spaceID, paren
 	return s.App.PagesPropose(sessionID, title, content, pageID, spaceID, parentID, expected)
 }
 
+// PagesDecide 在 RPC 非空时调用 pages.review.decide。同进程把 PagesDecide 的页面和审阅包成 page 与 review。
 func (s *Service) PagesDecide(id, hash string, approve bool) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("pages.review.decide", map[string]any{"id": id, "hash": hash, "approve": approve})
@@ -102,6 +111,7 @@ func (s *Service) PagesDecide(id, hash string, approve bool) (map[string]any, er
 	return map[string]any{"page": pg, "review": rev}, nil
 }
 
+// ProfilesList 在 RPC 非空时调用 profiles.list，否则走 App.ProfilesList。
 func (s *Service) ProfilesList() []profile.Profile {
 	if s.RPC != nil {
 		v, _ := s.call("profiles.list", nil)
@@ -111,6 +121,7 @@ func (s *Service) ProfilesList() []profile.Profile {
 	return s.App.ProfilesList()
 }
 
+// ProfilesSave 在 RPC 非空时调用 profiles.save，否则走 App.ProfilesSave。
 func (s *Service) ProfilesSave(p profile.Profile) (profile.Profile, error) {
 	if s.RPC != nil {
 		v, err := s.call("profiles.save", p)
@@ -119,6 +130,7 @@ func (s *Service) ProfilesSave(p profile.Profile) (profile.Profile, error) {
 	return s.App.ProfilesSave(p)
 }
 
+// SetSessionProfile 在 RPC 非空时调用 thread.profile.set，否则走 App.SetSessionProfile。
 func (s *Service) SetSessionProfile(id, profileID string) (any, error) {
 	if s.RPC != nil {
 		return s.call("thread.profile.set", map[string]any{"session": id, "profile_id": profileID})
@@ -126,6 +138,7 @@ func (s *Service) SetSessionProfile(id, profileID string) (any, error) {
 	return s.App.SetSessionProfile(id, profileID)
 }
 
+// SetSessionPage 在 RPC 非空时调用 thread.page.set，否则走 App.SetSessionPage。
 func (s *Service) SetSessionPage(id, pageID string) (any, error) {
 	if s.RPC != nil {
 		return s.call("thread.page.set", map[string]any{"session": id, "page_id": pageID})
@@ -133,6 +146,7 @@ func (s *Service) SetSessionPage(id, pageID string) (any, error) {
 	return s.App.SetSessionPage(id, pageID)
 }
 
+// ScheduleRetry 在 RPC 非空时调用 schedule.retry，否则走 App.ScheduleRetry。
 func (s *Service) ScheduleRetry(id string) (schedule.Job, error) {
 	if s.RPC != nil {
 		v, err := s.call("schedule.retry", map[string]any{"id": id})
@@ -141,6 +155,7 @@ func (s *Service) ScheduleRetry(id string) (schedule.Job, error) {
 	return s.App.ScheduleRetry(id)
 }
 
+// ConnectorMention 在 RPC 非空时调用 connectors.mention，否则走 App.ConnectorMention。
 func (s *Service) ConnectorMention(account, text string) error {
 	if s.RPC != nil {
 		_, err := s.call("connectors.mention", map[string]any{"account": account, "text": text})
@@ -149,6 +164,7 @@ func (s *Service) ConnectorMention(account, text string) error {
 	return s.App.ConnectorMention(account, text)
 }
 
+// VoiceTranscribe 在 RPC 非空时调用 voice.transcribe，并返回 text。同进程先用 decodeSkinB64Local 解开音频，再 App.VoiceTranscribe。
 func (s *Service) VoiceTranscribe(filename, audioB64 string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("voice.transcribe", map[string]any{"filename": filename, "audio": audioB64})
@@ -166,6 +182,7 @@ func (s *Service) VoiceTranscribe(filename, audioB64 string) (string, error) {
 	return s.App.VoiceTranscribe(filename, raw)
 }
 
+// VoiceSpeak 在 RPC 非空时调用 voice.speak。同进程把音频编成标准 Base64，并带上 content_type。
 func (s *Service) VoiceSpeak(text string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("voice.speak", map[string]any{"text": text})
@@ -178,6 +195,7 @@ func (s *Service) VoiceSpeak(text string) (map[string]any, error) {
 	return map[string]any{"audio": encodeB64(b), "content_type": ctype}, nil
 }
 
+// VoiceReceipt 在 RPC 非空时调用 voice.receipt，忽略错误。否则走 App.VoiceReceipt。
 func (s *Service) VoiceReceipt(sessionID string, durationSec int, transcript string) {
 	if s.RPC != nil {
 		_, _ = s.call("voice.receipt", map[string]any{"session": sessionID, "duration_sec": durationSec, "transcript": transcript})
@@ -186,6 +204,7 @@ func (s *Service) VoiceReceipt(sessionID string, durationSec int, transcript str
 	s.App.VoiceReceipt(sessionID, durationSec, transcript)
 }
 
+// SetCompanionCall 为真时 beginCompanionCall，为假时 endCompanionCall，并允许改尺寸。
 func (s *Service) SetCompanionCall(on bool) {
 	if on {
 		s.beginCompanionCall()
@@ -194,6 +213,7 @@ func (s *Service) SetCompanionCall(on bool) {
 	s.endCompanionCall(true)
 }
 
+// decodeSkinB64Local 去掉空白。空字符串返回 nil 和 nil 错误。逗号前带 base64 时去掉 data URL 头，再用标准 Base64 解码。
 func decodeSkinB64Local(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -205,6 +225,7 @@ func decodeSkinB64Local(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(s)
 }
 
+// encodeB64 用标准 Base64 编码，不换行。
 func encodeB64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }

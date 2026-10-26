@@ -1,3 +1,5 @@
+// task 工具的子代理。父循环只拿摘要，不吸收子轨迹。桌面预算在 childLoopFor：先用父循环上已经套过的 TaskMaxTurns 和 TaskMaxToolMessages，SoftHorizon 时再按 ChatMaxTurns、ChatMaxToolMessages 的一半抬下限。
+
 package runtime
 
 import (
@@ -15,15 +17,13 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// MaxTaskDepth is 2: parent (0) may spawn a child (1) which may spawn one
-// more (2). Deeper nesting is forbidden.
+// MaxTaskDepth 是 2。父级深度 0 可以生出深度 1，深度 1 还可以再生一次到 2。更深禁止。
 const MaxTaskDepth = 2
 
-// TaskFunc runs an isolated child loop and returns a summary only —
-// Claude Code's subagent pattern: the parent context never absorbs the
-// child's tool transcript. profile is explore | implement | qa.
+// TaskFunc 跑一轮子循环并只返回摘要。父上下文不吸收子工具轨迹。profile 是 explore、implement 或 qa。
 type TaskFunc func(prompt string, isolate bool, profile string) (string, error)
 
+// task 在提示为空、深度已达 MaxTaskDepth 或 Task 为空时返回错误。成功后把摘要截到 2000 个 rune，前缀 SUBAGENT_SUMMARY。
 func (t *WorkspaceTools) task(prompt string, isolate bool, profile string) ToolResult {
 	if strings.TrimSpace(prompt) == "" {
 		return ToolResult{Err: fmt.Errorf("empty task prompt")}
@@ -42,6 +42,7 @@ func (t *WorkspaceTools) task(prompt string, isolate bool, profile string) ToolR
 	return ToolResult{Content: "SUBAGENT_SUMMARY:\n" + capped}
 }
 
+// spawnTask 在父深度已达 MaxTaskDepth 时返回错误。先发出 phase 为 start 的子代理事件，再按 isolate 调用 IsolateWorkspace。子工具深度加一，Task 置空，ReadOnly 由 profile 决定，并 StripPackBootstrap。子循环的计划模式改成 auto。返回前发出 phase 为 complete 的事件。
 func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bool, profile string) (string, error) {
 	if parent.Tools != nil && parent.Tools.Depth >= MaxTaskDepth {
 		return "", fmt.Errorf("nested subagent forbidden")
@@ -53,8 +54,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		parent.OnChild(childID, prompt, false)
 		defer parent.OnChild(childID, prompt, true)
 	}
-	// Card must exist before isolate/Run so a failed copy still shows inline
-	// in the parent transcript instead of a bare tool_result.
+	// 先发出子代理卡片，再做隔离和 Run。复制失败时父轨迹里仍能看到这张卡片，而不是只剩一条工具结果。
 	emit(parent, trace.TypeSubagent, "runtime", map[string]any{
 		"prompt": prompt, "isolate": isolate, "child": childID, "phase": "start", "profile": profile,
 	})
@@ -138,6 +138,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 	return out, err
 }
 
+// taskFanout 并行跑多条提示。深度已达 MaxTaskDepth 或 Task 为空时返回错误。并行度取 MaxParallel，小于等于 0 时用 4，大于 8 时用 8。超出的提示被丢掉。每条摘要截到 1200 个 rune。
 func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool, profile string) ToolResult {
 	if t != nil && t.Depth >= MaxTaskDepth {
 		return ToolResult{Err: fmt.Errorf("nested subagent forbidden")}
@@ -192,6 +193,7 @@ func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool, profile stri
 	return ToolResult{Content: "SUBAGENT_FANOUT:\n" + b.String()}
 }
 
+// readOnlyTaskProfile 在 profile 为 explore 或 qa 时返回真，其余为假。
 func readOnlyTaskProfile(profile string) bool {
 	switch strings.ToLower(strings.TrimSpace(profile)) {
 	case "explore", "qa":
@@ -201,6 +203,7 @@ func readOnlyTaskProfile(profile string) bool {
 	}
 }
 
+// readOnlyAdvertised 只保留 readOnlySubagentCall 允许的名字。过滤后为空时填入 read_file、list_dir、glob、grep、web_fetch、web_search、reach_status、recall_context、view_image。
 func readOnlyAdvertised(have []string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -222,9 +225,13 @@ func readOnlyAdvertised(have []string) []string {
 	return out
 }
 
+// exploreInstruction 要求只读工具、返回发现，并禁止写计划、调用 update_plan 和把文件正文抄回父级。
 const exploreInstruction = "You are an explore subagent. Execute the prompt with read-only tools and return structured findings in your final letter. Do not write a plan, do not call update_plan, and do not copy file bodies back to the parent."
+
+// qaInstruction 要求核对产物是否存在且符合规格，并禁止实现新功能和写计划。
 const qaInstruction = "You are an independent evaluator. Check whether the required artifacts exist and match the spec. Return a verdict. Do not implement new features and do not write a plan."
 
+// childLoopFor 给子循环定 MaxTurns 和 MaxToolMessages，并关掉 AllowLLMCompact。未设置时先用 24 轮、60 条工具消息。父循环 TaskMaxTurns、TaskMaxToolMessages 大于 0 时改用该字段。SoftHorizon 为真时，轮数低于 ChatMaxTurns/2 才抬到该值，工具消息低于 ChatMaxToolMessages/2 才抬到该值。ChatMaxTurns 是 64，一半是 32，32 只是下限，不是固定轮数。ChatMaxToolMessages 是 160，一半是 80。桌面会话进入循环前会先走 ApplyChatHorizon：TaskMaxTurns 低于 ChatTaskMaxTurns 时抬到 40，TaskMaxToolMessages 低于 ChatTaskMaxTools 时抬到 60。软地平线再套上面的下限，因此已经是 40 的轮数不会被改成 32，已经是 60 的工具消息会因为低于 80 而被抬到 80。explore 和 qa 会在 TaskInstruction 前接上对应说明。PlanMode 设为假。
 func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
 	loop := parent.Loop
 	loop.AllowLLMCompact = false
@@ -263,11 +270,15 @@ func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
 	return loop
 }
 
+// taskSep 是 --task--，taskSepLegacy 是 /tasks/。子会话 ID 用前者拼接。
 const (
-	taskSep       = "--task--"
+	// taskSep 是 --task--，插在父会话 ID 和短随机串之间。
+	taskSep = "--task--"
+	// taskSepLegacy 是 /tasks/，只用于识别旧的子会话 ID。
 	taskSepLegacy = "/tasks/"
 )
 
+// ChildSessionID 在父 ID 为空时用 session，再接 taskSep 和 12 位十六进制。结果不含斜杠。
 func ChildSessionID(parent string) string {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {
@@ -276,10 +287,12 @@ func ChildSessionID(parent string) string {
 	return parent + taskSep + shortID()
 }
 
+// IsChildSessionID 在 ID 含 taskSep 或 taskSepLegacy 时返回真。
 func IsChildSessionID(id string) bool {
 	return strings.Contains(id, taskSep) || strings.Contains(id, taskSepLegacy)
 }
 
+// ParentOfSession 返回 taskSep 或 taskSepLegacy 之前的父 ID。都没有则返回空串。
 func ParentOfSession(id string) string {
 	if i := strings.Index(id, taskSep); i >= 0 {
 		return id[:i]
@@ -290,6 +303,7 @@ func ParentOfSession(id string) string {
 	return ""
 }
 
+// shortID 读 6 字节随机数，编码成 12 位十六进制。
 func shortID() string {
 	var b [6]byte
 	_, _ = rand.Read(b[:])

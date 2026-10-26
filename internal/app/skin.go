@@ -1,3 +1,5 @@
+// 皮肤的列出、导入、激活和保存。内置调色板不写入用户皮肤库。保存时壁纸、字体和预览的 base64 为空则沿用已有文件。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skin"
 )
 
+// SkinSaveIn 是保存用户皮肤的入参。壁纸、无衬线和等宽字体、预览图用 base64。PreserveEvidence 会写进清单。
 type SkinSaveIn struct {
 	ID               string         `json:"id"`
 	Name             string         `json:"name"`
@@ -24,6 +27,7 @@ type SkinSaveIn struct {
 	PreviewB64       string         `json:"preview_b64"`
 }
 
+// skinStore 返回皮肤库。尚未创建且 Home 存在时用 Home.Skins 新建。App 为空返回 nil。
 func (a *App) skinStore() *skin.Store {
 	if a == nil {
 		return nil
@@ -34,6 +38,7 @@ func (a *App) skinStore() *skin.Store {
 	return a.Skins
 }
 
+// ListSkins 先列内置皮肤，再追加用户库里的皮肤。库不存在时只返回内置。
 func (a *App) ListSkins() []skin.Info {
 	out := make([]skin.Info, 0, 8)
 	for _, id := range skin.BuiltinIDs() {
@@ -47,6 +52,7 @@ func (a *App) ListSkins() []skin.Info {
 	return out
 }
 
+// GetSkin 对内置调色板返回成对的 dark 和 light。用户皮肤从库里 Load。库不存在返回 no skin store。
 func (a *App) GetSkin(id string) (map[string]any, error) {
 	if pal, ok := skin.BuiltinPaletteID(id); ok {
 		darkID, lightID := skin.PairForBuiltin(pal)
@@ -74,6 +80,7 @@ func (a *App) GetSkin(id string) (map[string]any, error) {
 	}, nil
 }
 
+// ImportSkin 用 skin.Admit 接纳字节再 Save，返回保存后的 Info。
 func (a *App) ImportSkin(raw []byte) (skin.Info, error) {
 	p, err := skin.Admit(raw)
 	if err != nil {
@@ -90,6 +97,7 @@ func (a *App) ImportSkin(raw []byte) (skin.Info, error) {
 	return saved.Info(), nil
 }
 
+// ImportSkinPath 读文件后调用 ImportSkin。
 func (a *App) ImportSkinPath(path string) (skin.Info, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -98,6 +106,7 @@ func (a *App) ImportSkinPath(path string) (skin.Info, error) {
 	return a.ImportSkin(b)
 }
 
+// ExportSkin 导出字节，文件名优先用清单名称加 .yoyoskin，否则用 id。
 func (a *App) ExportSkin(id string) (string, []byte, error) {
 	st := a.skinStore()
 	if st == nil {
@@ -114,6 +123,7 @@ func (a *App) ExportSkin(id string) (string, []byte, error) {
 	return name, b, nil
 }
 
+// DeleteSkin 删除用户皮肤。Config.Skin 等于该 id 时先清空并 SaveConfig。
 func (a *App) DeleteSkin(id string) error {
 	st := a.skinStore()
 	if st == nil {
@@ -126,6 +136,7 @@ func (a *App) DeleteSkin(id string) error {
 	return st.Delete(id)
 }
 
+// ActivateSkin 在 id 为空时清空 Config.Skin。内置 ink、dim、slate 写入 PaletteDark，neutral、paper、mist 写入 PaletteLight，并清空 Skin。用户皮肤把 Config.Skin 设为该 id。
 func (a *App) ActivateSkin(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -153,6 +164,7 @@ func (a *App) ActivateSkin(id string) error {
 	return a.SaveConfig()
 }
 
+// ResolveSkin 只认 light 和 dark，其他 mode 当成 dark。id 为空时用配置里的调色板。用户皮肤 Load 失败时回落到 fallbackPalette，并返回该错误。
 func (a *App) ResolveSkin(id, mode string) (skin.Resolved, error) {
 	if mode != "light" {
 		mode = "dark"
@@ -179,6 +191,7 @@ func (a *App) ResolveSkin(id, mode string) (skin.Resolved, error) {
 	return skin.Compile(p, mode)
 }
 
+// SaveSkin 写入令牌，并在 base64 非空时附上壁纸、字体或预览。对应字段为空且已有皮肤时沿用旧文件。名称空则用 Custom。用户 id 不合法时清空，再由库分配。
 func (a *App) SaveSkin(in SkinSaveIn) (skin.Info, error) {
 	st := a.skinStore()
 	if st == nil {
@@ -283,6 +296,7 @@ func (a *App) SaveSkin(in SkinSaveIn) (skin.Info, error) {
 	return saved.Info(), nil
 }
 
+// fallbackPalette 在 light 模式优先用 PaletteLight，否则用 PaletteDark。都空时 light 返回 neutral，dark 返回 ink。
 func fallbackPalette(mode string, a *App) string {
 	if a != nil && mode == "light" && a.Config.PaletteLight != "" {
 		return a.Config.PaletteLight
@@ -296,6 +310,7 @@ func fallbackPalette(mode string, a *App) string {
 	return "ink"
 }
 
+// sanitizeFileName 把空格换成连字符，只保留字母、数字、连字符和下划线。结果为空时返回 skin。
 func sanitizeFileName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -318,6 +333,7 @@ func sanitizeFileName(name string) string {
 	return out
 }
 
+// containsStr 判断切片里是否有相等的字符串。
 func containsStr(xs []string, v string) bool {
 	for _, x := range xs {
 		if x == v {

@@ -1,3 +1,7 @@
+/**
+ * 拥有：设置侧栏和轨道里的页签导航。
+ * 不拥有：表单。只切换当前页签，不调用 api。
+ */
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
@@ -32,10 +36,12 @@ const ICONS = {
   wrench: Wrench,
 } as const;
 
+/** 按名字取出页签图标。 */
 function iconFor(key: string) {
   return ICONS[key as keyof typeof ICONS] || SlidersHorizontal;
 }
 
+/** SettingsRailNav 把侧栏放进轨道。 */
 export function SettingsRailNav() {
   const tab = useUI((s) => s.settingsTab);
   const openSettings = useUI((s) => s.openSettings);
@@ -50,6 +56,7 @@ export function SettingsRailNav() {
   );
 }
 
+/** SettingsSidebar 列出分组和页签。 */
 export function SettingsSidebar(props: {
   tab: SettingsTab;
   onTab: (tab: SettingsTab) => void;
@@ -186,6 +193,7 @@ export function SettingsSidebar(props: {
   );
 }
 
+/** 画一个页签按钮。 */
 function TabButton(props: {
   tab: SettingsTab;
   icon: string;

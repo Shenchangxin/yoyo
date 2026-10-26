@@ -1,3 +1,5 @@
+// 锁住工具参数里的字面换行可以修好，截断的写文件不落盘，上下文占位不覆盖已有文件，路径对不上的 recall 会被拒绝。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestParseToolArgsRepairsLiteralNewlines 锁住 JSON 字符串里的原始换行能解析成真正的换行，且不算截断。
 func TestParseToolArgsRepairsLiteralNewlines(t *testing.T) {
 	raw := "{\"path\": \"reports/out.md\", \"content\": \"# Title\n\n- item A\n- item B\"}"
 	args := parseToolArgs(raw)
@@ -20,6 +23,7 @@ func TestParseToolArgsRepairsLiteralNewlines(t *testing.T) {
 	}
 }
 
+// TestParseToolArgsClosesTruncatedContent 锁住未闭合的 JSON 能补括号解析，并标成截断。
 func TestParseToolArgsClosesTruncatedContent(t *testing.T) {
 	raw := "{\"path\": \"reports/out.md\", \"content\": \"# Title\n\npartial"
 	args := parseToolArgs(raw)
@@ -34,6 +38,7 @@ func TestParseToolArgsClosesTruncatedContent(t *testing.T) {
 	}
 }
 
+// TestWriteFileRefusesTruncatedNewFile 锁住截断的 write_file 不创建文件。
 func TestWriteFileRefusesTruncatedNewFile(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -47,6 +52,7 @@ func TestWriteFileRefusesTruncatedNewFile(t *testing.T) {
 	}
 }
 
+// TestWriteFileRefusesTruncatedOverwriteOfLargerFile 锁住截断载荷不会用半截正文覆盖更大的已有文件。
 func TestWriteFileRefusesTruncatedOverwriteOfLargerFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "game.html")
@@ -69,6 +75,7 @@ func TestWriteFileRefusesTruncatedOverwriteOfLargerFile(t *testing.T) {
 	}
 }
 
+// TestWriteFileAcceptsFencedJSON 锁住包在 ```json 围栏里的参数仍能写入。
 func TestWriteFileAcceptsFencedJSON(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -89,6 +96,7 @@ func TestWriteFileAcceptsFencedJSON(t *testing.T) {
 	}
 }
 
+// TestWriteFileSalvagesLiteralNewlines 锁住带字面换行的合法 JSON 能写入，且文件里是真换行。
 func TestWriteFileSalvagesLiteralNewlines(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -107,6 +115,7 @@ func TestWriteFileSalvagesLiteralNewlines(t *testing.T) {
 	}
 }
 
+// TestApplyPatchSalvagesLiteralNewlines 锁住补丁参数里的字面换行能被应用。
 func TestApplyPatchSalvagesLiteralNewlines(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -124,6 +133,7 @@ func TestApplyPatchSalvagesLiteralNewlines(t *testing.T) {
 	}
 }
 
+// TestUnwrapNestedWriteArguments 锁住嵌在 arguments 里的 path 和 content 能抬上来并写入。
 func TestUnwrapNestedWriteArguments(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -141,6 +151,7 @@ func TestUnwrapNestedWriteArguments(t *testing.T) {
 	}
 }
 
+// TestWriteFileStubWhenOnDiskIsUnchanged 锁住磁盘上已有相同正文时，上下文占位返回 unchanged，不改文件。
 func TestWriteFileStubWhenOnDiskIsUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	rel := filepath.ToSlash(filepath.Join("docs", "CONCEPT.md"))
@@ -170,6 +181,7 @@ func TestWriteFileStubWhenOnDiskIsUnchanged(t *testing.T) {
 	}
 }
 
+// TestWriteFileStubRecoversFromSpill 锁住占位写入能从溢出的 args 里按路径找回正文并写入。
 func TestWriteFileStubRecoversFromSpill(t *testing.T) {
 	dir := t.TempDir()
 	spill := NewSpill(t.TempDir())
@@ -191,6 +203,7 @@ func TestWriteFileStubRecoversFromSpill(t *testing.T) {
 	}
 }
 
+// TestWriteFileElidedRecallRecoversMatchingPath 锁住 _recall 指向的溢出参数在路径一致时能恢复正文。
 func TestWriteFileElidedRecallRecoversMatchingPath(t *testing.T) {
 	dir := t.TempDir()
 	spill := NewSpill(t.TempDir())
@@ -213,6 +226,7 @@ func TestWriteFileElidedRecallRecoversMatchingPath(t *testing.T) {
 	}
 }
 
+// TestWriteFileElidedRecallWrongPathRefuses 锁住 recall 里的路径和本次 path 不一致时拒绝写入。
 func TestWriteFileElidedRecallWrongPathRefuses(t *testing.T) {
 	dir := t.TempDir()
 	spill := NewSpill(t.TempDir())
@@ -224,6 +238,7 @@ func TestWriteFileElidedRecallWrongPathRefuses(t *testing.T) {
 	}
 }
 
+// TestWriteFileRejectsContextStub 锁住像上下文摘要的 content 在文件还不存在时被拒绝。
 func TestWriteFileRejectsContextStub(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -234,11 +249,13 @@ func TestWriteFileRejectsContextStub(t *testing.T) {
 	}
 }
 
+// mustJSONString 把字符串编成 JSON 字面量，失败则让测试失败。
 func mustJSONString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
 
+// TestStrReplaceRejectsContextStub 锁住 old_str 或 new_str 像上下文占位时不改文件。
 func TestStrReplaceRejectsContextStub(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "game.html")
@@ -265,6 +282,7 @@ func TestStrReplaceRejectsContextStub(t *testing.T) {
 	}
 }
 
+// TestWriteFileEmptyPathStillErrorsOnBlankJSON 锁住空 JSON 对象因缺少 path 而失败。
 func TestWriteFileEmptyPathStillErrorsOnBlankJSON(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -274,6 +292,7 @@ func TestWriteFileEmptyPathStillErrorsOnBlankJSON(t *testing.T) {
 	}
 }
 
+// TestListDirIncludesSizeAndMtime 锁住 list_dir 的文件行带字节大小。
 func TestListDirIncludesSizeAndMtime(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644); err != nil {
@@ -292,6 +311,7 @@ func TestListDirIncludesSizeAndMtime(t *testing.T) {
 	}
 }
 
+// TestUsableWindowsPosixShellRejectsWSL 锁住 system32 或 WindowsApps 下的 bash 不算可用的 POSIX shell。
 func TestUsableWindowsPosixShellRejectsWSL(t *testing.T) {
 	if usableWindowsPosixShell(`C:\Windows\System32\bash.exe`) {
 		t.Fatal("system32")

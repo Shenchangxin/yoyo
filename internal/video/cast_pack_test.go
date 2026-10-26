@@ -1,3 +1,5 @@
+// 锁住角色静帧包的安装、导入、路径穿越、摘要和下载地址。测试进程不会去拉发布包。
+
 package video
 
 import (
@@ -15,10 +17,12 @@ import (
 	"time"
 )
 
+// testCastBody 返回一份最短的 JPEG 头和尾，给测试包用。
 func testCastBody() []byte {
 	return []byte{0xff, 0xd8, 0xff, 0xd9}
 }
 
+// testCastAsset 按文件内容拼一条清单里的静帧，SHA-256 用正文现算。
 func testCastAsset(file string, body []byte) characterCastAsset {
 	sum := sha256.Sum256(body)
 	return characterCastAsset{
@@ -29,6 +33,7 @@ func testCastAsset(file string, body []byte) characterCastAsset {
 	}
 }
 
+// testCastManifest 包一条静帧，清单版本是 1，公开路径是 /character-cast/。
 func testCastManifest(asset characterCastAsset) characterCastManifest {
 	return characterCastManifest{
 		ID: characterCastPackID, Version: 1, PublicPrefix: characterCastPublicPrefix, Source: "Yoyo 工作室",
@@ -37,6 +42,7 @@ func testCastManifest(asset characterCastAsset) characterCastManifest {
 	}
 }
 
+// writeTestCastZip 把清单、声明的文件和额外条目写成一个 zip。额外条目用来放越界路径。
 func writeTestCastZip(t *testing.T, man characterCastManifest, files map[string][]byte, extra map[string]string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "character-cast.zip")
@@ -83,6 +89,7 @@ func writeTestCastZip(t *testing.T, man characterCastManifest, files map[string]
 	return path
 }
 
+// TestCharacterCastInstallImportAndServe 锁住本地包能装上、导入素材库，并在 /character-cast/ 下读到这张 JPEG。
 func TestCharacterCastInstallImportAndServe(t *testing.T) {
 	body := testCastBody()
 	asset := testCastAsset("cast-test-one.jpg", body)
@@ -133,6 +140,7 @@ func TestCharacterCastInstallImportAndServe(t *testing.T) {
 	}
 }
 
+// TestCharacterCastZipSlipAndBadHash 锁住越界路径不会写出包目录，摘要对不上会拒绝。
 func TestCharacterCastZipSlipAndBadHash(t *testing.T) {
 	e := testEngine(t)
 	blank := ""
@@ -153,6 +161,7 @@ func TestCharacterCastZipSlipAndBadHash(t *testing.T) {
 	}
 }
 
+// TestCharacterCastDownloadURLs 锁住 ModelScope 地址会补 view=false 并带上 API 地址，普通地址保持一条。
 func TestCharacterCastDownloadURLs(t *testing.T) {
 	got := characterCastDownloadURLs("https://www.modelscope.ai/datasets/acme/yoyo/resolve/master/character-cast.zip")
 	if len(got) != 2 {
@@ -181,6 +190,7 @@ func TestCharacterCastDownloadURLs(t *testing.T) {
 	}
 }
 
+// TestGoTestDoesNotFetchPublishedCast 锁住测试进程在没配文件和地址时不会去拉发布包。
 func TestGoTestDoesNotFetchPublishedCast(t *testing.T) {
 	t.Setenv(envCharacterCastURL, "")
 	t.Setenv(envCharacterCastFile, "")
@@ -191,6 +201,7 @@ func TestGoTestDoesNotFetchPublishedCast(t *testing.T) {
 	}
 }
 
+// TestCharacterCastDownloadAndSchedule 锁住摘要对不上拒绝下载，本地文件来源会在后台装好并导入。
 func TestCharacterCastDownloadAndSchedule(t *testing.T) {
 	body := testCastBody()
 	asset := testCastAsset("cast-test-one.jpg", body)
@@ -245,6 +256,7 @@ func TestCharacterCastDownloadAndSchedule(t *testing.T) {
 	}
 }
 
+// TestPublishedCharacterCastZip 锁住仓库里的发布包能导入 48 张静帧，并按路径读出其中一张。没有这份 zip 就跳过。
 func TestPublishedCharacterCastZip(t *testing.T) {
 	zipPath := filepath.Join("..", "..", "dist", "character-cast.zip")
 	if _, err := os.Stat(zipPath); err != nil {
@@ -287,6 +299,7 @@ func TestPublishedCharacterCastZip(t *testing.T) {
 	}
 }
 
+// TestCharacterCastSourcePrefersFileAndDisable 锁住同时有文件和地址时用文件，关掉开关后两者都不用。
 func TestCharacterCastSourcePrefersFileAndDisable(t *testing.T) {
 	e := testEngine(t)
 	e.castURL = "https://cdn.example.com/character-cast.zip"

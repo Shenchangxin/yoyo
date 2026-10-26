@@ -1,3 +1,5 @@
+// 含反斜杠或空格的 Windows 路径加引号。看起来像 posix 的命令保留引号。/dev/null 使内联 node 走 Git Bash。
+
 package runtime
 
 import (
@@ -8,10 +10,7 @@ import (
 	"testing"
 )
 
-// End to end through the shell tool: an inline `node -e` is rewritten to a
-// temp script under the workspace, and the command runs under Git Bash. Before
-// the fix, the unquoted path lost its backslashes and node could not find it.
-// The /dev/null makes the command posix, which is what sends it to bash.
+// TestInlineNodeScriptRunsThroughGitBash 确认 Windows 上有 Git Bash 和 node 时，node -e 经 shell 跑出 bash-ok，/dev/null 使命令走 bash。
 func TestInlineNodeScriptRunsThroughGitBash(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Git Bash path quoting is a Windows problem")
@@ -32,6 +31,7 @@ func TestInlineNodeScriptRunsThroughGitBash(t *testing.T) {
 	}
 }
 
+// TestQuoteShellPathKeepsWindowsPathsIntact 确认含反斜杠或空格的路径加引号，/tmp 和空串不加。
 func TestQuoteShellPathKeepsWindowsPathsIntact(t *testing.T) {
 	cases := map[string]string{
 		`C:\Users\scx\.yoyo\tmp\yoyo-inline-1.js`: `"C:\Users\scx\.yoyo\tmp\yoyo-inline-1.js"`,
@@ -46,8 +46,7 @@ func TestQuoteShellPathKeepsWindowsPathsIntact(t *testing.T) {
 	}
 }
 
-// Git Bash reads an unquoted backslash as an escape. Quotes must survive any
-// command that will run under bash, or the path loses its separators.
+// TestNormalizeWindowsQuotesKeepsQuotesForBash 确认看起来像 posix 的命令保留引号。
 func TestNormalizeWindowsQuotesKeepsQuotesForBash(t *testing.T) {
 	bash := `node "C:\Users\scx\qa\run.js" > /dev/null`
 	if got := normalizeWindowsQuotes(bash); got != bash {
@@ -55,21 +54,21 @@ func TestNormalizeWindowsQuotesKeepsQuotesForBash(t *testing.T) {
 	}
 }
 
+// TestNormalizeWindowsQuotesRelaxesForCmd 确认 cmd 命令去掉无空格引号，相对路径的引号也去掉。
 func TestNormalizeWindowsQuotesRelaxesForCmd(t *testing.T) {
 	in := `node "C:\Users\scx\qa\run.js"`
 	want := `node C:\Users\scx\qa\run.js`
 	if got := normalizeWindowsQuotes(in); got != want {
 		t.Fatalf("cmd command: got %s want %s", got, want)
 	}
-	// The original cmd fix still applies: a quoted relative path is unquoted.
+	// 带引号的相对路径同样去掉引号。
 	rel := `node "rel\file.mjs"`
 	if got := normalizeWindowsQuotes(rel); strings.Contains(got, `"rel`) {
 		t.Fatalf("quoted relative path remains: %s", got)
 	}
 }
 
-// The inline interpreter rewrite must leave the temp script path readable by
-// the shell. On Windows the path has backslashes, so it must be quoted.
+// TestInlineScriptPathSurvivesRewrite 确认改写后的脚本在 workspace/.yoyo/tmp，含反斜杠的路径以引号开头。
 func TestInlineScriptPathSurvivesRewrite(t *testing.T) {
 	ws := t.TempDir()
 	out, done := rewriteInlineInterpreters(`node -e "console.log(1)"`, ws)

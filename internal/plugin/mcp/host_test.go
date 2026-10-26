@@ -1,3 +1,5 @@
+// 检查协议版本，以及一行 JSON 和 Content-Length 两种读帧。
+
 package mcp
 
 import (
@@ -7,12 +9,14 @@ import (
 	"testing"
 )
 
+// TestProtocolVersion 确认 ProtocolVersion 等于 2025-11-25。
 func TestProtocolVersion(t *testing.T) {
 	if ProtocolVersion != "2025-11-25" {
 		t.Fatalf("%s", ProtocolVersion)
 	}
 }
 
+// TestReadJSONLine 确认以 '{' 开头的一行 JSON 能读出 id 1。
 func TestReadJSONLine(t *testing.T) {
 	r, w := io.Pipe()
 	s := &Server{stdout: bufio.NewReader(r)}
@@ -29,6 +33,7 @@ func TestReadJSONLine(t *testing.T) {
 	}
 }
 
+// TestReadContentLength 确认 Content-Length 帧能读出 id 2。
 func TestReadContentLength(t *testing.T) {
 	body := `{"jsonrpc":"2.0","id":2,"result":{}}`
 	r, w := io.Pipe()

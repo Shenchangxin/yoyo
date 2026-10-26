@@ -1,3 +1,6 @@
+// 锁住工具批的并行和 exclusive：多个 task 同时跑，shell 失败不取消同批写入。
+// 也锁住格式注释不被误拦，以及没有变化的写入不发 FileChange。
+
 package runtime
 
 import (
@@ -12,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/safeguard"
 )
 
+// TestParallelTaskCallsRunConcurrently 确认三条 task 的重叠时间短于串行，同时在跑的不少于 2 条。
 func TestParallelTaskCallsRunConcurrently(t *testing.T) {
 	var mu sync.Mutex
 	live := 0
@@ -50,6 +54,7 @@ func TestParallelTaskCallsRunConcurrently(t *testing.T) {
 	}
 }
 
+// TestExclusiveShellFailureDoesNotAbortSiblingWrite 确认 exclusive 的 shell 失败后，同批 write_file 仍写入 ok.txt。
 func TestExclusiveShellFailureDoesNotAbortSiblingWrite(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir, Spill: NewSpill(filepath.Join(dir, "spill"))}
@@ -76,6 +81,7 @@ func TestExclusiveShellFailureDoesNotAbortSiblingWrite(t *testing.T) {
 	}
 }
 
+// TestWriteFileWithFormatCommentIsNotDenied 确认正文里的 format 注释不拦截 write_file、apply_patch 和 str_replace，命令 format c: 仍被拒绝。
 func TestWriteFileWithFormatCommentIsNotDenied(t *testing.T) {
 	args := `{"path":"api/export.go","content":"// export format is JSON\npackage api\n"}`
 	if deny, reason := safeguard.PreTool("write_file", args); deny {
@@ -92,6 +98,7 @@ func TestWriteFileWithFormatCommentIsNotDenied(t *testing.T) {
 	}
 }
 
+// TestStrReplaceMissIncludesFileHint 确认 old_str 找不到时，错误里带有文件里实际存在的函数文本。
 func TestStrReplaceMissIncludesFileHint(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package demo\n\nfunc Hello() {}\n"), 0o644); err != nil {
@@ -108,6 +115,7 @@ func TestStrReplaceMissIncludesFileHint(t *testing.T) {
 	}
 }
 
+// TestWriteFileEmitsFileChange 确认新建文件的结果带上路径 n.txt。
 func TestWriteFileEmitsFileChange(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -120,6 +128,7 @@ func TestWriteFileEmitsFileChange(t *testing.T) {
 	}
 }
 
+// TestWriteFileUnchangedSkipsFileChange 确认内容相同的再次写入没有 FileChange，正文含 unchanged。
 func TestWriteFileUnchangedSkipsFileChange(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -139,6 +148,7 @@ func TestWriteFileUnchangedSkipsFileChange(t *testing.T) {
 	}
 }
 
+// TestReplaceUnchangedSkipsFileChange 确认 old_str 与 new_str 相同的替换没有 FileChange，正文含 unchanged。
 func TestReplaceUnchangedSkipsFileChange(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package demo\n"), 0o644); err != nil {

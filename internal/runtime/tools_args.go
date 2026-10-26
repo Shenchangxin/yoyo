@@ -1,3 +1,5 @@
+// 从模型输出的工具参数里恢复 JSON。字面换行会修好，不算截断。靠补括号或捞字段才恢复的载荷，写文件时拒绝落盘。单次正文上限由 writeFilePartMax（32 * 1024 字节）执行，错误文本里写成大约 32 KB。
+
 package runtime
 
 import (
@@ -8,23 +10,19 @@ import (
 	"strings"
 )
 
-// parseToolArgs recovers a tool argument object from model JSON.
-// Models often emit literal newlines (and occasionally a truncated tail)
-// inside write_file/apply_patch payloads. Swallowing Unmarshal errors made
-// those look like "empty path" / "empty patch".
+// parseToolArgs 丢掉截断标记，只返回参数对象。模型常在 write_file 或 apply_patch 里写出字面换行，偶尔还有截断的尾巴。吞掉 Unmarshal 错误会让它们看起来像空路径或空补丁。
 func parseToolArgs(raw string) map[string]any {
 	args, _ := parseToolArgsStatus(raw)
 	return args
 }
 
-// toolArgsTruncated is true when the model payload was incomplete and only
-// recovered by closing brackets or salvaging string fields. Literal newlines
-// inside JSON strings are repaired and are not truncation.
+// toolArgsTruncated 在载荷不完整、只能靠补上括号或捞出字符串字段才恢复时返回真。JSON 字符串里的字面换行会被修好，不算截断。
 func toolArgsTruncated(raw string) bool {
 	_, truncated := parseToolArgsStatus(raw)
 	return truncated
 }
 
+// parseToolArgsStatus 先去掉围栏。原文能解析则截断为假。修好字符串里的控制字符后能解析也算未截断。补括号或捞字段才成功则截断为真。都失败则返回空对象且截断为假。
 func parseToolArgsStatus(raw string) (map[string]any, bool) {
 	raw = stripJSONFence(strings.TrimSpace(raw))
 	if raw == "" {
@@ -52,8 +50,7 @@ func parseToolArgsStatus(raw string) (map[string]any, bool) {
 	return map[string]any{}, false
 }
 
-// unwrapToolArgs lifts a model-nested {"arguments": {path, content}} object
-// (or a JSON string of that object) so write_file does not see an empty path.
+// unwrapToolArgs 把嵌套的 arguments 对象或它的 JSON 字符串抬上来，避免 write_file 看到空路径。参数里已有 path、command、prompt、patch、pattern、url、name、query 之一则不再抬。
 func unwrapToolArgs(args map[string]any) map[string]any {
 	if len(args) == 0 {
 		return args
@@ -74,6 +71,7 @@ func unwrapToolArgs(args map[string]any) map[string]any {
 	return args
 }
 
+// hasToolArg 在 path、command、prompt、patch、pattern、url、name、query 任一去掉空白后非空时返回真。
 func hasToolArg(args map[string]any) bool {
 	for _, key := range []string{"path", "command", "prompt", "patch", "pattern", "url", "name", "query"} {
 		if strings.TrimSpace(str(args[key])) != "" {
@@ -83,6 +81,7 @@ func hasToolArg(args map[string]any) bool {
 	return false
 }
 
+// unmarshalObject 只接受 JSON 对象。失败或得到 nil 时返回假。
 func unmarshalObject(raw string) (map[string]any, bool) {
 	var args map[string]any
 	if err := json.Unmarshal([]byte(raw), &args); err != nil || args == nil {
@@ -91,8 +90,7 @@ func unmarshalObject(raw string) (map[string]any, bool) {
 	return args, true
 }
 
-// repairJSONStrings escapes raw control characters that appear inside JSON
-// strings. It does not invent quotes or keys.
+// repairJSONStrings 把 JSON 字符串内部的原始换行、回车、制表符和其他小于 0x20 的字节转义。不补引号，也不发明键。
 func repairJSONStrings(s string) string {
 	var b strings.Builder
 	b.Grow(len(s) + 32)
@@ -140,6 +138,7 @@ func repairJSONStrings(s string) string {
 	return b.String()
 }
 
+// closeTruncatedJSON 按括号栈补上未闭合的引号、对象和数组。字符串末尾若停在反斜杠，会先补一个 n。
 func closeTruncatedJSON(s string) string {
 	inString := false
 	escaped := false
@@ -193,6 +192,7 @@ func closeTruncatedJSON(s string) string {
 	return b.String()
 }
 
+// salvageJSONObject 从原文里捞 path、content、patch、command、old_str、new_str 这几个字符串字段。
 func salvageJSONObject(raw string) map[string]any {
 	out := map[string]any{}
 	for _, key := range []string{"path", "content", "patch", "command", "old_str", "new_str"} {
@@ -203,6 +203,7 @@ func salvageJSONObject(raw string) map[string]any {
 	return out
 }
 
+// salvageJSONStringField 从第一个同名键后面的 JSON 字符串取值。结尾没有闭合引号时，只要已经有内容，也返回反转义后的前缀。
 func salvageJSONStringField(raw, key string) string {
 	needle := `"` + key + `"`
 	i := strings.Index(raw, needle)
@@ -249,6 +250,7 @@ func salvageJSONStringField(raw, key string) string {
 	return unescapeJSONString(b.String())
 }
 
+// unescapeJSONString 先尝试 strconv.Unquote。失败则只展开 \\n、\\r、\\t 和引号、反斜杠、斜杠。
 func unescapeJSONString(s string) string {
 	if u, err := strconv.Unquote(`"` + s + `"`); err == nil {
 		return u
@@ -280,6 +282,7 @@ func unescapeJSONString(s string) string {
 	return b.String()
 }
 
+// stripJSONFence 去掉首尾的 ``` 围栏。语言标记 json 会被丢掉。
 func stripJSONFence(raw string) string {
 	s := strings.TrimSpace(raw)
 	if !strings.HasPrefix(s, "```") {
@@ -299,6 +302,7 @@ func stripJSONFence(raw string) string {
 	return s
 }
 
+// truncatedWriteErr 说明这是截断的 JSON，什么都没写。错误文本要求分段写，每段大约 32 KB。能捞到 path 时附上已恢复的字节数，以及最后一个完整的 function 标记。
 func truncatedWriteErr(raw string) error {
 	salvaged := salvageJSONObject(raw)
 	path := str(salvaged["path"])
@@ -314,6 +318,7 @@ func truncatedWriteErr(raw string) error {
 	return fmt.Errorf("%s", msg)
 }
 
+// lastCompleteAnchor 返回正文里最后一个 function 名称。没有则返回空串。
 func lastCompleteAnchor(s string) string {
 	re := regexp.MustCompile(`(?m)^function\s+([A-Za-z_$][\w$]*)`)
 	matches := re.FindAllStringSubmatch(s, -1)
@@ -323,6 +328,7 @@ func lastCompleteAnchor(s string) string {
 	return ""
 }
 
+// missingWriteArg 在原文为空或已是合法 JSON 时返回 empty。否则说明该字段无法恢复，并指出字面换行可以，未闭合引号或截断不行。
 func missingWriteArg(kind, raw string) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || json.Valid([]byte(raw)) {

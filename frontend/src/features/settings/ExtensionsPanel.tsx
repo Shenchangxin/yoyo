@@ -1,3 +1,7 @@
+/**
+ * 拥有：MCP、插件和连接器的设置。
+ * 不拥有：服务商密钥表。启动、停止和替换会调用 api 改状态。
+ */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ExternalLink, Plus } from "lucide-react";
@@ -16,6 +20,7 @@ import {
 } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
+/** 画一行输入。 */
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
@@ -25,6 +30,7 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   );
 }
 
+/** ExtensionsSettings 把 MCP、插件和连接器拼在一起。 */
 export function ExtensionsSettings({ host }: { host: SettingsHost }) {
   return (
     <>
@@ -35,6 +41,7 @@ export function ExtensionsSettings({ host }: { host: SettingsHost }) {
   );
 }
 
+/** 编辑 MCP 服务，并能启动、停止和替换。 */
 function McpSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const servers = asArray(host.plugins?.mcp || host.plugins?.servers);
@@ -56,6 +63,7 @@ function McpSection({ host }: { host: SettingsHost }) {
     setJson(JSON.stringify(rows, null, 2));
   }, [host.plugins]);
 
+  /** 清掉正在填写的服务。 */
   function reset() {
     setName("");
     setCommand("");
@@ -177,6 +185,7 @@ function McpSection({ host }: { host: SettingsHost }) {
   );
 }
 
+/** 列出插件，并能卸载。 */
 function FiberSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const fibers = asArray(host.plugins?.fibers || host.plugins?.Fibers);
@@ -210,12 +219,14 @@ function FiberSection({ host }: { host: SettingsHost }) {
   );
 }
 
+/** 连接或断开连接器。 */
 function ConnectorSection() {
   const copy = useCopy();
   const [data, setData] = useState<{ accounts?: any[]; catalog?: any[] }>({});
   const [provider, setProvider] = useState("gmail");
   const [clientId, setClientId] = useState("");
   const [code, setCode] = useState("");
+  /** 重新拉取连接器。 */
   const refresh = () => {
     void api.connectors().then(setData).catch(() => {});
   };

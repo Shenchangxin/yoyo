@@ -1,3 +1,5 @@
+// 扫描 SKILL.md：体积、UTF-8，以及 curl 管道到 shell。
+
 package skillmarket
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// Scan 是一次 SKILL.md 扫描的结果：能否安装、原因、是否要 shell、名字和图标。
 type Scan struct {
 	OK         bool     `json:"ok"`
 	Reasons    []string `json:"reasons,omitempty"`
@@ -20,6 +23,7 @@ type Scan struct {
 	Files      int      `json:"files,omitempty"`
 }
 
+// scanPackFile 拒绝空文件。png、jpg、jpeg、gif、webp、ico 不再检查正文。含 NUL 返回 "binary content"，非法 UTF-8 返回 "invalid UTF-8"。同时出现 "curl " 和 "| sh" 或 "| bash" 时返回 "install script pipe-to-shell"。
 func scanPackFile(rel string, raw []byte) error {
 	if len(raw) == 0 {
 		return fmt.Errorf("empty file")
@@ -40,6 +44,7 @@ func scanPackFile(rel string, raw []byte) error {
 	return nil
 }
 
+// isImageRel 在扩展名是 png、jpg、jpeg、gif、webp、ico 时返回 true。
 func isImageRel(rel string) bool {
 	switch strings.ToLower(path.Ext(rel)) {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico":
@@ -49,6 +54,7 @@ func isImageRel(rel string) bool {
 	}
 }
 
+// ScanSkillMD 解析 SKILL.md。空文件、超过 256 KiB、含 NUL、非法 UTF-8、解析失败，或正文里有 curl 管道到 sh/bash，都会把 OK 设为假。allowed-tools 含 bash、shell、powershell、cmd，或正文提到 scripts/ 时 NeedsShell 为真。
 func ScanSkillMD(raw []byte, slug string) (artifact.Skill, Scan) {
 	s := Scan{OK: true, BodyBytes: len(raw)}
 	if len(raw) == 0 {
@@ -83,24 +89,26 @@ func ScanSkillMD(raw []byte, slug string) (artifact.Skill, Scan) {
 	return sk, s
 }
 
+// fail 把 OK 设为假并追加一条原因。
 func fail(s Scan, reason string) Scan {
 	s.OK = false
 	s.Reasons = append(s.Reasons, reason)
 	return s
 }
 
-// MentionsScripts reports whether the skill body tells the model to run helpers
-// from scripts/.
+// MentionsScripts 在正文含 scripts/ 或 scripts\\ 时返回 true。
 func MentionsScripts(body string) bool {
 	return strings.Contains(body, "scripts/") || strings.Contains(strings.ToLower(body), "scripts\\")
 }
 
+// Peek 是从前言里看到的图标、显示名和版本。
 type Peek struct {
 	Icon        string
 	DisplayName string
 	Version     string
 }
 
+// PeekMeta 读 YAML 前言里的 icon、display_name 和 version。不是以 --- 开头时返回零值。icon 还要过 SafeIconURL。
 func PeekMeta(raw []byte) Peek {
 	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	if !strings.HasPrefix(text, "---\n") {

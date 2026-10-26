@@ -1,3 +1,6 @@
+// 本文件拥有给界面看的 View，以及从活着的页面同步地址、标题、正文和 JPEG 帧。
+// 空闲的 View 不启动 Chrome。lane 空白时写成 isolated。不调用 runtime.Run。
+
 package browser
 
 import (
@@ -7,6 +10,7 @@ import (
 	"time"
 )
 
+// View 是界面上的浏览器状态。Live 表示 CDP 还在。Screenshot 是 data:image/jpeg;base64 帧。Log 最多带最近 24 条。
 type View struct {
 	URL         string           `json:"url"`
 	Title       string           `json:"title"`
@@ -23,6 +27,7 @@ type View struct {
 	Log         []map[string]any `json:"log"`
 }
 
+// View 返回当前状态的副本。宿主为空时 Lane 是 isolated，不启动浏览器。帧超过 900 毫秒且没有同步在进行时，在后台再调一次 syncView。
 func (h *Host) View() View {
 	if h == nil {
 		return View{Lane: "isolated"}
@@ -89,6 +94,7 @@ func (h *Host) View() View {
 	}
 }
 
+// syncView 从当前 CDP 读取 location.href、document.title 和正文前 4000 字，并抓一张 JPEG。href 表明连接已断时 dropDeadCDP。
 func (h *Host) syncView() {
 	if h == nil {
 		return
@@ -123,6 +129,7 @@ func (h *Host) syncView() {
 	h.mu.Unlock()
 }
 
+// captureJPEG 用质量 42 的 JPEG 截一张图，返回 data URL。失败、解码失败或连接已断时返回空字符串，连接已断时同时 dropDeadCDP。
 func (h *Host) captureJPEG() string {
 	if h.cdp == nil {
 		return ""
@@ -146,6 +153,7 @@ func (h *Host) captureJPEG() string {
 	return "data:image/jpeg;base64," + out.Data
 }
 
+// cleanJS 去掉空白。空、<nil>、undefined、null 都返回空字符串。
 func cleanJS(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "<nil>" || s == "undefined" || s == "null" {
@@ -154,6 +162,7 @@ func cleanJS(s string) string {
 	return s
 }
 
+// hostOf 从地址里取出主机部分。没有 :// 时原样返回去掉空白的字符串。
 func hostOf(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if i := strings.Index(raw, "://"); i >= 0 {

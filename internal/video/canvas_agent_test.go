@@ -1,3 +1,5 @@
+// 行为：测试画布助手的能力、人设、幂等运行，以及按文件头识别 MP4。
+
 package video
 
 import (
@@ -5,6 +7,7 @@ import (
 	"time"
 )
 
+// TestCanvasAgentCapabilitiesProfileAndIdempotentRun 检查能力、人设修订号、未接桥时运行失败，以及相同幂等键不会启动第二轮。
 func TestCanvasAgentCapabilitiesProfileAndIdempotentRun(t *testing.T) {
 	e := testEngine(t)
 	caps := e.canvasHTTP(map[string]any{"method": "GET", "path": "agent/capabilities"})
@@ -64,6 +67,7 @@ func TestCanvasAgentCapabilitiesProfileAndIdempotentRun(t *testing.T) {
 	}
 }
 
+// TestPutCanvasBytesSniffsMP4 检查 ftypisom 字节在通用 MIME 下会被识别成 video/mp4。
 func TestPutCanvasBytesSniffsMP4(t *testing.T) {
 	e := testEngine(t)
 	raw := append([]byte{0, 0, 0, 0x18}, []byte("ftypisom")...)

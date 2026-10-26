@@ -1,3 +1,5 @@
+// 技能包在磁盘上的位置：home/packs/<id>，以及工作区 .yoyo/packs.json。
+
 package skillpack
 
 import (
@@ -7,26 +9,32 @@ import (
 	"strings"
 )
 
+// Root 返回 home/packs。
 func Root(home string) string {
 	return filepath.Join(home, "packs")
 }
 
+// Dir 返回 home/packs/<净化后的 id>。
 func Dir(home, id string) string {
 	return filepath.Join(Root(home), SanitizeID(id))
 }
 
+// SkillsDir 返回该包目录下的 skills。
 func SkillsDir(home, id string) string {
 	return filepath.Join(Dir(home, id), "skills")
 }
 
+// ManifestPath 返回该包目录下的 pack.json。
 func ManifestPath(home, id string) string {
 	return filepath.Join(Dir(home, id), "pack.json")
 }
 
+// WorkspaceFile 返回 <workspace>/.yoyo/packs.json。
 func WorkspaceFile(workspace string) string {
 	return filepath.Join(workspace, ".yoyo", "packs.json")
 }
 
+// SanitizeID 转成小写，只留 a-z、0-9 和连字符，去掉首尾连字符，最长 64 个字符。
 func SanitizeID(id string) string {
 	id = strings.ToLower(strings.TrimSpace(id))
 	var b strings.Builder
@@ -43,6 +51,7 @@ func SanitizeID(id string) string {
 	return out
 }
 
+// ReadManifest 读取 pack.json。读失败、JSON 无效或 id 为空白时返回 false。
 func ReadManifest(home, id string) (Manifest, bool) {
 	b, err := os.ReadFile(ManifestPath(home, id))
 	if err != nil {
@@ -55,6 +64,7 @@ func ReadManifest(home, id string) (Manifest, bool) {
 	return m, true
 }
 
+// WriteManifest 把清单写到 pack.json，权限 0o644。id 净化后为空则返回 invalid pack id。
 func WriteManifest(home string, m Manifest) error {
 	id := SanitizeID(m.ID)
 	if id == "" {
@@ -71,6 +81,7 @@ func WriteManifest(home string, m Manifest) error {
 	return os.WriteFile(ManifestPath(home, id), b, 0o644)
 }
 
+// InstalledIDs 返回 home/packs 下能读到 pack.json 的子目录名。目录读失败时返回 nil。
 func InstalledIDs(home string) []string {
 	ents, err := os.ReadDir(Root(home))
 	if err != nil {

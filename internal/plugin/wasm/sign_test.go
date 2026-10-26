@@ -1,3 +1,5 @@
+// 检查 ed25519 签名往返、篡改拒绝和空公钥拒绝。
+
 package wasm
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestSignVerifyRoundTrip 确认签名能验过，多一个字节的模块被拒绝，非法十六进制公钥被拒绝，合法公钥和签名能解析。
 func TestSignVerifyRoundTrip(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
@@ -30,6 +33,7 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 	}
 }
 
+// TestVerifyRejectsEmptyKey 确认公钥为 nil 时 Verify 返回错误。
 func TestVerifyRejectsEmptyKey(t *testing.T) {
 	if err := Verify(nil, []byte("m"), make([]byte, ed25519.SignatureSize)); err == nil {
 		t.Fatal("empty key")

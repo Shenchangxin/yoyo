@@ -1,3 +1,5 @@
+// overlay 保留基线、只钉当前会话、复用回合和拒绝视频。
+
 package app_test
 
 import (
@@ -15,10 +17,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
-// overlayArmedSolver writes hello.txt only when the overlay INV verification
-// instruction is in the system prompt. Base (seed verification copy) misses.
+// overlayArmedSolver 只在系统提示里有验证说明、且任务提到 hello.txt 时才写文件。基线提示写不出文件。
 type overlayArmedSolver struct{}
 
+// Chat 在系统提示武装之后才发出 write_file，否则只回复已经看过工作区。
 func (overlayArmedSolver) Chat(_ context.Context, req runtime.ChatRequest) (runtime.Message, error) {
 	var sys, user string
 	for _, m := range req.Messages {
@@ -39,6 +41,7 @@ func (overlayArmedSolver) Chat(_ context.Context, req runtime.ChatRequest) (runt
 	return runtime.Message{Role: runtime.RoleAssistant, Content: "explored workspace, no file written"}, nil
 }
 
+// overlayToolWrote 判断请求历史里是否已经写过这个文件。
 func overlayToolWrote(req runtime.ChatRequest, name string) bool {
 	for _, m := range req.Messages {
 		if m.Role != runtime.RoleTool && m.Role != runtime.RoleAssistant {
@@ -56,10 +59,12 @@ func overlayToolWrote(req runtime.ChatRequest, name string) bool {
 	return false
 }
 
+// overlayRefs 读出 active、canary 和 staging 三个引用。
 func overlayRefs(a *app.App) (active, canary, staging string) {
 	return a.ActiveHash(), a.Refs.GetOrEmpty(artifact.RefCanary), a.Refs.GetOrEmpty(artifact.RefStaging)
 }
 
+// assertOverlayRefsFrozen 确认三个引用都没有被改写。
 func assertOverlayRefsFrozen(t *testing.T, a *app.App, active, canary, staging string) {
 	t.Helper()
 	gotA, gotC, gotS := overlayRefs(a)
@@ -68,6 +73,7 @@ func assertOverlayRefsFrozen(t *testing.T, a *app.App, active, canary, staging s
 	}
 }
 
+// TestOverlaySessionKeepBaseLeavesFollowActive 确认保留基线时不钉会话、不改引用、不写操作者工作区。
 func TestOverlaySessionKeepBaseLeavesFollowActive(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -123,6 +129,7 @@ func TestOverlaySessionKeepBaseLeavesFollowActive(t *testing.T) {
 	}
 }
 
+// TestOverlaySessionAdoptPinsOnlyThisSession 确认采纳后只钉当前会话的 harness，active、canary 和 staging 不动。
 func TestOverlaySessionAdoptPinsOnlyThisSession(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -195,6 +202,7 @@ func TestOverlaySessionAdoptPinsOnlyThisSession(t *testing.T) {
 	}
 }
 
+// TestOverlaySessionReuseTurnCachesBase 确认复用上一轮时基线标记为缓存，失败的交付不算成功。
 func TestOverlaySessionReuseTurnCachesBase(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -240,6 +248,7 @@ func TestOverlaySessionReuseTurnCachesBase(t *testing.T) {
 	assertOverlayRefsFrozen(t, a, active, canary, staging)
 }
 
+// TestOverlaySessionHeldOutNotInEvidence 确认 held-out 的题号不出现在 overlay 证据里。
 func TestOverlaySessionHeldOutNotInEvidence(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -268,6 +277,7 @@ func TestOverlaySessionHeldOutNotInEvidence(t *testing.T) {
 	}
 }
 
+// TestOverlaySessionRejectsVideo 确认视频会话不能跑 overlay。
 func TestOverlaySessionRejectsVideo(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

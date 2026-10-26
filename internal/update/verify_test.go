@@ -1,3 +1,5 @@
+// 检查清单签名：完整签名通过，截断或改过的正文被拒绝。
+
 package update
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestVerifyRejectsBadSig 确认合法签名通过，截短的签名和改过的正文被拒绝。
 func TestVerifyRejectsBadSig(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {

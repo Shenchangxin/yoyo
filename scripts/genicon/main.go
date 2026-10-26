@@ -1,4 +1,5 @@
-// Generates the Yoyo app mark (black rounded square + white yo-yo) as PNG/ICO.
+// genicon 画出圆角方块上的溜溜球标记，并写成 PNG、ICO 和 SVG。不负责安装或打包。在仓库里用 go run 调用。
+
 package main
 
 import (
@@ -17,6 +18,7 @@ var (
 	ink = color.RGBA{0xFF, 0xFF, 0xFF, 0xFF}
 )
 
+// main 写出应用图标：1024 的 PNG、256 的桌面 PNG、iOS 用的 1024 PNG、16、32、48 和 256 的 ICO，以及 SVG。
 func main() {
 	root := "."
 	if _, err := os.Stat("build"); err != nil {
@@ -44,6 +46,7 @@ func main() {
 	mustWrite(filepath.Join(root, "build", "appicon.icon", "Assets", "wails_icon_vector.svg"), []byte(svg))
 }
 
+// mustWrite 创建目录并写文件。失败则 panic。
 func mustWrite(path string, b []byte) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		panic(err)
@@ -53,6 +56,7 @@ func mustWrite(path string, b []byte) {
 	}
 }
 
+// render 按边长光栅化标记。边长不超过 32 时每个方向采样 4 次，否则每个方向采样 3 次，再编码成 PNG。
 func render(size int) []byte {
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	samples := 3
@@ -85,6 +89,7 @@ func render(size int) []byte {
 	return buf.Bytes()
 }
 
+// sample 在单位正方形里采样圆角底、圆环、轴和字母，并按覆盖混合底色和墨色。
 func sample(x, y float64) color.RGBA {
 	box := roundedBox(x, y, 0.5, 0.5, 0.5, 0.5, 0.22)
 	cover := aa(box)
@@ -103,6 +108,7 @@ func sample(x, y float64) color.RGBA {
 	return mix(bg, ink, mark*cover, cover)
 }
 
+// capsule 返回点到一条胶囊线段的有符号距离。
 func capsule(px, py, ax, ay, bx, by, r float64) float64 {
 	dx := bx - ax
 	dy := by - ay
@@ -114,10 +120,12 @@ func capsule(px, py, ax, ay, bx, by, r float64) float64 {
 	return math.Hypot(px-(ax+dx*h), py-(ay+dy*h)) - r
 }
 
+// union 把两段覆盖合成一段。
 func union(a, b float64) float64 {
 	return 1 - ((1 - a) * (1 - b))
 }
 
+// roundedBox 返回点到圆角矩形的有符号距离。
 func roundedBox(px, py, cx, cy, hw, hh, r float64) float64 {
 	dx := math.Abs(px-cx) - hw + r
 	dy := math.Abs(py-cy) - hh + r
@@ -126,12 +134,14 @@ func roundedBox(px, py, cx, cy, hw, hh, r float64) float64 {
 	return math.Hypot(ox, oy) + math.Min(math.Max(dx, dy), 0) - r
 }
 
+// circle 返回点到圆的有符号距离。
 func circle(px, py, cx, cy, r float64) float64 {
 	return math.Hypot(px-cx, py-cy) - r
 }
 
+// aa 把有符号距离收成 0 到 1 的覆盖。带宽是 0.0018。
 func aa(d float64) float64 {
-	// ~1px at 1024, thicker relative coverage at small sizes
+	// 边长 1024 时这条带更窄，小图上覆盖相对更厚。宽度是 0.0018。
 	w := 0.0018
 	t := 0.5 - d/w
 	if t < 0 {
@@ -143,6 +153,7 @@ func aa(d float64) float64 {
 	return t
 }
 
+// mix 按前景覆盖混合背景色和前景色。覆盖不大于 0 时返回透明色。
 func mix(bg, fg color.RGBA, fgA, cover float64) color.RGBA {
 	if cover <= 0 {
 		return color.RGBA{}
@@ -154,6 +165,7 @@ func mix(bg, fg color.RGBA, fgA, cover float64) color.RGBA {
 	return color.RGBA{uint8(r), uint8(g), uint8(b), uint8(255 * cover)}
 }
 
+// clamp 把值夹到 0 和 1。
 func clamp(v float64) float64 {
 	if v < 0 {
 		return 0
@@ -164,6 +176,7 @@ func clamp(v float64) float64 {
 	return v
 }
 
+// packICO 把多张 PNG 打成 ICO。宽或高达到 256 时，目录项里的宽高字节写 0。
 func packICO(pngs ...[]byte) []byte {
 	count := uint16(len(pngs))
 	var dir bytes.Buffer

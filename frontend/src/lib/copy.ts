@@ -1,6 +1,10 @@
+/**
+ * 拥有：英文文案表，以及当前生效的那一份。键保持稳定，简体中文按同一套键落地。
+ * 不拥有：语言切换。那是 i18n 的事。
+ */
+
 import { EXTRA_DRAMA_STYLES } from "../features/video/drama-style-catalog.ts";
 
-/** English copy. Keys are stable so zh-CN can land without hunting strings. */
 export const en = {
   app: {
     skipToContent: "Skip to conversation",
@@ -2745,15 +2749,18 @@ export type Copy = typeof en;
 
 let active: Copy = en;
 
+/** setCopyCatalog 换成另一份文案表。 */
 export function setCopyCatalog(next: Copy) {
   active = next;
 }
 
+/** catalog 当前生效的文案表。 */
 export function catalog(): Copy {
   return active;
 }
 
 export const copy: Copy = new Proxy({} as Copy, {
+  /** get 读取属性时转到当前生效的文案表。 */
   get(_target, prop) {
     return (active as Record<PropertyKey, unknown>)[prop];
   },

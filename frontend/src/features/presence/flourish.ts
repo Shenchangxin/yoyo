@@ -1,8 +1,10 @@
+/** 拥有表情刚落下时的一次性身体动作。干活的脸保持不动，所以这里很疏。不拥有情绪球，也不另开模型循环。本地选择，不改服务端。 */
 import type { MoodMate } from "./types";
 
+/** PresenceMotion 是庆祝、挥手、跳、轻推或转。 */
 export type PresenceMotion = "celebrate" | "flourish" | "bounce" | "nudge" | "spin";
 
-/** One-shot body accent when a face first lands. Keep this sparse so work faces stay still. */
+/** entryMotion 在一张脸刚落下时给一次性动作，干活的脸不加。 */
 export function entryMotion(id: string): PresenceMotion | null {
   switch (id) {
     case "33":
@@ -34,6 +36,7 @@ export function entryMotion(id: string): PresenceMotion | null {
   }
 }
 
+/** playMotion 把动作交到情绪球上，缺方法时用跳或转顶上。 */
 export function playMotion(mate: MoodMate | null | undefined, motion: PresenceMotion | null | undefined): void {
   if (!mate || !motion) return;
   switch (motion) {

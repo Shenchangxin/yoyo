@@ -1,3 +1,5 @@
+// Package expert 读取并验收专家包：技能正文、剧本条目、评测 id 和策略。
+// 公钥为空且没有签名时，Verify 拒绝该包进入 refs/active。Admit 先验签；destRoot 为空则只返回，不写目录。
 package expert
 
 import (
@@ -12,7 +14,7 @@ import (
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 )
 
-// Pack is a Harbor-admissible expert: skill + playbook bullets + eval ids + policy.
+// Pack 是一份 Harbor 可准入的专家包，含技能、剧本要点、评测 id 和策略。
 type Pack struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
@@ -23,6 +25,9 @@ type Pack struct {
 	SigHex      string   `json:"sig_hex,omitempty"`
 }
 
+// ParseDir 读取 dir 里的 SKILL.md。名字和描述来自 artifact.ParseSkillMD，正文是文件原文。
+// PLAYBOOK.txt 和 EVALS.txt 若存在，跳过空行和以 # 开头的行。POLICY.md 和 SKILL.sig 若存在则原样收入，签名会去掉首尾空白。
+// 可选文件缺失不算错误。SKILL.md 读失败或技能解析失败时返回错误。
 func ParseDir(dir string) (Pack, error) {
 	b, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
@@ -58,6 +63,9 @@ func ParseDir(dir string) (Pack, error) {
 	return p, nil
 }
 
+// Verify 用公钥校验技能正文的 ed25519 签名。
+// 公钥长度为 0 且 SigHex 为空时，错误写明未签名的包不能进入 refs/active。公钥为空但带了签名时，返回缺少公钥。
+// 否则用 wasm.ParseSig 解析 SigHex，再对 SkillMD 的字节调用 wasm.Verify。
 func Verify(pub ed25519.PublicKey, p Pack) error {
 	if len(pub) == 0 {
 		if p.SigHex == "" {
@@ -72,10 +80,13 @@ func Verify(pub ed25519.PublicKey, p Pack) error {
 	return wasm.Verify(pub, []byte(p.SkillMD), sig)
 }
 
+// Sign 对技能正文调用 wasm.Sign，再把签名编成十六进制。
 func Sign(priv ed25519.PrivateKey, skillMD string) string {
 	return hex.EncodeToString(wasm.Sign(priv, []byte(skillMD)))
 }
 
+// Admit 先 ParseDir 再 Verify。destRoot 为空时验签通过就返回，不创建目录。
+// 否则写入 destRoot/名字，目录权限 0o755。SKILL.md 权限 0o644。签名、评测、剧本和策略只在对应字段非空时写出。
 func Admit(dir, destRoot string, pub ed25519.PublicKey) (Pack, error) {
 	p, err := ParseDir(dir)
 	if err != nil {
@@ -109,6 +120,7 @@ func Admit(dir, destRoot string, pub ed25519.PublicKey) (Pack, error) {
 	return p, nil
 }
 
+// Distill 拼出一份技能 Markdown。前置信息含 name、description，license 固定写成 Apache-2.0。正文先去掉首尾空白，末尾补一个换行。
 func Distill(name, description, body string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
