@@ -5,8 +5,10 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Phone, Send } from "lucide-react";
+import { Phone } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { ChatBorder } from "../session-chrome/ChatBorder";
+import PromptBar from "../session-chrome/PromptBar";
 import { EmptyState } from "../../components/ui/empty-state";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
@@ -110,37 +112,24 @@ export function IdolChat(props: {
           <Button size="sm" variant="lift" onClick={props.onOpenGifts}>{c.give}</Button>
         </div>
       ) : (
-        <form
-          className="border-t border-border bg-background px-4 py-3"
-          onSubmit={(e) => { e.preventDefault(); if (!locked) props.onSend(); }}
-        >
+        <div className="border-t border-border bg-background px-4 py-3">
           {props.canWork ? (
             <label className="mb-2 flex items-center gap-2 text-[12px] text-muted" title={c.workHint}>
               <input type="checkbox" checked={props.work} onChange={(e) => props.onWork(e.target.checked)} />
               {c.work}
             </label>
           ) : null}
-          <div className="flex items-end gap-2">
-            <textarea
-              rows={1}
+          <ChatBorder className="chat-border-fit">
+            <PromptBar
               value={props.text}
+              onValueChange={props.onText}
               placeholder={c.placeholder}
-              aria-label={c.placeholder}
-              disabled={props.sending}
-              className="max-h-32 min-h-10 flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-accent/40"
-              onChange={(e) => props.onText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  props.onSend();
-                }
-              }}
+              label={c.placeholder}
+              disabled={props.sending || locked}
+              onSend={() => { if (!locked) props.onSend(); }}
             />
-            <Button type="submit" size="send" aria-label={c.send} disabled={props.sending || !props.text.trim()} aria-busy={props.sending}>
-              <Send className="size-4" />
-            </Button>
-          </div>
-        </form>
+          </ChatBorder>
+        </div>
       )}
     </div>
   );

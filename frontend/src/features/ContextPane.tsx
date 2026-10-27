@@ -1,6 +1,8 @@
 // 本文件拥有上下文用量、耗时和最近调用。不拥有这些数字怎么算，那一步在 context-usage。调用方传入 ctx 和 trace。
 
+import { type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
+import { RollTime } from "./session-chrome/Counter";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { formatTokens } from "../lib/models-dev";
@@ -8,7 +10,6 @@ import {
   cacheHitPct,
   callStats,
   contextBreakdown,
-  formatDurationMs,
   formatHitPct,
   lastTurnMs,
   modelCallsOf,
@@ -106,15 +107,15 @@ export function ContextPane(props: {
             <section className="flex flex-col gap-2.5" data-testid="usage-timing">
               <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">{copy.trace.duration}</h3>
               <div className="grid grid-cols-2 gap-1.5">
-                <Fact label={copy.review.usageLastCall} value={formatDurationMs(stats.last?.elapsedMs || 0)} />
-                <Fact label={copy.review.usageFirstToken} value={formatDurationMs(stats.last?.ttftMs || 0)} />
-                <Fact label={copy.review.usageAvgCall} value={formatDurationMs(stats.avgElapsed)} />
-                <Fact label={copy.review.usageTurn} value={formatDurationMs(turnMs)} />
+                <Fact label={copy.review.usageLastCall} value={<RollTime ms={stats.last?.elapsedMs || 0} kind="meter" />} />
+                <Fact label={copy.review.usageFirstToken} value={<RollTime ms={stats.last?.ttftMs || 0} kind="meter" />} />
+                <Fact label={copy.review.usageAvgCall} value={<RollTime ms={stats.avgElapsed} kind="meter" />} />
+                <Fact label={copy.review.usageTurn} value={<RollTime ms={turnMs} kind="meter" />} />
               </div>
               {sessionMs > 0 ? (
                 <p className="text-[11px] tabular-nums text-muted">
-                  {copy.review.usageSession} {formatDurationMs(sessionMs)}
-                  {stats.avgTtft ? ` · ${copy.review.usageFirstToken} ${formatDurationMs(stats.avgTtft)}` : ""}
+                  {copy.review.usageSession} <RollTime ms={sessionMs} kind="meter" />
+                  {stats.avgTtft ? <> · {copy.review.usageFirstToken} <RollTime ms={stats.avgTtft} kind="meter" /></> : null}
                 </p>
               ) : null}
             </section>
@@ -133,8 +134,8 @@ export function ContextPane(props: {
                       <li key={`${c.round}-${c.ts}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 text-[12px]">
                         <span className="w-8 shrink-0 font-mono text-[11px] text-muted">{label}</span>
                         <span className="min-w-0 flex-1 truncate tabular-nums text-foreground/85">
-                          {formatDurationMs(c.elapsedMs)}
-                          {c.ttftMs ? ` · ${copy.review.usageFirstToken} ${formatDurationMs(c.ttftMs)}` : ""}
+                          <RollTime ms={c.elapsedMs} kind="meter" />
+                          {c.ttftMs ? <> · {copy.review.usageFirstToken} <RollTime ms={c.ttftMs} kind="meter" /></> : null}
                         </span>
                         <span className="shrink-0 tabular-nums text-[11px] text-muted">{formatHitPct(pct)}</span>
                       </li>
@@ -208,7 +209,7 @@ function sliceLabel(id: CtxSliceId, copy: Copy): string {
 }
 
 /** Fact good 用绿色，warn 用琥珀色，没传 tone 用前景色。label 作为子节点渲染。value 作为子节点渲染。 */
-function Fact({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
+function Fact({ label, value, tone }: { label: string; value: ReactNode; tone?: "good" | "warn" }) {
   return (
     <div className="rounded-lg border border-border/60 bg-lift/30 px-2.5 py-2">
       <div className="text-[10px] font-medium uppercase tracking-[0.05em] text-muted/70">{label}</div>

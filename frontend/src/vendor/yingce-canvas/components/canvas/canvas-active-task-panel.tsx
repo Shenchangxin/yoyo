@@ -9,6 +9,7 @@ import { canCancelGenerationTask, formatTaskKind, generationTaskShowsProgress, g
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import type { GenerationTask } from "@yingce/services/api/task-center";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
+import { RollTime } from "@/features/session-chrome/Counter";
 import { useUserStore } from "@yingce/stores/use-user-store";
 
 // 顶栏是绝对定位浮层，面板必须按调用方传入的 topInset 避让；专注模式隐藏顶栏时传小间距。
@@ -188,16 +189,20 @@ function ActiveTaskCard({
                 {/* 进度百分比显示（对应 #98 决策3：列表视图）*/}
                 {progress !== undefined && task.status === "running" ? (
                     <div className="mt-1 flex items-center justify-between text-[var(--fs-micro)]" style={{ color: theme.node.muted }}>
-                        <span>{durationLabel}</span>
+                        <span className="inline-flex items-center gap-1">
+                            {task.status === "queued" ? "已等待" : "已运行"}
+                            <RollTime ms={elapsedMs} kind="clock" live={task.status === "queued" || task.status === "running"} />
+                        </span>
                         <span className="font-medium tabular-nums" style={{ color: statusTone }}>
                             {progress}%
                         </span>
                     </div>
                 ) : (
                     <div className={`mt-3 grid gap-2 text-[var(--fs-tiny)] ${creditsEnabled ? "grid-cols-2" : "grid-cols-1"}`} style={{ color: theme.node.muted }}>
-                        <span className="inline-flex min-w-0 items-center gap-1 truncate" title={durationLabel}>
+                        <span className="inline-flex min-w-0 items-center gap-1" title={durationLabel}>
                             <Clock3 className="size-3 shrink-0" />
-                            {durationLabel}
+                            <span className="truncate">{task.status === "queued" ? "已等待" : "已运行"}</span>
+                            <RollTime ms={elapsedMs} kind="clock" live={task.status === "queued" || task.status === "running"} />
                         </span>
                         {creditsEnabled ? (
                             <span className="inline-flex min-w-0 items-center justify-end gap-1 truncate" title={billingLabel}>

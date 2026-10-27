@@ -27,6 +27,7 @@ import type { TaskPlan } from "../lib/plan";
 import { lookupCatalogModel, composerModelIds, composerModelGroups, decodeChatModel, encodeChatModel, resolveComposerModelValue, resolveContextWindow, UNKNOWN_MODEL_WINDOW } from "../lib/models-dev";
 import { useModelCatalog } from "../lib/model-catalog";
 import { estimateTokens } from "../lib/context-usage";
+import { ChatBorder } from "./session-chrome/ChatBorder";
 import { VideoModeSwitch } from "./video/VideoModeSwitch";
 import { DramaProjectChip } from "./video/DramaProjectChip";
 import { CanvasProjectChip } from "./video/CanvasProjectChip";
@@ -63,7 +64,8 @@ import { AttachmentRail, DropOverlay } from "./session-chrome/Attachments";
 import { isVideoPath, nativeFilePath } from "./video/ingest-clip";
 import { useCutDesk } from "./video/cut-desk";
 import { useCreateMode } from "./video/create-mode";
-import { SendGlyph, StopGlyph } from "./session-chrome/icons";
+import { SendGlyph } from "./session-chrome/PromptBar";
+import { StopGlyph } from "./session-chrome/icons";
 import { PermissionSelect } from "./session-chrome/PermissionSelect";
 import { WorkspaceChip } from "./session-chrome/WorkspaceChip";
 import { WorkspacePicker } from "./session-chrome/WorkspacePicker";
@@ -780,6 +782,7 @@ export function Composer(props: {
               />
             </div>
             {perch ? <PresencePerch size={props.perchSize} /> : null}
+            <ChatBorder className="sc-card-frame">
             <div
               ref={cardRef}
               className="sc-card"
@@ -1079,12 +1082,13 @@ export function Composer(props: {
                         send();
                       }}
                     >
-                      {primaryStops ? <StopGlyph /> : <SendGlyph />}
+                      <SendGlyph busy={primaryStops} morphDuration={240} squash={0.12} tilt={8} />
                     </button>
                   </Tooltip>
                 </div>
               </div>
             </div>
+            </ChatBorder>
             {props.compact ? null : (
             <div className="sc-dock" data-composer-dock>
               <StatsPills

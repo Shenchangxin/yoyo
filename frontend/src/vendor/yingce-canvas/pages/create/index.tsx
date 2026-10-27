@@ -34,6 +34,8 @@ import { defaultCreationMode, modeLabels, type CreationConversation, type Creati
 import { attachCreationTaskContexts, completedCreationGenerationTask, conversationTimestamp, creationShotRail, creationVideoShotOrdinal, isImageAttachment, isVideoAttachment, materializeCreationTaskResults, newConversation, newMessage, reconcileCreationTaskMessages, resolveActiveCreationConversationId } from "./creation-conversations";
 import { CreationComposer, CreationEmptySuggest, CreationFeaturedWorks, CreationHistoryDrawer, CreationMessageView, CreationModeTabs, CreationWorkspaceToolbar, creationAssetCategoryLabels } from "./creation-workspace";
 import { CreationAgentEntry } from "./creation-agent-entry";
+import { ChatBorder } from "@/features/session-chrome/ChatBorder";
+import PromptBar from "@/features/session-chrome/PromptBar";
 import { createCreationSubmitGate } from "./creation-submit-gate";
 import { creationVideoConfig } from "./creation-generation-config";
 import { openHostedVideoHref } from "@/features/video/canvas-host/host-nav";
@@ -1170,8 +1172,20 @@ export default function CreatePage() {
                         initial={{ opacity: 0, y: -12, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .98 }}
                         transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 32, mass: .8 }}>
                         <Clapperboard aria-hidden="true" />
-                        <input aria-label="快捷编辑提示词" placeholder="继续描述你的创作想法…" value={prompt} disabled={busy || referenceReplacementBusy} onChange={(event) => setPrompt(event.target.value)} />
-                        <Tooltip title="展开完整创作区"><button type="button" aria-label="展开完整创作区" onClick={() => {
+                        <ChatBorder className="chat-border-fit min-w-0 flex-1">
+                        <PromptBar
+                            slim
+                            className="is-ghost"
+                            value={prompt}
+                            onValueChange={setPrompt}
+                            placeholder="继续描述你的创作想法…"
+                            label="快捷编辑提示词"
+                            disabled={busy || referenceReplacementBusy}
+                            clearOnSend={false}
+                            onSend={() => { void submit(); }}
+                        />
+                        </ChatBorder>
+                        <Tooltip title="展开完整创作区"><button type="button" className="creation-floating-expand" aria-label="展开完整创作区" onClick={() => {
                             threadScrollRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
                             composerFocusRef.current?.focus({ preventScroll: true });
                         }}><Maximize2 /></button></Tooltip>

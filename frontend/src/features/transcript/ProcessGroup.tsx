@@ -2,8 +2,10 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AtSign, Bot, Brain, ChevronRight, CircleDashed, MessageSquare, X } from "lucide-react";
+import { AtSign, Bot, ChevronRight, CircleDashed, MessageSquare, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
+import { RollTime } from "../session-chrome/Counter";
+import { ThinkingStream } from "../session-chrome/ThoughtLine";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import type { Copy } from "../../lib/copy";
@@ -103,7 +105,6 @@ export function WorkingLine({
 }) {
   const copy = useCopy();
   const now = useNow(!!since);
-  const elapsed = since && now > since ? formatSpan(now - since) : "";
   return (
     <div
       className="flex h-7 min-w-0 items-center gap-2.5 text-[13px]"
@@ -116,7 +117,11 @@ export function WorkingLine({
       </span>
       <span className="shimmer-text shrink-0 font-medium">{label || copy.transcript.working}</span>
       {detail ? <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">{detail}</span> : null}
-      {elapsed ? <span className="shrink-0 tabular-nums text-[12px] text-muted/70">{elapsed}</span> : null}
+      {since && now > since ? (
+        <span className="shrink-0 text-[12px] text-muted/70">
+          <RollTime ms={now - since} kind="clock" live />
+        </span>
+      ) : null}
       {hint ? <span className="ml-auto shrink-0 text-[11px] text-muted/55">{hint}</span> : null}
     </div>
   );
@@ -234,8 +239,10 @@ export const ProcessGroup = memo(function ProcessGroup({
             )}
           </AnimatePresence>
         </span>
-        {live && span ? (
-          <span className="shrink-0 tabular-nums text-[12px] text-muted/70">{span}</span>
+        {live && start ? (
+          <span className="shrink-0 text-[12px] text-muted/70">
+            <RollTime ms={spanMs} kind="clock" live />
+          </span>
         ) : null}
         <ChevronRight
           className={cn(
@@ -393,7 +400,7 @@ function StepRow({
   children,
 }: {
   glyph: ReactNode;
-  label: string;
+  label: ReactNode;
   labelTone?: string;
   detail?: string;
   meta?: ReactNode;
@@ -533,27 +540,24 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
     if (streaming) setOpen(true);
   }, [streaming]);
   const body = readableExtra(item);
-  if (item.type === "assistant" && item.payload?.groupPart === "reasoning") {
-    const thought = reasoningText(item);
-    const ms = toolElapsedMs(item);
-    const label = ms > 0
-      ? copy.transcript.thoughtFor.replace("{n}", formatElapsed(ms))
-      : copy.transcript.thinking;
+  if ((item.type === "assistant" && item.payload?.groupPart === "reasoning") || item.type === "reasoning") {
+    const text = body;
+    const done = copy.transcript.thoughtFor.split("{n}")[0]?.trim() || copy.transcript.thinking;
     return (
-      <StepRow
-        glyph={<StepGlyph state="note" compact={compact} icon={<Brain className="size-3 text-muted/70" />} />}
-        label={label}
-        labelTone="font-sans text-[13px] italic text-muted"
-        open={open && !!thought}
-        onToggle={() => setOpen((v) => !v)}
+      <ThinkingStream
         testId="reasoning-block"
+        working={streaming}
+        elapsedMs={toolElapsedMs(item)}
+        label={copy.transcript.live.think}
+        doneLabel={done}
+        idleLabel={copy.transcript.thinking}
       >
-        {thought ? (
-          <div className="md-reasoning min-w-0 max-w-full text-muted">
-            <Markdown text={thought} quiet streaming={streaming} />
+        {text ? (
+          <div className="md-reasoning min-w-0 max-w-full">
+            <Markdown text={text} quiet streaming={streaming} />
           </div>
         ) : null}
-      </StepRow>
+      </ThinkingStream>
     );
   }
   if (item.type === "assistant") {
@@ -568,28 +572,6 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
         open={open && !!body}
         onToggle={() => setOpen((v) => !v)}
         testId="progress-note"
-      >
-        {body ? (
-          <div className="md-reasoning min-w-0 max-w-full text-muted">
-            <Markdown text={body} quiet streaming={streaming} />
-          </div>
-        ) : null}
-      </StepRow>
-    );
-  }
-  if (item.type === "reasoning") {
-    const ms = toolElapsedMs(item);
-    const label = ms > 0
-      ? copy.transcript.thoughtFor.replace("{n}", formatElapsed(ms))
-      : copy.transcript.thinking;
-    return (
-      <StepRow
-        glyph={<StepGlyph state="note" compact={compact} icon={<Brain className="size-3 text-muted/70" />} />}
-        label={label}
-        labelTone="font-sans text-[13px] italic text-muted"
-        open={open && !!body}
-        onToggle={() => setOpen((v) => !v)}
-        testId="reasoning-block"
       >
         {body ? (
           <div className="md-reasoning min-w-0 max-w-full text-muted">
@@ -739,7 +721,6 @@ export function ToolLine({
   const source = result || call || item;
   const detail = toolDetail(call || source);
   const ms = toolElapsedMs(result || item);
-  const elapsed = formatElapsed(ms);
   const streamingOut = !!(result?.delta || result?.payload?.delta);
   useEffect(() => {
     if (pending && running) setOpen(true);
@@ -780,7 +761,7 @@ export function ToolLine({
       detail={detail}
       meta={(
         <>
-          {elapsed ? <span>{elapsed}</span> : null}
+          {ms > 0 ? <RollTime ms={ms} kind="short" /> : null}
           {status ? (
             <span
               className={cn(

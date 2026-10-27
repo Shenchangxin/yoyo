@@ -7,9 +7,12 @@
 import { useState, type ReactNode } from "react";
 import { Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
+import { ChatBorder } from "../session-chrome/ChatBorder";
+import PromptBar from "../session-chrome/PromptBar";
+import { RollTime } from "../session-chrome/Counter";
 import { cn } from "../../lib/utils";
 import { IdolPresence } from "./IdolPresence";
-import { hexAlpha, imageURL, mmss } from "./model";
+import { hexAlpha, imageURL } from "./model";
 import { standURL } from "./stand/StandView";
 import { useIdolCall, type CallPhase, type CallWho } from "./useIdolCall";
 
@@ -126,7 +129,7 @@ export function CallSurface(props: {
       <div className="idol-call-shade" aria-hidden />
       <div className="relative z-[2] flex items-center justify-between gap-2 px-4 pt-3 text-[12px] text-white/80">
         <span className="min-w-0 truncate">{props.who.name || c.title}</span>
-        <span className="shrink-0 tabular-nums">{props.phase === "dialing" ? c.dialing : mmss(props.elapsed)}</span>
+        <span className="shrink-0 tabular-nums">{props.phase === "dialing" ? c.dialing : <RollTime ms={props.elapsed} kind="clock" live />}</span>
         {props.onCollapse ? (
           <button type="button" className="shrink-0 rounded-md px-2 py-1 text-white/80 hover:bg-white/10" onClick={props.onCollapse}>{c.collapseCall}</button>
         ) : null}
@@ -144,14 +147,22 @@ export function CallSurface(props: {
             {c.work}
           </label>
         ) : null}
-        <form className="flex w-full gap-2" onSubmit={(e) => { e.preventDefault(); props.onSend(); }}>
-          <input
-            className="h-10 min-w-0 flex-1 rounded-full bg-white/10 px-4 text-[13px] text-white outline-none placeholder:text-white/45"
+        <ChatBorder className="chat-border-fit w-full" tone="dark">
+          <PromptBar
+            slim
+            className="is-call"
             value={props.draft}
+            onValueChange={props.onDraft}
             placeholder={c.type}
-            onChange={(e) => props.onDraft(e.target.value)}
+            label={c.type}
+            background="rgba(255,255,255,0.10)"
+            color="#ffffff"
+            menuBackground="#2a2a2e"
+            sparkColor="#7eb6ea"
+            radius={20}
+            onSend={() => props.onSend()}
           />
-        </form>
+        </ChatBorder>
         <div className="flex items-center justify-center gap-3">
         <Round label={props.muteMic ? c.unmuteMic : c.muteMic} onClick={props.onMuteMic}>
           {props.muteMic ? <MicOff className="size-4" /> : <Mic className="size-4" />}
@@ -176,7 +187,15 @@ export function CallBar(props: { name: string; elapsed: number; dialing: boolean
       <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={props.onExpand}>
         <span className={cn("size-2 shrink-0 rounded-full bg-white", props.dialing && "animate-pulse")} />
         <span className="truncate">{props.name}</span>
-        <span className="shrink-0 tabular-nums text-white/80">{props.dialing ? c.dialing : c.inCall.replace("{time}", mmss(props.elapsed))}</span>
+        <span className="shrink-0 tabular-nums text-white/80">
+          {props.dialing ? c.dialing : (
+            <>
+              {c.inCall.split("{time}")[0]}
+              <RollTime ms={props.elapsed} kind="clock" live />
+              {c.inCall.split("{time}")[1]}
+            </>
+          )}
+        </span>
         <span className="ml-auto shrink-0 text-white/70">{c.backToCall}</span>
       </button>
       <button type="button" className="grid size-7 place-items-center rounded-full bg-red-500" aria-label={c.hangup} onClick={props.onHangup}>

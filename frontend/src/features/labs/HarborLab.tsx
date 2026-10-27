@@ -5,7 +5,8 @@ import { ChevronDown } from "lucide-react";
 import { asArray, num, pick, str } from "../../lib/normalize";
 import { readHarborMetrics } from "../../lib/harness-refs";
 import { checkHeadline } from "../../lib/harness-copy";
-import { formatDurationMs, formatMoney, useCopy } from "../../lib/i18n";
+import { formatMoney, useCopy } from "../../lib/i18n";
+import { RollTime } from "../session-chrome/Counter";
 import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -136,7 +137,7 @@ export function HarborLab(props: {
             />
           </div>
           <p className="mb-4 text-[13px] text-muted">
-            {formatMoney(usd)} · {formatDurationMs(wall)}
+            {formatMoney(usd)} · <RollTime ms={wall} kind="spoken" />
             {lab ? (
               <span className="font-mono text-[12px]">
                 {` · ${str(pick(props.report, "snapshot", "Snapshot")).slice(0, 16) || "—"}`}
