@@ -3,29 +3,23 @@
  * 不拥有：会话列表怎么来。只投影传入的 threads，打开、置顶和删除都回调，不调用 api。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
-  BookOpen,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
   Copy as CopyIcon,
-  FileText,
-  Heart,
   Film,
   Folder,
-  GitBranch,
   LayoutGrid,
-  MessageSquare,
   MessageSquarePlus,
   MoreHorizontal,
   Pin,
   Plus,
   Search,
-  Settings,
 } from "lucide-react";
 import { VList } from "virtua";
 import { Button } from "../components/ui/button";
@@ -50,6 +44,7 @@ import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/h
 import type { Lab, Surface, Thread, VideoProject } from "../lib/protocol";
 import { isSubagentThread, threadChannel } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
+import { RailDock } from "./shell/RailDock";
 import { YoyoMark } from "./shell/YoyoMark";
 import { SettingsRailNav } from "./settings/SettingsSidebar";
 import { VideoShellNav } from "./video/VideoShellNav";
@@ -251,10 +246,6 @@ export function ThreadRail(props: {
     if (!q) return true;
     return (t.title + t.id + t.workspace + (t.preview || "")).toLowerCase().includes(q);
   });
-  const harnessOn = props.surface === "harness";
-  const skillsOn = props.surface === "skills";
-  const pagesOn = props.surface === "pages";
-  const idolOn = props.surface === "idol";
   const videoOn = props.surface === "video";
   const settingsOn = props.surface === "settings";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
@@ -372,71 +363,18 @@ export function ThreadRail(props: {
       )}
       {videoOn ? <div className="min-h-0 flex-1" /> : null}
       <div className="rail-dock">
-        <DockIcon
-          label={copy.rail.sessions}
-          hint={copy.rail.sessionsHint}
-          on={props.surface === "agent"}
-          onClick={props.onChats}
-        >
-          <MessageSquare className="size-4" aria-hidden />
-        </DockIcon>
-        <DockIcon
-          label={copy.rail.skills}
-          hint={copy.rail.skillsHint}
-          on={skillsOn}
-          onClick={props.onSkills}
-        >
-          <BookOpen className="size-4" aria-hidden />
-        </DockIcon>
-        <DockIcon
-          label={copy.rail.video}
-          hint={copy.rail.videoHint}
-          on={videoOn}
-          onClick={props.onVideo}
-        >
-          <Clapperboard className="size-4" aria-hidden />
-        </DockIcon>
-        <DockIcon
-          label={copy.rail.pages}
-          hint={copy.rail.pagesHint}
-          on={pagesOn}
-          onClick={props.onPages}
-        >
-          <FileText className="size-4" aria-hidden />
-        </DockIcon>
-        <DockIcon
-          label={copy.rail.idol}
-          hint={copy.rail.idolHint}
-          on={idolOn}
-          onClick={props.onIdol}
-        >
-          <Heart className="size-4" aria-hidden />
-        </DockIcon>
-        <DockIcon
-          label={copy.rail.harness}
-              hint={copy.rail.harnessHint}
-          on={harnessOn}
-          onClick={props.onHarness}
+        <RailDock
+          copy={copy}
+          surface={props.surface}
           mark={dirty || canary}
-        >
-          <GitBranch className="size-4" aria-hidden />
-        </DockIcon>
-        <div className="ml-auto flex items-center gap-0.5">
-          <Tooltip content={copy.rail.settings} side="top">
-            <button
-              type="button"
-              aria-current={props.surface === "settings" ? "page" : undefined}
-              aria-label={copy.rail.settings}
-              className={cn(
-                "dock-hit grid size-8 place-items-center rounded-xl",
-                props.surface === "settings" ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
-              )}
-              onClick={props.onSettings}
-            >
-              <Settings className="size-4" />
-            </button>
-          </Tooltip>
-        </div>
+          onChats={props.onChats}
+          onSkills={props.onSkills}
+          onVideo={props.onVideo}
+          onPages={props.onPages}
+          onIdol={props.onIdol}
+          onHarness={props.onHarness}
+          onSettings={props.onSettings}
+        />
       </div>
     </SidebarCard>
   );
@@ -512,35 +450,6 @@ function SpaceHeader(props: {
         </Tooltip>
       ) : null}
     </div>
-  );
-}
-
-/** 选中时 aria-current 为 page。mark 为真时右上角加一颗点。props 读取 hint、label、on、onClick、children、mark。 */
-function DockIcon(props: {
-  label: string;
-  hint?: string;
-  on?: boolean;
-  mark?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Tooltip content={props.hint || props.label} side="top">
-      <button
-        type="button"
-        title={props.hint || props.label}
-        aria-label={props.label}
-        aria-current={props.on ? "page" : undefined}
-        className={cn(
-          "dock-hit relative grid size-8 place-items-center rounded-xl",
-          props.on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
-        )}
-        onClick={props.onClick}
-      >
-        {props.children}
-        {props.mark ? <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-accent" /> : null}
-      </button>
-    </Tooltip>
   );
 }
 

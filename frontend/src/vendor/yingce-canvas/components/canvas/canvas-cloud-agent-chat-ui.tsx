@@ -1,12 +1,15 @@
 // @ts-nocheck
 import { PresencePerch, PresenceStamp } from "@/features/presence";
+import { ChatBorder } from "@/features/session-chrome/ChatBorder";
+import { SendGlyph } from "@/features/session-chrome/PromptBar";
+import { ThinkingStream } from "@/features/session-chrome/ThoughtLine";
 import { agentCanvasActions, agentCanvasActionLabel } from "@yingce/lib/canvas/agent-canvas-actions";
 import { Button } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, ArrowUp, AtSign, Bookmark, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleDot, Clapperboard, Eye, HelpCircle, ImagePlus, Layers3, ListChecks, LoaderCircle, Palette, Pencil, Plus, RotateCcw, Shapes, Share2, ShoppingBag, Square, X, XCircle } from "lucide-react";
+import { ArrowLeft, AtSign, Bookmark, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleDot, Clapperboard, Eye, HelpCircle, ImagePlus, Layers3, ListChecks, LoaderCircle, Palette, Pencil, Plus, RotateCcw, Shapes, Share2, ShoppingBag, Square, X, XCircle } from "lucide-react";
 
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { AIMessageMarkdown } from "@yingce/components/ai/ai-message-markdown";
@@ -105,27 +108,23 @@ export function AgentChatMessage({
     const displayedText = useTypewriterText(item.text, item.role === "assistant" && isStreaming);
     const color = item.role === "error" ? "var(--danger)" : theme.node.text;
     if (item.reasoning) {
+        const streaming = !!item.streaming;
         return (
-            <div className="agent-reasoning" style={{ "--agent-reasoning-accent": theme.accent.primary } as CSSProperties}>
-                <details className={`agent-reasoning-card${item.streaming ? " is-streaming" : ""}`} open={item.streaming || undefined}>
-                    <summary className="agent-reasoning-summary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/20">
-                        <span className="agent-reasoning-icon" aria-hidden="true">
-                            <Clapperboard className="size-3.5" />
-                        </span>
-                        <span className="agent-reasoning-copy">
-                            <span className="agent-reasoning-title">{item.streaming ? "模型正在思考" : "模型思考"}</span>
-                            <span className="agent-reasoning-subtitle">{item.streaming ? "整理目标与下一步" : "推理摘要"}</span>
-                        </span>
-                        <span className={`agent-reasoning-status${item.streaming ? " is-live" : ""}`}>
-                            {item.streaming ? <span className="agent-reasoning-status-dot" aria-hidden="true" /> : null}
-                            {item.streaming ? "实时" : "查看"}
-                        </span>
-                        <ChevronDown className="agent-reasoning-chevron" aria-hidden="true" />
-                    </summary>
-                    <div className="agent-reasoning-content" data-canvas-wheel-scroll>
-                        <div className="agent-reasoning-text">{item.text || (item.streaming ? "正在整理思路…" : "暂无可展示的推理摘要")}</div>
+            <div className="agent-reasoning" style={{ "--agent-reasoning-accent": theme.accent.primary, color: theme.node.text } as CSSProperties}>
+                <ThinkingStream
+                    working={streaming}
+                    label="模型正在思考"
+                    doneLabel="模型思考"
+                    idleLabel="模型思考"
+                    fontSize={12}
+                    color={theme.node.text}
+                    glyphColor={theme.accent.primary}
+                    className="text-inherit"
+                >
+                    <div className="agent-reasoning-text" data-canvas-wheel-scroll>
+                        {item.text || (streaming ? "正在整理思路…" : "暂无可展示的推理摘要")}
                     </div>
-                </details>
+                </ThinkingStream>
             </div>
         );
     }
@@ -888,6 +887,7 @@ export function AgentChatComposer({
     return (
         <div className="agent-composer-wrap min-w-0 shrink-0" onWheelCapture={(event) => event.stopPropagation()}>
             {perch ? <PresencePerch /> : null}
+            <ChatBorder className="min-w-0" active={!disabled}>
             <div
                 className="agent-composer-surface group/composer relative transition-[background-color,box-shadow] duration-200"
                 style={{
@@ -1069,12 +1069,13 @@ export function AgentChatComposer({
                                 transition={{ duration: reducedMotion ? 0 : 0.18, ease: "easeOut" }}
                                 className="grid place-items-center"
                             >
-                                {sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
+                                {sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <SendGlyph morphDuration={240} squash={0.12} tilt={8} />}
                             </motion.span>
                         </motion.button>
                     </div>
                 </div>
             </div>
+            </ChatBorder>
             {previewAttachment ? <AgentImagePreview attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} /> : null}
         </div>
     );

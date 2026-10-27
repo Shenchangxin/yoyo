@@ -10,6 +10,7 @@ import { useWorkspaceTopBarMount } from "@yingce/components/layout/workspace-top
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { Reorder, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { ArrowDown, ArrowUp, BookOpen, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, Download, FileText, Film, History, Image as ImageIcon, LoaderCircle, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, Music2, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Trash2, UserRound, Waves, X } from "lucide-react";
+import { SendGlyph } from "@/features/session-chrome/PromptBar";
 
 import { AIMessageMarkdown } from "@yingce/components/ai/ai-message-markdown";
 import { GenerationToolCard, type GenerationToolStatus } from "@yingce/components/ai/generation-tool-card";
@@ -22,6 +23,7 @@ import { useAssetStore } from "@yingce/stores/use-asset-store";
 import { CachedResourceImage } from "@yingce/components/cached-resource-image";
 import { CanvasImagePreview } from "@yingce/components/canvas/canvas-image-preview";
 import { CanvasResourceMentionTextarea } from "@yingce/components/canvas/canvas-resource-mention-textarea";
+import { ChatBorder } from "@/features/session-chrome/ChatBorder";
 import { VoiceRecordingButton } from "@yingce/components/conversation/voice-recording-button";
 import { ModelPicker } from "@yingce/components/model-picker";
 import { aceternityMotion } from "@yingce/lib/aceternity-motion";
@@ -519,6 +521,7 @@ export function CreationComposer(props: ComposerProps) {
     };
     const composer = <div className={props.variant === "empty" ? "creation-composer-with-perch" : undefined}>
         {props.variant === "empty" ? <PresencePerch /> : null}
+        <ChatBorder className="w-full min-w-0">
         <div className="creation-composer-shell">
         <div className={`creation-chat-composer is-${props.variant}`}>
         <div className="creation-chat-writing-surface">
@@ -633,12 +636,13 @@ export function CreationComposer(props: ComposerProps) {
                 title={!canSubmit && !showStop && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
             >
                 {showCost && !showStop ? <span className="creation-submit-cost" title={routeQuote ? modelQuoteDescription(routeQuote) : undefined}><CreditSymbol /><span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span></span> : null}
-                <span className="creation-submit-action" aria-hidden>{showStop ? <span>停止</span> : showWorkingSpinner ? <><LoaderCircle className="size-4 animate-spin" /><span>生成中</span></> : <><ArrowUp className="size-4" /><span>开始创作</span></>}</span>
+                <span className="creation-submit-action" aria-hidden>{showWorkingSpinner ? <><LoaderCircle className="size-4 animate-spin" /><span>生成中</span></> : <><SendGlyph busy={showStop} morphDuration={240} squash={0.12} tilt={8} /><span>{showStop ? "停止" : "开始创作"}</span></>}</span>
             </Button>
         </footer>
         <CreationMediaPreviewModal url={previewUrl} type={previewType} onClose={() => setPreviewUrl("")} />
         </div>
-    </div>
+        </div>
+        </ChatBorder>
     </div>;
 
     if (!promptOptimizerOpen) return composer;

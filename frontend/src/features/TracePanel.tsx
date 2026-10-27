@@ -9,6 +9,7 @@ import { useCopy } from "../lib/i18n";
 import { formatTokens } from "../lib/models-dev";
 import type { SessionTrace, SpillBlob, TraceArtifact, TraceEvent } from "../lib/protocol";
 import { cn } from "../lib/utils";
+import { RollTime } from "./session-chrome/Counter";
 
 // 过滤：全部、执行、对话、记忆、错误。
 type Filter = "all" | "exec" | "dialog" | "memory" | "error";
@@ -79,7 +80,7 @@ export function TracePanel(props: {
           <Dot />
           <Stat value={String(errors)} label={copy.trace.errors} tone={errors > 0 ? "text-danger" : undefined} />
           <Dot />
-          <Stat value={formatDuration(stats?.durationMs || 0)} />
+          <Stat value={<RollTime ms={stats?.durationMs || 0} kind="meter" blank="0ms" />} />
           <Dot />
           <Stat value={formatTokens(stats?.tokens || 0)} label={copy.trace.tokens} />
           {stats?.spillBytes ? (
@@ -242,7 +243,7 @@ function Dot() {
 }
 
 /** Stat 数值在前，标签转成小写跟在后面。没传标签就只显示数值。props 读取 tone、value、label。 */
-function Stat(props: { value: string; label?: string; tone?: string }) {
+function Stat(props: { value: ReactNode; label?: string; tone?: string }) {
   return (
     <div className="flex items-baseline gap-1">
       <dd className={cn("font-medium text-foreground/85", props.tone)}>{props.value}</dd>
@@ -385,16 +386,6 @@ function formatTime(ts: string) {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-}
-
-/** formatDuration 不大于 0 显示 0ms。小于 1000 用毫秒。小于 60000 用秒，其中小于 10000 保留一位小数。再长用分和秒。ms 小于等于 0，小于 1000，拼进字符串。 */
-function formatDuration(ms: number) {
-  if (ms <= 0) return "0ms";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
-  const m = Math.floor(ms / 60_000);
-  const s = Math.round((ms % 60_000) / 1000);
-  return `${m}m ${s}s`;
 }
 
 /** formatBytes 0 显示 0 B。小于 1024 用字节。小于 1MB 用 KB，其中小于 10KB 保留一位小数。再大用 MB，保留一位小数。n 为假时返回 0 B；小于 1024，小于 1024 * 1024，拼进字符串。 */

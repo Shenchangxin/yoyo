@@ -5,7 +5,8 @@ import { Bot, ChevronRight, CircleDashed, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
-import { formatSpan, itemTimeMs } from "../../lib/tool-summary";
+import { itemTimeMs } from "../../lib/tool-summary";
+import { RollTime } from "../session-chrome/Counter";
 import type { Item } from "../../lib/protocol";
 import { mergeItem, subscribeSession } from "../../lib/stream";
 import { processStartMs } from "../../lib/transcript-layout";
@@ -93,7 +94,7 @@ export const SubagentCard = memo(function SubagentCard({
   const start = processStartMs(items);
   const now = useNow(live);
   const lastMs = itemTimeMs(items[items.length - 1]);
-  const elapsed = formatSpan(live ? (start ? Math.max(0, now - start) : 0) : (start && lastMs > start ? lastMs - start : 0));
+  const elapsedMs = live ? (start ? Math.max(0, now - start) : 0) : (start && lastMs > start ? lastMs - start : 0);
   const badge = profileLabel(profile, copy.transcript) || copy.transcript.subagent;
   const status = live
     ? copy.transcript.subagentRunning
@@ -152,7 +153,7 @@ export const SubagentCard = memo(function SubagentCard({
           <span className="ml-2 font-normal text-muted">{title}</span>
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums text-[11px] text-muted/70">
-          {elapsed ? <span>{elapsed}</span> : null}
+          {elapsedMs > 0 ? <RollTime ms={elapsedMs} kind="clock" live={live} /> : null}
           <span className={cn(failed && "text-danger/90", live && "text-foreground/70")}>{status}</span>
           <ChevronRight
             className={cn(

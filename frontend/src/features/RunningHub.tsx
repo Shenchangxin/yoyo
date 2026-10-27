@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useCopy } from "../lib/i18n";
+import { RollTime } from "./session-chrome/Counter";
 import type { RunStatus, Thread } from "../lib/protocol";
 
 /** RunningHub 没有线程时不渲染。标题空了就显示 id 的前 8 位。有线程时每 1000 毫秒刷新一次现在。props 读取 threads、status，调用 onSelect。 */
@@ -60,7 +61,7 @@ export function RunningHub(props: {
         >
           {props.threads.map((t) => {
             const st = byId.get(t.id);
-            const elapsed = formatElapsed(st?.startedAt, now);
+            const started = st?.startedAt ? Date.parse(st.startedAt) : NaN;
             return (
               <button
                 type="button"
@@ -74,7 +75,7 @@ export function RunningHub(props: {
               >
                 <span className="block truncate text-[12px]">{t.title || t.id.slice(0, 8)}</span>
                 <span className="mt-0.5 flex items-center gap-2 text-[11px] tabular-nums text-muted">
-                  {elapsed ? <span>{elapsed}</span> : null}
+                  {Number.isFinite(started) ? <RollTime ms={Math.max(0, now - started)} kind="clock" live /> : null}
                   {st?.lastTool ? <span className="truncate">{st.lastTool}</span> : <span>{copy.titlebar.waiting}</span>}
                 </span>
               </button>
@@ -84,15 +85,4 @@ export function RunningHub(props: {
       ) : null}
     </div>
   );
-}
-
-/** formatElapsed 没有时间或解析失败就返回空字符串。满一分钟才带上分钟，秒数用 now 减开始时间。iso 为假时返回空字符串；传给 Date.parse。 */
-function formatElapsed(iso: string | undefined, now: number): string {
-  if (!iso) return "";
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "";
-  const sec = Math.max(0, Math.floor((now - t) / 1000));
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }

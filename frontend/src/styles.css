@@ -1747,11 +1747,70 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
 }
 
 .rail-dock {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 10px 10px;
+  position: relative;
+  z-index: 2;
+  padding: 0 12px 6px;
   border-top: 0;
+}
+
+.rail-glass-host {
+  width: 100%;
+  min-width: 0;
+}
+
+.rail-dock .rail-glass {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  gap: 0;
+  --glass-icons-label: var(--muted) !important;
+}
+
+.rail-glass .glass-icon-glyph {
+  width: 52%;
+  height: 52%;
+}
+
+.rail-glass .glass-icon-label {
+  top: auto;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+}
+
+.rail-dock .glass-icons--labels-hover .glass-icon-label {
+  transform: translate(-50%, 4px);
+}
+
+.rail-dock .glass-icons--labels-hover .glass-icon:hover .glass-icon-label,
+.rail-dock .glass-icons--labels-hover .glass-icon:focus-visible .glass-icon-label {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.rail-glass .glass-icon.is-current::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  border-radius: calc(var(--glass-icons-radius) + 1px);
+  box-shadow: 0 0 0 1.5px var(--accent);
+  pointer-events: none;
+}
+
+.rail-glass .glass-icon.has-mark::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--sidebar);
 }
 
 .step-rail {
@@ -4834,10 +4893,7 @@ html.companion .presence-engine svg {
     height: 2.5rem;
   }
   .rail-dock {
-    gap: 0;
-    overflow-x: auto;
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
-    scrollbar-width: none;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
   }
   .rail-dock::-webkit-scrollbar {
     display: none;

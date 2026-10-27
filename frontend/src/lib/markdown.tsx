@@ -22,17 +22,16 @@ const SHIKI_SETTLE_MS = 400;
  * name 写到 Tag 的 data-streamdown。
  */
 function heading(tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6", name: string) {
-  /** 去掉 node，其余属性和 className 原样交回。 */
-  return 
-         /** MdHeading 根据参数得到结果。children 作为子节点渲染。className 写到 Tag 的 className。_node 函数体内没有读取。props 展开到 Tag。 */
-         function MdHeading({ children, className, node: _node, ...props }: MdProps<HTMLHeadingElement>) {
+  /** MdHeading 根据参数得到结果。children 作为子节点渲染。className 写到 Tag 的 className。_node 函数体内没有读取。props 展开到 Tag。 */
+  function MdHeading({ children, className, node: _node, ...props }: MdProps<HTMLHeadingElement>) {
     const Tag = tag;
     return (
       <Tag {...props} data-streamdown={name} className={className}>
         {children}
       </Tag>
     );
-  };
+  }
+  return MdHeading;
 }
 
 /** 取表格第一行的单元格数。没有则 0。node 读取 children，为空时不读。 */

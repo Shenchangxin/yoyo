@@ -9,6 +9,7 @@ import { formatCredits } from "@yingce/constant/credits";
 import { canCancelGenerationTask, formatTaskKind, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel } from "@yingce/lib/generation-task-display";
 import type { GenerationTask } from "@yingce/services/api/task-center";
 import { useUserStore } from "@yingce/stores/use-user-store";
+import { RollTime } from "@/features/session-chrome/Counter";
 
 // 任务列表项：任务面板与历史面板共用；进度、时长、计费与取消菜单都在这里渲染。
 export const TaskListItem = memo(function TaskListItem({ task, onCancelTask }: { task: GenerationTask; onCancelTask?: (task: GenerationTask) => void }) {
@@ -67,7 +68,10 @@ export const TaskListItem = memo(function TaskListItem({ task, onCancelTask }: {
                     ) : null}
                     <span className="mt-1.5 flex min-w-0 items-center gap-1 text-[10px] leading-3 text-foreground/40">
                         <Clock3 className="size-2.5 shrink-0" />
-                        <span className="truncate">{durationLabel}</span>
+                        <span className="inline-flex min-w-0 items-center gap-1" title={durationLabel}>
+                            <span className="truncate">{task.status === "queued" ? "已等待" : "已运行"}</span>
+                            <RollTime ms={elapsedMs} kind="clock" live={isActive} intro={false} />
+                        </span>
                         {creditsEnabled && billingLabel ? <span className="truncate">· {billingLabel}</span> : null}
                         <span className="mt-0.5 block truncate text-[10px] leading-3 text-foreground/45" title={generationTaskStageLabel(task)}>
                             {generationTaskStageLabel(task)}
