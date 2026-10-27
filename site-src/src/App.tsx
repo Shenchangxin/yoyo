@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { COPY, detectLang, htmlLang, type GateKind, type Lang, type Scene } from "./copy";
 import { detectOs, FALLBACK_VERSION, fallbackAssets, hydrateRelease, RELEASES, type Asset } from "./release";
-import { SpaceStill } from "./space-still";
+import { PageField } from "./page-field";
 import { Workstation, type VideoTab } from "./workstation";
 
 const SCENES: Scene[] = ["ask", "diff", "drama", "trust"];
@@ -229,6 +229,7 @@ export function App() {
 
   return (
     <>
+      <PageField theme={theme} />
       <a className="skip" href="#download">
         {t.nav.download}
       </a>
@@ -347,9 +348,6 @@ export function App() {
                       <li key={chip}>{chip}</li>
                     ))}
                   </ul>
-                </div>
-                <div className="hero-sculpture" aria-hidden="true">
-                  <SpaceStill theme={theme} />
                 </div>
               </div>
             </div>

@@ -1,4 +1,4 @@
-/* Spatial page. Ink is the action. The still life holds the room. */
+/* Spatial page. Ink is the action. Glass ribbons sit behind the whole page. */
 
 :root {
   --paper: #f7f4ee;
@@ -56,6 +56,25 @@ body::after {
 
 html[data-theme="dark"] body::after {
   opacity: 0.045;
+}
+
+.page-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.page-field .aero-shards {
+  width: 100%;
+  height: 100%;
+}
+
+main,
+.foot {
+  position: relative;
+  z-index: 1;
 }
 
 h1,
@@ -308,8 +327,7 @@ html[data-theme="dark"] .nav {
 
 .hero-grid,
 .hero-copy,
-.hero-stage,
-.hero-sculpture {
+.hero-stage {
   grid-column: auto;
   min-width: 0;
 }
@@ -356,20 +374,11 @@ html[data-theme="dark"] .nav {
   letter-spacing: 0.01em;
 }
 
-.hero-sculpture {
-  position: relative;
-  z-index: 1;
-  height: 320px;
-  min-height: 320px;
-  margin-top: 4px;
-  pointer-events: none;
-}
-
 .hero-stage {
   position: relative;
   z-index: 2;
   width: min(1040px, calc(100vw - var(--margin) * 2));
-  margin-top: -36px;
+  margin-top: 36px;
 }
 
 .space-still,
@@ -886,7 +895,6 @@ main > section.is-in,
 .hero-lead .hero-actions,
 .hero-lead .premise,
 .hero-lead .ledger,
-.hero-sculpture,
 .hero-stage {
   animation: rise 1s var(--ease) both;
 }
@@ -896,7 +904,6 @@ main > section.is-in,
 .hero-lead .hero-actions { animation-delay: 0.16s; }
 .hero-lead .premise { animation-delay: 0.22s; }
 .hero-lead .ledger { animation-delay: 0.28s; }
-.hero-sculpture { animation-delay: 0.08s; }
 .hero-stage { animation-delay: 0.2s; }
 
 @keyframes rise {
@@ -1000,20 +1007,13 @@ main > section.is-in,
   }
 
   .hero-lower {
-    grid-template-columns: minmax(280px, 400px) minmax(320px, 1fr);
-    gap: 8px 12px;
-    align-items: center;
-    margin-top: 18px;
-  }
-
-  .hero-sculpture {
-    height: 460px;
-    min-height: 460px;
-    margin-top: 0;
+    display: block;
+    max-width: 40rem;
+    margin-top: 22px;
   }
 
   .hero-stage {
-    margin-top: -92px;
+    margin-top: 56px;
   }
 
   .section {
@@ -1071,10 +1071,6 @@ main > section.is-in,
     --measure: 1200px;
   }
 
-  .hero-sculpture {
-    height: 500px;
-    min-height: 500px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1084,7 +1080,6 @@ main > section.is-in,
   .hero-lead .hero-actions,
   .hero-lead .premise,
   .hero-lead .ledger,
-  .hero-sculpture,
   .hero-stage,
   main > section:not(.hero),
   .foot {
