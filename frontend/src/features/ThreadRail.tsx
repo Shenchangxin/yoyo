@@ -297,7 +297,7 @@ export function ThreadRail(props: {
   return (
     <SidebarCard>
       <div className={cn("chrome drag flex h-12 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
-        <YoyoMark compact />
+        <YoyoMark live />
         {props.isolated ? <span className="rounded-full bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
           <span className="rounded-full bg-lift px-1.5 py-0.5 text-[10px] text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
         ) : null}
