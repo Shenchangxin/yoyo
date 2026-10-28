@@ -4,6 +4,7 @@
 import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { animate, useMotionValue, useMotionValueEvent, useReducedMotion } from 'motion/react';
 import { Check, ChevronDown, File, HelpCircle, Mic, Plus, Sparkles, X } from 'lucide-react';
+import { SendSling } from '../../components/SendSling';
 import './PromptBar.css';
 
 const ARROW_UP = [12, 4.5, 18.5, 11, 14.25, 11, 14.25, 19.5, 9.75, 19.5, 9.75, 11, 5.5, 11];
@@ -717,25 +718,25 @@ export default function PromptBar({
               )}
             </button>
           ) : null}
-          <button
-            type="button"
-            className="prompt-bar__send"
-            disabled={!armed}
-            aria-label={busy ? 'Stop' : 'Send'}
-            data-armed={armed ? '' : undefined}
-            data-pressed={pressed ? '' : undefined}
-            onMouseDown={(e) => e.preventDefault()}
-            onPointerDown={down}
-            onPointerUp={up}
-            onPointerCancel={up}
-            onPointerLeave={up}
-            onClick={() => {
-              if (busy) latest.current.onStop?.();
-              else send();
-            }}
-          >
-            <SendGlyph busy={busy} morphDuration={morphDuration} squash={squash} tilt={tilt} />
-          </button>
+          {busy ? (
+            <button
+              type="button"
+              className="prompt-bar__send"
+              aria-label="Stop"
+              data-armed={armed ? '' : undefined}
+              data-pressed={pressed ? '' : undefined}
+              onMouseDown={(e) => e.preventDefault()}
+              onPointerDown={down}
+              onPointerUp={up}
+              onPointerCancel={up}
+              onPointerLeave={up}
+              onClick={() => latest.current.onStop?.()}
+            >
+              <SendGlyph busy morphDuration={morphDuration} squash={squash} tilt={tilt} />
+            </button>
+          ) : (
+            <SendSling disabled={!armed} ariaLabel="Send" onSend={send} />
+          )}
         </div>
       </div>
     </div>

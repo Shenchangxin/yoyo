@@ -3,7 +3,8 @@
 // 小批命令直接进入统一 dispatch，大批命令先由用户确认；宿主拒绝无效命令并显示 saveError。
 // 请求显式携带用户选择的文本模型，不能沿用可能指向图片模型的全局默认值。
 import { useRef, useState, useEffect } from "react";
-import { Bot, Loader2, RotateCcw, Send, ShieldAlert } from "lucide-react";
+import { Bot, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 import { requestImageQuestion } from "@yingce/services/api/image";
 import type { AiTextMessage } from "@yingce/services/api/image-contracts";
 import { useConfigStore, useEffectiveConfig, modelOptionLabel } from "@yingce/stores/use-config-store";
@@ -408,16 +409,19 @@ export function EditorAiAssistant() {
                     placeholder={placeholder}
                     className="min-w-0 flex-1 rounded-md border border-[var(--director-sequencer-border)] bg-[var(--director-control-hover)] px-2 py-1.5 text-xs text-[var(--director-dock-fg)] placeholder:text-[var(--director-dock-fg)]/40 focus:border-[var(--director-accent)] focus:outline-none disabled:opacity-50"
                 />
-                <button
-                    type="button"
-                    onClick={() => void send()}
+                <SendSling
                     disabled={!canSend}
-                    aria-label={modelValue ? "发送" : "无可用文本模型"}
+                    ariaLabel={modelValue ? "发送" : "无可用文本模型"}
                     title={modelValue ? "发送" : "请先选择文本模型"}
-                    className="grid size-7 shrink-0 place-items-center rounded-md bg-[var(--director-accent)] text-[var(--director-on-accent)] hover:bg-[var(--director-accent-hover)] disabled:opacity-40"
+                    onSend={() => void send()}
+                    padColor="var(--director-accent)"
+                    iconColor="var(--director-on-accent)"
+                    accentColor="var(--director-on-accent)"
+                    wellColor="var(--director-control-hover)"
+                    bandColor="color-mix(in srgb, var(--director-dock-fg) 35%, transparent)"
                 >
-                    {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-                </button>
+                    {busy ? <Loader2 className="size-3.5 animate-spin" /> : undefined}
+                </SendSling>
             </div>
         </div>
     );

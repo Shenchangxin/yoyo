@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { PresencePerch, PresenceStamp } from "@/features/presence";
 import { ChatBorder } from "@/features/session-chrome/ChatBorder";
-import { SendGlyph } from "@/features/session-chrome/PromptBar";
+import { SendSling } from "@/components/SendSling";
 import { ThinkingStream } from "@/features/session-chrome/ThoughtLine";
 import { agentCanvasActions, agentCanvasActionLabel } from "@yingce/lib/canvas/agent-canvas-actions";
 import { Button } from "antd";
@@ -1046,32 +1046,19 @@ export function AgentChatComposer({
                                 {stopping ? <LoaderCircle className="size-4 animate-spin" /> : <Square className="size-3.5" fill="currentColor" />}
                             </motion.button>
                         ) : null}
-                        <motion.button
-                            type="button"
+                        <SendSling
                             disabled={!canSubmit}
-                            aria-label={sending ? "发送中" : canStop ? "插话" : "发送"}
-                            title={canStop ? "插话：Agent 下一次开口时看到它" : "点击发送；Enter 或 ⌘/Ctrl+Enter 发送"}
-                            onClick={() => onSubmit()}
-                            whileHover={canSubmit && !reducedMotion ? { scale: 1.06, y: -1 } : undefined}
-                            whileTap={canSubmit && !reducedMotion ? { scale: 0.9, y: 1 } : undefined}
-                            animate={stopping && !reducedMotion ? { scale: [1, 0.94, 1] } : { scale: 1, rotate: 0 }}
-                            transition={sending && !reducedMotion ? { duration: 0.42, ease: "easeOut" } : { type: "spring", stiffness: 420, damping: 24 }}
-                            className="agent-composer-send grid size-7 shrink-0 place-items-center rounded-full p-0 outline-none transition-[background-color,box-shadow,color,transform] duration-200 focus-visible:ring-2 focus-visible:ring-current/35 disabled:cursor-not-allowed"
-                            style={{
-                                background: canSubmit || sending ? theme.accent.primary : theme.spatial.surface,
-                                color: canSubmit || sending ? theme.accent.onPrimary : theme.node.muted,
-                            }}
+                            ariaLabel={sending ? "发送中" : canStop ? "插话" : "发送"}
+                            title={canStop ? "插话：Agent 下一次开口时看到它" : "轻点发送，或向下拉开再松开。Enter 同样发送"}
+                            onSend={() => onSubmit()}
+                            padColor={canSubmit || sending ? theme.accent.primary : theme.spatial.surface}
+                            iconColor={canSubmit || sending ? theme.accent.onPrimary : theme.node.muted}
+                            accentColor={theme.accent.primary}
+                            wellColor={theme.spatial.surface}
+                            bandColor={theme.node.muted}
                         >
-                            <motion.span
-                                key={stopping ? "stopping" : sending ? "sending" : "ready"}
-                                initial={reducedMotion ? false : { opacity: 0, scale: 0.65, rotate: sending ? -25 : 25 }}
-                                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                                transition={{ duration: reducedMotion ? 0 : 0.18, ease: "easeOut" }}
-                                className="grid place-items-center"
-                            >
-                                {sending ? <LoaderCircle className="size-3.5 animate-spin" /> : <SendGlyph morphDuration={240} squash={0.12} tilt={8} />}
-                            </motion.span>
-                        </motion.button>
+                            {sending ? <LoaderCircle className="size-3.5 animate-spin" /> : undefined}
+                        </SendSling>
                     </div>
                 </div>
             </div>

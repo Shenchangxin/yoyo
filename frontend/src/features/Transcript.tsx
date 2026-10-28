@@ -6,6 +6,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, RotateCcw, ShieldAlert } from "lucide-react";
+import { SendSling } from "../components/SendSling";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import { toast } from "sonner";
@@ -932,14 +933,18 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           onChange={(e) => setAnswer(e.target.value)}
         />
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
-            disabled={!answer.trim()}
-            onClick={() => onResolve(item.id, "once", answer.trim())}
-          >
-            {copy.transcript.sendAnswer}
-          </button>
+          <span className="inline-flex items-center gap-2">
+            <span className="text-[12px] font-medium text-foreground">{copy.transcript.sendAnswer}</span>
+            <SendSling
+              disabled={!answer.trim()}
+              ariaLabel={copy.transcript.sendAnswer}
+              title={copy.transcript.sendAnswer}
+              padColor="var(--foreground)"
+              iconColor="var(--background)"
+              accentColor="var(--foreground)"
+              onSend={() => onResolve(item.id, "once", answer.trim())}
+            />
+          </span>
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-danger/10 hover:text-danger"

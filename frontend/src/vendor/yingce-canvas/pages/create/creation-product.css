@@ -16,6 +16,9 @@
 .creation-agent-error { grid-column: 1 / -1; color: var(--status-error); font-size: 12px; margin: 0; }
 .creation-home .creation-empty-composer[hidden] { display: none; }
 .creation-submit { margin-left: auto; flex: 0 0 auto; display: inline-flex; gap: 8px; }
+.creation-submit-slot { margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; }
+.creation-submit-slot > .creation-submit { margin-left: 0; }
+.creation-submit-label { font-size: 13px; font-weight: 600; color: var(--user-ink); }
 .creation-submit-cost { display: none; }
 @layer utilities {
     .app-product-workspace .creation-home .creation-submit.ant-btn { height: auto; min-height: 40px; padding: 0; border: 0; background: transparent !important; box-shadow: none; border-radius: 999px; opacity: 1; }

@@ -1,8 +1,9 @@
 // @ts-nocheck
-import { Button, Image as AntImage, InputNumber, Modal } from "antd";
+import { Image as AntImage, InputNumber, Modal } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeftRight, ArrowUp, AtSign, Boxes, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, LayoutList, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, Settings2, X } from "lucide-react";
+import { ArrowLeftRight, AtSign, Boxes, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, LayoutList, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, Settings2, X } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 
 import { CanvasPopover } from "@yingce/components/ui/canvas-overlay";
 import { ModelPicker } from "@yingce/components/model-picker";
@@ -392,10 +393,8 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
         const formattedCredits = credits?.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
         const actionLabel = isRunning ? "生成中" : showCost ? `${routeQuote?.estimated ? "预估" : "消耗"} ${formattedCredits} 积分，生成` : "生成";
         return (
-            <Button
-                type="text"
+            <div
                 className={`canvas-node-composer-submit canvas-node-composer-submit-canvas ${showCost ? "has-cost" : ""}`}
-                disabled={isRunning || isSubmitDisabled}
                 style={
                     {
                         color: isSubmitDisabled ? theme.node.faint : theme.node.text,
@@ -403,8 +402,6 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         "--canvas-composer-submit-action-fg": isSubmitDisabled ? theme.node.faint : theme.canvas.background,
                     } as CSSProperties
                 }
-                onClick={() => (expanded ? submitExpandedPrompt() : submit())}
-                aria-label={actionLabel}
                 title={routeQuote ? modelQuoteDescription(routeQuote) : actionLabel}
             >
                 {showCost ? (
@@ -413,10 +410,21 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         <span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span>
                     </span>
                 ) : null}
-                <span className="canvas-node-composer-submit-action" aria-hidden>
-                    {isRunning ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ArrowUp className="size-3.5" strokeWidth={2.4} />}
-                </span>
-            </Button>
+                {isRunning ? (
+                    <span className="canvas-node-composer-submit-action" aria-label={actionLabel}>
+                        <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+                    </span>
+                ) : (
+                    <SendSling
+                        disabled={isSubmitDisabled}
+                        ariaLabel={actionLabel}
+                        onSend={() => (expanded ? submitExpandedPrompt() : submit())}
+                        padColor={isSubmitDisabled ? theme.toolbar.itemHover : monochromeAccent}
+                        iconColor={isSubmitDisabled ? theme.node.faint : theme.canvas.background}
+                        accentColor={monochromeAccent}
+                    />
+                )}
+            </div>
         );
     };
 

@@ -64,6 +64,7 @@ import { AttachmentRail, DropOverlay } from "./session-chrome/Attachments";
 import { isVideoPath, nativeFilePath } from "./video/ingest-clip";
 import { useCutDesk } from "./video/cut-desk";
 import { useCreateMode } from "./video/create-mode";
+import { SendSling } from "../components/SendSling";
 import { SendGlyph } from "./session-chrome/PromptBar";
 import { StopGlyph } from "./session-chrome/icons";
 import { PermissionSelect } from "./session-chrome/PermissionSelect";
@@ -1065,26 +1066,30 @@ export function Composer(props: {
                       </button>
                     </Tooltip>
                   ) : null}
-                  <Tooltip content={shownLabel}>
-                    <button
-                      type="button"
-                      className="sc-primary"
-                      data-stop={primaryStops ? "true" : "false"}
-                      data-testid="composer-send"
-                      disabled={primaryStops ? false : !canSend}
-                      aria-label={shownLabel}
-                      title={props.running && hasPayload ? copy.composer.queueHint : undefined}
-                      onClick={() => {
-                        if (primaryStops) {
-                          props.onStop();
-                          return;
-                        }
-                        send();
-                      }}
-                    >
-                      <SendGlyph busy={primaryStops} morphDuration={240} squash={0.12} tilt={8} />
-                    </button>
-                  </Tooltip>
+                  {primaryStops ? (
+                    <Tooltip content={shownLabel}>
+                      <button
+                        type="button"
+                        className="sc-primary"
+                        data-stop="true"
+                        data-testid="composer-send"
+                        aria-label={shownLabel}
+                        onClick={() => props.onStop()}
+                      >
+                        <SendGlyph busy morphDuration={240} squash={0.12} tilt={8} />
+                      </button>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip content={shownLabel}>
+                      <SendSling
+                        testId="composer-send"
+                        disabled={!canSend}
+                        ariaLabel={shownLabel}
+                        title={props.running && hasPayload ? copy.composer.queueHint : undefined}
+                        onSend={() => send()}
+                      />
+                    </Tooltip>
+                  )}
                 </div>
               </div>
             </div>

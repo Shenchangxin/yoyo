@@ -10,6 +10,7 @@ import { useWorkspaceTopBarMount } from "@yingce/components/layout/workspace-top
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { Reorder, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { ArrowDown, ArrowUp, BookOpen, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, Download, FileText, Film, History, Image as ImageIcon, LoaderCircle, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, Music2, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Trash2, UserRound, Waves, X } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 import { SendGlyph } from "@/features/session-chrome/PromptBar";
 
 import { AIMessageMarkdown } from "@yingce/components/ai/ai-message-markdown";
@@ -623,21 +624,41 @@ export function CreationComposer(props: ComposerProps) {
                 </> : null}
                 {props.prompt.trim() || props.attachments.length || props.references.some((reference) => reference.active) ? <Tooltip title="清空提示词和参考内容"><button type="button" className="creation-chat-control is-clear" onClick={props.onClearComposer} disabled={interactionBusy} aria-label="清空提示词和参考内容"><Trash2 /><span>清空</span></button></Tooltip> : null}
             </div>
-            <Button
-                type="text"
-                className={`creation-submit ${showCost ? "has-cost" : ""}`}
-                disabled={props.referenceReplacementBusy || (!canSubmit && !showStop)}
-                style={{
-                    position: "relative",
-                    color: "var(--user-ink)",
-                } as CSSProperties}
-                onClick={showStop ? props.onStop : interactionBusy ? undefined : props.onSubmit}
-                aria-label={actionLabel}
-                title={!canSubmit && !showStop && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
-            >
+            <div className="creation-submit-slot">
                 {showCost && !showStop ? <span className="creation-submit-cost" title={routeQuote ? modelQuoteDescription(routeQuote) : undefined}><CreditSymbol /><span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span></span> : null}
-                <span className="creation-submit-action" aria-hidden>{showWorkingSpinner ? <><LoaderCircle className="size-4 animate-spin" /><span>生成中</span></> : <><SendGlyph busy={showStop} morphDuration={240} squash={0.12} tilt={8} /><span>{showStop ? "停止" : "开始创作"}</span></>}</span>
-            </Button>
+                {showStop || showWorkingSpinner ? (
+                    <Button
+                        type="text"
+                        className={`creation-submit ${showCost ? "has-cost" : ""}`}
+                        disabled={props.referenceReplacementBusy || !showStop}
+                        style={{
+                            position: "relative",
+                            marginLeft: 0,
+                            color: "var(--user-ink)",
+                        } as CSSProperties}
+                        onClick={showStop ? props.onStop : undefined}
+                        aria-label={actionLabel}
+                        title={actionLabel}
+                    >
+                        <span className="creation-submit-action" aria-hidden>{showWorkingSpinner ? <><LoaderCircle className="size-4 animate-spin" /><span>生成中</span></> : <><SendGlyph busy morphDuration={240} squash={0.12} tilt={8} /><span>停止</span></>}</span>
+                    </Button>
+                ) : (
+                    <>
+                        <span className="creation-submit-label">开始创作</span>
+                        <SendSling
+                            disabled={props.referenceReplacementBusy || !canSubmit}
+                            ariaLabel={actionLabel}
+                            title={!canSubmit && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
+                            onSend={() => props.onSubmit()}
+                            padColor="var(--button-primary-bg)"
+                            iconColor="var(--button-primary-fg)"
+                            accentColor="var(--button-primary-fg)"
+                            wellColor="color-mix(in srgb, var(--button-primary-bg) 16%, transparent)"
+                            bandColor="color-mix(in srgb, var(--button-primary-fg) 42%, transparent)"
+                        />
+                    </>
+                )}
+            </div>
         </footer>
         <CreationMediaPreviewModal url={previewUrl} type={previewType} onClose={() => setPreviewUrl("")} />
         </div>
