@@ -19,7 +19,7 @@ const waitLoopStopHits = 4      // wait 达到 4 次，Run 以 StopStuck 结束
 const idleActionStopHits = 8    // 同一页面打开达到 8 次，Run 以 StopStuck 结束
 const checkFailNudgeHits = 2    // 同一份失败观察达到 2 次就催促并开始拒绝重跑
 const checkFailStopHits = 5     // 改验证器且观察不变达到 5 次，checkWatch.stuck 返回 true
-const checkFailIdleStop = 18    // 失败之后没有改产品文件的轮数达到 18，stuck 返回 true
+const checkFailIdleStop = 18    // 失败之后空转等待，或被拒绝的重跑，达到 18 次，stuck 返回 true
 const checkFailBackstopHits = 8 // 已经警告后，用别的命令重印同一份报告达到 8 次，stuck 返回 true
 
 const rewriteStallPrefixEN = "You have rewritten "
@@ -56,6 +56,10 @@ const checkFailPrefixEN = "The same check still FAILs"
 const checkFailPrefixZH = "检查项仍以同样方式失败"
 const checkFailNudgeEN = "The same check still FAILs (%s, %d identical runs). The output matches the previous run byte for byte, so the last edit did not affect this command. Do not run it again and do not rewrite the verifier. Switch to browser_verify on the page, or read how this script loads the file you changed."
 const checkFailNudgeZH = "检查项仍以同样方式失败（%s，已连续 %d 次，输出和上一次逐字相同）。刚才的修改没有进到这次运行。不要再执行同一条命令，也不要改验证器。改用 browser_verify 打开页面取证；若要看脚本，先读它如何加载你改过的文件。"
+
+// 拒绝文案是工具结果，不是新的检查输出。必须写明这次没有执行，避免模型把同一句话当成观测又没变。
+const checkRepeatRefusalEN = "Not executed. Do not run that command again: %s would rerun the check that still FAILs (%s, %d identical runs). This call produced no new output. Edit the product the check cites, then run it once. Do not rewrite the verifier. Use browser_verify for evidence."
+const checkRepeatRefusalZH = "没有执行。不要再执行同一条命令：%s 会重跑仍失败的检查（%s，已连续 %d 次）。这次没有产生新的输出。先改检查指向的产品文件，再运行一次。不要改验证器。取证用 browser_verify。"
 
 const instrumentPrefixEN = "The failing check cites the product"
 const instrumentPrefixZH = "失败检查指向产品文件"
@@ -570,6 +574,8 @@ type checkWatch struct {
 }
 
 // note 记下这一批的失败观察。接收者为 nil 时什么都不做。
+// 通过的检查会清掉失败闩：官方 browser_verify 为 PASS，或被拦住的脚本这次真的跑完且不再打印 FAIL。
+// 失败闩还在时，只有空转等待和被拒绝的重跑才累加 idle。列目录、删除验证器、改计划都不是「同一份观察又出现了」。
 // calls 先交给 inspectsOnly，再用来判断是否在写产品或验证器，以及抽出脚本。
 // results 逐条用 Content 交给 failObservation，取第一份非空摘要。
 func (w *checkWatch) note(calls []ToolCall, results []Message) {
@@ -581,12 +587,22 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 		return
 	}
 	digest, sig := "", ""
-	for _, m := range results {
+	for i, m := range results {
 		if d := failObservation(m.Content); d != "" {
 			digest = d
 			sig = "check fail:" + strings.Join(failCheckIDs(m.Content), ",")
 			break
 		}
+		if i < len(calls) && calls[i].Name == "browser_verify" {
+			if d, s := verifyFailObservation(m.Content); d != "" {
+				digest, sig = d, s
+				break
+			}
+		}
+	}
+	if digest == "" && (officialVerifyPass(calls, results) || scriptPass(w, calls, results)) {
+		w.clear()
+		return
 	}
 	product := writesProduct(calls)
 	harness := writesHarness(calls)
@@ -632,15 +648,25 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 		w.idle = 0
 		return
 	}
-	w.idle++
+	if spinsAfterFailure(calls, results, w.refusal) {
+		w.idle++
+	}
 }
 
-// stuck 在还没有失败签名时返回 false。同一条检查原样重跑本身不在这里判停。改验证器达到 checkFailStopHits，或失败后空转达到 checkFailIdleStop，返回 true。已经警告之后，绕开封锁重印同一份报告达到 checkFailBackstopHits，也返回 true。
+// clear 丢掉失败闩。通过的检查说明上一份 FAIL 已经不是当前观察，脚本拦截和空转计数一并失效。
+func (w *checkWatch) clear() {
+	if w == nil {
+		return
+	}
+	*w = checkWatch{}
+}
+
+// stuck 在还没有失败签名时返回 false。同一条检查原样重跑本身不在这里判停。改验证器达到 checkFailStopHits，或失败后的空转与被拒绝的重跑达到 checkFailIdleStop，返回 true。已经警告之后，绕开封锁重印同一份报告达到 checkFailBackstopHits，也返回 true。
 func (w *checkWatch) stuck() bool {
 	if w == nil || w.sig == "" {
 		return false
 	}
-	// 同一份输出再跑一次检查只是被拒绝，这里不因此返回 true。改写验证器、没有编辑就空转，或用另一条命令重印同一份报告，仍会停。
+	// 同一份输出再跑一次检查只是被拒绝，这里不因此返回 true。改写验证器、空转等待、连续撞上拒绝，或用另一条命令重印同一份报告，仍会停。
 	if w.harnessHits >= checkFailStopHits || w.idle >= checkFailIdleStop {
 		return true
 	}
@@ -660,7 +686,7 @@ func (w *checkWatch) reason() string {
 	return "the same check kept failing without the observation changing"
 }
 
-// observationNudge 在 SoftHorizon 下发检查催促。同一份观察的次数不小于 checkFailNudgeHits 且还不能重跑时，记下 warned 和拒绝文案并返回它。否则若这批在写验证器路径，返回改产品文件的催促。其余情况返回空串。
+// observationNudge 在 SoftHorizon 下发检查催促。同一份观察的次数不小于 checkFailNudgeHits 且还不能重跑时，记下 warned，把「没有执行」写进拒绝文案，并返回给模型的催促。否则若这批在写验证器路径，返回改产品文件的催促。其余情况返回空串。
 // req 的 SoftHorizon 为假时返回空串，否则传给 voiceNudge。
 // calls 传给 writesHarness。
 func observationNudge(req RunRequest, w *checkWatch, calls []ToolCall) string {
@@ -669,8 +695,12 @@ func observationNudge(req RunRequest, w *checkWatch, calls []ToolCall) string {
 	}
 	if w.identical && w.hits >= checkFailNudgeHits && !w.allowRerun {
 		w.warned = true
-		w.refusal = fmt.Sprintf(voiceNudge(req, checkFailNudgeEN, checkFailNudgeZH), w.sig, w.hits)
-		return w.refusal
+		target := w.script
+		if target == "" {
+			target = w.sig
+		}
+		w.refusal = fmt.Sprintf(voiceNudge(req, checkRepeatRefusalEN, checkRepeatRefusalZH), target, w.sig, w.hits)
+		return fmt.Sprintf(voiceNudge(req, checkFailNudgeEN, checkFailNudgeZH), w.sig, w.hits)
 	}
 	if writesHarness(calls) {
 		return voiceNudge(req, instrumentNudgeEN, instrumentNudgeZH)
@@ -740,6 +770,424 @@ func harnessScriptIn(text string) string {
 		}
 	}
 	return ""
+}
+
+// officialVerifyPass 在某次 browser_verify 的自身结果写着 status=PASS 时返回 true。别的工具印出同样的句子不算通过，否则失败脚本可以自己解开拦截。
+func officialVerifyPass(calls []ToolCall, results []Message) bool {
+	for i, c := range calls {
+		if c.Name != "browser_verify" || i >= len(results) {
+			continue
+		}
+		if verifyStatus(results[i].Content) == "pass" {
+			return true
+		}
+	}
+	return false
+}
+
+// scriptPass 在被拦住的脚本这次真的执行完、没有 FAIL 行、并且打印了 PASS 检查行时返回 true。拒绝文本不是执行结果。
+func scriptPass(w *checkWatch, calls []ToolCall, results []Message) bool {
+	if w == nil || w.script == "" || w.script == "browser_verify" {
+		return false
+	}
+	if !batchRerunsScript(calls, w.script) || resultsAreRefusal(results, w.refusal) || !batchHasPassLine(results) {
+		return false
+	}
+	for _, m := range results {
+		if failObservation(m.Content) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// verifyStatus 读 browser_verify 首行里的 status。同时出现时失败优先。没有这行时返回空串。
+func verifyStatus(content string) string {
+	low := strings.ToLower(content)
+	switch {
+	case strings.Contains(low, "browser_verify status=fail"):
+		return "fail"
+	case strings.Contains(low, "browser_verify status=pass"):
+		return "pass"
+	default:
+		return ""
+	}
+}
+
+// verifyFailObservation 从 browser_verify 的文本里收集失败检查。没有状态行时返回空串。只有总状态失败、没有逐项失败时，摘要是 browser_verify=FAIL。
+func verifyFailObservation(content string) (digest, sig string) {
+	if verifyStatus(content) == "" {
+		return "", ""
+	}
+	var lines, ids []string
+	seen := map[string]struct{}{}
+	for _, line := range strings.Split(content, "\n") {
+		name, status, ok := splitCheckStatus(strings.TrimSpace(line))
+		if !ok || !strings.EqualFold(status, "FAIL") {
+			continue
+		}
+		id := strings.ToLower(name)
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		lines = append(lines, id+"=FAIL")
+		ids = append(ids, id)
+	}
+	if len(lines) == 0 {
+		if verifyStatus(content) != "fail" {
+			return "", ""
+		}
+		return "browser_verify=FAIL", "check fail:browser_verify"
+	}
+	return strings.Join(lines, "\n"), "check fail:" + strings.Join(ids, ",")
+}
+
+// splitCheckStatus 从 `render: FAIL` 这种行取出检查名和状态。检查名不合法时返回 false。
+func splitCheckStatus(line string) (name, status string, ok bool) {
+	i := strings.IndexByte(line, ':')
+	if i <= 0 {
+		return "", "", false
+	}
+	name = strings.TrimSpace(line[:i])
+	status = strings.Trim(strings.TrimSpace(line[i+1:]), `"'`)
+	if cut := strings.IndexAny(status, " \t"); cut > 0 {
+		status = status[:cut]
+	}
+	if !checkIdent(name) || status == "" {
+		return "", "", false
+	}
+	return name, status, true
+}
+
+// hasPassLine 在以 PASS 开头、后面跟着合法检查名的行上返回 true。
+func hasPassLine(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		s := strings.TrimSpace(line)
+		if !strings.HasPrefix(s, "PASS") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(s, "PASS"))
+		rest = strings.TrimLeft(rest, " \t:-")
+		fields := strings.Fields(rest)
+		if len(fields) > 0 && checkIdent(fields[0]) {
+			return true
+		}
+	}
+	return false
+}
+
+// batchHasPassLine 在任一结果含 PASS 检查行时返回 true。
+func batchHasPassLine(results []Message) bool {
+	for _, m := range results {
+		if hasPassLine(m.Content) {
+			return true
+		}
+	}
+	return false
+}
+
+// resultsAreRefusal 在拒绝文本非空、结果非空，且每条结果都是这份拒绝文本时返回 true。
+func resultsAreRefusal(results []Message, refusal string) bool {
+	refusal = strings.TrimSpace(refusal)
+	if refusal == "" || len(results) == 0 {
+		return false
+	}
+	for _, m := range results {
+		if strings.TrimSpace(m.Content) != refusal {
+			return false
+		}
+	}
+	return true
+}
+
+// spinsAfterFailure 在整批都是 wait，或都是被拒绝的 shell / browser_verify 重跑时返回 true。夹着别的工作就不算空转。
+func spinsAfterFailure(calls []ToolCall, results []Message, refusal string) bool {
+	if len(calls) == 0 {
+		return false
+	}
+	refusal = strings.TrimSpace(refusal)
+	spin := false
+	for i, c := range calls {
+		switch c.Name {
+		case "wait":
+			spin = true
+		case "shell", "browser_verify":
+			if refusal == "" || i >= len(results) || strings.TrimSpace(results[i].Content) != refusal {
+				return false
+			}
+			spin = true
+		default:
+			return false
+		}
+	}
+	return spin
+}
+
+// batchRerunsScript 在某个 shell 调用会执行 script 时返回 true。命令先从 JSON 的 command 字段取。
+func batchRerunsScript(calls []ToolCall, script string) bool {
+	for _, c := range calls {
+		if commandRerunsScript(shellCommand(c), script) {
+			return true
+		}
+	}
+	return false
+}
+
+// shellCommand 返回 shell 调用里的命令文本。不是 shell，或参数里没有 command 时返回空串。
+func shellCommand(tc ToolCall) string {
+	if tc.Name != "shell" {
+		return ""
+	}
+	if m := parseToolArgs(tc.Arguments); len(m) > 0 {
+		if s, ok := m["command"].(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// commandRerunsScript 在任一命令段会执行 script 时返回 true。删除、移动、阅读和列目录返回 false。
+func commandRerunsScript(command, script string) bool {
+	if strings.TrimSpace(command) == "" || strings.TrimSpace(script) == "" {
+		return false
+	}
+	for _, seg := range commandSegments(command) {
+		if segmentRerunsScript(seg, script) {
+			return true
+		}
+	}
+	return false
+}
+
+// commandSegments 按换行、分号、&&、||、管道和单独的 & 拆开命令，引号里的分隔符保留。
+func commandSegments(command string) []string {
+	var segs []string
+	var b strings.Builder
+	quote := byte(0)
+	flush := func() {
+		s := strings.TrimSpace(b.String())
+		b.Reset()
+		if s != "" {
+			segs = append(segs, s)
+		}
+	}
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			b.WriteByte(c)
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+			b.WriteByte(c)
+		case '\n', '\r', ';':
+			flush()
+		case '&':
+			if i+1 < len(command) && command[i+1] == '&' {
+				flush()
+				i++
+				continue
+			}
+			flush()
+		case '|':
+			flush()
+			if i+1 < len(command) && command[i+1] == '|' {
+				i++
+			}
+		default:
+			b.WriteByte(c)
+		}
+	}
+	flush()
+	return segs
+}
+
+// segmentRerunsScript 判断这一段会不会把 script 当程序执行。解释器的 --check 和 -e 不算执行。
+func segmentRerunsScript(segment, script string) bool {
+	toks := commandTokens(segment)
+	i := 0
+	for i < len(toks) && isEnvAssign(toks[i]) {
+		i++
+	}
+	for i < len(toks) && isLauncher(exeBase(toks[i])) {
+		i++
+		for i < len(toks) && isSwitch(toks[i]) {
+			i++
+		}
+	}
+	if i >= len(toks) {
+		return false
+	}
+	if strings.ContainsAny(toks[i], " \t") {
+		return commandRerunsScript(toks[i], script)
+	}
+	if scriptToken(toks[i], script) {
+		return true
+	}
+	if !isRunner(exeBase(toks[i])) {
+		return false
+	}
+	return runnerExecutesScript(toks[i:], script)
+}
+
+// commandTokens 按空白拆开，引号里的空白留在同一个词里。引号本身不进入词。
+func commandTokens(s string) []string {
+	var out []string
+	var b strings.Builder
+	quote := byte(0)
+	flush := func() {
+		if b.Len() == 0 {
+			return
+		}
+		out = append(out, b.String())
+		b.Reset()
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+				continue
+			}
+			b.WriteByte(c)
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case ' ', '\t', '\r', '\n':
+			flush()
+		default:
+			b.WriteByte(c)
+		}
+	}
+	flush()
+	return out
+}
+
+// runnerExecutesScript 在解释器会运行 script 文件时返回 true。语法检查和行内代码返回 false。
+func runnerExecutesScript(toks []string, script string) bool {
+	if len(toks) == 0 {
+		return false
+	}
+	base := exeBase(toks[0])
+	if denoInspectOnly(base, toks[1:]) {
+		return false
+	}
+	sawScript := false
+	for _, arg := range toks[1:] {
+		if isInlineFlag(base, arg) || isCheckFlag(base, arg) {
+			return false
+		}
+		if scriptToken(arg, script) {
+			sawScript = true
+		}
+	}
+	return sawScript
+}
+
+// denoInspectOnly 在 deno 的第一个子命令是 check、lint、fmt、doc 或 info 时返回 true。
+func denoInspectOnly(base string, args []string) bool {
+	if base != "deno" {
+		return false
+	}
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") || isEnvAssign(a) {
+			continue
+		}
+		switch a {
+		case "check", "lint", "fmt", "doc", "info":
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// isInlineFlag 判断这个参数会让解释器执行行内代码，而不是脚本文件。
+func isInlineFlag(base, arg string) bool {
+	switch base {
+	case "node", "nodejs", "bun", "deno":
+		return arg == "-e" || arg == "--eval" || arg == "-p" || arg == "--print" || strings.HasPrefix(arg, "--eval=") || strings.HasPrefix(arg, "--print=")
+	case "python", "python3", "py":
+		return arg == "-c" || (strings.HasPrefix(arg, "-c") && len(arg) > 2 && arg[2] != '-')
+	default:
+		return false
+	}
+}
+
+// isCheckFlag 判断这个参数只做语法检查。node 的 -c 是语法检查，python 的 -c 不是。
+func isCheckFlag(base, arg string) bool {
+	switch arg {
+	case "--check", "--syntax-check", "--check-syntax":
+		return base == "node" || base == "nodejs" || base == "bun" || base == "deno"
+	case "-c":
+		return base == "node" || base == "nodejs"
+	default:
+		return false
+	}
+}
+
+// scriptToken 在 tok 去掉引号和 ./ 之后等于 script，或以 /script 结尾时返回 true。
+func scriptToken(tok, script string) bool {
+	tok = cleanPathToken(tok)
+	script = cleanPathToken(script)
+	if tok == "" || script == "" {
+		return false
+	}
+	return tok == script || strings.HasSuffix(tok, "/"+script)
+}
+
+// cleanPathToken 归一化斜杠和大小写，并去掉包着的引号和开头的 ./。
+func cleanPathToken(p string) string {
+	p = strings.Trim(normSlash(p), `"'`)
+	for strings.HasPrefix(p, "./") {
+		p = strings.TrimPrefix(p, "./")
+	}
+	return p
+}
+
+// isRunner 判断是不是会执行脚本文件的解释器。
+func isRunner(base string) bool {
+	switch base {
+	case "node", "nodejs", "bun", "deno", "tsx", "ts-node", "python", "python3", "py":
+		return true
+	default:
+		return false
+	}
+}
+
+// isLauncher 判断是不是后面还会跟上真正命令的外壳。
+func isLauncher(base string) bool {
+	switch base {
+	case "cmd", "powershell", "pwsh", "sh", "bash", "env", "npx", "pnpm", "yarn", "call", "start":
+		return true
+	default:
+		return false
+	}
+}
+
+// isEnvAssign 判断是不是命令前的 KEY=VAL。开关不是赋值。
+func isEnvAssign(tok string) bool {
+	if strings.HasPrefix(tok, "-") {
+		return false
+	}
+	i := strings.IndexByte(tok, '=')
+	return i > 0
+}
+
+// isSwitch 判断是不是外壳开关。cmd 的 /c 算，路径不算。
+func isSwitch(tok string) bool {
+	if strings.HasPrefix(tok, "-") {
+		return true
+	}
+	return len(tok) == 2 && (tok[0] == '/' || tok[0] == '\\')
 }
 
 // seedCheckWatch 重放这一轮已有的历史，使继续下来的回合直接拒绝上一份相同报告的脚本，而不是再跑到停止卡片。重放之后把 harnessHits、idle、bypassHits 清零，这三项只计本轮。相同观察已经达到催促次数时补发一次 observationNudge。

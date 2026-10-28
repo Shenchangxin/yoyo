@@ -155,7 +155,7 @@ type WorkspaceTools struct {
 	SkillHints []SkillSuggestion
 	// Autoloaded 是宿主按隐式 @skill 注入的那一部分技能名。
 	Autoloaded []string
-	// repeatScript 拦住下一次输出没有变化的检查命令。repeatRefusal 是不执行时返回的工具结果。
+	// repeatScript 拦住下一次会执行该脚本的命令。删除、移动或阅读这条路径不拦截。repeatRefusal 是不执行时返回的工具结果。
 	repeatScript string
 	// repeatRefusal 是 repeatScript 命中时直接返回的文本。
 	repeatRefusal string
@@ -1004,13 +1004,13 @@ func (t *WorkspaceTools) setRepeatBlock(script, refusal string) {
 	t.repeatRefusal = refusal
 }
 
-// repeatBlocked 在 repeatScript 为空、拒绝文本为空，或脚本是 browser_verify 时返回假。命令的斜杠归一化后包含该脚本则返回拒绝文本。
-// command 把斜杠归一化后，看是否包含 repeatScript。
+// repeatBlocked 在 repeatScript 为空、拒绝文本为空，或脚本是 browser_verify 时返回假。只有会执行该脚本的命令才返回拒绝文本。路径出现在删除、移动、阅读或列目录里仍然执行。
+// command 交给 commandRerunsScript，和 repeatScript 比较。
 func (t *WorkspaceTools) repeatBlocked(command string) (string, bool) {
 	if t == nil || t.repeatScript == "" || t.repeatRefusal == "" || t.repeatScript == "browser_verify" {
 		return "", false
 	}
-	if strings.Contains(normSlash(command), t.repeatScript) {
+	if commandRerunsScript(command, t.repeatScript) {
 		return t.repeatRefusal, true
 	}
 	return "", false
