@@ -33,6 +33,9 @@ type Hub struct {
 const (
 	// coalesceWindow 是相邻增量合并前等待的时间。
 	coalesceWindow = 50 * time.Millisecond
+	// coalesceBytes 是一笔合并增量的字节上限。达到就立刻发出，不再等满时间窗。
+	// 单块本身超过上限时仍整段发出，环里的全文不受这个上限影响。
+	coalesceBytes = 2048
 	// liveLogCap 是序号环最多保留的条数，满了就覆盖最老的。
 	liveLogCap = 16384
 	// liveInlineBytes 是整份事件放进通知的字节上限。
@@ -66,6 +69,8 @@ type deltaBuf struct {
 type StreamFrame struct {
 	Kind         string         `json:"kind,omitempty"`
 	AttemptID    string         `json:"attempt_id,omitempty"`
+	ID           string         `json:"id,omitempty"`
+	Round        string         `json:"round,omitempty"`
 	Revision     int            `json:"revision,omitempty"`
 	Index        int            `json:"index"`
 	IndexFrom    int            `json:"index_from"`
@@ -129,7 +134,8 @@ func (h *Hub) FlushCoalesce() {
 	h.cMu.Unlock()
 }
 
-// holdDelta 把同一合并键的文本拼在一起，并保留更大的 index。键变了先冲掉上一笔，再起定时器。
+// holdDelta 把同一合并键的文本拼在一起，并保留更大的 index。键变了先冲掉上一笔。
+// 拼完达到 coalesceBytes 就立刻发出，不再等满时间窗。单块超过上限时也立刻发出。
 // ev 传给 payloadDeltaText 和 cloneEvent，并用来读 index 和 index_from。
 // key 与 pending.key 相同则把文本拼上去，否则先冲掉上一笔，再作为新的合并键。
 func (h *Hub) holdDelta(ev trace.Event, key string) {
@@ -141,23 +147,33 @@ func (h *Hub) holdDelta(ev trace.Event, key string) {
 	if payloadHas(ev.Payload, "index_from") {
 		from = payloadInt(ev.Payload, "index_from")
 	}
-	if h.pending != nil {
-		if h.pending.key == key {
-			h.pending.text.WriteString(text)
-			if idx > h.pending.index {
-				h.pending.index = idx
-			}
-			return
-		}
+	if h.pending != nil && h.pending.key != key {
 		h.flushPendingLocked()
 	}
-	buf := &deltaBuf{ev: cloneEvent(ev), key: key, indexFrom: from, index: idx}
-	buf.text.WriteString(text)
-	h.pending = buf
-	if h.timer != nil {
-		h.timer.Stop()
+	if h.pending != nil && h.pending.text.Len() > 0 && h.pending.text.Len()+len(text) > coalesceBytes {
+		h.flushPendingLocked()
 	}
-	h.timer = time.AfterFunc(coalesceWindow, func() { h.FlushCoalesce() })
+	fresh := h.pending == nil
+	if fresh {
+		buf := &deltaBuf{ev: cloneEvent(ev), key: key, indexFrom: from, index: idx}
+		buf.text.WriteString(text)
+		h.pending = buf
+	} else {
+		h.pending.text.WriteString(text)
+		if idx > h.pending.index {
+			h.pending.index = idx
+		}
+	}
+	if h.pending.text.Len() >= coalesceBytes {
+		h.flushPendingLocked()
+		return
+	}
+	if fresh {
+		if h.timer != nil {
+			h.timer.Stop()
+		}
+		h.timer = time.AfterFunc(coalesceWindow, func() { h.FlushCoalesce() })
+	}
 }
 
 // flushPendingLocked 在已持有合并锁时把暂存文本和 index 范围写回事件并扇出。扇出前会放开这把锁。
@@ -271,13 +287,17 @@ func (h *Hub) Since(after int64, sessionID string) []trace.Event {
 	return h.Batch(after, sessionID).Events
 }
 
-// NoticeOf 做成界面通知。增量带上事件和帧；工具调用和结果走压缩字段；其余超过内联上限的只留序号。
-// ev 用来填 Seq、SessionID 和 Type，并传给 liveDelta、frameOf、compactToolNotice 和 mayInlineNotice。
+// NoticeOf 做成界面通知。流式增量只带一帧，正文只出现在 chunk 里。
+// 工具进度仍内联事件。工具调用和结果走压缩字段。其余超过内联上限的只留序号。
+// ev 用来填 Seq、SessionID 和 Type，并传给 liveProgressCall、liveDelta、frameOf、compactToolNotice 和 mayInlineNotice。
 func NoticeOf(ev trace.Event) LiveNotice {
 	n := LiveNotice{Seq: ev.Seq, SessionID: ev.SessionID, Type: string(ev.Type)}
-	if liveDelta(ev) {
+	if liveProgressCall(ev) {
 		e := ev
 		n.Event = &e
+		return n
+	}
+	if liveDelta(ev) {
 		n.Frame = frameOf(ev)
 		return n
 	}
@@ -483,8 +503,8 @@ func coalesceKey(ev trace.Event) (string, bool) {
 	return ev.SessionID + "\x00" + string(ev.Type) + "\x00" + id + "\x00" + round, true
 }
 
-// frameOf 从事件抽出实时帧，带上 index 范围和块类型。
-// ev 用来读 Type、Payload 和 Seq，并传给 payloadDeltaText。
+// frameOf 从事件抽出实时帧，带上 index 范围和块类型。正文只放进 chunk，不再另写 delta。
+// ev 用来读 Type、Payload 和 Seq，并传给 payloadDeltaText 和 stampFrameIdentity。
 func frameOf(ev trace.Event) *StreamFrame {
 	if ev.Type == trace.TypeAssistantStream {
 		kind, _ := ev.Payload["kind"].(string)
@@ -502,20 +522,21 @@ func frameOf(ev trace.Event) *StreamFrame {
 		}
 		attempt, _ := ev.Payload["attempt_id"].(string)
 		outcome, _ := ev.Payload["outcome"].(string)
-		return &StreamFrame{
+		fr := &StreamFrame{
 			Kind:         kind,
 			AttemptID:    attempt,
 			Revision:     payloadInt(ev.Payload, "revision"),
 			Index:        idx,
 			IndexFrom:    from,
 			Block:        block,
-			Delta:        payloadDeltaText(ev),
 			Chunk:        ch,
 			Turn:         payloadInt(ev.Payload, "turn"),
 			Step:         payloadInt(ev.Payload, "step"),
 			Outcome:      outcome,
 			CommittedSeq: ev.Seq,
 		}
+		stampFrameIdentity(ev, fr)
+		return fr
 	}
 	block := "text"
 	switch ev.Type {
@@ -534,13 +555,42 @@ func frameOf(ev trace.Event) *StreamFrame {
 	if payloadHas(ev.Payload, "index_from") {
 		from = payloadInt(ev.Payload, "index_from")
 	}
-	return &StreamFrame{
-		Kind:         "chunk",
+	text := payloadDeltaText(ev)
+	chunkType := "text-delta"
+	switch block {
+	case "reasoning":
+		chunkType = "reasoning-delta"
+	case "tool":
+		chunkType = "tool-result-delta"
+	}
+	fr := &StreamFrame{
+		Kind:         "delta",
 		Index:        idx,
 		IndexFrom:    from,
 		Block:        block,
-		Delta:        payloadDeltaText(ev),
+		Chunk:        map[string]any{"type": chunkType, "index": idx, "text": text},
 		CommittedSeq: ev.Seq,
+	}
+	stampFrameIdentity(ev, fr)
+	return fr
+}
+
+// stampFrameIdentity 把回合 id、round 和 attempt_id 抄进帧。正文不在这里复制。
+// ev 的 Payload 为 nil 时什么都不写。fr 为 nil 时返回。
+func stampFrameIdentity(ev trace.Event, fr *StreamFrame) {
+	if ev.Payload == nil || fr == nil {
+		return
+	}
+	if id, _ := ev.Payload["id"].(string); id != "" {
+		fr.ID = id
+	}
+	if round, _ := ev.Payload["round"].(string); round != "" {
+		fr.Round = round
+	}
+	if fr.AttemptID == "" {
+		if attempt, _ := ev.Payload["attempt_id"].(string); attempt != "" {
+			fr.AttemptID = attempt
+		}
 	}
 }
 

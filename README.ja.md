@@ -75,7 +75,7 @@ go run ./cmd/yoyo serve --addr 127.0.0.1:3080
 **デスクトップ** — メニュー、トレイ、通知。
 
 ```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 npm run dev
 ```
 

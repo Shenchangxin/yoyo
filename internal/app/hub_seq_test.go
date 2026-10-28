@@ -58,11 +58,11 @@ func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 		t.Fatal("settled assistant must be pull-only")
 	}
 	delta := NoticeOf(trace.Event{Seq: 4, SessionID: "s", Type: trace.TypeAssistant, Payload: map[string]any{"text": "hi", "delta": true, "id": "r1"}})
-	if delta.Event == nil {
-		t.Fatal("tiny token slice should inline")
+	if delta.Event != nil || delta.Frame == nil || delta.Frame.Delta != "" || delta.Frame.Chunk["text"] != "hi" || delta.Frame.ID != "r1" {
+		t.Fatal("tiny token slice should ride the frame once")
 	}
 	indexed := NoticeOf(trace.Event{Seq: 4, SessionID: "s", Type: trace.TypeAssistant, Payload: map[string]any{"text": "hi", "delta": true, "id": "r1", "index": 3, "index_from": 1, "block": "text"}})
-	if indexed.Frame == nil || indexed.Frame.Index != 3 || indexed.Frame.IndexFrom != 1 || indexed.Frame.Block != "text" {
+	if indexed.Frame == nil || indexed.Frame.Index != 3 || indexed.Frame.IndexFrom != 1 || indexed.Frame.Block != "text" || indexed.Frame.Kind != "delta" {
 		t.Fatalf("frame %+v", indexed.Frame)
 	}
 	body := make([]byte, 4000)
@@ -70,8 +70,11 @@ func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 		body[i] = 'x'
 	}
 	large := NoticeOf(trace.Event{Seq: 5, SessionID: "s", Type: trace.TypeAssistant, Payload: map[string]any{"text": string(body), "delta": true, "id": "r1"}})
-	if large.Event == nil {
-		t.Fatal("token slices must stay inline even when a 50ms window exceeds the byte cap")
+	if large.Event != nil || large.Frame == nil || large.Frame.Delta != "" {
+		t.Fatal("token slices must stay on the frame even when a 50ms window exceeds the byte cap")
+	}
+	if got, _ := large.Frame.Chunk["text"].(string); got != string(body) {
+		t.Fatalf("frame text len %d", len(got))
 	}
 	prog := NoticeOf(trace.Event{Seq: 6, SessionID: "s", Type: trace.TypeToolCall, Payload: map[string]any{"name": "write_file", "id": "c1", "progress": true, "bytes": 1200, "path": "a.html", "arguments": `{"path":"a.html"}`}})
 	if prog.Event == nil {
@@ -81,13 +84,13 @@ func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 		"kind": "chunk", "attempt_id": "a1", "index": 0, "index_from": 0,
 		"chunk": map[string]any{"type": "text-delta", "index": 0, "text": "hi"},
 	}})
-	if stream.Event == nil || stream.Frame == nil || stream.Frame.Kind != "chunk" || stream.Frame.IndexFrom != 0 {
+	if stream.Event != nil || stream.Frame == nil || stream.Frame.Kind != "chunk" || stream.Frame.IndexFrom != 0 || stream.Frame.Delta != "" || stream.Frame.Chunk["text"] != "hi" {
 		t.Fatalf("assistant_stream notice %+v", stream)
 	}
 	start := NoticeOf(trace.Event{Seq: 8, SessionID: "s", Type: trace.TypeAssistantStream, Payload: map[string]any{
-		"kind": "start", "attempt_id": "a1", "turn": 1, "step": 1,
+		"kind": "start", "attempt_id": "a1", "turn": 1, "step": 1, "round": "s:r1", "id": "s:r1",
 	}})
-	if start.Event == nil || start.Frame == nil || start.Frame.Kind != "start" {
+	if start.Event != nil || start.Frame == nil || start.Frame.Kind != "start" || start.Frame.AttemptID != "a1" || start.Frame.Round != "s:r1" {
 		t.Fatalf("assistant_stream start %+v", start)
 	}
 }

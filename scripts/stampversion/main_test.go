@@ -81,6 +81,44 @@ func TestStampPlistAndNFPM(t *testing.T) {
 	}
 }
 
+// TestStampWindowsInfo 确认中性语言块 0000 挪到 en-US 的 0409，产品版本被写上，0000 不再留下。
+func TestStampWindowsInfo(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "info.json")
+	src := `{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"ProductName": "Yoyo"
+		}
+	}
+}
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := stampWindowsInfo(path, "0.2.0", "0.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	if strings.Contains(text, `"0000"`) {
+		t.Fatalf("neutral language still present: %s", text)
+	}
+	if !strings.Contains(text, `"0409"`) || !strings.Contains(text, `"ProductVersion": "0.2.0"`) || !strings.Contains(text, `"ProductName": "Yoyo"`) {
+		t.Fatalf("info.json: %s", text)
+	}
+	if !strings.Contains(text, `"file_version": "0.2.0"`) {
+		t.Fatalf("file version: %s", text)
+	}
+}
+
 // TestStampNSIS 确认 INFO_PRODUCTVERSION 变成 0.2.0。
 func TestStampNSIS(t *testing.T) {
 	dir := t.TempDir()

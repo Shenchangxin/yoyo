@@ -56,9 +56,12 @@ func fourPart(v string) string {
 	return strings.Join(p[:4], ".")
 }
 
-// stampWindowsInfo 把文件版本写进 fixed 的 file_version，把产品版本写进 0000 的 ProductVersion。
-// path 先读再按 0o644 写回，末尾补一个换行。
-// product 写入 0000 块的 ProductVersion。
+// windowsInfoLang 是 en-US（0x0409）。资源里的 0000 是中性语言，资源管理器不显示版本详情。
+const windowsInfoLang = "0409"
+
+// stampWindowsInfo 把文件版本写进 fixed 的 file_version，把产品版本写进 0409 的 ProductVersion。
+// 块还在 0000 上时整块挪到 0409，并删掉 0000。path 先读再按 0o644 写回，末尾补一个换行。
+// product 写入 0409 块的 ProductVersion。
 // fileVer 写入 fixed 的 file_version。
 func stampWindowsInfo(path, product, fileVer string) error {
 	type infoJSON struct {
@@ -80,12 +83,16 @@ func stampWindowsInfo(path, product, fileVer string) error {
 	if doc.Info == nil {
 		doc.Info = map[string]map[string]string{}
 	}
-	block := doc.Info["0000"]
+	block := doc.Info[windowsInfoLang]
+	if block == nil {
+		block = doc.Info["0000"]
+	}
 	if block == nil {
 		block = map[string]string{}
 	}
 	block["ProductVersion"] = product
-	doc.Info["0000"] = block
+	delete(doc.Info, "0000")
+	doc.Info[windowsInfoLang] = block
 	out, err := json.MarshalIndent(doc, "", "\t")
 	if err != nil {
 		return err

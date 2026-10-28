@@ -380,10 +380,12 @@ function isTraceEnvelopeType(t: unknown): boolean {
   return typeof t === "string" && t.length > 0 && !t.startsWith("yoyo:");
 }
 
-/** StreamFrame 一条助手流帧。index_from 到 index 是这段合并增量覆盖的序号。 */
+/** StreamFrame 一条助手流帧。index_from 到 index 是这段合并增量覆盖的序号。正文在 chunk 里。 */
 export type StreamFrame = {
   kind?: string;
   attempt_id?: string;
+  id?: string;
+  round?: string;
   revision?: number;
   index?: number;
   index_from?: number;
@@ -396,13 +398,69 @@ export type StreamFrame = {
   committed_seq?: number;
 };
 
-/** LiveNotice 一条实时通知：全局序号、会话、内联事件和可选流帧。 */
+/** LiveNotice 一条实时通知：全局序号、会话、类型、内联事件和可选流帧。 */
 export type LiveNotice = {
   seq: number;
   sessionId: string;
+  type?: string;
   event?: any;
   frame?: StreamFrame;
 };
+
+/** noticeCarriesInline 这条通知自己就能按序应用。内联事件，或带开始、块、结束、增量帧，都算。 */
+export function noticeCarriesInline(notice: LiveNotice): boolean {
+  if (notice.event) return true;
+  const kind = notice.frame?.kind;
+  return kind === "start" || kind === "chunk" || kind === "end" || kind === "delta";
+}
+
+/** 从帧的 chunk 取出这段正文。工具参数增量在 argumentsDelta。 */
+function frameChunkText(chunk: Record<string, any> | undefined): string {
+  if (!chunk) return "";
+  if (typeof chunk.text === "string" && chunk.text) return chunk.text;
+  if (typeof chunk.argumentsDelta === "string") return chunk.argumentsDelta;
+  if (typeof chunk.arguments_delta === "string") return chunk.arguments_delta;
+  return "";
+}
+
+/**
+ * eventFromNotice 还原出可折进转录的事件。已有内联事件就用它。
+ * 只有帧时，用帧上的一块正文拼出最小事件，避免再回拉整段环。
+ * notice 读取 event、frame、type、seq、sessionId。
+ */
+export function eventFromNotice(notice: LiveNotice): any | undefined {
+  if (notice.event) return notice.event;
+  const f = notice.frame;
+  const type = notice.type;
+  if (!f || !type || !noticeCarriesInline(notice)) return undefined;
+  const payload: Record<string, any> = {};
+  if (f.kind && f.kind !== "delta") payload.kind = f.kind;
+  if (f.attempt_id) payload.attempt_id = f.attempt_id;
+  if (f.id) payload.id = f.id;
+  if (f.round) payload.round = f.round;
+  if (!payload.id && f.round) payload.id = f.round;
+  if (!payload.id && type !== "assistant_stream" && f.attempt_id) payload.id = f.attempt_id;
+  if (!payload.round && payload.id && type !== "assistant_stream") payload.round = payload.id;
+  if (f.revision) payload.revision = f.revision;
+  if (f.index != null) payload.index = f.index;
+  if (f.index_from != null) payload.index_from = f.index_from;
+  if (f.turn) payload.turn = f.turn;
+  if (f.step) payload.step = f.step;
+  if (f.outcome) payload.outcome = f.outcome;
+  if (f.block) payload.block = f.block;
+  if (f.chunk) payload.chunk = f.chunk;
+  const text = frameChunkText(f.chunk) || f.delta || "";
+  if (type === "tool_result") {
+    payload.delta = true;
+    payload.content = text;
+  } else if (type === "assistant" || type === "reasoning") {
+    payload.delta = true;
+    payload.text = text;
+  } else if (type === "assistant_stream") {
+    payload.delta = true;
+  }
+  return { seq: notice.seq, session_id: notice.sessionId, type, payload };
+}
 
 /** 从通知或嵌套事件上读出流帧。没有帧对象时返回空。raw 读取 frame、Frame，为空时不读。 */
 function readStreamFrame(raw: any): StreamFrame | undefined {
@@ -416,6 +474,8 @@ function readStreamFrame(raw: any): StreamFrame | undefined {
   return {
     kind: str(src.kind ?? src.Kind) || undefined,
     attempt_id: str(src.attempt_id ?? src.AttemptID ?? src.attemptId) || undefined,
+    id: str(src.id ?? src.ID) || undefined,
+    round: str(src.round ?? src.Round) || undefined,
     revision: num(src.revision ?? src.Revision) || undefined,
     index: hasIndex ? index : undefined,
     index_from: hasFrom ? from : hasIndex ? index : undefined,
@@ -436,14 +496,15 @@ export function parseLiveNotice(raw: any): LiveNotice {
   const seq = num(e.seq ?? e.Seq);
   const nested = e.event ?? e.Event;
   const sessionId = str(pick(e, "session_id", "SessionID", "sessionId") || pick(nested, "session_id", "SessionID", "sessionId"));
+  const type = str(pick(nested, "type", "Type") || pick(e, "type", "Type")) || undefined;
   const frame = readStreamFrame(e) || readStreamFrame(nested);
   if (nested && typeof nested === "object" && (nested.type || nested.Type || nested.payload || nested.Payload)) {
-    return { seq, sessionId, event: nested, frame };
+    return { seq, sessionId, type, event: nested, frame };
   }
   if (e.payload != null || e.Payload != null) {
-    return { seq, sessionId, event: e, frame };
+    return { seq, sessionId, type, event: e, frame };
   }
-  return { seq, sessionId, frame };
+  return { seq, sessionId, type, frame };
 }
 
 /**

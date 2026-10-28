@@ -124,6 +124,19 @@ func main() {
 		Description:                 "Self-harnessing local agent workstation",
 		DisableDefaultSignalHandler: true,
 		Logger:                      wailsLog,
+		// 绑定仍走默认 HTTP。事件投递换成按窗口过滤：yoyo:item 不进陪伴窗。
+		Transport: desktop.NewWindowEvents(wailsLog),
+		// WebView2 进程退出后的恢复失败走这里。设了处理函数后 Wails 不再另写 Logger。
+		ErrorHandler: func(err error) {
+			if err != nil {
+				diaglog.Error("wails", "component", "wails", "err", err)
+			}
+		},
+		WarningHandler: func(msg string) {
+			if msg != "" {
+				diaglog.Warn("wails", "component", "wails", "msg", msg)
+			}
+		},
 		Services: []application.Service{
 			application.NewService(svc),
 			application.NewService(ns),
@@ -134,6 +147,12 @@ func main() {
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
+		// GTK 应用 ID 与单实例相同。不设时正式版会落成 org.wails.yoyo，Flatpak 里 WebKit 辅助进程的总线名会被拒绝。
+		// ProgramName 保持 Yoyo：Wayland 用它当 app_id，才能对上 Yoyo.desktop。设了 ApplicationID 后若留空，程序名会改成应用 ID，窗口图标就对不上。
+		Linux: application.LinuxOptions{
+			ApplicationID: "com.yoyo.workstation",
+			ProgramName:   "Yoyo",
 		},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.yoyo.workstation",

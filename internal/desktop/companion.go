@@ -476,7 +476,7 @@ func (s *Service) OpenCompanion() error {
 	}
 	x, y := companionOrigin()
 	opts := application.WebviewWindowOptions{
-		Name:                  "yoyo-companion",
+		Name:                  companionWindowName,
 		Title:                 "Yoyo",
 		Width:                 companionW,
 		Height:                companionIdleH,

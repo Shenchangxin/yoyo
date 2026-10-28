@@ -4,6 +4,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,8 +112,8 @@ func TestHubCoalescesAssistantStreamChunks(t *testing.T) {
 		t.Fatalf("index range %+v", ev.Payload)
 	}
 	n := NoticeOf(ev)
-	if n.Event == nil || n.Frame == nil || n.Frame.Index != 1 || n.Frame.IndexFrom != 0 {
-		t.Fatalf("notice frame %+v", n.Frame)
+	if n.Event != nil || n.Frame == nil || n.Frame.Index != 1 || n.Frame.IndexFrom != 0 || n.Frame.Delta != "" {
+		t.Fatalf("notice frame %+v event %v", n.Frame, n.Event)
 	}
 	if n.Frame.Chunk["text"] != "hello" {
 		t.Fatalf("frame chunk %+v", n.Frame.Chunk)
@@ -159,6 +160,38 @@ func TestHubCoalescesShellStdout(t *testing.T) {
 	ev := recv(t, ch)
 	if got, _ := ev.Payload["content"].(string); got != "hello" {
 		t.Fatalf("stdout %q", got)
+	}
+}
+
+// TestHubCoalesceFlushesAtByteCap 在合并文本达到字节上限时立刻发出，不等 50 毫秒。
+func TestHubCoalesceFlushesAtByteCap(t *testing.T) {
+	h := NewHub()
+	ch, off := h.Subscribe("s")
+	defer off()
+	publish := func(index int, text string) {
+		h.Publish(trace.Event{
+			SessionID: "s", Type: trace.TypeAssistant,
+			Payload: map[string]any{"text": text, "delta": true, "id": "s:r1", "round": "s:r1", "index": index},
+		})
+	}
+	publish(1, strings.Repeat("a", 1500))
+	publish(2, strings.Repeat("b", 1500))
+	first := recv(t, ch)
+	got, _ := first.Payload["text"].(string)
+	if len(got) != 1500 || got[0] != 'a' {
+		t.Fatalf("first flush len %d", len(got))
+	}
+	h.FlushCoalesce()
+	second := recv(t, ch)
+	got, _ = second.Payload["text"].(string)
+	if len(got) != 1500 || got[0] != 'b' {
+		t.Fatalf("second flush len %d", len(got))
+	}
+	publish(3, strings.Repeat("c", coalesceBytes+100))
+	third := recv(t, ch)
+	got, _ = third.Payload["text"].(string)
+	if len(got) != coalesceBytes+100 {
+		t.Fatalf("oversized chunk len %d", len(got))
 	}
 }
 

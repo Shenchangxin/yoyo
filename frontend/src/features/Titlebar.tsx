@@ -12,6 +12,7 @@ import type { Notice, RunStatus, Thread } from "../lib/protocol";
 import { RunningHub } from "./RunningHub";
 import * as api from "../lib/client";
 import { InboxMenu, inboxBadgeCount } from "./InboxMenu";
+import TextType from "../components/TextType";
 
 /**
  * Titlebar 没有标题时不显示标题按钮。有 runningThreads 时用 RunningHub，否则有 runningCount 才显示数字，窄屏藏起数字。Escape 放弃重命名，不提交。
@@ -103,14 +104,31 @@ export function Titlebar(props: {
       ) : props.title ? (
         <button
           type="button"
-          className="min-w-0 max-w-[46%] shrink truncate rounded-lg px-1.5 py-0.5 text-left text-[14px] font-medium tracking-[-0.02em] text-foreground hover:bg-lift/70"
+          className="min-w-0 max-w-[46%] shrink overflow-hidden rounded-lg px-1.5 py-0.5 text-left text-[14px] font-medium tracking-[-0.02em] text-foreground hover:bg-lift/70"
           onClick={() => {
             setDraft(props.title);
             setEditing(true);
           }}
           aria-label={copy.titlebar.rename}
+          title={props.title}
         >
-          {props.title}
+          <TextType
+            key={props.title}
+            as="span"
+            text={props.title}
+            typingSpeed={32}
+            initialDelay={40}
+            pauseDuration={1500}
+            loop={false}
+            deleteMode="backspace"
+            typeEffect="fade"
+            mistakes={0}
+            cursorStyle="bar"
+            cursorGlide
+            showCursor
+            className="max-w-full align-bottom"
+            style={{ whiteSpace: "nowrap" }}
+          />
         </button>
       ) : null}
       <div className="h-full min-w-4 flex-1" aria-hidden />

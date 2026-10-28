@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { BlockAssembler, expandAssistantStream, textFromBlocks } from "./stream-chunk.ts";
 import { ConversationFold } from "./conversation-fold.ts";
 import { ClientAssistantStream } from "./assistant-stream.ts";
-import { itemFromEvent, mergeItem } from "./stream-fold.ts";
+import { eventFromNotice, itemFromEvent, mergeItem, noticeCarriesInline, parseLiveNotice } from "./stream-fold.ts";
 import type { Item } from "./protocol.ts";
 
 /**
@@ -221,6 +221,60 @@ describe("ConversationFold", () => {
     const settled = f.items().find((x) => x.type === "assistant");
     assert.equal(settled?.text, "hi");
     assert.equal(settled?.payload?.stream, undefined);
+  });
+});
+
+describe("frame-only live notices", () => {
+  /** 只有帧的助手流仍能长出正文，没有内联事件也不会去回拉。 */
+  it("applies a frame-only assistant stream", () => {
+    const start = eventFromNotice(parseLiveNotice({
+      seq: 1,
+      session_id: "s",
+      type: "assistant_stream",
+      frame: { kind: "start", attempt_id: "a1", id: "s:r1", round: "s:r1", turn: 1, step: 1, index: 0, index_from: 0 },
+    }));
+    const chunk = eventFromNotice(parseLiveNotice({
+      seq: 2,
+      session_id: "s",
+      type: "assistant_stream",
+      frame: {
+        kind: "chunk",
+        attempt_id: "a1",
+        id: "s:r1",
+        round: "s:r1",
+        index: 0,
+        index_from: 0,
+        chunk: { type: "text-delta", index: 0, text: "hi" },
+      },
+    }));
+    assert.equal(noticeCarriesInline(parseLiveNotice({ seq: 8, session_id: "s", type: "assistant" })), false);
+    let list = mergeItem([], itemFromEvent(start));
+    list = mergeItem(list, itemFromEvent(chunk));
+    assert.equal(list.find((x) => x.type === "assistant")?.text, "hi");
+  });
+
+  /** 旧的助手增量帧只带一块正文，仍按回合接上。 */
+  it("applies a frame-only assistant delta", () => {
+    const ev = eventFromNotice(parseLiveNotice({
+      seq: 4,
+      session_id: "s",
+      type: "assistant",
+      frame: {
+        kind: "delta",
+        id: "r1",
+        round: "r1",
+        index: 1,
+        index_from: 1,
+        block: "text",
+        chunk: { type: "text-delta", index: 1, text: "hi" },
+      },
+    }));
+    const it = itemFromEvent(ev);
+    assert.equal(it.delta, true);
+    assert.equal(it.text, "hi");
+    assert.equal(it.payload.id, "r1");
+    const list = mergeItem([], it);
+    assert.equal(list[0]?.text, "hi");
   });
 });
 
