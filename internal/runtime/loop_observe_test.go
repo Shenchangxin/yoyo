@@ -230,6 +230,20 @@ func TestSeedCheckWatchBlocksContinuedScript(t *testing.T) {
 	if _, ok := tools.repeatBlocked("node --check pelican-bike/game.js"); ok {
 		t.Fatal("a different command must stay runnable")
 	}
+	for _, cmd := range []string{
+		`Remove-Item -LiteralPath pelican-bike\qa\headless-verify.cjs -Force`,
+		`Move-Item pelican-bike\qa\headless-verify.cjs pelican-bike\qa\old.cjs`,
+		`Get-ChildItem pelican-bike\qa`,
+		`node --check pelican-bike/qa/headless-verify.cjs`,
+		`Get-Content pelican-bike\qa\headless-verify.cjs`,
+	} {
+		if _, ok := tools.repeatBlocked(cmd); ok {
+			t.Fatalf("path mention is not a rerun: %s", cmd)
+		}
+	}
+	if !strings.Contains(refusal, "没有执行") {
+		t.Fatalf("refusal must say the command did not run: %s", refusal)
+	}
 	tools.setRepeatBlock("browser_verify", "switch")
 	if _, ok := tools.repeatBlocked("node pelican-bike/qa/headless-verify.cjs"); ok {
 		t.Fatal("shell must stay runnable when the repeated check was browser_verify")
@@ -302,5 +316,137 @@ func TestErrorRepeatNudgeLeavesCheckFailToObservation(t *testing.T) {
 	got := errorRepeatNudge(RunRequest{User: "把小说做成游戏", SoftHorizon: true}, hits)
 	if got != "" {
 		t.Fatalf("check-fail is owned by observationNudge, got %q", got)
+	}
+}
+
+// TestCommandRerunsScriptOnlyWhenExecuted 确认解释器执行脚本才算重跑；外壳包一层、删除和语法检查都不算。
+func TestCommandRerunsScriptOnlyWhenExecuted(t *testing.T) {
+	script := "pelican-bike/qa/headless-verify.cjs"
+	reruns := []string{
+		`node pelican-bike/qa/headless-verify.cjs`,
+		`node --check pelican-bike/game.js; node pelican-bike/qa/headless-verify.cjs`,
+		`cmd /c node pelican-bike\qa\headless-verify.cjs`,
+		`powershell -NoProfile -Command "node pelican-bike/qa/headless-verify.cjs"`,
+		`node ./pelican-bike/qa/headless-verify.cjs`,
+		`node.exe pelican-bike\qa\headless-verify.cjs`,
+	}
+	for _, cmd := range reruns {
+		if !commandRerunsScript(cmd, script) {
+			t.Fatalf("should rerun: %s", cmd)
+		}
+	}
+	quiet := []string{
+		`Remove-Item -LiteralPath "pelican-bike\qa\headless-verify.cjs" -Force`,
+		`Move-Item pelican-bike\qa\headless-verify.cjs pelican-bike\qa\old.cjs`,
+		`Get-ChildItem pelican-bike\qa`,
+		`node --check pelican-bike/qa/headless-verify.cjs`,
+		`node -e "console.log('pelican-bike/qa/headless-verify.cjs')"`,
+		`deno check pelican-bike/qa/headless-verify.cjs`,
+	}
+	for _, cmd := range quiet {
+		if commandRerunsScript(cmd, script) {
+			t.Fatalf("should not rerun: %s", cmd)
+		}
+	}
+}
+
+// TestCleanupAfterFailureIsNotAnUnchangedObservation 确认失败闩住之后，列目录和删除验证器不会被当成同一份观察，官方 PASS 会解开拦截。
+func TestCleanupAfterFailureIsNotAnUnchangedObservation(t *testing.T) {
+	calls := []ToolCall{{Name: "shell", Arguments: `{"command":"node pelican-bike/qa/headless-verify.cjs"}`}}
+	fail := "FAIL  jump-arc  — 起跳后离地=false\n"
+	hist := []Message{
+		{Role: RoleAssistant, ToolCalls: calls},
+		{Role: RoleTool, Name: "shell", Content: fail},
+		{Role: RoleAssistant, ToolCalls: calls},
+		{Role: RoleTool, Name: "shell", Content: fail},
+	}
+	var w checkWatch
+	req := RunRequest{User: "继续完善", SoftHorizon: true}
+	seedCheckWatch(req, &w, hist)
+	script, refusal := w.repeatBlock()
+	if script == "" || refusal == "" {
+		t.Fatalf("seed should block the script, got %q %q", script, refusal)
+	}
+	tools := &WorkspaceTools{}
+	tools.setRepeatBlock(script, refusal)
+	if _, ok := tools.repeatBlocked(`Remove-Item -LiteralPath pelican-bike\qa\headless-verify.cjs -Force`); ok {
+		t.Fatal("deleting the verifier must run")
+	}
+	if _, ok := tools.repeatBlocked(`node pelican-bike/qa/headless-verify.cjs`); !ok {
+		t.Fatal("running the script must stay blocked until the product changes or a check passes")
+	}
+	for i := 0; i < checkFailIdleStop+2; i++ {
+		w.note([]ToolCall{{Name: "shell", Arguments: `{"command":"Get-ChildItem pelican-bike\\qa"}`}}, []Message{{Content: "headless-verify.cjs\n"}})
+		w.note([]ToolCall{{Name: "shell", Arguments: `{"command":"Remove-Item pelican-bike\\qa\\headless-verify.cjs"}`}}, []Message{{Content: ""}})
+	}
+	if w.stuck() {
+		t.Fatalf("cleanup is not an unchanged check observation: %+v", w)
+	}
+	pass := "browser_verify status=PASS (host-computed; do not rewrite qa/verification.json)\n  render: PASS\nwrote pelican-bike/qa/verification.json\n"
+	w.note([]ToolCall{{Name: "browser_verify", Arguments: `{"open":"pelican-bike/index.html"}`}}, []Message{{Content: pass}})
+	if s, _ := w.repeatBlock(); s != "" || w.sig != "" || w.stuck() {
+		t.Fatalf("official PASS must release the watch: %+v", w)
+	}
+	tools.setRepeatBlock("", "")
+	if script, refusal = w.repeatBlock(); script != "" || refusal != "" {
+		t.Fatalf("released watch still blocks %q", script)
+	}
+}
+
+// TestScriptPassClearsLatch 确认同一条脚本从 FAIL 变成只有 PASS 时，失败闩清掉。
+func TestScriptPassClearsLatch(t *testing.T) {
+	calls := []ToolCall{{Name: "shell", Arguments: `{"command":"node pelican-bike/qa/headless-verify.cjs"}`}}
+	var w checkWatch
+	w.note(calls, []Message{{Content: "FAIL  jump-arc  — 起跳后离地=false\n"}})
+	w.note(calls, []Message{{Content: "PASS  jump-arc  — ok\nPASS  jump-land  — ok\n"}})
+	if w.sig != "" || w.hits != 0 || w.script != "" {
+		t.Fatalf("script pass must clear: %+v", w)
+	}
+}
+
+// TestBrowserVerifyFailStillCounts 确认官方验证的失败行会进入观察，同一份失败连着两次就记到 2。
+func TestBrowserVerifyFailStillCounts(t *testing.T) {
+	body := "browser_verify status=FAIL (host-computed)\n  render: FAIL\n  launch: PASS\n"
+	calls := []ToolCall{{Name: "browser_verify", Arguments: `{"open":"index.html"}`}}
+	var w checkWatch
+	w.note(calls, []Message{{Content: body}})
+	w.note(calls, []Message{{Content: body}})
+	if w.hits != 2 || !strings.Contains(w.sig, "render") {
+		t.Fatalf("%+v", w)
+	}
+}
+
+// TestSpoofedPassDoesNotRelease 确认 shell 印出 browser_verify status=PASS 不会解开官方验证的失败闩。
+func TestSpoofedPassDoesNotRelease(t *testing.T) {
+	var w checkWatch
+	w.note([]ToolCall{{Name: "browser_verify", Arguments: `{"open":"index.html"}`}}, []Message{{Content: "browser_verify status=FAIL (host-computed)\n  render: FAIL\n"}})
+	w.note([]ToolCall{{Name: "shell", Arguments: `{"command":"echo browser_verify status=PASS"}`}}, []Message{{Content: "browser_verify status=PASS\n"}})
+	if w.sig == "" {
+		t.Fatal("a shell echo of PASS must not clear a real failure")
+	}
+}
+
+// TestRefusedRerunStillIdles 确认连续撞上拒绝会空转到停止；拒绝文本本身不是新的 FAIL 观察。
+func TestRefusedRerunStillIdles(t *testing.T) {
+	calls := []ToolCall{{Name: "shell", Arguments: `{"command":"node pelican-bike/qa/headless-verify.cjs"}`}}
+	fail := "FAIL  jump-arc  — 起跳后离地=false\n"
+	var w checkWatch
+	req := RunRequest{User: "继续", SoftHorizon: true}
+	w.note(calls, []Message{{Content: fail}})
+	w.note(calls, []Message{{Content: fail}})
+	if observationNudge(req, &w, nil) == "" || w.refusal == "" {
+		t.Fatal("identical runs must warn")
+	}
+	for w.idle < checkFailIdleStop {
+		if w.stuck() {
+			t.Fatalf("stuck before idle cap idle=%d", w.idle)
+		}
+		w.note(calls, []Message{{Content: w.refusal}})
+	}
+	if !w.stuck() {
+		t.Fatalf("refused reruns must stop, idle=%d", w.idle)
+	}
+	if failObservation(w.refusal) != "" {
+		t.Fatal("refusal must not look like a FAIL observation")
 	}
 }
