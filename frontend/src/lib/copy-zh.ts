@@ -261,6 +261,9 @@ export const zhCN = {
     showSteps: "展开步骤",
     hideSteps: "收起步骤",
     earlierSteps: "更早的 {n} 步",
+    earlierStream: "更早的 {n} 段",
+    earlierStreamChars: "更早的 {n} 字",
+    hideEarlierStream: "收起更早的内容",
     live: {
       read: "正在读取",
       edit: "正在编辑",

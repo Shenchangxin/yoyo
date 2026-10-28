@@ -260,6 +260,9 @@ export const en = {
     showSteps: "Show steps",
     hideSteps: "Hide steps",
     earlierSteps: "Earlier {n} steps",
+    earlierStream: "Earlier {n} sections",
+    earlierStreamChars: "Earlier {n} characters",
+    hideEarlierStream: "Hide earlier",
     live: {
       read: "Reading",
       edit: "Editing",

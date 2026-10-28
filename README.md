@@ -75,7 +75,7 @@ Open [http://127.0.0.1:3080](http://127.0.0.1:3080).
 **Desktop** — menus, tray, notifications.
 
 ```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 npm run dev
 ```
 

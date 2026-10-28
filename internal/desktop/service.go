@@ -549,7 +549,7 @@ func (s *Service) StopTurn(sessionID string) app.InterruptResult {
 	return s.App.StopTurn(sessionID)
 }
 
-// SetRendererMemory 把档位交给 setRendererMemory。当前实现不改 WebView，直接返回 nil。
+// SetRendererMemory 把档位交给 setRendererMemory。v3.0.0 没有公开的内存档位接口，所以直接返回 nil。
 // level 和窗口一起传给 setRendererMemory。
 func (s *Service) SetRendererMemory(level string) error {
 	return setRendererMemory(s.win, level)

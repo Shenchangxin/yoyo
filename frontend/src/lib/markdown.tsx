@@ -1,9 +1,10 @@
 /**
  * 拥有：把助手正文画成 markdown。流式时冻住已定稿的块，定稿后再交给 Streamdown 和高亮。
+ * 流式中默认只把最近几段留在界面树上，更早的段落折起来，展开后再挂上。
  * 不拥有：增量解析和 mdast 节点的绘制。
  */
 
-import { Component, memo, useEffect, useRef, useState, type ErrorInfo, type HTMLAttributes, type ReactNode } from "react";
+import { Component, Fragment, memo, useEffect, useRef, useState, type ErrorInfo, type HTMLAttributes, type ReactNode } from "react";
 import { Streamdown, TableCopyDropdown, type Components, type ExtraProps } from "streamdown";
 import { useCopy } from "./i18n";
 import { cn } from "./utils";
@@ -258,6 +259,11 @@ export const Markdown = memo(function Markdown({
   );
 });
 
+/** 流式时界面上留着的已定稿块数。更早的块仍在解析结果里，展开才挂上。 */
+const streamLiveBlocks = 2;
+/** 还没定稿的尾部，超过这个长度就只渲染末尾。更早的字符放进折叠。 */
+const streamLiveTail = 1600;
+
 const streamControls = {
   code: { copy: false, download: false },
   table: { copy: false, download: false, fullscreen: false },
@@ -327,15 +333,42 @@ class StreamingRenderer {
   }
 }
 
-/** 流式正文：冻结块按代挂上，尾部交给 TailMarkdown，末尾一个光标。text 传给 renderer.current.render。quiet 为真时才继续。 */
+/** 流式正文：冻结块按代挂上，尾部交给 TailMarkdown，末尾一个光标。更早的块和超长尾部默认折起。text 传给 renderer.current.render。quiet 为真时才继续。 */
 function StreamingMarkdown({ text, quiet }: { text: string; quiet?: boolean }) {
+  const copy = useCopy();
+  const [open, setOpen] = useState(false);
   const renderer = useRef<StreamingRenderer | null>(null);
   if (!renderer.current) renderer.current = new StreamingRenderer();
   const { frozen, tail, generation } = renderer.current.render(text);
+  const hiddenBlocks = Math.max(0, frozen.length - streamLiveBlocks);
+  const tailCut = tail.length > streamLiveTail ? tail.length - streamLiveTail : 0;
+  const folded = hiddenBlocks > 0 || tailCut > 0;
+  const shownFrozen = open ? frozen : frozen.slice(hiddenBlocks);
+  const shownTail = open || tailCut === 0 ? tail : tail.slice(tailCut);
+  const earlierLabel = hiddenBlocks > 0
+    ? copy.transcript.earlierStream.replace("{n}", String(hiddenBlocks))
+    : copy.transcript.earlierStreamChars.replace("{n}", String(tailCut));
   return (
     <div className={cn("md-body md-stream", quiet && "md-body-quiet")} data-testid="markdown-stream">
-      {frozen.length ? <div key={generation}>{frozen}</div> : null}
-      {tail ? <TailMarkdown key={`tail-${generation}`} text={tail} /> : null}
+      {folded ? (
+        <button
+          type="button"
+          className="mb-1 h-7 w-full rounded-md px-2 text-left text-[12px] text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
+          data-testid="stream-history"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? copy.transcript.hideEarlierStream : earlierLabel}
+        </button>
+      ) : null}
+      {shownFrozen.length ? (
+        <div key={generation}>
+          {shownFrozen.map((node, i) => (
+            <Fragment key={(open ? 0 : hiddenBlocks) + i}>{node}</Fragment>
+          ))}
+        </div>
+      ) : null}
+      {shownTail ? <TailMarkdown key={`tail-${generation}`} text={shownTail} /> : null}
       <span className="md-stream-caret ml-px inline-block h-[1.05em] w-[0.45em] translate-y-px bg-foreground/55" aria-hidden />
     </div>
   );

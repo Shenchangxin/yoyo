@@ -50,7 +50,8 @@ type RPCResponse struct {
 }
 
 // ServeRPC 从 r 读 JSON-RPC 请求，把 Dispatch 的应答写到 w。工作者进程里这对读写就是 stdin 和 stdout，stdout 是协议。
-// Hub 订阅 * 后，每条轨迹写成无 id 通知 item.event，参数含 seq、type、item_kind、session、session_id、source、payload，Notice 带了 event 或 frame 时一并写入。
+// Hub 订阅 * 后，每条轨迹写成无 id 通知 item.event。参数含 seq、type、item_kind、session、session_id、source。
+// 流式增量只带 frame，正文不另放进 payload。其余仍带 payload，Notice 内联了 event 时一并写入。
 // 类型为 approval 且 source 为 gate 时再写 approval.request。类型为 turn_end 时再写 turn.completed。状态订阅写成 state.changed，参数是 epoch、topic、object。
 // 上下文取消时返回该错误。读到 EOF 返回 nil。
 // ctx 在订阅循环里看 Done，在读循环里看 Err，非 nil 时返回该错误，并把 ctx 传给 Dispatch。
@@ -95,13 +96,17 @@ func ServeRPC(ctx context.Context, a *app.App, r io.Reader, w io.Writer) error {
 					"session":    ev.SessionID,
 					"session_id": ev.SessionID,
 					"source":     ev.Source,
-					"payload":    ev.Payload,
 				}
-				if n.Event != nil {
-					params["event"] = n.Event
-				}
-				if n.Frame != nil {
+				if n.Frame != nil && n.Event == nil {
 					params["frame"] = n.Frame
+				} else {
+					params["payload"] = ev.Payload
+					if n.Event != nil {
+						params["event"] = n.Event
+					}
+					if n.Frame != nil {
+						params["frame"] = n.Frame
+					}
 				}
 				_ = enc.Encode(map[string]any{
 					"jsonrpc": "2.0",

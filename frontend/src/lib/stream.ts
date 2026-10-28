@@ -8,7 +8,9 @@ import type { Item } from "./protocol";
 import {
   attachStreamFrame,
   eventFingerprint,
+  eventFromNotice,
   itemFromEvent,
+  noticeCarriesInline,
   parseLiveNotice,
   replayEvents,
 } from "./stream-fold";
@@ -225,7 +227,7 @@ export function subscribeSession(
     if (!seeded) return;
     const notice = parseLiveNotice(raw);
     const own = !notice.sessionId || notice.sessionId === sessionId;
-    switch (classifyLive(cursor, notice.seq, own, !!notice.event)) {
+    switch (classifyLive(cursor, notice.seq, own, noticeCarriesInline(notice))) {
       case "stale":
         return;
       case "pull":
@@ -235,7 +237,12 @@ export function subscribeSession(
         cursor = Math.max(cursor, notice.seq);
         return;
       case "apply": {
-        const event = notice.event.seq || notice.event.Seq ? notice.event : { ...notice.event, seq: notice.seq };
+        const rawEvent = eventFromNotice(notice);
+        if (!rawEvent) {
+          void pullSince();
+          return;
+        }
+        const event = rawEvent.seq || rawEvent.Seq ? rawEvent : { ...rawEvent, seq: notice.seq };
         const item = toItem(event, notice.frame);
         cursor = Math.max(cursor, notice.seq);
         if (item.sessionId && item.sessionId !== sessionId) return;
@@ -336,7 +343,7 @@ export function subscribeStopped(onStop: (sessionId: string) => void): () => voi
   };
 }
 
-/** subscribeItems 订阅全部会话的条目通知，不按游标过滤。onItem 被调用，并传入 attachStreamFrame(itemFromEvent(notice.e。 */
+/** subscribeItems 订阅全部会话的条目通知，不按游标过滤。只有帧、没有事件的 token 留给转录游标，这里不消费。onItem 被调用，并传入 attachStreamFrame(itemFromEvent(notice.e。 */
 export function subscribeItems(onItem: (item: Item) => void): () => void {
   let off: (() => void) | undefined;
   let alive = true;
