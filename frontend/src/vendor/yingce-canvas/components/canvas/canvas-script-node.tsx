@@ -6,7 +6,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { CheckboxGroup } from "@yingce/components/ui/base/checkbox";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ChevronDown, ChevronUp, Clapperboard, Copy, Expand, Film, Grid3X3, Image as ImageIcon, ListTree, Merge, MoreHorizontal, Plus, RefreshCw, Send, Square, Trash2, Video } from "lucide-react";
+import { ChevronDown, ChevronUp, Clapperboard, Copy, Expand, Film, Grid3X3, Image as ImageIcon, ListTree, LoaderCircle, Merge, MoreHorizontal, Plus, RefreshCw, Square, Trash2, Video } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 
 import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { CanvasResourceMentionTextarea } from "@yingce/components/canvas/canvas-resource-mention-textarea";
@@ -459,15 +460,20 @@ export function CanvasScriptNodeContent({
                             onChange={onShotDurationChange}
                         />
                     )}
-                    <Button
-                        shape="circle"
-                        icon={<Send className="size-4" />}
+                    <SendSling
                         disabled={!prompt.trim() || node.metadata?.status === "loading"}
-                        loading={node.metadata?.status === "loading"}
-                        style={{ background: theme.toolbar.itemHover, borderColor: theme.node.stroke, color: theme.node.text }}
+                        ariaLabel="发送剧本"
+                        onSend={submitPrompt}
+                        padColor={theme.toolbar.itemHover}
+                        iconColor={theme.node.text}
+                        accentColor={theme.node.text}
+                        wellColor={theme.node.panel}
+                        bandColor={theme.node.stroke}
+                        onPointerDown={(event) => event.stopPropagation()}
                         onMouseDown={(event) => event.stopPropagation()}
-                        onClick={submitPrompt}
-                    />
+                    >
+                        {node.metadata?.status === "loading" ? <LoaderCircle className="size-3.5 animate-spin" /> : undefined}
+                    </SendSling>
                 </div>
                 <RowHandle side="left" top={composerHeight / 2} scale={scale} tone="idle" theme={theme} title="连接文本节点作为项目设定" onPointerDown={(event) => onConnectStart(event, "context", "target")} />
             </div>

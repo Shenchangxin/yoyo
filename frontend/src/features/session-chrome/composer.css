@@ -407,8 +407,8 @@
     max-width: 7.5rem;
   }
   .sc-primary {
-    width: 40px;
-    height: 40px;
+    width: 28px;
+    height: 28px;
     transform: none;
   }
   .sc-hero-ws {
@@ -504,14 +504,13 @@
   display: grid;
   place-items: center;
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border: none;
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
   cursor: pointer;
-  transform: translateY(-2px);
 }
 
 .sc-primary:hover:not(:disabled) {
@@ -519,7 +518,7 @@
 }
 
 .sc-primary:active:not(:disabled) {
-  transform: translateY(-2px) scale(0.96);
+  transform: scale(0.96);
 }
 
 .sc-primary:disabled {
@@ -1345,8 +1344,8 @@
     height: 36px;
   }
   .sc-primary {
-    width: 40px;
-    height: 40px;
+    width: 28px;
+    height: 28px;
     transform: none;
   }
 }

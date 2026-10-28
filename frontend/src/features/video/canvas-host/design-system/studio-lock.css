@@ -568,11 +568,10 @@ html.dark .yingce-popup-root[data-canvas-color="light"] .model-picker-price {
   box-shadow: 0 0 0 1.5px var(--accent) !important;
 }
 
-.yingce-island .agent-composer-send:not(:disabled) {
-  border-radius: 7px !important;
-  background: var(--foreground) !important;
-  color: var(--background) !important;
-  box-shadow: none !important;
+.yingce-island .agent-composer-submit .group\/root {
+  --sl-pad: var(--foreground) !important;
+  --sl-icon: var(--background) !important;
+  --sl-accent: var(--foreground) !important;
 }
 
 .yingce-island .agent-message-assistant {

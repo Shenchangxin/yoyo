@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { Slider } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
-import { motion, useReducedMotion } from "motion/react";
-import { Camera, RotateCcw, Send, X } from "lucide-react";
+import { Camera, RotateCcw, X } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 
 import { CanvasAngleScene } from "@yingce/components/canvas/canvas-angle-scene";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
@@ -36,7 +36,6 @@ function distanceLabel(value: number) {
 
 export function CanvasNodeAnglePanel({ dataUrl, onClose, onConfirm }: { dataUrl: string; onClose: () => void; onConfirm: (params: CanvasImageAngleParams) => void }) {
     const theme = canvasThemes[useActiveTheme()];
-    const reducedMotion = useReducedMotion();
     const [params, setParams] = useState(defaultParams);
     const [mode, setMode] = useState<"camera" | "skybox">("camera");
     const update = <Key extends keyof CanvasImageAngleParams>(key: Key, value: CanvasImageAngleParams[Key]) => setParams((current) => ({ ...current, [key]: value }));
@@ -124,7 +123,10 @@ export function CanvasNodeAnglePanel({ dataUrl, onClose, onConfirm }: { dataUrl:
                 <span className="text-[var(--fs-tiny)] opacity-60">{params.horizontalAngle}° / {params.pitchAngle}° · {params.cameraDistance.toFixed(1)} {distanceLabel(params.cameraDistance)}</span>
                 <span className="flex-1" />
                 <button type="button" className="flex h-8 items-center gap-1.5 rounded-[var(--dock-item-radius)] px-2 text-[var(--fs-label)] font-medium transition hover:bg-black/5 dark:hover:bg-white/10" onClick={() => setParams(defaultParams)}><RotateCcw className="size-3.5" />重置</button>
-                <motion.button type="button" whileHover={reducedMotion ? undefined : { y: -1 }} whileTap={reducedMotion ? undefined : { scale: 0.97 }} className="canvas-angle-generate flex h-8 items-center gap-1.5 rounded-[var(--dock-item-radius)] px-3 text-[var(--fs-label)] font-semibold" style={{ background: theme.node.activeStroke, color: theme.node.panel }} onClick={() => onConfirm(params)}><Send className="size-3.5" />生成新角度</motion.button>
+                <span className="inline-flex items-center gap-2">
+                    <span className="text-[var(--fs-label)] font-semibold" style={{ color: theme.node.text }}>生成新角度</span>
+                    <SendSling ariaLabel="生成新角度" onSend={() => onConfirm(params)} padColor={theme.node.activeStroke} iconColor={theme.node.panel} accentColor={theme.node.activeStroke} />
+                </span>
             </div>
         </div>
     );

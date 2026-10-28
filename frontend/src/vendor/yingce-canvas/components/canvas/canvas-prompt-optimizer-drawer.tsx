@@ -3,7 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { App, Button, Input, Tag, Typography } from "antd";
 import { Callout } from "@yingce/components/ui/product/callout";
 import { Bubble, Sender, type BubbleItemType } from "@ant-design/x";
-import { ArrowUp, Check, ChevronDown, FileText, Image as ImageIcon, LoaderCircle, Music2, Clapperboard, UserRound, Video, X } from "lucide-react";
+import { Check, ChevronDown, FileText, Image as ImageIcon, LoaderCircle, Music2, Clapperboard, UserRound, Video, X } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 
 import { CanvasDropdown, CanvasPopover } from "@yingce/components/ui/canvas-overlay";
 import { ModelPicker } from "@yingce/components/model-picker";
@@ -722,15 +723,16 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
                                     className="canvas-prompt-optimizer-model-picker"
                                     popoverClassName="canvas-prompt-optimizer-model-popover"
                                 />
-                                <button
-                                    type="button"
-                                    className="canvas-prompt-optimizer-send"
-                                    onClick={() => void runOptimization()}
+                                <SendSling
                                     disabled={!provider || working || !draftPrompt.trim() || (mode === "reference" && !selectedReferences.length)}
-                                    aria-label={working ? "正在优化" : "发送优化请求"}
+                                    ariaLabel={working ? "正在优化" : "发送优化请求"}
+                                    onSend={() => void runOptimization()}
+                                    padColor="var(--foreground)"
+                                    iconColor="var(--background)"
+                                    accentColor="var(--foreground)"
                                 >
-                                    {working ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ArrowUp className="size-4" strokeWidth={2.35} aria-hidden="true" />}
-                                </button>
+                                    {working ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : undefined}
+                                </SendSling>
                             </div>
                         </div>
                     }

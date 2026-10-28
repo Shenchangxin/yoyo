@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Slider } from "antd";
 
-import { motion, useReducedMotion } from "motion/react";
-import { RotateCcw, Send, Sun, X } from "lucide-react";
+import { RotateCcw, Sun, X } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
@@ -141,7 +141,6 @@ function buildLightingPrompt(input: {
 
 export function CanvasNodeLightingPanel({ dataUrl, onClose, onConfirm }: { dataUrl: string; onClose: () => void; onConfirm: (options: CanvasImageLightingOptions, prompt: string) => void }) {
     const theme = canvasThemes[useActiveTheme()];
-    const reducedMotion = useReducedMotion();
     const copyText = useCopyText();
     const [options, setOptions] = useState(defaultLightingOptions);
     const [smartDesc, setSmartDesc] = useState("");
@@ -325,16 +324,10 @@ export function CanvasNodeLightingPanel({ dataUrl, onClose, onConfirm }: { dataU
                     <button type="button" className={secondaryButtonClass} onClick={() => copyText(buildPrompt(), "打光提示词已复制")}>复制提示词</button>
                 </Tooltip>
                 <button type="button" className={secondaryButtonClass} onClick={() => setIsTemplateDialogOpen(true)}>设置提示词</button>
-                <motion.button
-                    type="button"
-                    whileHover={reducedMotion ? undefined : { y: -1 }}
-                    whileTap={reducedMotion ? undefined : { scale: 0.97 }}
-                    className="flex h-8 items-center gap-1.5 rounded-[var(--dock-item-radius)] border px-3 text-[var(--fs-label)] font-semibold transition-colors"
-                    style={{ borderColor: theme.node.activeStroke, color: theme.node.activeStroke, background: "transparent" }}
-                    onClick={handleApply}
-                >
-                    <Send className="size-3.5" />生成打光效果
-                </motion.button>
+                <span className="inline-flex items-center gap-2">
+                    <span className="text-[var(--fs-label)] font-semibold" style={{ color: theme.node.activeStroke }}>生成打光效果</span>
+                    <SendSling ariaLabel="生成打光效果" onSend={handleApply} padColor={theme.node.activeStroke} iconColor={theme.node.panel} accentColor={theme.node.activeStroke} />
+                </span>
             </div>
 
             <PromptTemplateDialog

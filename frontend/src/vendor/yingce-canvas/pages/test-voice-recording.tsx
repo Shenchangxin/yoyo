@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useState } from "react";
-import { Button, Card, message } from "antd";
-import { Mic, Send } from "lucide-react";
+import { Card, message } from "antd";
+import { LoaderCircle, Mic } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 
 import { VoiceRecordingButton } from "@yingce/components/conversation/voice-recording-button";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
@@ -75,16 +76,21 @@ export default function TestVoiceRecording() {
                             <div className="flex flex-1 items-center gap-2">
                                 <VoiceRecordingButton onTranscribed={handleTranscribed} />
                             </div>
-                            <Button
-                                type="primary"
-                                icon={<Send className="size-4" />}
-                                disabled={!prompt.trim()}
-                                loading={sending}
-                                onClick={handleSubmit}
-                                style={{ background: theme.accent.primary, borderColor: theme.accent.primary, color: theme.accent.onPrimary }}
-                            >
-                                发送
-                            </Button>
+                            <span className="inline-flex items-center gap-2">
+                                <span className="text-sm font-medium" style={{ color: theme.node.text }}>发送</span>
+                                <SendSling
+                                    disabled={!prompt.trim() || sending}
+                                    ariaLabel="发送"
+                                    onSend={handleSubmit}
+                                    padColor={theme.accent.primary}
+                                    iconColor={theme.accent.onPrimary}
+                                    accentColor={theme.accent.primary}
+                                    wellColor={theme.spatial.surface}
+                                    bandColor={theme.node.muted}
+                                >
+                                    {sending ? <LoaderCircle className="size-3.5 animate-spin" /> : undefined}
+                                </SendSling>
+                            </span>
                         </div>
 
                         {/* 说明 */}

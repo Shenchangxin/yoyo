@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { App, Button } from "antd";
-import { Clapperboard, Eye, FileText, Image as ImageIcon, LockKeyhole, LogIn, Send, Share2, Video } from "lucide-react";
+import { Clapperboard, Eye, FileText, Image as ImageIcon, LockKeyhole, LogIn, Share2, Video } from "lucide-react";
+import { SendSling } from "@/components/SendSling";
 import { Link, useParams } from "react-router";
 import { nanoid } from "nanoid";
 
@@ -316,7 +317,7 @@ function SharedConfigNode({ node, onUnauthorized }: { node: CanvasNodeData; onUn
     return <div className="flex h-full w-full flex-col overflow-hidden rounded-[var(--panel-radius)]">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b px-4" style={{ background: theme.node.panel, borderColor: theme.node.stroke }}><ImageIcon className="size-4" /><span className="min-w-0 flex-1 truncate text-sm font-semibold">{node.title}</span></div>
         <div className="min-h-0 flex-1 whitespace-pre-wrap break-words p-4 text-sm leading-6" style={{ color: theme.node.muted }}>{node.metadata?.composerContent || node.metadata?.prompt || "未填写提示词"}</div>
-        <div className="flex h-12 shrink-0 items-center justify-end border-t px-3" style={{ borderColor: theme.node.stroke }}><Button size="small" icon={<Send className="size-3.5" />} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onUnauthorized(); }}>生成</Button></div>
+        <div className="flex h-12 shrink-0 items-center justify-end gap-2 border-t px-3" style={{ borderColor: theme.node.stroke }} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><span className="text-xs font-medium" style={{ color: theme.node.text }}>生成</span><SendSling ariaLabel="生成" onSend={onUnauthorized} padColor={theme.node.text} iconColor={theme.canvas.background} accentColor={theme.node.text} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} /></div>
     </div>;
 }
 
