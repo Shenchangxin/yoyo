@@ -11,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/learn"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
 // attachLearn 在个人聊天的父会话上挂学习工具。tools 为 nil、没有学习库、不是聊天叠加层或深度不是 0 时什么都不做。
@@ -22,8 +23,8 @@ func (a *App) attachLearn(tools *runtime.WorkspaceTools) {
 		tools.Extra = map[string]runtime.ExtraTool{}
 	}
 	meta, err := a.GetSession(tools.SessionID)
-	if err != nil {
-		meta = SessionMeta{}
+	if err != nil || session.NormalizeChannel(meta.Channel) != session.ChannelLearn {
+		return
 	}
 	sessionID := tools.SessionID
 	tools.Extra["learn_journal"] = a.learnTool(sessionID, "learn_journal", "Read or update the learner mission and last session. Records stay out of the automatic prompt.", false, map[string]any{

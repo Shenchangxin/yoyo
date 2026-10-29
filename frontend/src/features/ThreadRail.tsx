@@ -43,11 +43,15 @@ import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
 import type { Lab, Surface, Thread, VideoProject } from "../lib/protocol";
 import { isSubagentThread, threadChannel } from "../lib/protocol";
+import { railBody } from "../lib/rail-body";
 import { SidebarCard } from "./shell/AppFrame";
 import { RailDock } from "./shell/RailDock";
 import { YoyoMark } from "./shell/YoyoMark";
 import { SettingsRailNav } from "./settings/SettingsSidebar";
 import { VideoShellNav } from "./video/VideoShellNav";
+import { LearnRailNav } from "./learn/LearnRailNav";
+import { SkillsRailNav } from "./skills/SkillsRailNav";
+import { HarnessRailNav } from "./harness/HarnessRailNav";
 import { shownSeriesTitle } from "./video/drama-lib";
 import type { Copy } from "../lib/copy";
 
@@ -188,7 +192,7 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
 }
 
 /**
- * ThreadRail 去掉子代理。已归档的只在有搜索词或打开归档时留下。视频面只留视频通道，其余面只留 agent。超过 24 条改用虚拟列表。收起状态存在 yoyo-rail-collapsed。有搜索词时不再按空间分组。视频面和设置面不画会话列表。macOS 左侧留 76px。窄于 799px 时点视频导航会收起栏。
+ * ThreadRail 去掉子代理。已归档的只在有搜索词或打开归档时留下。会话列表只在会话表面出现，并且只留 agent 通道。超过 24 条改用虚拟列表。收起状态存在 yoyo-rail-collapsed。有搜索词时不再按空间分组。视频、设置、学习、技能、Harness 和偶像各画自己的导航。macOS 左侧留 76px。窄于 799px 时点视频导航会收起栏。
  * props 读取 harness、fallbackActive、query、threads、showArchived、surface 等，调用 onNewIn，调用 onSelectProject，调用 onCollapse，调用 onQuery，调用 onShowArchived，展开到 ThreadRow。
  */
 export function ThreadRail(props: {
@@ -232,6 +236,7 @@ export function ThreadRail(props: {
   onOpenTerminal?: (t: Thread) => void;
   showArchived?: boolean;
   onShowArchived?: (on: boolean) => void;
+  onIdolSlot?: (node: HTMLDivElement | null) => void;
 }) {
   const copy = useCopy();
   const mac = isMac();
@@ -246,8 +251,9 @@ export function ThreadRail(props: {
     if (!q) return true;
     return (t.title + t.id + t.workspace + (t.preview || "")).toLowerCase().includes(q);
   });
-  const videoOn = props.surface === "video";
-  const settingsOn = props.surface === "settings";
+  const body = railBody(props.surface);
+  const videoOn = body === "video";
+  const settingsOn = body === "settings";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readLocalMap("yoyo-rail-collapsed"));
   useEffect(() => {
@@ -312,11 +318,8 @@ export function ThreadRail(props: {
           </button>
         </Tooltip>
       </div>
-      {videoOn ? <VideoShellNav onNavigate={() => { if (window.matchMedia("(max-width: 799px)").matches) props.onCollapse(); }} /> : settingsOn ? (
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <SettingsRailNav />
-        </div>
-      ) : (
+      {videoOn ? <VideoShellNav onNavigate={() => { if (window.matchMedia("(max-width: 799px)").matches) props.onCollapse(); }} /> : null}
+      {body === "sessions" ? (
       <div className="px-2.5 pb-2">
         <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
@@ -345,8 +348,8 @@ export function ThreadRail(props: {
           </button>
         ) : null}
       </div>
-      )}
-      {videoOn || settingsOn ? null : (
+      ) : null}
+      {body === "sessions" ? (
       <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
         {empty ? (
           <EmptyState icon={<YoyoMark compact />} title={copy.rail.noChats} />
@@ -360,7 +363,28 @@ export function ThreadRail(props: {
           </div>
         )}
       </nav>
-      )}
+      ) : null}
+      {settingsOn ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <SettingsRailNav />
+        </div>
+      ) : null}
+      {body === "learn" ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <LearnRailNav />
+        </div>
+      ) : null}
+      {body === "skills" ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <SkillsRailNav />
+        </div>
+      ) : null}
+      {body === "harness" ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <HarnessRailNav />
+        </div>
+      ) : null}
+      {body === "idol" ? <div ref={props.onIdolSlot} className="flex min-h-0 flex-1 flex-col overflow-hidden" /> : null}
       {videoOn ? <div className="min-h-0 flex-1" /> : null}
       <div className="rail-dock">
         <RailDock

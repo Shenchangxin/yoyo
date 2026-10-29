@@ -209,9 +209,9 @@ export function CommandPalette(props: {
                   </Command.Item>
                 ))}
               </Command.Group>
-              {props.threads.some((t) => !isSubagentThread(t)) ? (
+              {props.threads.some((t) => !isSubagentThread(t) && threadChannel(t) !== "learn") ? (
                 <Command.Group heading={copy.palette.chats}>
-                  {props.threads.filter((t) => !isSubagentThread(t)).slice(0, 20).map((t) => (
+                  {props.threads.filter((t) => !isSubagentThread(t) && threadChannel(t) !== "learn").slice(0, 20).map((t) => (
                     <Command.Item
                       key={t.id}
                       value={displayTitle(t.title, copy.rail.untitled) + " " + t.id}
@@ -224,6 +224,23 @@ export function CommandPalette(props: {
                       {threadChannel(t) === "video" ? (
                         <span className="ml-auto text-[11px] text-muted">{copy.rail.video}</span>
                       ) : null}
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              ) : null}
+              {props.threads.some((t) => !isSubagentThread(t) && threadChannel(t) === "learn") ? (
+                <Command.Group heading={copy.rail.pages}>
+                  {props.threads.filter((t) => !isSubagentThread(t) && threadChannel(t) === "learn").slice(0, 12).map((t) => (
+                    <Command.Item
+                      key={t.id}
+                      value={`${copy.rail.pages} ${displayTitle(t.title, copy.rail.untitled)} ${t.id}`}
+                      onSelect={() => {
+                        props.onSelectThread(t);
+                        props.onClose();
+                      }}
+                    >
+                      {displayTitle(t.title, copy.rail.untitled)}
+                      <span className="ml-auto text-[11px] text-muted">{copy.rail.pages}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

@@ -1,5 +1,6 @@
 /** 拥有偶像台：名单、当前会话、通话层和侧栏入口。不拥有立绘绘制和通话循环。保存、置顶、发消息、删档和开新会话会改服务端状态。 */
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MoreHorizontal, Phone, Pin, PinOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -12,6 +13,7 @@ import { useCopy } from "../../lib/i18n";
 import { asArray, str } from "../../lib/normalize";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
+import { useRailSlot } from "../shell/RailSlot";
 import { PresenceStamp } from "../presence/PresenceRuntime";
 import { CallBar, CallSurface } from "./IdolCall";
 import { IdolChat } from "./IdolChat";
@@ -293,10 +295,10 @@ export function IdolStage() {
   const groups = groupIdols(snap?.idols || [], snap?.circles || []);
   const names = Object.fromEntries((snap?.idols || []).map((i) => [i.id, i.name]));
   const tier = (c.tier as Record<string, string>)[aff.tier] || aff.tier;
+  const railSlot = useRailSlot();
 
-  return (
-    <div className="flex h-full min-h-0" data-testid="idol-stage">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-border">
+  const roster = (
+      <aside className={cn("flex min-h-0 shrink-0 flex-col", railSlot ? "h-full w-full" : "w-60 border-r border-border")}>
         <div className="px-3 pb-1 pt-3 text-[13px] font-medium">{c.title}</div>
         <p className="px-3 pb-2 text-[11px] leading-relaxed text-muted">{c.railHint}</p>
         <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
@@ -358,6 +360,11 @@ export function IdolStage() {
           <Button size="sm" variant="ghost" onClick={() => setPanel("circles")}>{c.circle}</Button>
         </div>
       </aside>
+  );
+
+  return (
+    <div className="flex h-full min-h-0" data-testid="idol-stage">
+      {railSlot ? createPortal(roster, railSlot) : roster}
       <section className="relative flex min-w-0 flex-1 flex-col">
         {!booted ? <div className="grid flex-1 place-items-center text-[13px] text-muted">{c.loading}</div> : null}
         {booted && bootError ? (

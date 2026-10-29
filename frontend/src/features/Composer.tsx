@@ -107,6 +107,8 @@ export function Composer(props: {
   onClipboard?: () => Promise<string>;
   onScreenshot?: () => Promise<string>;
   compact?: boolean;
+  /** plain 去掉模式、档案和模型。学习导师只用正文和发送。 */
+  plain?: boolean;
   flush?: boolean;
   hero?: boolean;
   authMode?: AuthMode | string;
@@ -208,7 +210,7 @@ export function Composer(props: {
   const canSend = !disabled && !attaching && (hasPayload || !!props.allowEmptySend) && !(dramaDesk && props.running);
   const orbStops = !!props.running && !hasPayload;
   const canSteerQueue = !disabled && !hasPayload && props.running && (props.queueItems?.length || 0) > 0;
-  const modeMenu = !copilotDesk && !talkDesk && !dramaDesk && (!videoing || !!props.onIsolate);
+  const modeMenu = !props.plain && !copilotDesk && !talkDesk && !dramaDesk && (!videoing || !!props.onIsolate);
   const currentModel = (props.model || "").trim();
   const catalog = useModelCatalog((s) => s.catalog);
   const groups = composerModelGroups(props.chatProviders, currentModel, props.connectionId);
@@ -221,8 +223,8 @@ export function Composer(props: {
   const fallbackWindow = resolveContextWindow(catalog, catalogProvider, currentModel) || UNKNOWN_MODEL_WINDOW;
   const modelLabel = meta?.model.name || currentModel;
   const caretText = before;
-  const slashPrefix = slashQuery(caretText);
-  const mentionHit = mentionTokenAt(caretText, caretText.length);
+  const slashPrefix = props.plain ? null : slashQuery(caretText);
+  const mentionHit = props.plain ? null : mentionTokenAt(caretText, caretText.length);
   const mentionParsed = mentionQueryOf(mentionHit?.token || "");
   const mentionOpen = !!mentionHit && !(mentionParsed.kind === "harness" && isCompleteMention(mentionHit.token));
   const overlayKind: "plus" | "slash" | "mention" | null = slashPrefix
@@ -919,7 +921,7 @@ export function Composer(props: {
                       {videoMode === "creative" ? <StudioDeskChip disabled={disabled} /> : null}
                     </>
                   ) : null}
-                  {!copilotDesk && !talkDesk && !dramaDesk && props.onProfile && profiles.length ? (
+                  {!props.plain && !copilotDesk && !talkDesk && !dramaDesk && props.onProfile && profiles.length ? (
                     <ProfileChip
                       profiles={profiles}
                       profileId={props.profileId}
@@ -1056,7 +1058,7 @@ export function Composer(props: {
                         })}
                       </SelectContent>
                     </Select>
-                  ) : currentModel && !props.leading && !props.toolbarLeading ? (
+                  ) : !props.plain && currentModel && !props.leading && !props.toolbarLeading ? (
                     <span className="hidden max-w-[8.5rem] truncate px-1.5 text-[12px] text-muted sm:inline" title={currentModel}>{modelLabel}</span>
                   ) : null}
                   {props.running && hasPayload ? (

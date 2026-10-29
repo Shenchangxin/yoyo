@@ -131,8 +131,8 @@ export type SettingsTab =
 /** AuthMode 会话权限：默认、自动编辑、完全，或每次询问。 */
 export type AuthMode = "default" | "auto_edit" | "full" | "ask";
 
-/** ThreadChannel 会话属于智能体还是视频。 */
-export type ThreadChannel = "agent" | "video";
+/** ThreadChannel 会话属于哪一条对话线。学习对话不进会话列表。 */
+export type ThreadChannel = "agent" | "video" | "learn";
 
 /** VideoProject 视频侧挂到对话上的一个项目。sessionId 对应会话，episodeId 对应剧集，gate 是工作室流程当前所在的闸门。 */
 export type VideoProject = {
@@ -230,9 +230,11 @@ export type ContextInventory = {
   planPath?: string;
 };
 
-/** threadChannel 缺省或非 video 时视为智能体通道。t 的 channel 为 video 时返回 video，否则返回 agent。 */
+/** threadChannel 认出 video 和 learn，其余视为智能体通道。t 的 channel 为 video 时返回 video，为 learn 时返回 learn，否则返回 agent。 */
 export function threadChannel(t: { channel?: string } | null | undefined): ThreadChannel {
-  return t?.channel === "video" ? "video" : "agent";
+  if (t?.channel === "video") return "video";
+  if (t?.channel === "learn") return "learn";
+  return "agent";
 }
 
 /** isSubagentThread 子代理不是独立对话，嵌在父转录里。有 parentId，或 id 里嵌着任务分隔，即为子代理。t 为假时返回假，有 parentId 时返回真，否则把 id 交给 parentSessionId。 */
@@ -251,9 +253,11 @@ export function parentSessionId(id: string): string {
   return "";
 }
 
-/** channelForSurface 视频表面用视频通道，其余表面用智能体通道。surface 为 video 时返回 video，否则返回 agent。 */
+/** channelForSurface 视频表面用视频通道，学习表面用学习通道，其余表面用智能体通道。surface 为 video 时返回 video，为 pages 时返回 learn，否则返回 agent。 */
 export function channelForSurface(surface: Surface): ThreadChannel {
-  return surface === "video" ? "video" : "agent";
+  if (surface === "video") return "video";
+  if (surface === "pages") return "learn";
+  return "agent";
 }
 
 /** ItemType 转录里一条记录的种类。 */

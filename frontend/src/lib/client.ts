@@ -176,6 +176,13 @@ export function parseAuthMode(v: any): AuthMode {
   return "default";
 }
 
+/** channelOf 保留 video 和 learn，其余收成 agent。raw 与 video、learn 比较是否相等。 */
+function channelOf(raw: string): ThreadChannel {
+  if (raw === "video") return "video";
+  if (raw === "learn") return "learn";
+  return "agent";
+}
+
 /** threadOf 把宿主的会话收成线程。隔离时工具根用 worktree。v 用 pick 读取 origin_workspace、worktree、isolate、workspace、id、title 等字段。 */
 export function threadOf(v: any): Thread {
   const workspace = str(pick(v, "origin_workspace", "OriginWorkspace", "workspace", "Workspace"));
@@ -201,7 +208,7 @@ export function threadOf(v: any): Thread {
     authMode: parseAuthMode(pick(v, "auth_mode", "AuthMode", "authMode")),
     pinnedSkills: asArray(pick(v, "pinned_skills", "PinnedSkills")).map(String).filter(Boolean),
     loadedSkills: asArray(pick(v, "loaded_skills", "LoadedSkills")).map(String).filter(Boolean),
-    channel: str(pick(v, "channel", "Channel")) === "video" ? "video" : "agent",
+    channel: channelOf(str(pick(v, "channel", "Channel"))),
     interrupted: bool(pick(v, "interrupted", "Interrupted")),
     queued: num(pick(v, "queued", "Queued")),
     parentId: str(pick(v, "parent_id", "ParentID", "parentId")),
@@ -681,8 +688,8 @@ export async function createSession(workspace: string, channel: ThreadChannel = 
   }
   if (s?.CreateSession) {
     const t = threadOf(await s.CreateSession(workspace));
-    if (channel === "video" && s.SetSessionChannel) {
-      return threadOf(await s.SetSessionChannel(t.id, "video"));
+    if (channel !== "agent" && s.SetSessionChannel) {
+      return threadOf(await s.SetSessionChannel(t.id, channel));
     }
     if (channel === "agent") return t;
   }
