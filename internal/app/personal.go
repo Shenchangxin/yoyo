@@ -18,9 +18,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/isolation"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
+	"github.com/Shenchangxin/yoyo/internal/learn"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/observe"
-	"github.com/Shenchangxin/yoyo/internal/pages"
 	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/project"
@@ -53,12 +53,18 @@ func (a *App) openPersonal() error {
 		return err
 	}
 	if err := a.mountFiber("pages", func() (func() error, error) {
-		store, err := pages.Open(a.Home.Pages())
+		store, err := learn.Open(a.Home.Learn(), a.Home.Pages())
 		if err != nil {
 			return nil, err
 		}
+		store.Embed = a.embedTexts
+		a.Learn = store
 		a.Pages = store
-		return func() error { a.Pages = nil; return nil }, nil
+		return func() error {
+			a.Pages = nil
+			a.Learn = nil
+			return store.Close()
+		}, nil
 	}); err != nil {
 		return err
 	}
@@ -215,6 +221,7 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	if a.Threads != nil && tools.SessionID != "" {
 		tools.AllowedConnectors = a.Threads.ConnectorAllow(tools.SessionID)
 	}
+	a.attachLearn(tools)
 }
 
 // searchAPI 优先用视频连接里 capability 为 search 的活动连接，否则用 Config.SearchURL。密钥名默认 search。超时 20 秒。两端都空则返回 no search_url。

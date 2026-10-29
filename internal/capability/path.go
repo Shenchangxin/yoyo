@@ -93,12 +93,12 @@ func LooksLikeWindowsSwitch(s string) bool {
 	return true
 }
 
-// diagPlaneNames 是紧挨 YOYO_HOME 的拒绝目录：logs、journal、observe、pages、profiles。
-var diagPlaneNames = []string{"logs", "journal", "observe", "pages", "profiles"}
+// diagPlaneNames 是紧挨 YOYO_HOME 的拒绝目录：logs、journal、observe、pages、learn、profiles。
+var diagPlaneNames = []string{"logs", "journal", "observe", "pages", "learn", "profiles"}
 
 // ForbiddenDiagPath 判断 p 是不是 homeRoot 下不该被代理读取的位置。
 // homeRoot 或 p 去掉首尾空白后为空，或 Abs 失败，则返回 false。两边先经 CanonicalizeToolPath 再 Abs。
-// 与 homeRoot 下的 vault.json 相同则返回 true。logs、journal、observe、pages、profiles 这五个目录本身及其内部路径也返回 true，目录内部用 WithinWorkspace 判断。
+// 与 homeRoot 下的 vault.json 相同则返回 true。logs、journal、observe、pages、learn、profiles 这些目录本身及其内部路径也返回 true，目录内部用 WithinWorkspace 判断。
 func ForbiddenDiagPath(homeRoot, p string) bool {
 	if strings.TrimSpace(homeRoot) == "" || strings.TrimSpace(p) == "" {
 		return false

@@ -96,9 +96,11 @@ type WorkspaceTools struct {
 	OperatorVoice string
 	// VerifyHint 在聊天带着未完成计划试图结束时为真，用来把 verify-artifact 重新注入工作记忆。
 	VerifyHint bool
-	Ctx        context.Context
-	Extra      map[string]ExtraTool
-	Spill      *Spill
+	// HaltAfter 为真时，这批工具结束就停止本轮。学习测验用它拦住模型自己作答。
+	HaltAfter bool
+	Ctx       context.Context
+	Extra     map[string]ExtraTool
+	Spill     *Spill
 	// Depth 是子代理嵌套层。0 是父级。达到 MaxTaskDepth 后不能再派 task。
 	Depth        int
 	Task         TaskFunc
@@ -126,7 +128,7 @@ type WorkspaceTools struct {
 	Browser           *browser.Host
 	Computer          *computeruse.Host
 	Inbox             *inbox.Store
-	Pages             *pages.Store
+	Pages             pages.Catalog
 	OnCapture         func(kind, path, summary string)
 	LastBrowser       string
 	AllowedConnectors []string

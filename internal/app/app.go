@@ -27,6 +27,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
+	"github.com/Shenchangxin/yoyo/internal/learn"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/modelcatalog"
 	"github.com/Shenchangxin/yoyo/internal/observe"
@@ -169,7 +170,8 @@ type App struct {
 	Inbox      *inbox.Store
 	Connectors *connector.Broker
 	Personal   *personal.Engine
-	Pages      *pages.Store
+	Pages      pages.Catalog
+	Learn      *learn.Store
 	Profiles   *profile.Store
 	Browser    *browser.Host
 	Computer   *computeruse.Host

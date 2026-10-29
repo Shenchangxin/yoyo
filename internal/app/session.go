@@ -58,8 +58,14 @@ type SessionMeta struct {
 	AuthMode         string    `json:"auth_mode,omitempty"`
 	ProfileID        string    `json:"profile_id,omitempty"`
 	PageID           string    `json:"page_id,omitempty"`
-	ResearchBrief    string    `json:"research_brief,omitempty"`
-	ResearchShot     string    `json:"research_shot,omitempty"`
+	// LibraryID 是这段对话绑定的文库。模型检索只能用这一份。
+	LibraryID string `json:"library_id,omitempty"`
+	// PathID 是这段对话绑定的掌握路径。
+	PathID string `json:"path_id,omitempty"`
+	// MaterialID 是这段对话绑定的阅读材料。
+	MaterialID    string `json:"material_id,omitempty"`
+	ResearchBrief string `json:"research_brief,omitempty"`
+	ResearchShot  string `json:"research_shot,omitempty"`
 	// Interrupted 和 Queued 是列表时填上的现场标注，不是持久 meta。writeSession 写出前会把它们清掉。
 	Interrupted bool `json:"interrupted,omitempty"`
 	Queued      int  `json:"queued,omitempty"`
@@ -936,6 +942,14 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if meta.PageID != "" && a.Pages != nil {
 		if pg, err := a.Pages.Get("", meta.PageID); err == nil {
 			pageCtx = runtime.PageInject(pg.Title, pg.Content, 3200)
+		}
+	}
+	if tools.ChatOverlay && tools.Depth == 0 && a.Learn != nil {
+		if journal, err := a.Learn.JournalInject(); err == nil && journal != "" {
+			if pageCtx != "" {
+				pageCtx += "\n\n"
+			}
+			pageCtx += journal
 		}
 	}
 	out, runErr = runtime.Run(ctx, runtime.RunRequest{

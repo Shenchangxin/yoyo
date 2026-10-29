@@ -197,6 +197,12 @@ export type Thread = {
   profileId?: string;
   /** 页面表面里绑定的页面。 */
   pageId?: string;
+  /** 这段对话绑定的文库。 */
+  libraryId?: string;
+  /** 这段对话绑定的学习路径。 */
+  pathId?: string;
+  /** 这段对话绑定的阅读材料。 */
+  materialId?: string;
   /** 研究员档的最新简报。 */
   researchBrief?: string;
   /** 研究员档的最新截图。 */

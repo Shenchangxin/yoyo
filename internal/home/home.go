@@ -57,6 +57,8 @@ func Open(root string) (*Dir, error) {
 		d.Personal(),
 		d.Pages(),
 		filepath.Join(d.Pages(), "home"),
+		d.Learn(),
+		filepath.Join(d.Learn(), "raw"),
 		d.Profiles(),
 		d.Connectors(),
 		d.Connections(),
@@ -155,8 +157,11 @@ func (d *Dir) Inbox() string { return filepath.Join(d.Root, "inbox") }
 // Personal 指向 personal。
 func (d *Dir) Personal() string { return filepath.Join(d.Root, "personal") }
 
-// Pages 指向 pages。
+// Pages 指向 pages。迁进学习库之后，这里只留作档案。
 func (d *Dir) Pages() string { return filepath.Join(d.Root, "pages") }
+
+// Learn 指向 learn。learn.sqlite、原文和解析都在这里。
+func (d *Dir) Learn() string { return filepath.Join(d.Root, "learn") }
 
 // Profiles 指向 profiles。
 func (d *Dir) Profiles() string { return filepath.Join(d.Root, "profiles") }
