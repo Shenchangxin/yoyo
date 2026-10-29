@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/coder/websocket v1.8.14
 	github.com/hashicorp/mdns v1.0.7
+	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/cobra v1.9.1

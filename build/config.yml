@@ -54,7 +54,11 @@ dev_mode:
   executes:
     - cmd: wails3 build DEV=true
       type: blocking
-    - cmd: wails3 task common:dev:frontend
+    # Install before the window opens. The dev build only waits about 5s for
+    # Vite, and npm install alone takes that long.
+    - cmd: wails3 task common:install:frontend:deps
+      type: blocking
+    - cmd: wails3 task common:dev:frontend:serve
       type: background
     - cmd: wails3 task run
       type: primary

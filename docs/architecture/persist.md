@@ -1,6 +1,6 @@
 # Persist
 
-Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`). There is no product SQLite database.
+Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`). The learning module is the one writable product SQLite database. Video SQLite stays a reader only.
 
 | Path | What |
 |---|---|
@@ -15,20 +15,24 @@ Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`)
 | `cas/objects` | Content-addressed blobs. |
 | `vault.json` / OS keychain | API keys. |
 | `personal/workspace.json` | Durable personal tasks, hashed proposals (with activity), ideas, goals, monitors, artifacts. Atomic temp+rename. |
-| `pages/{spaceId}/{pageId}.md` | Operator knowledge pages (YAML frontmatter + Markdown). Outside the coding workspace. Atomic temp+rename. |
-| `pages/index.json` | Rebuildable page tree for search and navigation. The `.md` files are source of truth. |
-| `pages/reviews.json` | Hashed `page.save` / `page.edit` drafts awaiting operator approval. |
+| `learn/learn.sqlite` | Learning system of record: notes, libraries, chunks, embeddings, paths, practice, journal, books. WAL. |
+| `learn/raw/<sha256>` | Original imported bytes. Linked libraries keep the operator's files in place. |
+| `pages/{spaceId}/{pageId}.md` | Archive of notes imported once into `learn/learn.sqlite`. Later edits stay in the database. |
+| `pages/index.json` | Old rebuildable page tree. Not read after the one-shot import. |
+| `pages/reviews.json` | Old awaiting reviews, copied once into `note_reviews`. |
 | `profiles/{id}.json` | Named specialist profiles (role, tool grants, space access). Harbor never loads these. |
-| `sessions/{id}.meta.json` | Thread metadata including `profile_id` and `page_id`. Harbor eval ignores both. |
+| `sessions/{id}.meta.json` | Thread metadata including `profile_id`, `page_id`, `library_id`, `path_id`, and `material_id`. Harbor eval ignores them. |
 
-SQLite remains only as a **reader**:
+Video SQLite remains only as a **reader**:
 
 1. One-shot migrator: if `video/video.sqlite` exists from an older build, it is copied into `video/docs` and `connections`, then renamed to `video.sqlite.bak`.
 2. Huobao import: an external `.sqlite` / `.db` project file is read once and written into the file store. Huobao is not Yoyo's persist format.
 
+`learn/learn.sqlite` is the exception. Notes, retrieval, mastery, practice, the journal, and books share that one database. The rest of Yoyo stays JSON. Harbor does not open the learning database.
+
 ## Files vs SQLite
 
-For this desktop app the file tree wins:
+For this desktop app the file tree still wins outside learning:
 
 - Inspectable. An operator can open a drama JSON or a connection row without a DB browser.
 - No schema migrations for product records. Adding a field is adding a JSON key.

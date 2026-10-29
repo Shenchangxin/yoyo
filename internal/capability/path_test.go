@@ -1,7 +1,7 @@
 // 锁住这些不变量：/c/Users/... 译成 C:\Users\...，/cygdrive/c/Users/x 译成 C:\Users\x。
 // /dev/null、/tmp、//F 不是盘符路径。//F、//IM、//FI、/C、/B、/IM 是开关；/c/Users/scx、/etc/passwd、Windows 绝对路径、无斜杠文件名、/console/ 不是。
 // Windows 上，工作区内文件的 Git Bash 路径仍算在工作区内。
-// ForbiddenDiagPath 拒绝 home 下的 logs、journal、observe、pages、profiles 以及 vault.json，放行 workspace 里的文件；home 为空时不拒绝。
+// ForbiddenDiagPath 拒绝 home 下的 logs、journal、observe、pages、learn、profiles 以及 vault.json，放行 workspace 里的文件；home 为空时不拒绝。
 
 package capability
 
@@ -74,6 +74,7 @@ func TestForbiddenDiagPath(t *testing.T) {
 		filepath.Join(home, "journal", "chain.jsonl"),
 		filepath.Join(home, "observe", "spans.jsonl"),
 		filepath.Join(home, "pages", "home", "note.md"),
+		filepath.Join(home, "learn", "learn.sqlite"),
 		filepath.Join(home, "profiles", "assistant.json"),
 		filepath.Join(home, "vault.json"),
 	} {

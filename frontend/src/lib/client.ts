@@ -208,6 +208,9 @@ export function threadOf(v: any): Thread {
     planText: str(pick(v, "plan_text", "PlanText", "planText")),
     profileId: str(pick(v, "profile_id", "ProfileID", "profileId")),
     pageId: str(pick(v, "page_id", "PageID", "pageId")),
+    libraryId: str(pick(v, "library_id", "LibraryID", "libraryId")),
+    pathId: str(pick(v, "path_id", "PathID", "pathId")),
+    materialId: str(pick(v, "material_id", "MaterialID", "materialId")),
     researchBrief: str(pick(v, "research_brief", "ResearchBrief", "researchBrief")),
     researchShot: str(pick(v, "research_shot", "ResearchShot", "researchShot")),
   };
@@ -2804,6 +2807,11 @@ export async function quit(): Promise<void> {
 
 /** errMessage 再导出错误文本的取出。定义在 normalize。 */
 export { errMessage };
+
+/** learnCall 把学习模块的方法交给 videoCall。桌面没有单独的 HTTP。method 以 learn. 开头。params 原样转发。 */
+export function learnCall(method: string, params: Record<string, any> = {}): Promise<any> {
+  return videoCall(method, params);
+}
 
 /** videoCall 走 VideoCall；没有该方法则走 rpcJSON，也就是 POST /api/rpc。method 传给 VideoCall，传给 rpcJSON。params 传给 VideoCall，传给 rpcJSON。 */
 export async function videoCall(method: string, params: Record<string, any> = {}): Promise<any> {

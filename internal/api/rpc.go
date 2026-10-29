@@ -237,6 +237,9 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return out, err
 		}
 	}
+	if strings.HasPrefix(method, "learn.") {
+		return a.LearnCall(method, asMap(params))
+	}
 	if strings.HasPrefix(method, "video.") || strings.HasPrefix(method, "drama.") || strings.HasPrefix(method, "media.") || strings.HasPrefix(method, "canvas.") || strings.HasPrefix(method, "connections.") {
 		return a.VideoCall(method, asMap(params))
 	}

@@ -71,7 +71,7 @@ const HarnessLab = lazy(() => import("./features/labs/HarnessLab").then((m) => (
 const HarnessWorkspace = lazy(() => import("./features/harness/HarnessWorkspace").then((m) => ({ default: m.HarnessWorkspace })));
 const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const SkillsWorkspace = lazy(() => import("./features/skills/SkillsWorkspace").then((m) => ({ default: m.SkillsWorkspace })));
-const PagesWorkspace = lazy(() => import("./features/pages/PagesWorkspace").then((m) => ({ default: m.PagesWorkspace })));
+const LearnWorkspace = lazy(() => import("./features/learn/LearnWorkspace").then((m) => ({ default: m.LearnWorkspace })));
 const VideoWorkshop = lazy(() => import("./features/video/VideoWorkshop").then((m) => ({ default: m.VideoWorkshop })));
 
 /** 按 id 合并字段。置顶的排在前面。list 做映射。patch 展开传递。 */
@@ -786,7 +786,7 @@ function WorkstationApp() {
     : skills
       ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
     : paging
-      ? <span className="text-[13px] font-medium">{copy.pages.library}</span>
+      ? <span className="text-[13px] font-medium">{copy.rail.pages}</span>
     : idling
       ? <span className="text-[13px] font-medium">{copy.idol.title}</span>
     : harnessing
@@ -926,9 +926,10 @@ function WorkstationApp() {
   ) : paging ? (
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="pages-surface">
-        <PagesWorkspace
+        <LearnWorkspace
           sessionId={ws.activeId}
           boundPageId={ws.active?.pageId}
+          boundPathId={ws.active?.pathId}
           onOpenInChat={(pageId) => {
             if (!ws.activeId) return;
             void api.setSessionPage(ws.activeId, pageId).then((t) => {
@@ -943,6 +944,21 @@ function WorkstationApp() {
               ws.setThreads((list) => patchThread(list, t.id, t));
             });
           }}
+          onBind={(next) => {
+            if (!ws.activeId) return;
+            void api.learnCall("learn.bind", {
+              session: ws.activeId,
+              library_id: next.libraryId || "",
+              path_id: next.pathId || "",
+              material_id: next.materialId || "",
+            }).then((t) => {
+              const thread = api.threadOf(t);
+              ws.setActive(thread);
+              ws.setThreads((list) => patchThread(list, thread.id, thread));
+            });
+          }}
+          onOpenChat={() => ws.showConversation()}
+          chat={agentPane}
         />
       </div>
     </Suspense>

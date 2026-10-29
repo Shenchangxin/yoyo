@@ -99,6 +99,8 @@
 - [x] `internal/app/idol_media.go`
 - [x] `internal/app/model_catalog.go`
 - [x] `internal/app/model_catalog_test.go`
+- [ ] `internal/app/learn_api.go`
+- [ ] `internal/app/learn_tools.go`
 - [x] `internal/app/personal.go`
 - [x] `internal/app/personal_api.go`
 - [x] `internal/app/personal_os.go`
@@ -419,6 +421,21 @@
 - [x] `internal/kernel/event.go`
 - [x] `internal/kernel/fiber.go`
 - [x] `internal/kernel/kernel_test.go`
+
+### `internal/learn`
+
+- [ ] `internal/learn/book.go`
+- [ ] `internal/learn/db.go`
+- [ ] `internal/learn/index.go`
+- [ ] `internal/learn/journal.go`
+- [ ] `internal/learn/learn_test.go`
+- [ ] `internal/learn/library.go`
+- [ ] `internal/learn/mastery.go`
+- [ ] `internal/learn/migrate.go`
+- [ ] `internal/learn/notes.go`
+- [ ] `internal/learn/parse.go`
+- [ ] `internal/learn/practice.go`
+- [ ] `internal/learn/reading.go`
 
 ### `internal/memory`
 
@@ -1114,6 +1131,10 @@
 - [x] `frontend/src/features/labs/HarborLab.tsx`
 - [x] `frontend/src/features/labs/HarnessLab.tsx`
 - [x] `frontend/src/features/labs/LabFrame.tsx`
+
+### `frontend/src/features/learn`
+
+- [ ] `frontend/src/features/learn/LearnWorkspace.tsx`
 
 ### `frontend/src/features/pages`
 

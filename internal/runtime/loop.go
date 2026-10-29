@@ -454,6 +454,15 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		messages = append(messages, results...)
 		logToolRound(ctx, roundSeq, results)
 		emitStepEnd(req, turnNo, roundSeq, roundID)
+		if req.Tools != nil && req.Tools.HaltAfter {
+			text := ""
+			if len(results) > 0 {
+				text = strings.TrimSpace(results[len(results)-1].Content)
+			}
+			setStop(&req, StopEndTurn)
+			emit(req, trace.TypeTurnEnd, "runtime", map[string]any{"text": text, "ok": true, "stop": string(StopEndTurn)})
+			return text, nil
+		}
 		if cutNudge != "" {
 			messages = append(messages, Message{Role: RoleUser, Content: cutNudge})
 		}
