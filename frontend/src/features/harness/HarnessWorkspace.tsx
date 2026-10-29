@@ -41,6 +41,7 @@ const STEP_INDEX: Partial<Record<HarnessTab, string>> = {
 export function HarnessWorkspace(props: {
   tab: HarnessTab;
   onTab: (tab: HarnessTab) => void;
+  navInRail?: boolean;
   harness: unknown;
   fallbackActive?: string;
   report: unknown;
@@ -61,7 +62,7 @@ export function HarnessWorkspace(props: {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="harness-workspace">
-      <div
+      {props.navInRail ? null : <div
         className="process-tabs flex h-11 shrink-0 items-stretch gap-0.5 px-2"
         role="tablist"
         aria-label={copy.rsi.title}
@@ -100,7 +101,7 @@ export function HarnessWorkspace(props: {
             </button>
           );
         })}
-      </div>
+      </div>}
       <div className="min-h-0 flex-1 overflow-hidden">
         {props.tab === "overview" ? (
           <HarnessOverview refs={refs} harness={props.harness} report={props.report} next={next} onTab={props.onTab} onReveal={props.onReveal} />

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { LearnLane, LearnScopeSpec } from "./learn-scope";
 import type { AuthMode, CanvasFocus, HarnessTab, Lab, Notice, SettingsTab, Surface, Thread, ThreadChannel, VideoMode, VideoPane } from "./protocol";
 import { isCanvasWorldPane, isYingcePane, threadChannel } from "./protocol";
 import { noticeExpired } from "./notices";
@@ -85,6 +86,11 @@ type UIState = {
   setFootageOpen: (v: boolean) => void;
   agentThreadId: string;
   videoThreadId: string;
+  learnThreadId: string;
+  learnLane: LearnLane;
+  learnScope: LearnScopeSpec;
+  setLearnLane: (lane: LearnLane) => void;
+  setLearnScope: (spec: LearnScopeSpec) => void;
   rememberThread: (t: Thread | null) => void;
   lastThreadId: (ch: ThreadChannel) => string;
   setSettingsTab: (tab: SettingsTab) => void;
@@ -211,6 +217,17 @@ function writeVideoMode(mode: VideoMode) {
   }
 }
 
+/** 读学习泳道。认不出时回到今日。 */
+function readLearnLane(): LearnLane {
+  try {
+    const v = localStorage.getItem("yoyo-learn-lane");
+    if (v === "today" || v === "study" || v === "library" || v === "practice") return v;
+  } catch {
+    /* 失败时忽略 */
+  }
+  return "today";
+}
+
 /** 读某个通道上次的对话 id。key 传给 localStorage.getItem。 */
 function readThreadId(key: string): string {
   try {
@@ -334,16 +351,30 @@ export const useUI = create<UIState>((set, get) => ({
   videoMode: readVideoMode(),
   agentThreadId: readThreadId("yoyo-agent-thread"),
   videoThreadId: readThreadId("yoyo-video-thread"),
+  learnThreadId: readThreadId("yoyo-learn-thread"),
+  learnLane: readLearnLane(),
+  learnScope: { scope: "today" },
+  /** 记下学习泳道。lane 写入本地，并写入字段 learnLane。 */
+  setLearnLane: (learnLane) => {
+    try {
+      localStorage.setItem("yoyo-learn-lane", learnLane);
+    } catch {
+      /* 失败时忽略 */
+    }
+    set({ learnLane });
+  },
+  /** 记下当前学习子模块的助手范围。spec 写入字段 learnScope。 */
+  setLearnScope: (learnScope) => set({ learnScope }),
   /** 按通道记住这段对话的 id。没有 id 则不动。t 读取 id，为空时不读，传给 threadChannel。 */
   rememberThread: (t) => {
     if (!t?.id) return;
     const ch = threadChannel(t);
-    const key = ch === "video" ? "yoyo-video-thread" : "yoyo-agent-thread";
+    const key = ch === "video" ? "yoyo-video-thread" : ch === "learn" ? "yoyo-learn-thread" : "yoyo-agent-thread";
     writeThreadId(key, t.id);
-    set(ch === "video" ? { videoThreadId: t.id } : { agentThreadId: t.id });
+    set(ch === "video" ? { videoThreadId: t.id } : ch === "learn" ? { learnThreadId: t.id } : { agentThreadId: t.id });
   },
-  /** 取出该通道上次记住的对话。ch 与 video 比较是否相等。 */
-  lastThreadId: (ch) => (ch === "video" ? get().videoThreadId : get().agentThreadId),
+  /** 取出该通道上次记住的对话。ch 为 video 时读 videoThreadId，为 learn 时读 learnThreadId，否则读 agentThreadId。 */
+  lastThreadId: (ch) => (ch === "video" ? get().videoThreadId : ch === "learn" ? get().learnThreadId : get().agentThreadId),
   videoBoard: false,
   canvasStage: false,
   studioDesk: false,

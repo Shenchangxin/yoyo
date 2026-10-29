@@ -29,7 +29,10 @@ import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from ".
 import { isUserSkinId } from "../../lib/skin/schema";
 import { readPopoutId } from "../../lib/popout";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
-import { channelForSurface, isSubagentThread, parentSessionId, threadChannel } from "../../lib/protocol";
+import { channelForSurface, isSubagentThread, threadChannel } from "../../lib/protocol";
+import type { LearnScopeSpec } from "../../lib/learn-scope";
+import { learnBindingMatches, matchLearnThread, readLearnScopeMap } from "../../lib/learn-scope";
+import { selectSurfaceThread } from "../../lib/pick-channel";
 import { bindVideoThread } from "../video/bind";
 import { cutPrompt, ingestClipUrl, installSendToCut, resourceIdFromSend, type SendToCutRequest } from "../video/open-cut";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
@@ -101,40 +104,27 @@ function latestWorkspaceHTMLPath(items: Item[]): string {
   return found;
 }
 
-/**
- * 传入空就返回空。子代理或通道不对时改找父会话，再找同通道里未归档的，最后才找任意同通道会话。
- * list 调用 find。
- * t 为假时返回 null，其余分支还看别的条件；传给 isSubagentThread，传给 threadChannel。
- * channel 与 threadChannel(t)、threadChannel(x) 比较是否相等。
- */
-function resolveOperatorThread(list: Thread[], t: Thread | null, channel: ThreadChannel): Thread | null {
-  if (!t) return null;
-  if (!isSubagentThread(t) && threadChannel(t) === channel) return t;
-  const pid = t.parentId || parentSessionId(t.id);
-  const parent = list.find((x) => x.id === pid && !isSubagentThread(x) && threadChannel(x) === channel);
-  if (parent) return parent;
-  return list.find((x) => !isSubagentThread(x) && threadChannel(x) === channel && !x.archived)
-    || list.find((x) => !isSubagentThread(x) && threadChannel(x) === channel)
-    || null;
+const LEARN_SCOPE_KEY = "yoyo-learn-scopes";
+
+/** 读出学习子模块各自记住的会话。 */
+function readLearnScopes(): Record<string, string> {
+  try {
+    return readLearnScopeMap(localStorage.getItem(LEARN_SCOPE_KEY));
+  } catch {
+    return {};
+  }
 }
 
-/**
- * 当前会话还在列表里就解析它。否则用记住的 id。都没有就取同通道里第一条未归档的，再没有就取第一条。
- * list 做过滤，调用 some，调用 find，传给 resolveOperatorThread。
- * channel 与 threadChannel(t) 比较是否相等，传给 resolveOperatorThread。
- * preferred 与 t.id 比较是否相等，为真时才继续。
- * cur 读取 id，为真时才继续，作为后备值。
- */
-function pickChannelThread(list: Thread[], channel: ThreadChannel, preferred: string, cur: Thread | null): Thread | null {
-  const chats = list.filter((t) => !isSubagentThread(t) && threadChannel(t) === channel);
-  if (cur && list.some((t) => t.id === cur.id)) {
-    return resolveOperatorThread(list, list.find((t) => t.id === cur.id) || cur, channel);
+/** 记下某个学习子模块的会话。scope 和 id 写进本地映射。 */
+function writeLearnScope(scope: string, id: string) {
+  if (!scope || !id) return;
+  const all = readLearnScopes();
+  all[scope] = id;
+  try {
+    localStorage.setItem(LEARN_SCOPE_KEY, JSON.stringify(all));
+  } catch {
+    /* 配额不足时忽略 */
   }
-  if (preferred) {
-    const hit = list.find((t) => t.id === preferred);
-    if (hit) return resolveOperatorThread(list, hit, channel);
-  }
-  return chats.find((t) => !t.archived) || chats[0] || null;
 }
 
 /** 没有 id 返回 null。kind 只认 drama、studio、game，其余写成 canvas。v 读取 id、kind、title、session_id、sessionId、episode_id 等，为空时不读。 */
@@ -300,6 +290,10 @@ export function useWorkstation() {
   videoProjectsRef.current = videoProjects;
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
+  const learnScopeWanted = useRef("");
+  const learnScopeJobs = useRef(new Map<string, Promise<Thread>>());
+  /** 当前学习子模块钉住的会话。切表面和刷新都让它优先，避免被会话模块盖掉。 */
+  const learnHold = useRef("");
   const studioThreadJobs = useRef<Record<string, Promise<Thread>>>({});
   const laneThreadJobs = useRef<Record<string, Promise<Thread>>>({});
   const cutThreadJobs = useRef<Record<string, Promise<Thread>>>({});
@@ -558,8 +552,7 @@ export function useWorkstation() {
         const pop = readPopoutId();
         if (pop) return list.find((t) => t.id === pop) || cur || list[0] || null;
         const ch = channelForSurface(useUI.getState().surface);
-        const preferred = useUI.getState().lastThreadId(ch);
-        return pickChannelThread(list, ch, preferred, cur);
+        return selectSurfaceThread(list, ch, useUI.getState().lastThreadId(ch), cur, learnHold.current);
       });
       setBooted(true);
       try { setPlaybook(await api.playbook()); } catch { /* 可选，失败就跳过 */ }
@@ -635,7 +628,7 @@ export function useWorkstation() {
   useEffect(() => {
     const ch = channelForSurface(surface);
     const preferred = useUI.getState().lastThreadId(ch);
-    setActive((cur) => pickChannelThread(threads, ch, preferred, cur));
+    setActive((cur) => selectSurfaceThread(threadsRef.current, ch, preferred, cur, learnHold.current));
   }, [surface]);
   /** 失败时提示，并返回当前已经有的列表。 */
   const loadVideoHistory = useCallback(async () => {
@@ -1386,6 +1379,76 @@ export function useWorkstation() {
     void loadVideoHistory();
   }
 
+  /** 学习子模块各自一段对话。已经对上就直接打开，否则新建学习频道的会话并绑上路径或材料。spec 读取 scope、title、pathId、libraryId、materialId。 */
+  async function ensureLearnScope(spec: LearnScopeSpec): Promise<Thread> {
+    const scope = spec.scope || "today";
+    learnScopeWanted.current = scope;
+    useUI.getState().setLearnScope({ ...spec, scope });
+    const inflight = learnScopeJobs.current.get(scope);
+    /** 同一范围已经在建时等它。范围已经换成别的就不再打开。 */
+    const finish = async (job: Promise<Thread>) => {
+      const ready = await job;
+      if (learnScopeWanted.current === scope) activateLearnThread(ready);
+      return ready;
+    };
+    if (inflight) return finish(inflight);
+    const job = mintLearnScope(scope, spec);
+    learnScopeJobs.current.set(scope, job);
+    try {
+      return await finish(job);
+    } finally {
+      if (learnScopeJobs.current.get(scope) === job) learnScopeJobs.current.delete(scope);
+    }
+  }
+
+  /** 按范围找出或新建学习会话，并写上绑定。scope 用作本地钥匙。spec 读取 title、pathId、libraryId、materialId。 */
+  async function mintLearnScope(scope: string, spec: LearnScopeSpec): Promise<Thread> {
+    const remembered = readLearnScopes()[scope] || "";
+    const learnThreads = threadsRef.current.filter((t) => !isSubagentThread(t) && threadChannel(t) === "learn");
+    let t = matchLearnThread(learnThreads, spec, remembered);
+    if (!t) {
+      const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace("learn"), "learn"));
+      t = created.channel === "learn" ? created : { ...created, channel: "learn" };
+      setThreads((prev) => {
+        const next = [t!, ...prev.filter((x) => x.id !== t!.id)];
+        threadsRef.current = next;
+        return next;
+      });
+    }
+    if (spec.title && (!t.title || t.title === "learn" || t.title === "session" || t.title === "thread")) {
+      await api.renameSession(t.id, spec.title).catch(() => {});
+      t = { ...t, title: spec.title };
+    }
+    if ((spec.pathId || spec.libraryId || spec.materialId) && !learnBindingMatches(t, spec)) {
+      const raw = await api.learnCall("learn.bind", {
+        session: t.id,
+        library_id: spec.libraryId || "",
+        path_id: spec.pathId || "",
+        material_id: spec.materialId || "",
+      });
+      const bound = api.threadOf(raw);
+      t = bound.channel === "learn" ? bound : { ...bound, channel: "learn" };
+    }
+    setThreads((prev) => {
+      const next = prev.some((x) => x.id === t!.id) ? prev.map((x) => (x.id === t!.id ? t! : x)) : [t!, ...prev];
+      threadsRef.current = next;
+      return next;
+    });
+    writeLearnScope(scope, t.id);
+    return t;
+  }
+
+  /** 切到这段学习对话，并清掉上一段的正文。已经是当前会话就不动。先钉住，避免随后的表面切换把它盖掉。t 读取 id，传给 openThread。 */
+  function activateLearnThread(t: Thread) {
+    learnHold.current = t.id;
+    if (useUI.getState().surface !== "pages") return;
+    if (activeRef.current?.id === t.id) return;
+    itemsAcc.current = [];
+    setItems([]);
+    setQueued(0);
+    openThread(t, { keepPane: true });
+  }
+
   /** 当前会话已经是这个通道就直接用。否则新建并套用待定权限。 */
   async function ensureThread(): Promise<Thread> {
     const ch = await currentChannel();
@@ -1444,6 +1507,8 @@ export function useWorkstation() {
         t = await ensureLaneThread("canvas");
         await ensureCanvasProject(t.id, copy.video.canvas).catch(() => {});
         void loadVideoHistory();
+      } else if (ui.surface === "pages") {
+        t = await ensureLearnScope(ui.learnScope?.scope ? ui.learnScope : { scope: "today" });
       } else {
         t = await ensureThread();
         if (ui.surface === "video" && ui.videoMode === "drama") {
@@ -1516,12 +1581,12 @@ export function useWorkstation() {
     }
   }
 
-  /** 视频表面找视频通道，否则找助手通道。先用记住的，再找中断或有队列的，再找同通道任意一条。已经在跑就只打开，不再重试。 */
+  /** 按当前表面找对应通道。先用记住的，再找中断或有队列的，再找同通道任意一条。已经在跑就只打开，不再重试。 */
   async function onContinueLast() {
-    const ch = surface === "video" ? "video" : "agent";
+    const ch = channelForSurface(surface);
     const last = useUI.getState().lastThreadId(ch);
-    const hit = threads.find((t) => t.id === last)
-      || threads.find((t) => t.interrupted || (t.queued || 0) > 0)
+    const hit = threads.find((t) => t.id === last && threadChannel(t) === ch)
+      || threads.find((t) => threadChannel(t) === ch && (t.interrupted || (t.queued || 0) > 0))
       || threads.find((t) => threadChannel(t) === ch);
     if (!hit) return;
     openThread(hit);
@@ -1830,12 +1895,14 @@ export function useWorkstation() {
     openThread(t);
   }
 
-  /** 视频表面只打开创作窗格。其他表面新建一条会话。 */
+  /** 视频表面只打开创作窗格。其他表面先回到会话模块，再新建一条会话对话。 */
   async function onNew() {
-    if (useUI.getState().surface === "video") {
+    const surfaceNow = useUI.getState().surface;
+    if (surfaceNow === "video") {
       useUI.getState().openVideoPane("create");
       return;
     }
+    if (surfaceNow !== "agent") useUI.getState().showConversation();
     await onNewIn();
   }
 
@@ -1856,6 +1923,9 @@ export function useWorkstation() {
         else if (lane === "canvas") ui.openVideoPane("canvas", { canvasFocus: "editor" });
         else ui.openVideoPane("create");
       }
+    } else if (threadChannel(t) === "learn") {
+      learnHold.current = t.id;
+      if (ui.surface !== "pages") useUI.setState({ surface: "pages" });
     } else {
       ui.showConversation();
     }
@@ -2443,7 +2513,7 @@ export function useWorkstation() {
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, ingestVideo, startRemake, startFilm, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, ensureLearnScope, openThread, openVideoProject, ingestVideo, startRemake, startFilm, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     /** 没有当前会话就返回。取消后按列表重写条数。id 传给 api.queueCancel。 */
     onQueueCancel: async (id: string) => {

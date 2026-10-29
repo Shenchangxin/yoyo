@@ -1,17 +1,19 @@
-/** 学习表面的四条泳道。笔记编辑仍交给 PagesWorkspace。不另开一条对话。 */
+/** 学习表面的四条泳道。笔记编辑仍交给 PagesWorkspace。每一条泳道和每条路径用自己的学习对话，不占用会话模块。 */
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { BookOpen, Library, ListChecks, Sun } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { getLocale, useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
 import { errMessage } from "../../lib/normalize";
+import { learnScopeSpec, type LearnScopeSpec } from "../../lib/learn-scope";
+import { useUI } from "../../lib/store";
+import { LearnRailNav } from "./LearnRailNav";
+import { LearnTutor, type TutorPrompt } from "./LearnTutor";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { EmptyState } from "../../components/ui/empty-state";
 import { cn } from "../../lib/utils";
 import { PagesWorkspace } from "../pages/PagesWorkspace";
 
-type Lane = "today" | "study" | "library" | "practice";
 type Shelf = "materials" | "books" | "notes";
 
 type Point = { id: string; name: string; kind: string; status: string; mastery: number; mastery_source?: string };
@@ -40,6 +42,17 @@ type Reader = { title: string; text: string; materialId: string; documentId: str
 type Desk = { due?: number; reviewed?: number };
 
 const kinds = ["memory", "procedure", "concept", "design"] as const;
+
+function readTutorOpen() {
+  try {
+    const saved = localStorage.getItem("yoyo-learn-tutor");
+    if (saved === "0") return false;
+    if (saved === "1") return true;
+  } catch {
+    /* 读不到时默认打开 */
+  }
+  return true;
+}
 
 function fill(template: string, vars: Record<string, string | number>) {
   return Object.entries(vars).reduce((text, [key, value]) => text.split(`{${key}}`).join(String(value)), template);
@@ -98,20 +111,21 @@ function stepCopy(action: string | undefined, L: ReturnType<typeof useCopy>["lea
   return L.stepProbe;
 }
 
-/** LearnWorkspace 管今日、路径、文库和练习。props 读取 sessionId、boundPageId、boundPathId，调用 onBind 和 onOpenChat。chat 只在学习泳道的宽屏上出现。 */
+/** LearnWorkspace 管今日、路径、文库和练习。侧栏收起时泳道画在内容左侧。每个子模块的助手由 onEnsureScope 接到自己的会话。chat 跟在内容右侧。 */
 export function LearnWorkspace(props: {
   sessionId?: string;
   boundPageId?: string;
-  boundPathId?: string;
+  navInRail?: boolean;
   onOpenInChat?: (pageId: string) => void;
   onUnbindChat?: () => void;
-  onBind?: (next: { libraryId?: string; pathId?: string; materialId?: string }) => void;
-  onOpenChat?: () => void;
+  onEnsureScope?: (spec: LearnScopeSpec) => void | Promise<unknown>;
+  onTutorPrompt?: (text: string) => void;
+  tutorQuiet?: boolean;
   chat?: ReactNode;
 }) {
   const copy = useCopy();
   const L = copy.learn;
-  const [lane, setLane] = useState<Lane>("today");
+  const lane = useUI((s) => s.learnLane);
   const [shelf, setShelf] = useState<Shelf>("materials");
   const [err, setErr] = useState("");
   const [today, setToday] = useState<any>(null);
@@ -128,6 +142,7 @@ export function LearnWorkspace(props: {
   const [focusId, setFocusId] = useState("");
   const [books, setBooks] = useState<Book[]>([]);
   const [openBook, setOpenBook] = useState<Book | null>(null);
+  const [tutorOpen, setTutorOpen] = useState(readTutorOpen);
 
   const fail = (e: unknown) => setErr(errMessage(e));
   const run = async (fn: () => Promise<void>) => {
@@ -160,7 +175,7 @@ export function LearnWorkspace(props: {
   };
 
   const showBook = async (id: string, libraryId?: string) => {
-    setLane("library");
+    useUI.getState().setLearnLane("library");
     setShelf("books");
     setReader(null);
     if (libraryId) setLibId(libraryId);
@@ -189,12 +204,41 @@ export function LearnWorkspace(props: {
     void api.learnCall("learn.documents", { library_id: libId }).then((rows) => setDocs(Array.isArray(rows) ? rows : [])).catch(fail);
   }, [lane, shelf, libId, libs]);
 
-  const lanes: { id: Lane; label: string; icon: ReactNode }[] = [
-    { id: "today", label: L.today, icon: <Sun className="size-4" /> },
-    { id: "study", label: L.study, icon: <ListChecks className="size-4" /> },
-    { id: "library", label: L.library, icon: <Library className="size-4" /> },
-    { id: "practice", label: L.practice, icon: <BookOpen className="size-4" /> },
-  ];
+  const scope = learnScopeSpec({
+    lane,
+    title: lane === "today" ? L.today : lane === "practice" ? L.practice : lane === "study" ? L.study : shelf === "notes" ? L.notesTab : L.library,
+    pathId: lane === "study" ? active?.id : undefined,
+    pathName: lane === "study" ? active?.name : undefined,
+    libraryId: lane === "study" ? active?.library_id : lane === "library" ? libId : undefined,
+    materialId: lane === "library" && shelf === "materials" ? reader?.materialId : undefined,
+    materialTitle: lane === "library" && shelf === "materials" ? reader?.title : undefined,
+    bookId: lane === "library" && shelf === "books" ? openBook?.id : undefined,
+    bookTitle: lane === "library" && shelf === "books" ? openBook?.title : undefined,
+    shelf: lane === "library" ? shelf : undefined,
+  });
+  const tutor = tutorBrief(L, {
+    lane,
+    topic: String(today?.journal?.topic || ""),
+    pathName: active?.name || "",
+    stepName: active?.next?.name || "",
+    readerTitle: reader?.title || "",
+    bookTitle: openBook?.title || "",
+    cardStem: (cards.find((card) => card.id === focusId) || cards[0])?.stem || "",
+    shelf,
+    libraryName: libs.find((lib) => lib.id === libId)?.name || "",
+  });
+  const setTutor = (open: boolean) => {
+    setTutorOpen(open);
+    try {
+      localStorage.setItem("yoyo-learn-tutor", open ? "1" : "0");
+    } catch {
+      /* 写不进时只留在这一次 */
+    }
+  };
+  const scopeKey = [scope.scope, scope.pathId || "", scope.libraryId || "", scope.materialId || "", scope.title || ""].join("|");
+  useLayoutEffect(() => {
+    void Promise.resolve(props.onEnsureScope?.(scope)).catch((e) => setErr(errMessage(e)));
+  }, [scopeKey]);
 
   const readAt = async (doc: Doc, page: number, materialId: string, highlight: string) => {
     const body = await api.learnCall("learn.read", { library_id: libId, document_id: doc.id, page });
@@ -215,23 +259,11 @@ export function LearnWorkspace(props: {
 
   return (
     <div className="flex h-full min-h-0">
-      <nav className="flex w-[148px] shrink-0 flex-col gap-1 border-r border-border/60 bg-sidebar p-3" aria-label={copy.rail.pages}>
-        {lanes.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            aria-pressed={lane === item.id}
-            onClick={() => { setLane(item.id); setErr(""); setReader(null); }}
-            className={cn(
-              "flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]",
-              lane === item.id ? "bg-accent/10 text-accent" : "text-muted hover:bg-lift hover:text-foreground",
-            )}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
-      </nav>
+      {props.navInRail ? null : (
+        <div className="w-[168px] shrink-0 border-r border-border/60 bg-sidebar pt-3">
+          <LearnRailNav />
+        </div>
+      )}
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {err ? <p className="px-6 pt-4 text-[12px] text-danger">{err}</p> : null}
@@ -251,8 +283,8 @@ export function LearnWorkspace(props: {
                     setToday(await api.learnCall("learn.today"));
                   });
                 }}
-                onOpenPath={(id) => { setLane("study"); void run(() => openPath(id)); }}
-                onPractice={(id) => { setFocusId(id); setLane("practice"); }}
+                onOpenPath={(id) => { useUI.getState().setLearnLane("study"); void run(() => openPath(id)); }}
+                onPractice={(id) => { setFocusId(id); useUI.getState().setLearnLane("practice"); }}
                 onOpenBook={(id, libraryId) => { void run(() => showBook(id, libraryId)); }}
               />
             ) : null}
@@ -260,7 +292,6 @@ export function LearnWorkspace(props: {
               <StudyPane
                 paths={paths}
                 active={active}
-                bound={props.boundPathId === active?.id}
                 onCreate={async (name) => {
                   await run(async () => {
                     const created = await api.learnCall("learn.path.create", { name, library_id: libId === "notes" ? "" : libId });
@@ -308,14 +339,12 @@ export function LearnWorkspace(props: {
                     return null;
                   }
                 }}
-                onBind={() => {
-                  if (!active) return;
-                  props.onBind?.({ pathId: active.id, libraryId: active.library_id || "" });
-                }}
+                onClose={() => setActive(null)}
                 onAsk={() => {
                   if (!active) return;
-                  props.onBind?.({ pathId: active.id, libraryId: active.library_id || "" });
-                  props.onOpenChat?.();
+                  setTutor(true);
+                  const name = active.next?.name || active.name;
+                  props.onTutorPrompt?.(name ? `${L.askExplain}: ${name}` : L.askExplain);
                 }}
               />
             ) : null}
@@ -418,7 +447,6 @@ export function LearnWorkspace(props: {
                   onOpenDoc={async (doc) => {
                     await run(async () => {
                       const mat = await api.learnCall("learn.material.open", { library_id: libId, document_id: doc.id });
-                      props.onBind?.({ libraryId: libId, materialId: mat.id, pathId: props.boundPathId || "" });
                       await readAt(doc, 1, mat.id, "");
                     });
                   }}
@@ -461,8 +489,18 @@ export function LearnWorkspace(props: {
             ) : null}
           </div>
         </div>
-        {lane === "study" && props.chat ? (
-          <div className="hidden h-full min-h-0 w-[min(440px,46%)] border-l border-border/60 lg:block">{props.chat}</div>
+        {props.chat ? (
+          <LearnTutor
+            open={tutorOpen}
+            subject={tutor.subject}
+            about={tutor.about}
+            prompts={tutor.prompts}
+            quiet={props.tutorQuiet}
+            onOpen={setTutor}
+            onPrompt={props.onTutorPrompt}
+          >
+            {props.chat}
+          </LearnTutor>
         ) : null}
       </div>
     </div>
@@ -493,26 +531,18 @@ function TodayPane(props: {
   const books = Array.isArray(props.data?.books) ? props.data.books : [];
   const records = Array.isArray(j.records) ? j.records.slice(0, 3) : [];
   const quiet = due.length === 0 && paths.length === 0 && books.length === 0;
+  const [editing, setEditing] = useState(false);
   return (
     <div className="h-full overflow-auto">
-      <div className="mx-auto flex max-w-[720px] flex-col gap-8 px-6 py-8">
-        <section className="flex flex-col gap-3">
-          <h2 className="text-[15px] font-semibold tracking-[-0.02em]">{L.mission}</h2>
-          <Input value={topic} placeholder={L.missionPh} onChange={(e) => setTopic(e.target.value)} aria-label={L.mission} />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Input value={why} placeholder={L.whyPh} onChange={(e) => setWhy(e.target.value)} aria-label={L.why} />
-            <Input value={next} placeholder={L.nextPh} onChange={(e) => setNext(e.target.value)} aria-label={L.next} />
-          </div>
-          <div><Button size="sm" onClick={() => { void props.onSave(topic, why, next); }}>{L.saveMission}</Button></div>
-        </section>
+      <div className="mx-auto flex max-w-[640px] flex-col gap-8 px-8 py-10">
         <section>
-          <h2 className="text-[15px] font-semibold tracking-[-0.02em]">{L.now}</h2>
-          {quiet ? <EmptyState title={L.pathsEmpty} body={L.pathsEmptyHint} /> : (
-            <ul className="mt-2 flex flex-col">
+          <h2 className="text-[22px] font-semibold tracking-[-0.03em]">{L.now}</h2>
+          {quiet ? <EmptyState title={L.nowEmpty} body={L.nowEmptyHint} /> : (
+            <ul className="mt-4 flex flex-col">
               {due.slice(0, 5).map((card: Card) => (
                 <li key={card.id}>
                   <button type="button" data-testid="learn-due" className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onPractice(card.id)}>
-                    <span className="text-[14px]">{card.stem}</span>
+                    <span className="text-[15px]">{card.stem}</span>
                     <span className="shrink-0 text-[12px] text-muted">{L.practice}</span>
                   </button>
                 </li>
@@ -520,7 +550,7 @@ function TodayPane(props: {
               {paths.map((path: Path) => (
                 <li key={path.id}>
                   <button type="button" className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenPath(path.id)}>
-                    <span className="text-[14px]">{path.name}</span>
+                    <span className="text-[15px]">{path.name}</span>
                     <span className="tabular-nums text-[12px] text-muted">{path.counts?.mastered || 0}/{path.counts?.total || 0}</span>
                   </button>
                 </li>
@@ -528,7 +558,7 @@ function TodayPane(props: {
               {books.map((book: Book) => (
                 <li key={book.id}>
                   <button type="button" className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenBook(book.id, book.library_id)}>
-                    <span className="text-[14px]">{book.title}</span>
+                    <span className="text-[15px]">{book.title}</span>
                     <span className="text-[12px] text-muted">{book.status === "ready" || book.status === "paused" ? L.readOn : bookStatus(book.status)}</span>
                   </button>
                 </li>
@@ -537,9 +567,23 @@ function TodayPane(props: {
           )}
         </section>
         <section className="flex flex-col gap-3">
-          <h2 className="text-[15px] font-semibold tracking-[-0.02em]">{L.record}</h2>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-[13px] text-muted">{L.mission}</h2>
+            <button type="button" className="text-[12px] text-muted hover:text-foreground" onClick={() => setEditing((v) => !v)}>{L.editMission}</button>
+          </div>
+          {!editing && topic ? <p className="text-[15px]">{topic}</p> : null}
+          {editing ? (
+            <div className="flex flex-col gap-2">
+              <Input value={topic} placeholder={L.missionPh} onChange={(e) => setTopic(e.target.value)} aria-label={L.mission} />
+              <Input value={why} placeholder={L.whyPh} onChange={(e) => setWhy(e.target.value)} aria-label={L.why} />
+              <Input value={next} placeholder={L.nextPh} onChange={(e) => setNext(e.target.value)} aria-label={L.next} />
+              <div><Button size="sm" onClick={() => { void props.onSave(topic, why, next); setEditing(false); }}>{L.saveMission}</Button></div>
+            </div>
+          ) : null}
+        </section>
+        <section className="flex flex-col gap-2">
           {records.map((row: { id: string; insight: string }) => (
-            <p key={row.id} className="border-b border-border/60 py-2 text-[13px] text-muted">{row.insight}</p>
+            <p key={row.id} className="text-[13px] text-muted">{row.insight}</p>
           ))}
           <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!insight.trim()) return; void props.onRecord(insight.trim()); setInsight(""); }}>
             <Input value={insight} placeholder={L.recordPh} onChange={(e) => setInsight(e.target.value)} aria-label={L.record} />
@@ -554,15 +598,14 @@ function TodayPane(props: {
 function StudyPane(props: {
   paths: Path[];
   active: Path | null;
-  bound: boolean;
   onCreate: (name: string) => Promise<void>;
   onOpen: (id: string) => void;
+  onClose: () => void;
   onMode: (mode: string) => Promise<void>;
   onProfile: (teaching: string) => Promise<void>;
   onOutline: (modules: { name: string; points: { name: string; kind: string }[] }[]) => Promise<void>;
   onClaim: (pointId: string) => Promise<void>;
   onGrade: (answer: string) => Promise<any>;
-  onBind: () => void;
   onAsk: () => void;
 }) {
   const L = useCopy().learn;
@@ -576,41 +619,51 @@ function StudyPane(props: {
   const question = props.active?.next?.question;
   const waiting = props.active?.next?.action === "answer_pending" && question?.prompt;
   const ask = props.active && props.active.mode !== "outline" && props.active.next?.action && props.active.next.action !== "complete" && props.active.next.action !== "answer_pending";
+  if (!props.active) {
+    return (
+      <div className="h-full overflow-auto">
+        <div className="mx-auto flex max-w-[640px] flex-col gap-4 px-8 py-10">
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim()); setName(""); }}>
+            <Input value={name} placeholder={L.pathPh} onChange={(e) => setName(e.target.value)} aria-label={L.pathPh} />
+          </form>
+          <ul className="flex flex-col">
+            {props.paths.map((path) => (
+              <li key={path.id}>
+                <button type="button" onClick={() => props.onOpen(path.id)} className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left text-[15px] hover:text-foreground">
+                  <span>{path.name}</span>
+                  <span className="tabular-nums text-[12px] text-muted">{path.counts?.mastered || 0}/{path.counts?.total || 0}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {props.paths.length === 0 ? <EmptyState title={L.pathsEmpty} body={L.pathsEmptyHint} /> : null}
+        </div>
+      </div>
+    );
+  }
+  const current = props.active;
   return (
-    <div className="flex h-full min-h-0">
-      <aside className="flex w-[220px] shrink-0 flex-col border-r border-border/60 p-4">
-        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim()); setName(""); }}>
-          <Input value={name} placeholder={L.pathPh} onChange={(e) => setName(e.target.value)} aria-label={L.pathPh} />
-        </form>
-        <ul className="mt-4 flex flex-col overflow-auto">
-          {props.paths.map((path) => (
-            <li key={path.id}>
-              <button type="button" aria-pressed={props.active?.id === path.id} onClick={() => props.onOpen(path.id)} className={cn("w-full rounded-lg px-2 py-2 text-left text-[13px]", props.active?.id === path.id ? "bg-accent/10 text-accent" : "hover:bg-lift")}>
-                {path.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-        {props.paths.length === 0 ? <EmptyState title={L.pathsEmpty} body={L.pathsEmptyHint} /> : null}
-      </aside>
-      <div className="min-w-0 flex-1 overflow-auto px-6 py-6">
-        {!props.active ? <EmptyState title={L.pathsEmpty} body={L.pathsEmptyHint} /> : (
-          <div className="mx-auto flex max-w-[720px] flex-col gap-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-[18px] font-semibold tracking-[-0.03em]">{props.active.name}</h2>
-              <span className="tabular-nums text-[12px] text-muted">{props.active.counts?.mastered || 0}/{props.active.counts?.total || 0}</span>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-3 px-6">
+        <button type="button" className="shrink-0 text-[13px] text-muted hover:text-foreground" onClick={props.onClose}>{L.allPaths}</button>
+        <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium tracking-[-0.02em]">{current.name}</h2>
+        <span className="tabular-nums text-[12px] text-muted">{current.counts?.mastered || 0}/{current.counts?.total || 0}</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto px-6 pb-10">
+        <div className="mx-auto flex max-w-[640px] flex-col gap-6">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
               {(["outline", "study", "review"] as const).map((mode) => (
-                <Button key={mode} size="sm" variant={props.active?.mode === mode ? "default" : "ghost"} aria-pressed={props.active?.mode === mode} onClick={() => { void props.onMode(mode); }}>
+                <button key={mode} type="button" aria-pressed={current.mode === mode} className={cn(current.mode === mode ? "text-foreground" : "text-muted hover:text-foreground")} onClick={() => { void props.onMode(mode); }}>
                   {mode === "outline" ? L.outline : mode === "study" ? L.studyMode : L.review}
-                </Button>
+                </button>
               ))}
-              <Button size="sm" variant={props.active.teaching === "teach_first" ? "ghost" : "default"} aria-pressed={props.active.teaching !== "teach_first"} onClick={() => { void props.onProfile("probe_first"); }}>{L.probeFirst}</Button>
-              <Button size="sm" variant={props.active.teaching === "teach_first" ? "default" : "ghost"} aria-pressed={props.active.teaching === "teach_first"} onClick={() => { void props.onProfile("teach_first"); }}>{L.teachFirst}</Button>
-              <Button size="sm" variant="ghost" onClick={props.onBind}>{props.bound ? L.bound : L.bind}</Button>
+              <span className="text-border" aria-hidden>·</span>
+              <button type="button" aria-pressed={current.teaching !== "teach_first"} className={cn(current.teaching !== "teach_first" ? "text-foreground" : "text-muted hover:text-foreground")} onClick={() => { void props.onProfile("probe_first"); }}>{L.probeFirst}</button>
+              <button type="button" aria-pressed={current.teaching === "teach_first"} className={cn(current.teaching === "teach_first" ? "text-foreground" : "text-muted hover:text-foreground")} onClick={() => { void props.onProfile("teach_first"); }}>{L.teachFirst}</button>
             </div>
             <section data-testid="learn-next" className="flex flex-col gap-3 border-b border-border/60 pb-5">
-              <p className="text-[13px] text-muted">{stepCopy(props.active.next?.action, L, props.active.mode)}</p>
-              {props.active.next?.name ? <p className="text-[16px] font-semibold tracking-[-0.02em]">{props.active.next.name}</p> : null}
+              <p className="text-[13px] text-muted">{stepCopy(current.next?.action, L, current.mode)}</p>
+              {current.next?.name ? <p className="text-[22px] font-semibold leading-snug tracking-[-0.03em]">{current.next.name}</p> : null}
               {waiting ? (
                 <div className="flex flex-col gap-3">
                   <p className="text-[16px] font-semibold leading-snug tracking-[-0.02em]">{question?.prompt}</p>
@@ -635,31 +688,25 @@ function StudyPane(props: {
                   <Button size="sm" className="mt-3" variant="ghost" onClick={() => setReveal(null)}>{L.continue}</Button>
                 </div>
               ) : null}
-              {ask ? <div><Button size="sm" onClick={props.onAsk}>{L.askTutor}</Button></div> : null}
+              {ask ? <button type="button" className="w-fit text-[13px] text-muted hover:text-foreground" onClick={props.onAsk}>{L.askTutor}</button> : null}
             </section>
-            {(props.active.modules || []).map((mod) => (
+            {(current.modules || []).map((mod) => (
               <section key={mod.id}>
                 <h3 className="text-[13px] text-muted">{mod.name}</h3>
                 <ul className="mt-2 flex flex-col">
                   {(mod.points || []).map((pt) => (
-                    <li key={pt.id} className="flex items-center gap-3 border-b border-border/60 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-3">
-                          <span className="truncate text-[14px]">{pt.name}</span>
-                          <span className="tabular-nums text-[12px] text-muted">{Math.round((pt.mastery || 0) * 100)}%</span>
-                        </div>
-                        <div className="mt-1.5 h-1 bg-border/60">
-                          <div className="h-1 bg-accent" style={{ width: `${Math.round((pt.mastery || 0) * 100)}%` }} />
-                        </div>
-                        <p className="mt-1 text-[11px] text-muted">{kindName(pt.kind)} · {pt.status === "mastered" ? L.mastered : pt.status === "learning" ? L.learning : L.fresh}{pt.mastery_source === "learner" ? " · " + L.claim : ""}</p>
+                    <li key={pt.id} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px]">{pt.name}</p>
+                        <p className="mt-0.5 text-[12px] text-muted">{kindName(pt.kind)} · {pt.status === "mastered" ? L.mastered : pt.status === "learning" ? L.learning : L.fresh} · {Math.round((pt.mastery || 0) * 100)}%</p>
                       </div>
-                      {pt.status !== "mastered" ? <Button size="sm" variant="ghost" onClick={() => { void props.onClaim(pt.id); }}>{L.claim}</Button> : null}
+                      {pt.status !== "mastered" ? <button type="button" className="shrink-0 text-[12px] text-muted hover:text-foreground" onClick={() => { void props.onClaim(pt.id); }}>{L.claim}</button> : null}
                     </li>
                   ))}
                 </ul>
               </section>
             ))}
-            {props.active.mode === "outline" ? (
+            {current.mode === "outline" ? (
               <form className="flex flex-col gap-2 border-t border-border/60 pt-4" onSubmit={(e) => { e.preventDefault(); if (!point.trim()) return; setDraft((d) => [...d, { name: point.trim(), kind }]); setPoint(""); }}>
                 <div className="flex gap-2">
                   <Input value={point} placeholder={L.pointPh} onChange={(e) => setPoint(e.target.value)} aria-label={L.pointPh} />
@@ -679,8 +726,7 @@ function StudyPane(props: {
                 ) : null}
               </form>
             ) : null}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -780,34 +826,44 @@ function Materials(props: {
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
   const [model, setModel] = useState("");
+  const [manage, setManage] = useState(false);
   const current = props.libs.find((lib) => lib.id === props.libId);
   const rows: Hit[] = props.hits || props.docs.map((doc) => ({ document_id: doc.id, title: doc.title || doc.rel_path, page: 0, excerpt: doc.status, source_hash: "" }));
   return (
     <div className="min-h-0 flex-1 overflow-auto">
-      <div className="mx-auto flex max-w-[760px] flex-col gap-4 px-6 py-5">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="mx-auto flex max-w-[640px] flex-col gap-4 px-8 py-8">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {props.libs.map((lib) => (
-            <button key={lib.id} type="button" aria-pressed={props.libId === lib.id} onClick={() => props.onPick(lib.id)} className={cn("rounded-lg px-2.5 py-1.5 text-[13px]", props.libId === lib.id ? "bg-accent/10 text-accent" : "text-muted hover:bg-lift")}>
+            <button key={lib.id} type="button" aria-pressed={props.libId === lib.id} onClick={() => props.onPick(lib.id)} className={cn("text-[13px]", props.libId === lib.id ? "text-foreground" : "text-muted hover:text-foreground")}>
               {lib.name}
               <span className="ml-1.5 tabular-nums text-[11px]">{L.files.replace("{n}", String(lib.documents || 0))}</span>
             </button>
           ))}
+          <button type="button" className="text-[12px] text-muted hover:text-foreground" aria-expanded={manage} onClick={() => setManage((v) => !v)}>{manage ? L.hideManage : L.manage}</button>
         </div>
-        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim(), "indexed", ""); setName(""); }}>
-          <Input value={name} placeholder={L.libraryPh} onChange={(e) => setName(e.target.value)} aria-label={L.libraryPh} />
-          <Button size="sm" type="submit" variant="ghost">{L.newLibrary}</Button>
-        </form>
+        {manage ? (
+          <div className="flex flex-col gap-2">
+            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim(), "indexed", ""); setName(""); }}>
+              <Input value={name} placeholder={L.libraryPh} onChange={(e) => setName(e.target.value)} aria-label={L.libraryPh} />
+              <Button size="sm" type="submit" variant="ghost">{L.newLibrary}</Button>
+            </form>
+            {props.libId !== "notes" ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => { void api.pickFiles().then((files) => { if (files.length) void props.onImport(files); }); }}>{L.importFiles}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { void api.pickFolder().then((path) => { if (path) void props.onCreate(path.split(/[\\/]/).pop() || L.library, "linked", path); }); }}>{L.linkFolder}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { void props.onRebuild(); }}>{current?.status === "building" ? L.indexing : L.rebuild}</Button>
+                  <span className="text-[12px] text-muted">{current?.status}{current?.last_error ? " · " + current.last_error : ""}</span>
+                </div>
+                <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void props.onEmbed(model); }}>
+                  <Input value={model} placeholder={L.embedPh} onChange={(e) => setModel(e.target.value)} aria-label={L.embedPh} />
+                </form>
+              </>
+            ) : null}
+          </div>
+        ) : null}
         {props.libId !== "notes" ? (
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={() => { void api.pickFiles().then((files) => { if (files.length) void props.onImport(files); }); }}>{L.importFiles}</Button>
-              <Button size="sm" variant="ghost" onClick={() => { void api.pickFolder().then((path) => { if (path) void props.onCreate(path.split(/[\\/]/).pop() || L.library, "linked", path); }); }}>{L.linkFolder}</Button>
-              <Button size="sm" onClick={() => { void props.onRebuild(); }}>{current?.status === "building" ? L.indexing : L.rebuild}</Button>
-              <span className="text-[12px] text-muted">{current?.status}{current?.last_error ? " · " + current.last_error : ""}</span>
-            </div>
-            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void props.onEmbed(model); }}>
-              <Input value={model} placeholder={L.embedPh} onChange={(e) => setModel(e.target.value)} aria-label={L.embedPh} />
-            </form>
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void props.onSearch(query); }}>
               <Input value={query} placeholder={L.searchPh} onChange={(e) => setQuery(e.target.value)} aria-label={L.searchPh} />
             </form>
@@ -1003,6 +1059,7 @@ function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onCha
   const objective = card && card.qtype !== "short" && card.qtype !== "fill";
   useEffect(() => { setGuess(""); setReveal(null); }, [card?.id]);
   const done = !card && (props.desk.reviewed || 0) > 0;
+  const [adding, setAdding] = useState(false);
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto flex max-w-[640px] flex-col gap-6 px-6 py-8">
@@ -1056,7 +1113,8 @@ function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onCha
             ) : null}
           </article>
         )}
-        <form className="flex flex-col gap-2 border-t border-border/60 pt-4" onSubmit={(e) => {
+        <button type="button" className="w-fit text-[13px] text-muted hover:text-foreground" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>{adding ? L.hideCard : L.addCard}</button>
+        {adding ? <form className="flex flex-col gap-2" onSubmit={(e) => {
           e.preventDefault();
           if (!stem.trim()) return;
           const opts = options.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -1064,6 +1122,7 @@ function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onCha
             setStem("");
             setAnswer("");
             setOptions("");
+            setAdding(false);
             await props.onReload();
           }).catch(props.onFail);
         }}>
@@ -1076,8 +1135,69 @@ function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onCha
           <Input value={answer} placeholder={L.answerPh} onChange={(e) => setAnswer(e.target.value)} aria-label={L.answerPh} />
           {qtype === "choice" ? <textarea className="min-h-20 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-[13px]" value={options} placeholder={L.optionsPh} onChange={(e) => setOptions(e.target.value)} aria-label={L.optionsPh} /> : null}
           <div><Button size="sm" type="submit" variant="ghost">{L.addCard}</Button></div>
-        </form>
+        </form> : null}
       </div>
     </div>
   );
+}
+
+function tutorBrief(L: ReturnType<typeof useCopy>["learn"], input: {
+  lane: string;
+  topic: string;
+  pathName: string;
+  stepName: string;
+  readerTitle: string;
+  bookTitle: string;
+  cardStem: string;
+  shelf: Shelf;
+  libraryName: string;
+}): { subject: string; about: string; prompts: TutorPrompt[] } {
+  if (input.lane === "today") {
+    return {
+      subject: input.topic || L.today,
+      about: L.tutorToday,
+      prompts: [{ id: "next", label: L.askNext, text: L.askNext }],
+    };
+  }
+  if (input.lane === "study") {
+    const name = input.stepName || input.pathName;
+    return {
+      subject: input.pathName || L.study,
+      about: L.tutorStudy,
+      prompts: [
+        { id: "explain", label: L.askExplain, text: name ? `${L.askExplain}: ${name}` : L.askExplain },
+        { id: "quiz", label: L.askQuiz, text: name ? `${L.askQuiz}: ${name}` : L.askQuiz },
+      ],
+    };
+  }
+  if (input.lane === "practice") {
+    const stem = input.cardStem.trim();
+    return {
+      subject: stem ? stem : L.practice,
+      about: L.tutorPractice,
+      prompts: [{ id: "explain", label: L.askExplain, text: stem ? `${L.askExplain}: ${stem}` : L.askExplain }],
+    };
+  }
+  if (input.shelf === "notes") {
+    return { subject: L.notesTab, about: L.tutorNotes, prompts: [] };
+  }
+  if (input.shelf === "materials" && input.readerTitle) {
+    return {
+      subject: input.readerTitle,
+      about: L.tutorRead,
+      prompts: [{ id: "page", label: L.askExplain, text: `${L.askExplain}: ${input.readerTitle}` }],
+    };
+  }
+  if (input.shelf === "books" && input.bookTitle) {
+    return {
+      subject: input.bookTitle,
+      about: L.tutorBook,
+      prompts: [{ id: "book", label: L.askExplain, text: `${L.askExplain}: ${input.bookTitle}` }],
+    };
+  }
+  return {
+    subject: input.libraryName || L.library,
+    about: L.tutorLibrary,
+    prompts: [{ id: "next", label: L.askNext, text: L.askNext }],
+  };
 }

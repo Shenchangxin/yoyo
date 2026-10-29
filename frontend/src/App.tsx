@@ -3,7 +3,7 @@
  * 不拥有：会话状态，那些在 useWorkstation。会调用 api 改工作区、模型、权限、隔离、置顶、归档、分叉、页面和密钥。
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel } from "react-resizable-panels";
 import { toast } from "sonner";
 import { cn } from "./lib/utils";
@@ -49,7 +49,9 @@ import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
 import { recentWorkspaces, joinWorkspace, sessionFsRoot } from "./lib/workspace";
 import { pendingAsk } from "./lib/ask-form";
-import type { AuthMode, Thread } from "./lib/protocol";
+import { channelForSurface, type AuthMode, type Thread } from "./lib/protocol";
+import { learnScopeSpec } from "./lib/learn-scope";
+import { RailSlotContext } from "./features/shell/RailSlot";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
 import { liveAutoSkills, liveSubagentCrumb } from "./lib/transcript-layout";
 import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
@@ -175,6 +177,11 @@ function WorkstationApp() {
   const peekOpen = three && !!reviewFile && ws.inspTab === "files";
   const showRail = !popout && !ws.sidebarCollapsed && !railNarrow;
   const overlayRail = !popout && !showRail && ws.sidebarHover;
+  const navInRail = showRail || overlayRail;
+  const [idolSlot, setIdolSlotState] = useState<HTMLDivElement | null>(null);
+  const onIdolSlot = useCallback((node: HTMLDivElement | null) => {
+    setIdolSlotState((cur) => (cur === node ? cur : node));
+  }, []);
   const mac = isMac();
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
@@ -198,7 +205,7 @@ function WorkstationApp() {
   const applySessionWorkspace = async (path: string) => {
     if (!path) return;
     if (!ws.activeId) {
-      const t = await adoptPendingAuthMode(await api.createSession(path, videoing ? "video" : "agent"));
+      const t = await adoptPendingAuthMode(await api.createSession(path, channelForSurface(ws.surface)));
       ws.setActive(t);
       ws.setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
       return;
@@ -359,6 +366,41 @@ function WorkstationApp() {
     />
   );
 
+  const learnChat = (
+    <>
+      <Transcript
+        compact
+        items={ws.items}
+        showThinking={!!ws.savedCfg.showThinking}
+        transcriptView={ws.savedCfg.transcriptView}
+        collapseTiming={ws.savedCfg.collapseTiming}
+        approvals={ws.approvals}
+        running={ws.threadRunning}
+        onResolve={ws.onResolve}
+        onRetry={() => { void ws.onRetryLast(); }}
+      />
+      <div className="px-3 pb-3">
+        <Composer
+          plain
+          compact
+          flush
+          placeholder={copy.learn.tutorPh}
+          draftKey={ws.draftKey}
+          running={ws.threadRunning}
+          disabled={!!ws.health.paused}
+          disabledReason={ws.health.paused ? copy.composer.paused : ""}
+          onSend={(opts) => { void ws.onSend(opts); }}
+          onStop={ws.onStop}
+          ask={pendingAsk(ws.approvals, ws.activeId)}
+          approvals={ws.approvals}
+          onResolveAsk={ws.onResolve}
+          sessionId={ws.activeId}
+          turnStatus={ws.turnStatus}
+        />
+      </div>
+    </>
+  );
+
   const inspect = (
     <Inspector
       tab={ws.inspTab}
@@ -403,7 +445,7 @@ function WorkstationApp() {
 
   const agentPane = (
     <section className={cn("relative flex min-h-0 min-w-0 flex-row", studioDesk ? "flex-1" : "h-full")}>
-      {home || studioDesk || talkDesk ? null : (
+      {home || studioDesk || talkDesk || paging ? null : (
       <TurnOutline
         turns={ws.outlineTurns}
         activeKey={ws.activeTurn}
@@ -415,7 +457,7 @@ function WorkstationApp() {
         className="@container relative flex min-h-0 min-w-0 flex-1 flex-col"
         data-testid={home ? "conversation-column" : undefined}
       >
-        {home || studioDesk || talkDesk ? null : (
+        {home || studioDesk || talkDesk || paging ? null : (
           <SessionHeader
             view={ws.inspector ? "trajectory" : "chat"}
             trail={subagentCrumb || undefined}
@@ -516,7 +558,7 @@ function WorkstationApp() {
         )}
         <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
           {createLauncher ? <CreateModeTabs /> : null}
-          {!home && !videoing && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
+          {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
           {composer}
@@ -542,6 +584,7 @@ function WorkstationApp() {
     <HarnessWorkspace
       tab={ws.harnessTab}
       onTab={ws.setHarnessTab}
+      navInRail={navInRail}
       harness={ws.harness}
       fallbackActive={ws.health.harness}
       report={ws.evalReport}
@@ -730,6 +773,7 @@ function WorkstationApp() {
           if (browserSurface()) toast.success(copy.rail.openedOnComputer);
         }).catch((e) => ws.fail(e));
       }}
+      onIdolSlot={onIdolSlot}
       onRename={async (t, title) => {
         try {
           await api.renameSession(t.id, title);
@@ -864,6 +908,7 @@ function WorkstationApp() {
       installed={ws.skills}
       loaded={ws.active?.loadedSkills || []}
       workspace={ws.active?.workspace || ws.savedCfg.workspace}
+      navInRail={navInRail}
       onRefreshInstalled={() => { void ws.reloadSkills(); }}
     />
   );
@@ -916,7 +961,7 @@ function WorkstationApp() {
   const workspace = settings ? (
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
-        <SettingsSurface ws={ws} navInRail={showRail} />
+        <SettingsSurface ws={ws} navInRail={navInRail} />
       </div>
     </Suspense>
   ) : skills ? (
@@ -928,37 +973,27 @@ function WorkstationApp() {
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="pages-surface">
         <LearnWorkspace
           sessionId={ws.activeId}
-          boundPageId={ws.active?.pageId}
-          boundPathId={ws.active?.pathId}
+          boundPageId={ws.active?.channel === "learn" ? ws.active?.pageId : ""}
+          navInRail={navInRail}
+          tutorQuiet={ws.items.length === 0 && !ws.threadRunning}
+          onTutorPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+          onEnsureScope={(spec) => ws.ensureLearnScope(spec)}
           onOpenInChat={(pageId) => {
-            if (!ws.activeId) return;
-            void api.setSessionPage(ws.activeId, pageId).then((t) => {
-              ws.setActive(t);
-              ws.setThreads((list) => patchThread(list, t.id, t));
+            void ws.ensureLearnScope(learnScopeSpec({ lane: "library", shelf: "notes", title: copy.learn.notesTab })).then(async (t) => {
+              const next = await api.setSessionPage(t.id, pageId);
+              ws.setActive(next);
+              ws.setThreads((list) => patchThread(list, next.id, next));
             });
           }}
           onUnbindChat={() => {
-            if (!ws.activeId) return;
-            void api.setSessionPage(ws.activeId, "").then((t) => {
+            const id = ws.active?.channel === "learn" ? ws.activeId : "";
+            if (!id) return;
+            void api.setSessionPage(id, "").then((t) => {
               ws.setActive(t);
               ws.setThreads((list) => patchThread(list, t.id, t));
             });
           }}
-          onBind={(next) => {
-            if (!ws.activeId) return;
-            void api.learnCall("learn.bind", {
-              session: ws.activeId,
-              library_id: next.libraryId || "",
-              path_id: next.pathId || "",
-              material_id: next.materialId || "",
-            }).then((t) => {
-              const thread = api.threadOf(t);
-              ws.setActive(thread);
-              ws.setThreads((list) => patchThread(list, thread.id, thread));
-            });
-          }}
-          onOpenChat={() => ws.showConversation()}
-          chat={agentPane}
+          chat={learnChat}
         />
       </div>
     </Suspense>
@@ -987,6 +1022,7 @@ function WorkstationApp() {
 
   return (
     <PresenceLayer input={presenceInput}>
+    <RailSlotContext.Provider value={idling ? idolSlot : null}>
     <AppFrame
       overlay={(
         <>
@@ -1256,6 +1292,7 @@ function WorkstationApp() {
         )
       ) : null}
     </AppFrame>
+    </RailSlotContext.Provider>
     </PresenceLayer>
   );
 }

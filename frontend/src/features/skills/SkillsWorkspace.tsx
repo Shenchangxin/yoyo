@@ -43,6 +43,7 @@ export function SkillsWorkspace(props: {
   installed: SkillInfo[];
   loaded: string[];
   workspace?: string;
+  navInRail?: boolean;
   onRefreshInstalled: () => void;
 }) {
   const copy = useCopy();
@@ -248,7 +249,7 @@ export function SkillsWorkspace(props: {
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <p className="mb-4 max-w-[46ch] text-[13px] leading-[1.55] text-pretty text-muted">{copy.skills.hint}</p>
           <div className="mb-5 flex flex-wrap items-center gap-3">
-            <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist" aria-label={copy.skills.title}>
+            {props.navInRail ? null : <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist" aria-label={copy.skills.title}>
               {(["installed", "market", "packs"] as Pane[]).map((id) => (
                 <button
                   type="button"
@@ -271,7 +272,7 @@ export function SkillsWorkspace(props: {
                   />
                 </button>
               ))}
-            </div>
+            </div>}
             {pane === "market" ? (
               <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                 <div className="relative min-w-[10rem] max-w-[18rem] flex-1">

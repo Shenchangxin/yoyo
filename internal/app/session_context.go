@@ -54,7 +54,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		Packs:              a.packSessions(ws),
 		SkillAutoInvoke:    runtime.NormalizeAutoInvoke(a.Config.Skills.AutoInvoke),
 		SkillCatalogBudget: a.Config.Skills.CatalogBudgetChars,
-		CatalogLane:        session.NormalizeChannel(meta.Channel),
+		CatalogLane:        session.CatalogLane(meta.Channel),
 	}
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)

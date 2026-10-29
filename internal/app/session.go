@@ -110,6 +110,9 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 	if ch == session.ChannelVideo {
 		title = "video"
 	}
+	if ch == session.ChannelLearn {
+		title = "learn"
+	}
 	meta := SessionMeta{
 		ID:               id,
 		CreatedAt:        time.Now().UTC(),
@@ -769,7 +772,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Packs:              a.packSessions(skillRoot),
 		SkillAutoInvoke:    runtime.NormalizeAutoInvoke(a.Config.Skills.AutoInvoke),
 		SkillCatalogBudget: a.Config.Skills.CatalogBudgetChars,
-		CatalogLane:        session.NormalizeChannel(meta.Channel),
+		CatalogLane:        session.CatalogLane(meta.Channel),
 		Pages:              a.Pages,
 		OnCapture: func(kind, path, summary string) {
 			a.rememberCapture(sessionID, kind, path, summary)
@@ -944,7 +947,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			pageCtx = runtime.PageInject(pg.Title, pg.Content, 3200)
 		}
 	}
-	if tools.ChatOverlay && tools.Depth == 0 && a.Learn != nil {
+	if tools.ChatOverlay && tools.Depth == 0 && a.Learn != nil && session.NormalizeChannel(meta.Channel) == session.ChannelLearn {
 		if journal, err := a.Learn.JournalInject(); err == nil && journal != "" {
 			if pageCtx != "" {
 				pageCtx += "\n\n"

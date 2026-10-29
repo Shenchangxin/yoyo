@@ -78,3 +78,53 @@ func TestVideoSessionUsesOwnWorkspace(t *testing.T) {
 		t.Fatal("channels must not share a default workspace")
 	}
 }
+
+// TestLearnChannelIndependentOfAgent 确认学习会话和代理会话不是同一条，分叉后仍是学习频道，并且技能目录仍走代理车道。
+func TestLearnChannelIndependentOfAgent(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	agent, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	learned, err := a.NewSessionOn(ws, session.ChannelLearn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if learned.Channel != session.ChannelLearn {
+		t.Fatalf("learn channel %q", learned.Channel)
+	}
+	if learned.ID == agent.ID {
+		t.Fatal("learn channel reused the agent id")
+	}
+	if learned.Workspace != agent.Workspace {
+		t.Fatalf("learn workspace %q want %q", learned.Workspace, agent.Workspace)
+	}
+	fork, err := a.ForkSession(learned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.Channel != session.ChannelLearn {
+		t.Fatalf("fork channel %q", fork.Channel)
+	}
+	if session.NormalizeChannel("Learn") != session.ChannelLearn {
+		t.Fatal("normalize learn")
+	}
+	if session.CatalogLane(session.ChannelLearn) != session.ChannelAgent {
+		t.Fatal("learn catalog must stay on the agent lane")
+	}
+	empty, err := a.NewSessionOn("", session.ChannelLearn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.Workspace != a.Workspace() {
+		t.Fatalf("default learn workspace %q", empty.Workspace)
+	}
+	if empty.Workspace == a.VideoWorkspace() && a.VideoWorkspace() != a.Workspace() {
+		t.Fatal("learn session used the video workspace")
+	}
+}

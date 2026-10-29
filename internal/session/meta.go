@@ -7,21 +7,36 @@ import (
 	"time"
 )
 
-// 频道是会话所在的对话线。agent 和 video 是两套身份。
+// 频道是会话所在的对话线。agent、video、learn 各用各的身份。
 const (
 	// ChannelAgent 是智能体聊天频道，值是 agent。NormalizeChannel 的默认也是它。
 	ChannelAgent = "agent"
 	// ChannelVideo 是视频聊天频道，值是 video。
 	ChannelVideo = "video"
+	// ChannelLearn 是学习对话频道，值是 learn。它不出现在会话模块的列表里。
+	ChannelLearn = "learn"
 )
 
-// NormalizeChannel 在去掉空白后不区分大小写等于 video 时返回 video，否则返回 agent。
-// s 去掉空白后与 ChannelVideo 做不区分大小写比较。
+// NormalizeChannel 去掉空白后不区分大小写等于 video 时返回 video，等于 learn 时返回 learn，否则返回 agent。
+// s 去掉空白后与 ChannelVideo、ChannelLearn 做不区分大小写比较。
 func NormalizeChannel(s string) string {
-	if strings.EqualFold(strings.TrimSpace(s), ChannelVideo) {
+	s = strings.TrimSpace(s)
+	if strings.EqualFold(s, ChannelVideo) {
 		return ChannelVideo
 	}
+	if strings.EqualFold(s, ChannelLearn) {
+		return ChannelLearn
+	}
 	return ChannelAgent
+}
+
+// CatalogLane 决定技能目录用哪条车道。学习对话沿用智能体目录，这样工作室和短剧技能不会进学习对话。
+// channel 传给 NormalizeChannel。结果为 ChannelLearn 时返回 ChannelAgent。
+func CatalogLane(channel string) string {
+	if NormalizeChannel(channel) == ChannelLearn {
+		return ChannelAgent
+	}
+	return NormalizeChannel(channel)
 }
 
 // 马具策略决定会话执行哪一份快照。
