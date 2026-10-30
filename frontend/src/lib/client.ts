@@ -3141,6 +3141,8 @@ export const video = {
   filmPlan: (id: string) => videoCall("video.film.plan", { id }),
   /** filmBuild 走 videoCall("video.film.build")。id 写入字段 id。 */
   filmBuild: (id: string) => videoCall("video.film.build", { id }),
+  /** filmShape 走 videoCall("video.film.shape")。id 写入字段 id。cast 展开传递。 */
+  filmShape: (id: string, cast: { subject?: string; rows?: string[]; left?: string; right?: string; ask?: string; reply?: string }) => videoCall("video.film.shape", { id, ...cast }),
   /** filmSwap 走 videoCall("video.film.swap")。id 写入字段 id。patch 展开传递。 */
   filmSwap: (id: string, patch: { host?: string; product?: string; language?: string; aspect?: string; hook?: string; price?: string; cta?: string }) => videoCall("video.film.swap", { id, ...patch }),
   /** filmFork 走 videoCall("video.film.fork")。id 写入字段 id。patch 展开传递。 */

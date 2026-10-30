@@ -323,14 +323,32 @@ func (e *Engine) DescribeFilm(structure, title, description string) (film.Projec
 	if structure == "" {
 		structure = "ranking"
 	}
-	if structure == "ranking" || structure == "podcast" || structure == "interview" {
-		if strings.TrimSpace(description) == "" {
-			p := film.FromTemplate(structure, title)
-			return e.saveFilm(p)
-		}
+	if templatedStructure(structure) && strings.TrimSpace(description) == "" {
+		return e.saveFilm(film.FromTemplate(structure, title))
 	}
 	p := film.FromReference(film.Input{Title: title, Structure: structure, Description: description})
 	return e.saveFilm(p)
+}
+
+// templatedStructure 判断这一结构有自己的模板。structure 是七种片子之一才为真。
+func templatedStructure(structure string) bool {
+	switch structure {
+	case "ranking", "podcast", "interview", "talking", "drama", "explainer", "narration":
+		return true
+	default:
+		return false
+	}
+}
+
+// ShapeFilm 把操作者改的字写进工程并保存。结构不变。
+// id 传给 GetFilm。
+// cast 传给 film.ApplyCast。
+func (e *Engine) ShapeFilm(id string, cast film.Cast) (film.Project, error) {
+	p, err := e.GetFilm(id)
+	if err != nil {
+		return film.Project{}, err
+	}
+	return e.saveFilm(film.ApplyCast(p, cast))
 }
 
 // PlanFilm 按当前镜头重算待办和输入摘要，并写回。输入没变的产物编号会留下。

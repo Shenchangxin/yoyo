@@ -305,7 +305,7 @@ function WorkstationApp() {
       ctx={ws.ctx}
       queued={ws.queued}
       onSend={(opts) => {
-        if (filmLauncher && (createMode === "ranking" || createMode === "podcast" || createMode === "interview")) {
+        if (filmLauncher) {
           void ws.startFilm(createMode, opts?.text || "");
           return;
         }
@@ -318,11 +318,7 @@ function WorkstationApp() {
             : createMode === "interview" ? copy.video.conductor.interviewPlaceholder
               : copy.video.conductor.clipPlaceholder
       ) : undefined}
-      sendLabel={filmLauncher ? (
-        createMode === "podcast" ? copy.video.conductor.startPodcast
-          : createMode === "interview" ? copy.video.conductor.startInterview
-            : copy.video.conductor.startRanking
-      ) : undefined}
+      sendLabel={filmLauncher ? copy.video.film.makePicture : undefined}
       allowEmptySend={filmLauncher}
       onStop={ws.onStop}
       onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
@@ -443,6 +439,21 @@ function WorkstationApp() {
     />
   );
 
+  const homeStarters = (
+    <HomeStarters
+      onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+      onContinueLast={() => { void ws.onContinueLast(); }}
+      onImportClip={() => { void ws.ingestVideo({}); }}
+      onRemake={() => { void ws.startRemake(); }}
+      onFilm={(structure, description) => { void ws.startFilm(structure, description); }}
+      onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
+      onOpenCut={(id) => { void ws.openCut(id); }}
+      draftKey={ws.draftKey}
+    />
+  );
+  const filmSurface = createDesk && !cutBound && !remakeOpen && (filmOpen || createMode !== "clip");
+  const directing = home && filmSurface && createMode !== "clip";
+
   const agentPane = (
     <section className={cn("relative flex min-h-0 min-w-0 flex-row", studioDesk ? "flex-1" : "h-full")}>
       {home || studioDesk || talkDesk || paging ? null : (
@@ -499,7 +510,8 @@ function WorkstationApp() {
         <div
           className={cn(
             "flex min-h-0 min-w-0 w-full flex-1 flex-col",
-            home && !railNarrow && "home-stage empty-rise overflow-auto",
+            home && !railNarrow && "home-stage empty-rise",
+            home && !railNarrow && (directing ? "overflow-hidden" : "overflow-auto"),
             home && railNarrow && "home-stage",
             home && !createDesk && !railNarrow && "justify-center py-10",
           )}
@@ -507,16 +519,7 @@ function WorkstationApp() {
         {railNarrow && home ? (
           <div className="min-h-0 flex-1 overflow-auto">
             <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
-            <HomeStarters
-              onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-              onContinueLast={() => { void ws.onContinueLast(); }}
-              onImportClip={() => { void ws.ingestVideo({}); }}
-              onRemake={() => { void ws.startRemake(); }}
-              onFilm={(structure, description) => { void ws.startFilm(structure, description); }}
-              onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
-              onOpenCut={(id) => { void ws.openCut(id); }}
-              draftKey={ws.draftKey}
-            />
+            {homeStarters}
           </div>
         ) : home ? (
           <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
@@ -556,25 +559,26 @@ function WorkstationApp() {
             onJumpLatest={ws.jumpToLatest}
           />
         )}
+        {home && !railNarrow && filmSurface && createLauncher ? (
+          <div className="mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-5 sm:px-8">
+            <CreateModeTabs />
+          </div>
+        ) : null}
+        {home && !railNarrow && filmSurface ? homeStarters : null}
+        {directing && !(createLauncher && railNarrow) ? null : (
         <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
-          {createLauncher ? <CreateModeTabs /> : null}
+          {createLauncher && (!filmSurface || railNarrow) ? <CreateModeTabs /> : null}
+          {directing ? null : (
+            <>
           {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
           {composer}
+            </>
+          )}
         </div>
-        {home && !railNarrow ? (
-          <HomeStarters
-            onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-            onContinueLast={() => { void ws.onContinueLast(); }}
-            onImportClip={() => { void ws.ingestVideo({}); }}
-            onRemake={() => { void ws.startRemake(); }}
-            onFilm={(structure, description) => { void ws.startFilm(structure, description); }}
-            onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
-            onOpenCut={(id) => { void ws.openCut(id); }}
-            draftKey={ws.draftKey}
-          />
-        ) : null}
+        )}
+        {home && !railNarrow && !filmSurface ? homeStarters : null}
         </div>
       </div>
     </section>

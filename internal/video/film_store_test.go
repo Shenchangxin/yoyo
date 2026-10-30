@@ -60,6 +60,22 @@ func TestDescribeBuildAndSwapKeepsTheBoard(t *testing.T) {
 	}
 }
 
+// TestShapeFilmKeepsTheRanking 锁住改名次以后结构还是排行榜，题目和第一名写进工程。
+func TestShapeFilmKeepsTheRanking(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.DescribeFilm("ranking", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shaped, err := e.ShapeFilm(p.ID, film.Cast{Subject: "三样", Rows: []string{"手机", "耳机", "杯子"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shaped.ID != p.ID || shaped.Structure != "ranking" || shaped.Title != "三样" || shaped.Entries[0].Label != "手机" {
+		t.Fatalf("%+v", shaped)
+	}
+}
+
 // TestOpenFilmKeepsTheURLWhenDownloadIsMissing 锁住没有 yt-dlp 时参考地址仍留在工程里，并写进备注。
 func TestOpenFilmKeepsTheURLWhenDownloadIsMissing(t *testing.T) {
 	e := testEngine(t)

@@ -44,6 +44,7 @@ import { useCutDesk, type CutProject } from "../video/cut-desk";
 import { useCreateMode } from "../video/create-mode";
 import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
 import { useFilmDesk } from "../video/film-desk";
+import { castPayload, readCast, useFilmCast, type FilmMode } from "../video/film-cast";
 
 /** 蛇形或驼峰键存在时用 num，缺省按 0。两个键都没有就沿用 prev。p 为真时才继续，按下标读取。snake 用作下标。camel 用作下标。 */
 function sliceNum(p: Record<string, any>, snake: string, camel: string, prev?: number): number | undefined {
@@ -2328,14 +2329,22 @@ export function useWorkstation() {
     }
   }
 
-  /** 没有工程 id 时抛需要画面。成功后把工程放上成片桌。structure 传给 api.video.filmDescribe。description 传给 api.video.filmDescribe。 */
-  async function startFilm(structure: "ranking" | "podcast" | "interview", description = "") {
+  /** 用模板建片，再把榜、对谈或街采上的字写进去，然后做出画面。structure 选择模板。description 非空时只换题目。 */
+  async function startFilm(structure: FilmMode, description = "") {
     const toastId = toast.loading(copy.video.film.working);
     try {
-      const project = await api.video.filmDescribe(structure, "", description);
+      const typed = description.trim();
+      const cast = { ...readCast(structure, copy.video.film), ...(typed ? { subject: typed } : {}) };
+      if (typed) useFilmCast.getState().write(structure, cast);
+      const project = await api.video.filmDescribe(structure, cast.subject, "");
       if (!project?.id) throw new Error(copy.video.film.needPicture);
-      useFilmDesk.getState().setProject(project);
-      toast.success(copy.video.film.ready, { id: toastId });
+      const shaped = await api.video.filmShape(project.id, castPayload(cast));
+      if (!shaped?.id) throw new Error(copy.video.film.needPicture);
+      useFilmDesk.getState().setProject(shaped);
+      const built = await api.video.filmBuild(shaped.id);
+      if (built?.id) useFilmDesk.getState().setProject(built);
+      useUI.getState().setDraft(draftKey, "");
+      toast.success(copy.video.film.pictureReady, { id: toastId });
     } catch (e) {
       toast.error(api.errMessage(e), { id: toastId });
     }

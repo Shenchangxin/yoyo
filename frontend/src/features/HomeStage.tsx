@@ -6,7 +6,10 @@ import type { Copy } from "../lib/copy";
 import { PresenceAnchor } from "./presence";
 import { CreateHome } from "./video/CreateHome";
 import { FeaturedCases } from "./video/FeaturedCases";
+import { useCreateMode } from "./video/create-mode";
+import { isFilmMode, type FilmMode } from "./video/film-cast";
 import { useCutDesk, useCutReadiness } from "./video/cut-desk";
+import { useFilmDesk } from "./video/film-desk";
 import { cn } from "../lib/utils";
 import { useMedia } from "../lib/media";
 
@@ -93,8 +96,22 @@ export function HomeHero(_props: {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
   const narrow = useMedia("(max-width: 799px)");
   const c = copy.video.conductor;
+  const film = copy.video.film;
+  const mode = useCreateMode((s) => s.mode);
+  const filmOpen = useFilmDesk((s) => createDesk && !!s.project?.id);
+  const filmHints: Record<FilmMode, string> = {
+    talking: film.talkingHint,
+    drama: film.dramaHint,
+    podcast: film.podcastHint,
+    interview: film.interviewHint,
+    ranking: film.rankingHint,
+    explainer: film.explainerHint,
+    narration: film.narrationHint,
+  };
+  const filmLead = !createDesk || !isFilmMode(mode) ? "" : filmHints[mode];
   const bound = useCutDesk((s) => createDesk && !!s.project?.source_hash);
   const boundTitle = useCutDesk((s) => (createDesk ? s.project?.title || "" : ""));
+  if (createDesk && !bound && filmLead && !filmOpen) return null;
   return (
     <div
       className={cn(
@@ -111,18 +128,20 @@ export function HomeHero(_props: {
           </p>
         </>
       )}
-      <h1 className={cn(
-        "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
-        createDesk ? "mt-1 text-[19px]" : "mt-1.5 text-[21px]",
-      )}>
-        {bound ? c.copilotTitle : readyOf(copy, videoing, videoMode, createDesk)}
-      </h1>
+      {createDesk && (filmOpen || filmLead) ? null : (
+        <h1 className={cn(
+          "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
+          createDesk ? "mt-1 text-[19px]" : "mt-1.5 text-[21px]",
+        )}>
+          {bound ? c.copilotTitle : readyOf(copy, videoing, videoMode, createDesk)}
+        </h1>
+      )}
       {createDesk && bound ? (
         <>
           {boundTitle ? <p className="mt-1 text-center text-[13px] text-foreground">{boundTitle}</p> : null}
           <p className="mx-auto mt-1.5 max-w-[40ch] text-center text-[12px] leading-[1.5] text-muted">{c.finishHint}</p>
         </>
-      ) : createDesk && !bound ? (
+      ) : createDesk && !bound && !filmOpen && !filmLead ? (
         <p className="mx-auto mt-1.5 max-w-[36ch] text-center text-[13px] leading-[1.5] text-muted">
           {c.lead}
         </p>
@@ -140,13 +159,16 @@ export function HomeStarters(props: {
   onContinueLast?: () => void;
   onImportClip?: () => void;
   onRemake?: () => void;
-  onFilm?: (structure: "ranking" | "podcast" | "interview", description?: string) => void;
+  onFilm?: (structure: FilmMode, description?: string) => void;
   onHandoff?: (dest: "studio" | "drama" | "canvas") => void;
   onOpenCut?: (id: string) => void;
   draftKey?: string;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
   const project = useCutDesk((s) => (createDesk ? s.project : null));
+  const mode = useCreateMode((s) => s.mode);
+  const filmOpen = useFilmDesk((s) => !!s.project?.id);
+  const filmMode = isFilmMode(mode);
   const starters = startersOf(copy, videoing, videoMode, createDesk);
   const bound = !!project?.source_hash && !!project.id;
   return (
@@ -199,7 +221,7 @@ export function HomeStarters(props: {
           draftKey={props.draftKey}
         />
       ) : null}
-      {createDesk && !bound && props.onPrompt ? <FeaturedCases onPrompt={props.onPrompt} /> : null}
+      {createDesk && !bound && !filmOpen && !filmMode && props.onPrompt ? <FeaturedCases onPrompt={props.onPrompt} /> : null}
     </>
   );
 }

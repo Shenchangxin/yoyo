@@ -56,6 +56,14 @@ func FromTemplate(structure, title string) Project {
 		return podcast(title)
 	case "interview":
 		return interview(title)
+	case "talking":
+		return talking(title)
+	case "drama":
+		return drama(title)
+	case "explainer":
+		return explainer(title)
+	case "narration":
+		return narration(title)
 	default:
 		return ranking(title)
 	}
@@ -282,6 +290,106 @@ func interview(title string) Project {
 	p.Entries = []Entry{{ID: "e0", Label: "先看完"}, {ID: "e1", Label: "再换一句"}, {ID: "e2", Label: "最后出片"}}
 	p.Stickers = []Sticker{{ID: "sticker-0", WordID: "a-0", Text: "第一条"}}
 	p.Reference.Duration = 9
+	return Plan(p)
+}
+
+// talking 建一个人对着镜头说的片子。人留着，三句话依次换上。
+// title 经 clean 后为空时写成「对着镜头说」，再传给 base。
+func talking(title string) Project {
+	if clean(title) == "" {
+		title = "对着镜头说"
+	}
+	p := base(title, "talking", Brief{Host: "我", Product: "这件事", Language: "zh", Aspect: "9:16", Hook: "人留着"})
+	p.Entries = []Entry{{ID: "e0", Label: "差点走"}, {ID: "e1", Label: "灯变了"}, {ID: "e2", Label: "留下"}}
+	p.Words = []Word{
+		{ID: "a-0", LineID: "a", Text: "差点", Speaker: "我", Start: 0, End: 1},
+		{ID: "a-1", LineID: "a", Text: "走", Speaker: "我", Start: 1, End: 2},
+		{ID: "b-0", LineID: "b", Text: "灯", Speaker: "我", Start: 2, End: 3},
+		{ID: "b-1", LineID: "b", Text: "变了", Speaker: "我", Start: 3, End: 4},
+		{ID: "c-0", LineID: "c", Text: "于是", Speaker: "我", Start: 4, End: 5},
+		{ID: "c-1", LineID: "c", Text: "留下", Speaker: "我", Start: 5, End: 6},
+	}
+	p.Shots = []Shot{
+		{ID: "shot-0", LineID: "a", Visual: "code", WordIDs: []string{"a-0", "a-1"}, Start: 0, End: 2, Beat: true, Region: &Box{X: 0.25, Y: 0.12, W: 0.5, H: 0.6, Label: "人"}},
+		{ID: "shot-1", LineID: "b", Visual: "code", WordIDs: []string{"b-0", "b-1"}, Start: 2, End: 4, Beat: true, Region: &Box{X: 0.25, Y: 0.12, W: 0.5, H: 0.6, Label: "人"}},
+		{ID: "shot-2", LineID: "c", Visual: "code", WordIDs: []string{"c-0", "c-1"}, Start: 4, End: 6, Beat: true, Region: &Box{X: 0.25, Y: 0.12, W: 0.5, H: 0.6, Label: "人"}},
+	}
+	p.Stickers = []Sticker{{ID: "sticker-0", WordID: "a-0", Text: "人还在"}}
+	p.Reference.Duration = 6
+	return Plan(p)
+}
+
+// drama 建一场两个人都留在里面的短剧。
+// title 经 clean 后为空时写成「在门口」，再传给 base。
+func drama(title string) Project {
+	if clean(title) == "" {
+		title = "在门口"
+	}
+	p := base(title, "drama", Brief{Host: "她", Product: "这场", Language: "zh", Aspect: "9:16", Hook: "两个人都在"})
+	p.Words = []Word{
+		{ID: "a-0", LineID: "a", Text: "你", Speaker: "她", Start: 0, End: 1},
+		{ID: "a-1", LineID: "a", Text: "进来", Speaker: "她", Start: 1, End: 2},
+		{ID: "p-0", LineID: "p", Text: "门口", Speaker: "她", Start: 2, End: 3},
+		{ID: "p-1", LineID: "p", Text: "还开着", Speaker: "她", Start: 3, End: 4},
+		{ID: "b-0", LineID: "b", Text: "等", Speaker: "他", Start: 4, End: 5},
+		{ID: "b-1", LineID: "b", Text: "一下", Speaker: "他", Start: 5, End: 6},
+	}
+	p.Shots = []Shot{
+		{ID: "shot-0", LineID: "a", Visual: "split", WordIDs: []string{"a-0", "a-1"}, Start: 0, End: 2, Beat: true, Region: &Box{X: 0, Y: 0.15, W: 0.5, H: 0.6, Label: "她"}},
+		{ID: "shot-1", LineID: "p", Visual: "split", WordIDs: []string{"p-0", "p-1"}, Start: 2, End: 4, Beat: true, Region: &Box{X: 0.15, Y: 0.2, W: 0.7, H: 0.5, Label: "门口"}},
+		{ID: "shot-2", LineID: "b", Visual: "split", WordIDs: []string{"b-0", "b-1"}, Start: 4, End: 6, Beat: true, Region: &Box{X: 0.5, Y: 0.15, W: 0.5, H: 0.6, Label: "他"}},
+	}
+	p.Stickers = []Sticker{{ID: "sticker-0", WordID: "b-0", Text: "人都在"}}
+	p.Reference.Duration = 6
+	return Plan(p)
+}
+
+// explainer 建一段要点会留下的讲解。
+// title 经 clean 后为空时写成「怎么做成」，再传给 base。
+func explainer(title string) Project {
+	if clean(title) == "" {
+		title = "怎么做成"
+	}
+	p := base(title, "explainer", Brief{Host: "我", Product: "这件事", Language: "zh", Aspect: "9:16", Hook: "要点留着"})
+	p.Entries = []Entry{{ID: "e0", Label: "一件事"}, {ID: "e1", Label: "一个地方"}, {ID: "e2", Label: "然后交出"}}
+	p.Words = []Word{
+		{ID: "a-0", LineID: "a", Text: "一件事", Speaker: "我", Start: 0, End: 2},
+		{ID: "b-0", LineID: "b", Text: "一个地方", Speaker: "我", Start: 2, End: 4},
+		{ID: "c-0", LineID: "c", Text: "然后交出", Speaker: "我", Start: 4, End: 6},
+	}
+	p.Shots = []Shot{
+		{ID: "shot-0", LineID: "a", Visual: "board", WordIDs: []string{"a-0"}, Start: 0, End: 2, Beat: true, Region: &Box{X: 0.15, Y: 0.1, W: 0.7, H: 0.35, Label: "要点"}},
+		{ID: "shot-1", LineID: "b", Visual: "board", WordIDs: []string{"b-0"}, Start: 2, End: 4, Beat: true, Region: &Box{X: 0.15, Y: 0.1, W: 0.7, H: 0.35, Label: "要点"}},
+		{ID: "shot-2", LineID: "c", Visual: "board", WordIDs: []string{"c-0"}, Start: 4, End: 6, Beat: true, Region: &Box{X: 0, Y: 0.45, W: 1, H: 0.5, Label: "画面"}},
+	}
+	p.Stickers = []Sticker{{ID: "sticker-0", WordID: "a-0", Text: "先记住"}}
+	p.Reference.Duration = 6
+	return Plan(p)
+}
+
+// narration 建一段声音留着、画面逐个换掉的旁白。
+// title 经 clean 后为空时写成「雨后的街」，再传给 base。
+func narration(title string) Project {
+	if clean(title) == "" {
+		title = "雨后的街"
+	}
+	p := base(title, "narration", Brief{Host: "旁白", Product: "这条街", Language: "zh", Aspect: "9:16", Hook: "声音留着"})
+	p.Entries = []Entry{{ID: "e0", Label: "店关了"}, {ID: "e1", Label: "楼上有灯"}, {ID: "e2", Label: "灯灭了"}}
+	p.Words = []Word{
+		{ID: "a-0", LineID: "a", Text: "店", Speaker: "旁白", Start: 0, End: 1},
+		{ID: "a-1", LineID: "a", Text: "关了", Speaker: "旁白", Start: 1, End: 2},
+		{ID: "b-0", LineID: "b", Text: "楼上", Speaker: "旁白", Start: 2, End: 3},
+		{ID: "b-1", LineID: "b", Text: "有灯", Speaker: "旁白", Start: 3, End: 4},
+		{ID: "c-0", LineID: "c", Text: "灯", Speaker: "旁白", Start: 4, End: 5},
+		{ID: "c-1", LineID: "c", Text: "灭了", Speaker: "旁白", Start: 5, End: 6},
+	}
+	p.Shots = []Shot{
+		{ID: "shot-0", LineID: "a", Visual: "code", WordIDs: []string{"a-0", "a-1"}, Start: 0, End: 2, Beat: true, Region: &Box{X: 0, Y: 0, W: 1, H: 1, Label: "画面"}},
+		{ID: "shot-1", LineID: "b", Visual: "code", WordIDs: []string{"b-0", "b-1"}, Start: 2, End: 4, Beat: true, Region: &Box{X: 0, Y: 0, W: 1, H: 1, Label: "画面"}},
+		{ID: "shot-2", LineID: "c", Visual: "code", WordIDs: []string{"c-0", "c-1"}, Start: 4, End: 6, Beat: true, Region: &Box{X: 0, Y: 0, W: 1, H: 1, Label: "画面"}},
+	}
+	p.Stickers = []Sticker{{ID: "sticker-0", WordID: "a-0", Text: "声音还在"}}
+	p.Reference.Duration = 6
 	return Plan(p)
 }
 
