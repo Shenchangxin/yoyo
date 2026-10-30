@@ -2,15 +2,19 @@
  * 本文件拥有创作入口的模式切换按钮。不拥有各模式的桌子。
  * 它只改本地模式，不改服务端。
  */
-import { Clapperboard, ListOrdered, MessagesSquare, Mic } from "lucide-react";
+import { AudioLines, Clapperboard, ListOrdered, MessagesSquare, Mic, Presentation, UserRound, Users } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
 import { useCreateMode, type CreateMode } from "./create-mode";
 
 const modes: { id: CreateMode; icon: typeof Clapperboard }[] = [
   { id: "clip", icon: Clapperboard },
-  { id: "ranking", icon: ListOrdered },
+  { id: "talking", icon: UserRound },
+  { id: "drama", icon: Users },
   { id: "podcast", icon: MessagesSquare },
   { id: "interview", icon: Mic },
+  { id: "ranking", icon: ListOrdered },
+  { id: "explainer", icon: Presentation },
+  { id: "narration", icon: AudioLines },
 ];
 
 /** CreateModeTabs 在成片、榜单、播客、访谈之间切换。 */
@@ -22,9 +26,13 @@ export function CreateModeTabs() {
   const setMode = useCreateMode(/** s 取出 setMode。 */ (s) => s.setMode);
   const label: Record<CreateMode, string> = {
     clip: c.modeClip,
-    ranking: film.ranking,
+    talking: film.talking,
+    drama: film.drama,
     podcast: film.podcast,
     interview: film.interview,
+    ranking: film.ranking,
+    explainer: film.explainer,
+    narration: film.narration,
   };
   return (
     <div className="create-mode-tabs" role="group" aria-label={c.modeLabel} data-testid="create-mode-tabs">

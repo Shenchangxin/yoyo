@@ -135,6 +135,62 @@ func TestSwapHostKeepsCodeAndRebuildsPicture(t *testing.T) {
 	}
 }
 
+// TestApplyCastKeepsTheBoardThePairAndTheAnswers 锁住改字以后结构还在：榜先露出第一名，对谈换上两个人，街采的后几个答案先不出现。
+func TestApplyCastKeepsTheBoardThePairAndTheAnswers(t *testing.T) {
+	rank := ApplyCast(ranking(""), Cast{Subject: "三样", Rows: []string{"手机", "耳机", "杯子"}})
+	if rank.Structure != "ranking" || rank.Title != "三样" || rank.Brief.Host != "" {
+		t.Fatalf("rank %+v", rank.Brief)
+	}
+	if len(rank.Entries) < 3 || rank.Entries[0].Label != "手机" || rank.Entries[2].Label != "杯子" {
+		t.Fatalf("entries %+v", rank.Entries)
+	}
+	said := spoken(rank)
+	if !strings.Contains(said, "手机") || !strings.Contains(said, "杯子") {
+		t.Fatal(said)
+	}
+	if len(rank.Shots) != len(ranking("").Shots) {
+		t.Fatal("shots changed")
+	}
+	board := RenderHTML(rank, rank.Shots[0])
+	if !strings.Contains(board, "手机") || strings.Contains(board, "杯子") {
+		t.Fatal(board)
+	}
+
+	pod := ApplyCast(podcast(""), Cast{Subject: "早起", Left: "她", Right: "他", Ask: "你起得来吗", Reply: "起得来"})
+	if pod.Words[0].Speaker != "她" || pod.Brief.Host != "她" || pod.Brief.Product != "早起" {
+		t.Fatalf("pod host %s speaker %s", pod.Brief.Host, pod.Words[0].Speaker)
+	}
+	if !strings.Contains(spoken(pod), "你起得来吗") || !strings.Contains(spoken(pod), "起得来") {
+		t.Fatal(spoken(pod))
+	}
+	split := RenderHTML(pod, pod.Shots[0])
+	if !strings.Contains(split, "她") || !strings.Contains(split, "他") {
+		t.Fatal(split)
+	}
+
+	iv := ApplyCast(interview(""), Cast{Subject: "后悔什么", Rows: []string{"没说", "晚回", "丢了"}})
+	if iv.Entries[0].Label != "没说" || iv.Entries[2].Label != "丢了" || iv.Title != "后悔什么" {
+		t.Fatalf("%+v %s", iv.Entries, iv.Title)
+	}
+	first := RenderHTML(iv, iv.Shots[0])
+	if !strings.Contains(first, "没说") || strings.Contains(first, "丢了") {
+		t.Fatal(first)
+	}
+	last := RenderHTML(iv, iv.Shots[2])
+	if !strings.Contains(last, "丢了") || !strings.Contains(last, "没说") {
+		t.Fatal(last)
+	}
+	found := false
+	for _, n := range iv.Needs {
+		if n.Kind == "matting" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("interview matting")
+	}
+}
+
 // TestTemplatesCoverTheThreeStructures 锁住排行榜、播客和街采都有词、镜头、贴纸，而且切点落在词上。
 func TestTemplatesCoverTheThreeStructures(t *testing.T) {
 	for _, structure := range []string{"ranking", "podcast", "interview"} {
@@ -161,6 +217,27 @@ func TestTemplatesCoverTheThreeStructures(t *testing.T) {
 	}
 	if !found || iv.Shots[0].Region.Label != "脸" {
 		t.Fatal("interview reveal")
+	}
+}
+
+// TestTemplatesCoverTheOtherFormats 锁住口播、短剧、讲解和旁白都有自己的结构，改字不会把结构拆掉。
+func TestTemplatesCoverTheOtherFormats(t *testing.T) {
+	for _, structure := range []string{"talking", "drama", "explainer", "narration"} {
+		p := FromTemplate(structure, "")
+		if p.Structure != structure || len(p.Words) == 0 || len(p.Shots) == 0 {
+			t.Fatalf("%s %+v", structure, p)
+		}
+	}
+	talk := ApplyCast(FromTemplate("talking", ""), Cast{Subject: "留下", Left: "我", Rows: []string{"差点走", "灯亮了", "就留下"}})
+	if talk.Structure != "talking" || talk.Title != "留下" || talk.Brief.Host != "我" {
+		t.Fatalf("%+v", talk)
+	}
+	narr := ApplyCast(FromTemplate("narration", ""), Cast{Subject: "雨后", Rows: []string{"店关了", "楼上有灯", "灯灭了"}})
+	if narr.Structure != "narration" || len(narr.Entries) < 3 || narr.Entries[2].Label != "灯灭了" {
+		t.Fatalf("%+v", narr.Entries)
+	}
+	if narr.Shots[0].Visual == "reveal" {
+		t.Fatal("narration keeps its own pictures")
 	}
 }
 

@@ -1303,6 +1303,15 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return eng.PlanFilm(str("id"))
 	case "video.film.build":
 		return eng.BuildFilm(str("id"))
+	case "video.film.shape":
+		return eng.ShapeFilm(str("id"), film.Cast{
+			Subject: str("subject"),
+			Rows:    stringList(params, "rows"),
+			Left:    str("left"),
+			Right:   str("right"),
+			Ask:     str("ask"),
+			Reply:   str("reply"),
+		})
 	case "video.film.swap":
 		return eng.SwapFilm(str("id"), film.Brief{
 			Host: str("host"), Product: str("product"), Language: str("language"),
@@ -1809,6 +1818,29 @@ func topicIDsFrom(params map[string]any) []string {
 		return out
 	case string:
 		return splitCSVApp(raw)
+	default:
+		return nil
+	}
+}
+
+// stringList 从参数里读字符串切片。缺键或其他类型返回 nil。
+// params 为 nil 时返回 nil，否则按 key 读取。
+func stringList(params map[string]any, key string) []string {
+	if params == nil {
+		return nil
+	}
+	switch raw := params[key].(type) {
+	case []string:
+		return raw
+	case []any:
+		out := make([]string, 0, len(raw))
+		for _, item := range raw {
+			if item == nil {
+				continue
+			}
+			out = append(out, fmt.Sprint(item))
+		}
+		return out
 	default:
 		return nil
 	}

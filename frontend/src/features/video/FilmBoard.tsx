@@ -8,6 +8,8 @@ import { Button } from "../../components/ui/button";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import { playbackSrc } from "./playback-src";
+import { FilmStudio } from "./FilmStudio";
+import { castFromProject, castPayload, isFilmMode, sameCast, type FilmCast, type FilmMode } from "./film-cast";
 import { useFilmDesk, type FilmProject, type FilmWord } from "./film-desk";
 
 const shapes = ["9:16", "16:9", "1:1"] as const;
@@ -32,7 +34,7 @@ function scriptLines(words: FilmWord[]) {
   return lines.slice(0, 8);
 }
 
-/** FilmBoard 编辑主持人和产品，有画面时去剪辑，否则做画面。props 的 onOpenCut 在交接出剪辑 id 后打开。 */
+/** FilmBoard 在排行榜、对谈和街采上改那几行字；其他结构仍改主持人和产品。有画面时去剪辑，否则做画面。props 的 onOpenCut 在交接出剪辑 id 后打开。 */
 export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const copy = useCopy();
   const c = copy.video.film;
@@ -47,6 +49,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const [price, setPrice] = useState("");
   const [busy, setBusy] = useState("");
   const [mediaBase, setMediaBase] = useState("");
+  const [local, setLocal] = useState<FilmCast | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -63,6 +66,10 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
     setEnding(project?.brief?.cta || "");
     setPrice(project?.brief?.price || "");
   }, [project?.id, project?.brief?.host, project?.brief?.product, project?.brief?.hook, project?.brief?.cta, project?.brief?.price]);
+
+  useEffect(() => {
+    setLocal(null);
+  }, [project?.id]);
 
   if (!project || !project.id) return null;
   const id = project.id;
@@ -116,6 +123,82 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
     } finally {
       setBusy("");
     }
+  }
+
+  const format: FilmMode | null = project.structure && isFilmMode(project.structure) ? project.structure : null;
+  const base = format ? castFromProject(project) : null;
+  const cast = local ?? base;
+  const dirty = !!cast && !!base && !sameCast(cast, base);
+  const rebuild = !pictureSrc || dirty;
+
+  /** 画面已是最新就去剪。否则先把字写回，再做出画面。 */
+  async function commitFormat() {
+    if (!cast) return;
+    if (!rebuild) {
+      await openCut();
+      return;
+    }
+    const shaped = await run("build", async () => {
+      const next = await api.video.filmShape(id, castPayload(cast)) as FilmProject;
+      if (next?.id) setProject(next);
+      return api.video.filmBuild(id) as Promise<FilmProject>;
+    });
+    if (shaped && shaped !== project) setLocal(null);
+  }
+
+  if (format && cast) {
+    return (
+      <section className="creation-remake film-open" data-testid="film-board" aria-label={c.title}>
+        <button type="button" className="cut-back" onClick={() => clear()}>{back}</button>
+        <FilmStudio
+          mode={format}
+          value={cast}
+          busy={!!busy}
+          commitLabel={rebuild ? c.makePicture : c.goEdit}
+          onChange={setLocal}
+          onCommit={() => { void (rebuild ? commitFormat() : openCut()); }}
+          failed={failed?.error ? `${c.failedStep}：${failed.error}` : ""}
+          picture={pictureSrc ? { src: pictureSrc, video: !!picture?.media_type?.startsWith("video/"), title: project.title || c.preview } : undefined}
+          needs={(project.needs || []).map(/** need 收成任务标题。 */ (need) => ({
+            title: need.kind || need.key || c.plan,
+            detail: need.error || need.prompt,
+          }))}
+        />
+        <details className="creation-more">
+          <summary>{c.quiet}</summary>
+          <span className="creation-field-label">{c.shape}</span>
+          <div className="creation-shape" role="group" aria-label={c.shape}>
+            {shapes.map(/** value 交给 patch 当画幅，并用来判断选中和文案。 */ (value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={(project.brief?.aspect || "9:16") === value}
+                disabled={!!busy}
+                onClick={() => patch("aspect", { aspect: value })}
+              >
+                {value === "16:9" ? c.landscape : value === "1:1" ? c.square : c.portrait}
+              </button>
+            ))}
+          </div>
+          <div className="creation-remake-actions">
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => {
+              setBusy("bed");
+              void api.pickFiles().then(/** picked 取第一项路径，登记成音频后换床。 */ async (picked) => {
+                const path = picked[0];
+                if (!path) return project;
+                const ref = await api.video.putStudioMediaPath(path, "audio");
+                const hash = String(ref?.cas_hash || ref?.hash || "");
+                if (!hash) throw new Error(c.needPicture);
+                return api.video.filmBed(id, hash) as Promise<FilmProject>;
+              }).then(/** next 有 id 才换上工程。 */ (next) => {
+                if (next?.id) setProject(next);
+              }).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e))).finally(() => setBusy(""));
+            }}>{c.myVoice}</Button>
+            <Button size="sm" variant="ghost" disabled={!!busy || !cast.subject.trim()} onClick={() => void run("fork", async () => api.video.filmFork(id, { host: cast.subject }) as Promise<FilmProject>)}>{c.another}</Button>
+          </div>
+        </details>
+      </section>
+    );
   }
 
   return (

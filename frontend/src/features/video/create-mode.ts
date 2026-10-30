@@ -3,9 +3,10 @@
  * 不拥有线程历史。它只改本地状态，不改服务端。
  */
 import { create } from "zustand";
+import type { FilmMode } from "./film-cast";
 
-/** CreateMode 是创作入口的四种模式：成片、榜单、播客、访谈。 */
-export type CreateMode = "clip" | "ranking" | "podcast" | "interview";
+/** CreateMode 是剪已有片子，或七种新片子之一。 */
+export type CreateMode = "clip" | FilmMode;
 
 /** useCreateMode 记住当前模式，以及操作者是否从这张桌子发过聊天。 */
 export const useCreateMode = create<{

@@ -5,14 +5,15 @@
 import { useEffect, useState } from "react";
 import { Clapperboard, Film, Images, PanelsTopLeft } from "lucide-react";
 import * as api from "../../lib/client";
-import { useUI } from "../../lib/store";
 import { useCopy } from "../../lib/i18n";
 import type { CutProject } from "./cut-desk";
 import { FilmBoard } from "./FilmBoard";
+import { FilmStudio } from "./FilmStudio";
 import { useFilmDesk, type FilmProject } from "./film-desk";
+import { castDefaults, isFilmMode, useFilmCast, type FilmMode } from "./film-cast";
 import { RemakeDraft } from "./RemakeDraft";
 import { useRemakeDesk } from "./remake-desk";
-import { useCreateMode, type CreateMode } from "./create-mode";
+import { useCreateMode } from "./create-mode";
 
 /** 把未知值收成剪辑工程数组。v 是数组就当剪辑工程数组，否则返回空数组。 */
 function asCuts(v: unknown): CutProject[] {
@@ -20,18 +21,16 @@ function asCuts(v: unknown): CutProject[] {
 }
 
 /** 把结构 id 换成榜单、播客或访谈的名字。film 按 ranking、podcast、interview 取对应名字。 */
-function structureLabel(id: string | undefined, film: { ranking: string; podcast: string; interview: string }) {
-  if (id === "ranking") return film.ranking;
-  if (id === "podcast") return film.podcast;
-  if (id === "interview") return film.interview;
+function structureLabel(id: string | undefined, film: Record<FilmMode, string>) {
+  if (id && isFilmMode(id)) return film[id];
   return "";
 }
 
-/** CreateHome 在成片模式下列出对应结构，否则列出导入、翻拍和最近六条成片与剪辑。props 的 onImport 和 onRemake 挂在按钮上，onFilm 带上结构和草稿，onHandoff 带上目标栏，onOpenCut 打开剪辑，onPrompt 填入示例，draftKey 用来读草稿。 */
+/** CreateHome 在成片模式上编辑榜、对谈或提问，否则列出导入、翻拍和最近六条成片与剪辑。props 的 onImport 和 onRemake 挂在按钮上，onFilm 带上结构，onHandoff 带上目标栏，onOpenCut 打开剪辑。 */
 export function CreateHome(props: {
   onImport: () => void;
   onRemake: () => void;
-  onFilm: (structure: "ranking" | "podcast" | "interview", description?: string) => void;
+  onFilm: (structure: FilmMode, description?: string) => void;
   onHandoff: (dest: "studio" | "drama" | "canvas") => void;
   onOpenCut: (id: string) => void;
   onPrompt?: (text: string) => void;
@@ -41,7 +40,6 @@ export function CreateHome(props: {
   const c = copy.video.conductor;
   const film = copy.video.film;
   const mode = useCreateMode(/** s 取出 mode。 */ (s) => s.mode);
-  const draft = useUI(/** s 在有 draftKey 时取出对应草稿，没有就当空字符串。 */ (s) => (props.draftKey ? s.drafts[props.draftKey] || "" : ""));
   const [cuts, setCuts] = useState<CutProject[]>([]);
   const [films, setFilms] = useState<FilmProject[]>([]);
   const openFilm = useFilmDesk(/** s 取出 project。 */ (s) => s.project);
@@ -73,49 +71,47 @@ export function CreateHome(props: {
     { id: "canvas", title: c.handoffCanvas, hint: c.handoffCanvasHint, icon: PanelsTopLeft },
   ];
   const busy = !!openFilm?.id || !!openDraft?.id;
-  const filmMode = mode === "ranking" || mode === "podcast" || mode === "interview" ? mode : null;
-  const filmCopy: Record<Exclude<CreateMode, "clip">, { title: string; hint: string; start: string; sample: string }> = {
-    ranking: { title: film.ranking, hint: film.rankingHint, start: c.startRanking, sample: c.suggestRanking },
-    podcast: { title: film.podcast, hint: film.podcastHint, start: c.startPodcast, sample: c.suggestPodcast },
-    interview: { title: film.interview, hint: film.interviewHint, start: c.startInterview, sample: c.suggestInterview },
+  const filmMode = isFilmMode(mode) ? mode : null;
+  const savedCast = useFilmCast(/** s 在有成片模式时取出该模式的草稿。 */ (s) => (filmMode ? s.saved[filmMode] : undefined));
+  const cast = filmMode ? (savedCast ?? castDefaults(film, filmMode)) : null;
+  const filmTitle: Record<FilmMode, string> = {
+    talking: film.talking,
+    drama: film.drama,
+    podcast: film.podcast,
+    interview: film.interview,
+    ranking: film.ranking,
+    explainer: film.explainer,
+    narration: film.narration,
   };
   const visibleFilms = filmMode ? films.filter(/** row 的 structure 和当前成片模式相同才留下。 */ (row) => row.structure === filmMode) : films;
+
+  /** 打开一条成片，并把模式拨到它的结构上。row 有 id 才写入。 */
+  function openFilmRow(row: FilmProject) {
+    if (!row.id) return;
+    if (row.structure && isFilmMode(row.structure)) {
+      useCreateMode.getState().setMode(row.structure);
+    }
+    useFilmDesk.getState().setProject(row);
+  }
 
   return (
     <section className="creation-home-handoff" data-testid="creation-handoff" aria-label={c.handoffTitle}>
       <FilmBoard onOpenCut={props.onOpenCut} />
       <RemakeDraft onOpenCut={props.onOpenCut} />
-      {busy ? null : filmMode ? (
+      {busy ? null : filmMode && cast ? (
         <>
-          <button
-            type="button"
-            className="creation-start-primary"
-            data-testid={`film-${filmMode}`}
-            onClick={() => props.onFilm(filmMode, draft.trim())}
-          >
-            <span>
-              <strong>{filmCopy[filmMode].start}</strong>
-              <small>{filmCopy[filmMode].hint}</small>
-            </span>
-          </button>
-          <button type="button" className="creation-choice" onClick={() => props.onPrompt?.(filmCopy[filmMode].sample)}>
-            <strong>{c.tryThis}</strong>
-            <small>{filmCopy[filmMode].sample}</small>
-          </button>
-          {visibleFilms.length ? (
-            <div className="creation-recent">
-              <h2>{c.yourFilms}</h2>
-              <ul>
-                {visibleFilms.map(/** row 有 id 就设成当前成片，标题空着用模式名。 */ (row) => (
-                  <li key={`film-${row.id}`}>
-                    <button type="button" onClick={() => { if (row.id) useFilmDesk.getState().setProject(row); }}>
-                      <span>{row.title || filmCopy[filmMode].title}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <FilmStudio
+            key={filmMode}
+            mode={filmMode}
+            value={cast}
+            testId={`film-${filmMode}`}
+            commitLabel={film.makePicture}
+            films={visibleFilms.flatMap(/** row 没有 id 就不放进成片。有 id 时用标题，空标题用这种片子的名字。 */ (row) => (
+              row.id ? [{ id: row.id, title: row.title || filmTitle[filmMode], onOpen: () => openFilmRow(row) }] : []
+            ))}
+            onChange={/** next 按当前模式记下。 */ (next) => useFilmCast.getState().write(filmMode, next)}
+            onCommit={() => props.onFilm(filmMode)}
+          />
         </>
       ) : (
         <>
@@ -154,9 +150,9 @@ export function CreateHome(props: {
             <h2>{c.yourFilms}</h2>
             {films.length + cuts.length === 0 ? <p>{c.recentEmpty}</p> : (
               <ul>
-                {films.map(/** row 有 id 就设成当前成片，并显示标题和结构名。 */ (row) => (
+                {films.map(/** row 交给 openFilmRow，并显示标题和结构名。 */ (row) => (
                   <li key={`film-${row.id}`}>
-                    <button type="button" onClick={() => { if (row.id) useFilmDesk.getState().setProject(row); }}>
+                    <button type="button" onClick={() => openFilmRow(row)}>
                       <span>{row.title || film.title}</span>
                       <em>{structureLabel(row.structure, film)}</em>
                     </button>
