@@ -7,6 +7,11 @@ import { errMessage } from "../../lib/normalize";
 import { learnScopeSpec, type LearnScopeSpec } from "../../lib/learn-scope";
 import { useUI } from "../../lib/store";
 import { LearnRailNav } from "./LearnRailNav";
+import { BookOpen, Check, ChevronLeft, ChevronRight, Library, ListChecks, PenLine } from "lucide-react";
+import { LearnSegment, LearnShell, LearnTabs } from "./LearnShell";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { LearnTutor, type TutorPrompt } from "./LearnTutor";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -284,6 +289,10 @@ export function LearnWorkspace(props: {
                   });
                 }}
                 onOpenPath={(id) => { useUI.getState().setLearnLane("study"); void run(() => openPath(id)); }}
+                onOpenStudy={() => { setActive(null); useUI.getState().setLearnLane("study"); }}
+                onOpenRead={() => { setReader(null); setOpenBook(null); setShelf("materials"); useUI.getState().setLearnLane("library"); }}
+                onOpenBooks={() => { setReader(null); setShelf("books"); useUI.getState().setLearnLane("library"); }}
+                onOpenPractice={() => { useUI.getState().setLearnLane("practice"); }}
                 onPractice={(id) => { setFocusId(id); useUI.getState().setLearnLane("practice"); }}
                 onOpenBook={(id, libraryId) => { void run(() => showBook(id, libraryId)); }}
               />
@@ -378,7 +387,8 @@ export function LearnWorkspace(props: {
               ) : (
                 <LibraryPane
                   shelf={shelf}
-                  onShelf={setShelf}
+                  onShelf={(next) => { setShelf(next); if (next !== "books") setOpenBook(null); }}
+                  onCloseBook={() => setOpenBook(null)}
                   libs={libs}
                   libId={libId}
                   docs={docs}
@@ -387,16 +397,13 @@ export function LearnWorkspace(props: {
                   books={books}
                   openBook={openBook}
                   notes={shelf === "notes" || libId === "notes" ? (
-                    <div className="flex h-full min-h-0 flex-col">
-                      <p className="px-6 pt-4 text-[12px] text-muted">{L.notesHint}</p>
-                      <div className="min-h-0 flex-1">
-                        <PagesWorkspace
-                          sessionId={props.sessionId}
-                          boundPageId={props.boundPageId}
-                          onOpenInChat={props.onOpenInChat}
-                          onUnbindChat={props.onUnbindChat}
-                        />
-                      </div>
+                    <div className="h-full min-h-0">
+                      <PagesWorkspace
+                        sessionId={props.sessionId}
+                        boundPageId={props.boundPageId}
+                        onOpenInChat={props.onOpenInChat}
+                        onUnbindChat={props.onUnbindChat}
+                      />
                     </div>
                   ) : null}
                   onPick={(id) => {
@@ -485,7 +492,7 @@ export function LearnWorkspace(props: {
               )
             ) : null}
             {lane === "practice" ? (
-              <PracticePane cards={cards} desk={desk} focusId={focusId} onChange={setCards} onReload={() => run(loadDue)} onFail={fail} />
+              <PracticePane cards={cards} desk={desk} focusId={focusId} onReload={() => run(loadDue)} onFail={fail} onLeave={() => setFocusId("")} />
             ) : null}
           </div>
         </div>
@@ -507,11 +514,40 @@ export function LearnWorkspace(props: {
   );
 }
 
+function PointMark(props: { status: string }) {
+  const mastered = props.status === "mastered";
+  const learning = props.status === "learning";
+  return (
+    <span
+      className={cn(
+        "grid size-5 shrink-0 place-items-center rounded-full border",
+        mastered ? "border-foreground bg-foreground text-background" : learning ? "border-foreground" : "border-border",
+      )}
+      aria-hidden
+    >
+      {mastered ? <Check className="size-3" /> : null}
+    </span>
+  );
+}
+
+function Field(props: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[12px] text-muted">{props.label}</span>
+      {props.children}
+    </label>
+  );
+}
+
 function TodayPane(props: {
   data: any;
   onSave: (topic: string, why: string, next: string) => Promise<void>;
   onRecord: (insight: string) => Promise<void>;
   onOpenPath: (id: string) => void;
+  onOpenStudy: () => void;
+  onOpenRead: () => void;
+  onOpenBooks: () => void;
+  onOpenPractice: () => void;
   onPractice: (id: string) => void;
   onOpenBook: (id: string, libraryId?: string) => void;
 }) {
@@ -521,77 +557,99 @@ function TodayPane(props: {
   const [why, setWhy] = useState(j.why || "");
   const [next, setNext] = useState(j.next_focus || "");
   const [insight, setInsight] = useState("");
+  const [editing, setEditing] = useState(false);
   useEffect(() => {
     setTopic(j.topic || "");
     setWhy(j.why || "");
     setNext(j.next_focus || "");
   }, [j.topic, j.why, j.next_focus]);
-  const due = Array.isArray(props.data?.due) ? props.data.due : [];
-  const paths = Array.isArray(props.data?.paths) ? props.data.paths : [];
-  const books = Array.isArray(props.data?.books) ? props.data.books : [];
+  const due = Array.isArray(props.data?.due) ? props.data.due as Card[] : [];
+  const paths = Array.isArray(props.data?.paths) ? props.data.paths as Path[] : [];
+  const books = Array.isArray(props.data?.books) ? props.data.books as Book[] : [];
   const records = Array.isArray(j.records) ? j.records.slice(0, 3) : [];
-  const quiet = due.length === 0 && paths.length === 0 && books.length === 0;
-  const [editing, setEditing] = useState(false);
+  const ways: { id: string; title: string; hint: string; icon: typeof ListChecks; onClick: () => void }[] = [
+    { id: "study", title: L.study, hint: L.wayStudyHint, icon: ListChecks, onClick: props.onOpenStudy },
+    { id: "read", title: L.reader, hint: L.wayReadHint, icon: Library, onClick: props.onOpenRead },
+    { id: "book", title: L.books, hint: L.wayBookHint, icon: BookOpen, onClick: props.onOpenBooks },
+    { id: "practice", title: L.practice, hint: L.wayPracticeHint, icon: PenLine, onClick: props.onOpenPractice },
+  ];
   return (
-    <div className="h-full overflow-auto">
-      <div className="mx-auto flex max-w-[640px] flex-col gap-8 px-8 py-10">
-        <section>
-          <h2 className="text-[22px] font-semibold tracking-[-0.03em]">{L.now}</h2>
-          {quiet ? <EmptyState title={L.nowEmpty} body={L.nowEmptyHint} /> : (
-            <ul className="mt-4 flex flex-col">
-              {due.slice(0, 5).map((card: Card) => (
-                <li key={card.id}>
-                  <button type="button" data-testid="learn-due" className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onPractice(card.id)}>
-                    <span className="text-[15px]">{card.stem}</span>
-                    <span className="shrink-0 text-[12px] text-muted">{L.practice}</span>
-                  </button>
-                </li>
+    <LearnShell title={L.today} subtitle={L.hubSubtitle}>
+      <div className="mx-auto flex max-w-[720px] flex-col gap-8 px-8 py-6">
+        <div className="grid grid-cols-2 gap-3">
+          {ways.map((way) => {
+            const Icon = way.icon;
+            return (
+              <button
+                key={way.id}
+                type="button"
+                className="flex min-h-[132px] flex-col items-start rounded-xl border border-border/60 bg-card p-4 text-left transition-colors duration-200 hover:bg-lift/50"
+                onClick={way.onClick}
+              >
+                <span className="grid size-9 place-items-center rounded-lg bg-lift text-muted">
+                  <Icon className="size-4" aria-hidden />
+                </span>
+                <span className="mt-4 truncate text-[15px] font-medium tracking-[-0.02em]">{way.title}</span>
+                <span className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">{way.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+        {due.length + paths.length + books.length > 0 ? (
+          <section>
+            <h2 className="text-[13px] text-muted">{L.attention}</h2>
+            <div className="mt-2 flex flex-col">
+              {due.slice(0, 3).map((card) => (
+                <button key={card.id} type="button" data-testid="learn-due" className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onPractice(card.id)}>
+                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{L.practice}</span>
+                  <span className="min-w-0 flex-1 truncate text-[14px]">{card.stem}</span>
+                </button>
               ))}
-              {paths.map((path: Path) => (
-                <li key={path.id}>
-                  <button type="button" className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenPath(path.id)}>
-                    <span className="text-[15px]">{path.name}</span>
-                    <span className="tabular-nums text-[12px] text-muted">{path.counts?.mastered || 0}/{path.counts?.total || 0}</span>
-                  </button>
-                </li>
+              {paths.slice(0, 3).map((path) => (
+                <button key={path.id} type="button" className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenPath(path.id)}>
+                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{L.study}</span>
+                  <span className="min-w-0 flex-1 truncate text-[14px]">{path.name}</span>
+                  <span className="shrink-0 tabular-nums text-[12px] text-muted">{path.counts?.mastered || 0}/{path.counts?.total || 0}</span>
+                </button>
               ))}
-              {books.map((book: Book) => (
-                <li key={book.id}>
-                  <button type="button" className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenBook(book.id, book.library_id)}>
-                    <span className="text-[15px]">{book.title}</span>
-                    <span className="text-[12px] text-muted">{book.status === "ready" || book.status === "paused" ? L.readOn : bookStatus(book.status)}</span>
-                  </button>
-                </li>
+              {books.slice(0, 2).map((book) => (
+                <button key={book.id} type="button" className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenBook(book.id, book.library_id)}>
+                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{L.books}</span>
+                  <span className="min-w-0 flex-1 truncate text-[14px]">{book.title}</span>
+                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{book.status === "ready" || book.status === "paused" ? L.readOn : bookStatus(book.status)}</span>
+                </button>
               ))}
-            </ul>
-          )}
-        </section>
+            </div>
+          </section>
+        ) : null}
         <section className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-3">
+          <div className="flex items-center justify-between gap-3">
             <h2 className="text-[13px] text-muted">{L.mission}</h2>
-            <button type="button" className="text-[12px] text-muted hover:text-foreground" onClick={() => setEditing((v) => !v)}>{L.editMission}</button>
+            <button type="button" className="shrink-0 whitespace-nowrap text-[12px] text-muted hover:text-foreground" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>{L.editMission}</button>
           </div>
-          {!editing && topic ? <p className="text-[15px]">{topic}</p> : null}
+          {!editing && topic ? <p className="text-[15px] leading-snug">{topic}</p> : null}
           {editing ? (
-            <div className="flex flex-col gap-2">
-              <Input value={topic} placeholder={L.missionPh} onChange={(e) => setTopic(e.target.value)} aria-label={L.mission} />
-              <Input value={why} placeholder={L.whyPh} onChange={(e) => setWhy(e.target.value)} aria-label={L.why} />
-              <Input value={next} placeholder={L.nextPh} onChange={(e) => setNext(e.target.value)} aria-label={L.next} />
-              <div><Button size="sm" onClick={() => { void props.onSave(topic, why, next); setEditing(false); }}>{L.saveMission}</Button></div>
+            <div className="flex flex-col gap-3">
+              <Field label={L.mission}><Input value={topic} placeholder={L.missionPh} onChange={(e) => setTopic(e.target.value)} /></Field>
+              <Field label={L.why}><Input value={why} placeholder={L.whyPh} onChange={(e) => setWhy(e.target.value)} /></Field>
+              <Field label={L.next}><Input value={next} placeholder={L.nextPh} onChange={(e) => setNext(e.target.value)} /></Field>
+              <div><Button size="sm" className="whitespace-nowrap" onClick={() => { void props.onSave(topic, why, next); setEditing(false); }}>{L.saveMission}</Button></div>
             </div>
           ) : null}
         </section>
         <section className="flex flex-col gap-2">
           {records.map((row: { id: string; insight: string }) => (
-            <p key={row.id} className="text-[13px] text-muted">{row.insight}</p>
+            <p key={row.id} className="text-[13px] leading-relaxed text-muted">{row.insight}</p>
           ))}
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!insight.trim()) return; void props.onRecord(insight.trim()); setInsight(""); }}>
-            <Input value={insight} placeholder={L.recordPh} onChange={(e) => setInsight(e.target.value)} aria-label={L.record} />
-            <Button size="sm" type="submit" variant="ghost">{L.saveRecord}</Button>
+          <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!insight.trim()) return; void props.onRecord(insight.trim()); setInsight(""); }}>
+            <div className="min-w-0 flex-1">
+              <Field label={L.record}><Input value={insight} placeholder={L.recordPh} onChange={(e) => setInsight(e.target.value)} /></Field>
+            </div>
+            <Button size="sm" type="submit" variant="ghost" className="mb-px shrink-0 whitespace-nowrap">{L.saveRecord}</Button>
           </form>
         </section>
       </div>
-    </div>
+    </LearnShell>
   );
 }
 
@@ -610,125 +668,164 @@ function StudyPane(props: {
 }) {
   const L = useCopy().learn;
   const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
   const [point, setPoint] = useState("");
   const [kind, setKind] = useState<string>("concept");
   const [draft, setDraft] = useState<{ name: string; kind: string }[]>([]);
   const [guess, setGuess] = useState("");
   const [reveal, setReveal] = useState<{ correct?: boolean; answer?: string } | null>(null);
   useEffect(() => { setGuess(""); setReveal(null); }, [props.active?.id, props.active?.next?.question?.prompt]);
-  const question = props.active?.next?.question;
-  const waiting = props.active?.next?.action === "answer_pending" && question?.prompt;
-  const ask = props.active && props.active.mode !== "outline" && props.active.next?.action && props.active.next.action !== "complete" && props.active.next.action !== "answer_pending";
   if (!props.active) {
     return (
-      <div className="h-full overflow-auto">
-        <div className="mx-auto flex max-w-[640px] flex-col gap-4 px-8 py-10">
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim()); setName(""); }}>
-            <Input value={name} placeholder={L.pathPh} onChange={(e) => setName(e.target.value)} aria-label={L.pathPh} />
-          </form>
-          <ul className="flex flex-col">
-            {props.paths.map((path) => (
-              <li key={path.id}>
-                <button type="button" onClick={() => props.onOpen(path.id)} className="flex w-full items-baseline justify-between gap-3 border-b border-border/60 py-3 text-left text-[15px] hover:text-foreground">
-                  <span>{path.name}</span>
-                  <span className="tabular-nums text-[12px] text-muted">{path.counts?.mastered || 0}/{path.counts?.total || 0}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {props.paths.length === 0 ? <EmptyState title={L.pathsEmpty} body={L.pathsEmptyHint} /> : null}
+      <LearnShell
+        title={L.study}
+        subtitle={L.wayStudyHint}
+        action={<Button size="sm" className="whitespace-nowrap" aria-expanded={creating} onClick={() => setCreating((v) => !v)}>{L.newPath}</Button>}
+      >
+        <div className="mx-auto flex max-w-[640px] flex-col px-8 py-6">
+          {creating ? (
+            <form className="mb-4 flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim()); setName(""); setCreating(false); }}>
+              <div className="min-w-0 flex-1"><Field label={L.pathPh}><Input value={name} onChange={(e) => setName(e.target.value)} /></Field></div>
+              <Button size="sm" type="submit" className="shrink-0 whitespace-nowrap">{L.newPath}</Button>
+            </form>
+          ) : null}
+          {props.paths.length === 0 ? <EmptyState title={L.pathsEmpty} body={L.pathsEmptyHint} /> : (
+            <ul className="flex flex-col">
+              {props.paths.map((path) => {
+                const total = path.counts?.total || 0;
+                const mastered = path.counts?.mastered || 0;
+                return (
+                  <li key={path.id}>
+                    <button type="button" onClick={() => props.onOpen(path.id)} className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left hover:bg-lift/40">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-lift text-muted"><ListChecks className="size-4" aria-hidden /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px]">{path.name}</span>
+                        <span className="mt-0.5 block tabular-nums text-[12px] text-muted">{mastered}/{total}</span>
+                        {total > 0 ? <ProgressHairline className="mt-2" value={(mastered / total) * 100} /> : null}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
-      </div>
+      </LearnShell>
     );
   }
   const current = props.active;
+  const question = current.next?.question;
+  const waiting = current.next?.action === "answer_pending" && question?.prompt;
+  const ask = current.mode !== "outline" && current.next?.action && current.next.action !== "complete" && current.next.action !== "answer_pending";
+  const teaching = current.teaching === "teach_first" ? "teach_first" : "probe_first";
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-12 shrink-0 items-center gap-3 px-6">
-        <button type="button" className="shrink-0 text-[13px] text-muted hover:text-foreground" onClick={props.onClose}>{L.allPaths}</button>
-        <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium tracking-[-0.02em]">{current.name}</h2>
-        <span className="tabular-nums text-[12px] text-muted">{current.counts?.mastered || 0}/{current.counts?.total || 0}</span>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto px-6 pb-10">
-        <div className="mx-auto flex max-w-[640px] flex-col gap-6">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-              {(["outline", "study", "review"] as const).map((mode) => (
-                <button key={mode} type="button" aria-pressed={current.mode === mode} className={cn(current.mode === mode ? "text-foreground" : "text-muted hover:text-foreground")} onClick={() => { void props.onMode(mode); }}>
-                  {mode === "outline" ? L.outline : mode === "study" ? L.studyMode : L.review}
-                </button>
-              ))}
-              <span className="text-border" aria-hidden>·</span>
-              <button type="button" aria-pressed={current.teaching !== "teach_first"} className={cn(current.teaching !== "teach_first" ? "text-foreground" : "text-muted hover:text-foreground")} onClick={() => { void props.onProfile("probe_first"); }}>{L.probeFirst}</button>
-              <button type="button" aria-pressed={current.teaching === "teach_first"} className={cn(current.teaching === "teach_first" ? "text-foreground" : "text-muted hover:text-foreground")} onClick={() => { void props.onProfile("teach_first"); }}>{L.teachFirst}</button>
-            </div>
-            <section data-testid="learn-next" className="flex flex-col gap-3 border-b border-border/60 pb-5">
-              <p className="text-[13px] text-muted">{stepCopy(current.next?.action, L, current.mode)}</p>
-              {current.next?.name ? <p className="text-[22px] font-semibold leading-snug tracking-[-0.03em]">{current.next.name}</p> : null}
-              {waiting ? (
-                <div className="flex flex-col gap-3">
-                  <p className="text-[16px] font-semibold leading-snug tracking-[-0.02em]">{question?.prompt}</p>
-                  {question?.options && question.options.length > 0 ? (
-                    <div className="flex flex-col gap-1">
-                      {question.options.map((option) => (
-                        <button key={option} type="button" aria-pressed={guess === option} onClick={() => setGuess(option)} className={cn("rounded-lg border border-border/60 px-3 py-2 text-left text-[13px]", guess === option ? "bg-accent/10 text-accent" : "hover:bg-lift")}>
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <Input value={guess} placeholder={L.answerLabel} onChange={(e) => setGuess(e.target.value)} aria-label={L.answerLabel} />
-                  )}
-                  <div><Button size="sm" onClick={() => { void props.onGrade(guess).then((res) => { if (!res) return; setReveal({ correct: !!res?.correct, answer: res?.reveal?.answer }); }); }}>{L.submitAnswer}</Button></div>
-                </div>
-              ) : null}
-              {reveal ? (
-                <div className="text-[13px]">
-                  <p>{reveal.correct ? L.correct : L.incorrect}</p>
-                  {reveal.answer ? <p className="mt-1 text-muted">{reveal.answer}</p> : null}
-                  <Button size="sm" className="mt-3" variant="ghost" onClick={() => setReveal(null)}>{L.continue}</Button>
-                </div>
-              ) : null}
-              {ask ? <button type="button" className="w-fit text-[13px] text-muted hover:text-foreground" onClick={props.onAsk}>{L.askTutor}</button> : null}
-            </section>
-            {(current.modules || []).map((mod) => (
-              <section key={mod.id}>
-                <h3 className="text-[13px] text-muted">{mod.name}</h3>
-                <ul className="mt-2 flex flex-col">
-                  {(mod.points || []).map((pt) => (
-                    <li key={pt.id} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-[14px]">{pt.name}</p>
-                        <p className="mt-0.5 text-[12px] text-muted">{kindName(pt.kind)} · {pt.status === "mastered" ? L.mastered : pt.status === "learning" ? L.learning : L.fresh} · {Math.round((pt.mastery || 0) * 100)}%</p>
-                      </div>
-                      {pt.status !== "mastered" ? <button type="button" className="shrink-0 text-[12px] text-muted hover:text-foreground" onClick={() => { void props.onClaim(pt.id); }}>{L.claim}</button> : null}
-                    </li>
+    <LearnShell
+      title={current.name}
+      subtitle={`${current.counts?.mastered || 0}/${current.counts?.total || 0}`}
+      back={{ label: L.allPaths, onClick: props.onClose }}
+    >
+      <div className="mx-auto flex max-w-[640px] flex-col gap-6 px-8 py-6">
+        <div className="flex flex-col items-start gap-2">
+          <LearnSegment
+            label={L.studyMode}
+            value={current.mode}
+            onChange={(mode) => { void props.onMode(mode); }}
+            options={[
+              { id: "outline", label: L.outline },
+              { id: "study", label: L.studyMode },
+              { id: "review", label: L.review },
+            ]}
+          />
+          <LearnSegment
+            label={L.probeFirst}
+            value={teaching}
+            onChange={(id) => { void props.onProfile(id); }}
+            options={[
+              { id: "probe_first", label: L.probeFirst },
+              { id: "teach_first", label: L.teachFirst },
+            ]}
+          />
+        </div>
+        <section data-testid="learn-next" className="rounded-xl border border-border/60 p-5">
+          <p className="text-[13px] text-muted">{stepCopy(current.next?.action, L, current.mode)}</p>
+          {current.next?.name ? <p className="mt-2 text-[18px] font-semibold leading-snug tracking-[-0.03em]">{current.next.name}</p> : null}
+          {waiting ? (
+            <div className="mt-4 flex flex-col gap-3">
+              <p className="text-[15px] font-medium leading-snug">{question?.prompt}</p>
+              {question?.options && question.options.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                  {question.options.map((option) => (
+                    <button key={option} type="button" aria-pressed={guess === option} onClick={() => setGuess(option)} className={cn("rounded-lg border border-border/60 px-3 py-2 text-left text-[13px]", guess === option ? "bg-accent/10 text-accent" : "hover:bg-lift")}>
+                      {option}
+                    </button>
                   ))}
-                </ul>
-              </section>
-            ))}
-            {current.mode === "outline" ? (
-              <form className="flex flex-col gap-2 border-t border-border/60 pt-4" onSubmit={(e) => { e.preventDefault(); if (!point.trim()) return; setDraft((d) => [...d, { name: point.trim(), kind }]); setPoint(""); }}>
-                <div className="flex gap-2">
-                  <Input value={point} placeholder={L.pointPh} onChange={(e) => setPoint(e.target.value)} aria-label={L.pointPh} />
-                  <select className="rounded-lg border border-border/60 bg-transparent px-2 text-[13px]" value={kind} onChange={(e) => setKind(e.target.value)} aria-label={L.addPoint}>
-                    {kinds.map((k) => <option key={k} value={k}>{kindName(k)}</option>)}
-                  </select>
-                  <Button size="sm" type="submit" variant="ghost">{L.addPoint}</Button>
                 </div>
-                {draft.length > 0 ? (
-                  <Button size="sm" onClick={() => {
+              ) : (
+                <Field label={L.answerLabel}><Input value={guess} onChange={(e) => setGuess(e.target.value)} /></Field>
+              )}
+              <div><Button size="sm" className="whitespace-nowrap" onClick={() => { void props.onGrade(guess).then((res) => { if (!res) return; setReveal({ correct: !!res?.correct, answer: res?.reveal?.answer }); }); }}>{L.submitAnswer}</Button></div>
+            </div>
+          ) : null}
+          {reveal ? (
+            <div className="mt-4 text-[13px]">
+              <p>{reveal.correct ? L.correct : L.incorrect}</p>
+              {reveal.answer ? <p className="mt-1 text-muted">{reveal.answer}</p> : null}
+              <Button size="sm" className="mt-3 whitespace-nowrap" variant="ghost" onClick={() => setReveal(null)}>{L.continue}</Button>
+            </div>
+          ) : null}
+          {ask && !reveal ? <div className="mt-4"><Button size="sm" className="whitespace-nowrap" onClick={props.onAsk}>{L.askTutor}</Button></div> : null}
+        </section>
+        {(current.modules || []).map((mod) => (
+          <section key={mod.id}>
+            <h3 className="text-[13px] text-muted">{mod.name}</h3>
+            <ul className="mt-1">
+              {(mod.points || []).map((pt) => (
+                <li key={pt.id} className="flex items-center gap-3 border-b border-border/60 py-2.5">
+                  <PointMark status={pt.status} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px]">{pt.name}</p>
+                    <p className="mt-0.5 truncate text-[12px] text-muted">{kindName(pt.kind)} · {pt.status === "mastered" ? L.mastered : pt.status === "learning" ? L.learning : L.fresh} · {Math.round((pt.mastery || 0) * 100)}%</p>
+                  </div>
+                  {pt.status !== "mastered" ? (
+                    <button type="button" className="shrink-0 whitespace-nowrap text-[12px] text-muted hover:text-foreground" onClick={() => { void props.onClaim(pt.id); }}>{L.claim}</button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        {current.mode === "outline" ? (
+          <div className="flex flex-col gap-3 border-t border-border/60 pt-4">
+            <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!point.trim()) return; setDraft((d) => [...d, { name: point.trim(), kind }]); setPoint(""); }}>
+              <div className="min-w-0 flex-1"><Field label={L.pointPh}><Input value={point} onChange={(e) => setPoint(e.target.value)} /></Field></div>
+              <label className="mb-px flex shrink-0 flex-col gap-1">
+                <span className="text-[12px] text-muted">{L.kindLabel}</span>
+                <select className="h-8 whitespace-nowrap rounded-lg border border-border/60 bg-transparent px-2 text-[12px]" value={kind} onChange={(e) => setKind(e.target.value)}>
+                  {kinds.map((k) => <option key={k} value={k}>{kindName(k)}</option>)}
+                </select>
+              </label>
+              <Button size="sm" type="submit" variant="ghost" className="mb-px shrink-0 whitespace-nowrap">{L.addPoint}</Button>
+            </form>
+            {draft.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <ul>
+                  {draft.map((item, i) => <li key={`${item.name}-${i}`} className="truncate text-[13px] text-muted">{item.name}</li>)}
+                </ul>
+                <div>
+                  <Button size="sm" className="whitespace-nowrap" onClick={() => {
                     const mods = (props.active?.modules || []).map((mod) => ({ name: mod.name, points: (mod.points || []).map((pt) => ({ name: pt.name, kind: pt.kind })) }));
                     if (mods.length === 0) mods.push({ name: props.active?.name || L.outline, points: [] });
                     mods[mods.length - 1].points.push(...draft);
                     void props.onOutline(mods);
                     setDraft([]);
                   }}>{L.saveOutline}</Button>
-                ) : null}
-              </form>
+                </div>
+              </div>
             ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
-    </div>
+    </LearnShell>
   );
 }
 
@@ -756,57 +853,76 @@ function LibraryPane(props: {
   onCompile: (id: string, proposal: string, spine: string) => Promise<void>;
   onPage: (id: string, page: number) => Promise<void>;
   onSelectBook: (id: string) => void;
+  onCloseBook: () => void;
 }) {
   const L = useCopy().learn;
-  const shelves: { id: Shelf; label: string }[] = [
-    { id: "materials", label: L.materials },
-    { id: "books", label: L.books },
-    { id: "notes", label: L.notesTab },
-  ];
+  const tabs = (
+    <LearnTabs
+      label={L.library}
+      value={props.shelf}
+      onChange={(id) => props.onShelf(id as Shelf)}
+      items={[
+        { id: "materials", label: L.materials },
+        { id: "books", label: L.books },
+        { id: "notes", label: L.notesTab },
+      ]}
+    />
+  );
+  if (props.shelf === "notes") {
+    return (
+      <LearnShell title={L.library} subtitle={L.notesHint} tabs={tabs} scroll={false}>
+        <div className="min-h-0 flex-1">{props.notes}</div>
+      </LearnShell>
+    );
+  }
+  if (props.shelf === "books") {
+    return (
+      <BookPane
+        tabs={tabs}
+        libs={props.libs}
+        libId={props.libId}
+        onPick={props.onPick}
+        books={props.books}
+        openBook={props.openBook}
+        onBook={props.onBook}
+        onSelect={props.onSelectBook}
+        onCompile={props.onCompile}
+        onPage={props.onPage}
+        onClose={props.onCloseBook}
+      />
+    );
+  }
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-1 border-b border-border/60 px-4 py-2">
-        {shelves.map((item) => (
-          <button key={item.id} type="button" aria-pressed={props.shelf === item.id} onClick={() => props.onShelf(item.id)} className={cn("rounded-lg px-2.5 py-1.5 text-[13px]", props.shelf === item.id ? "bg-accent/10 text-accent" : "text-muted hover:bg-lift hover:text-foreground")}>
-            {item.label}
-          </button>
-        ))}
-      </div>
-            {props.shelf === "notes" ? <div className="min-h-0 flex-1">{props.notes}</div> : null}
-      {props.shelf === "materials" ? (
-        <Materials
-          libs={props.libs}
-          libId={props.libId}
-          docs={props.docs}
-          hits={props.hits}
-          hitMsg={props.hitMsg}
-          onPick={props.onPick}
-          onCreate={props.onCreate}
-          onImport={props.onImport}
-          onRebuild={props.onRebuild}
-          onEmbed={props.onEmbed}
-          onSearch={props.onSearch}
-          onClearSearch={props.onClearSearch}
-          onOpenDoc={props.onOpenDoc}
-          onRemove={props.onRemove}
-        />
-      ) : null}
-      {props.shelf === "books" ? (
-        <BookPane
-          libId={props.libId}
-          books={props.books}
-          openBook={props.openBook}
-          onBook={props.onBook}
-          onSelect={props.onSelectBook}
-          onCompile={props.onCompile}
-          onPage={props.onPage}
-        />
-      ) : null}
-    </div>
+    <Materials
+      tabs={tabs}
+      libs={props.libs}
+      libId={props.libId}
+      docs={props.docs}
+      hits={props.hits}
+      hitMsg={props.hitMsg}
+      onPick={props.onPick}
+      onCreate={props.onCreate}
+      onImport={props.onImport}
+      onRebuild={props.onRebuild}
+      onEmbed={props.onEmbed}
+      onSearch={props.onSearch}
+      onClearSearch={props.onClearSearch}
+      onOpenDoc={props.onOpenDoc}
+      onRemove={props.onRemove}
+    />
   );
 }
 
+function libSubtitle(current: Lib | undefined, L: ReturnType<typeof useCopy>["learn"]) {
+  if (!current || current.id === "notes") return L.wayReadHint;
+  if (current.last_error) return current.last_error;
+  if (current.status === "building") return L.indexing;
+  if (current.status === "needs_reindex") return L.changedFile;
+  return L.wayReadHint;
+}
+
 function Materials(props: {
+  tabs: ReactNode;
   libs: Lib[];
   libId: string;
   docs: Doc[];
@@ -826,87 +942,128 @@ function Materials(props: {
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
   const [model, setModel] = useState("");
-  const [manage, setManage] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [embedOpen, setEmbedOpen] = useState(false);
   const current = props.libs.find((lib) => lib.id === props.libId);
+  const searching = props.hits !== null;
   const rows: Hit[] = props.hits || props.docs.map((doc) => ({ document_id: doc.id, title: doc.title || doc.rel_path, page: 0, excerpt: doc.status, source_hash: "" }));
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
-      <div className="mx-auto flex max-w-[640px] flex-col gap-4 px-8 py-8">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {props.libs.map((lib) => (
-            <button key={lib.id} type="button" aria-pressed={props.libId === lib.id} onClick={() => props.onPick(lib.id)} className={cn("text-[13px]", props.libId === lib.id ? "text-foreground" : "text-muted hover:text-foreground")}>
-              {lib.name}
-              <span className="ml-1.5 tabular-nums text-[11px]">{L.files.replace("{n}", String(lib.documents || 0))}</span>
-            </button>
-          ))}
-          <button type="button" className="text-[12px] text-muted hover:text-foreground" aria-expanded={manage} onClick={() => setManage((v) => !v)}>{manage ? L.hideManage : L.manage}</button>
+    <LearnShell
+      title={L.library}
+      subtitle={libSubtitle(current, L)}
+      tabs={props.tabs}
+      action={(
+        <div className="flex items-center gap-2">
+          {searching ? (
+            <Button size="sm" variant="ghost" className="whitespace-nowrap" onClick={() => { setQuery(""); props.onClearSearch(); }}>{L.backToFiles}</Button>
+          ) : props.libId !== "notes" ? (
+            <Button size="sm" className="whitespace-nowrap" onClick={() => { void api.pickFiles().then((files) => { if (files.length) void props.onImport(files); }); }}>{L.importFiles}</Button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="whitespace-nowrap">{L.more}</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem className="whitespace-nowrap" onSelect={() => setNaming(true)}>{L.newLibrary}</DropdownMenuItem>
+              {props.libId !== "notes" ? (
+                <>
+                  <DropdownMenuItem className="whitespace-nowrap" onSelect={() => { void api.pickFolder().then((path) => { if (path) void props.onCreate(path.split(/[\\/]/).pop() || L.library, "linked", path); }); }}>{L.linkFolder}</DropdownMenuItem>
+                  <DropdownMenuItem className="whitespace-nowrap" onSelect={() => { void props.onRebuild(); }}>{current?.status === "building" ? L.indexing : L.rebuild}</DropdownMenuItem>
+                  <DropdownMenuItem className="whitespace-nowrap" onSelect={() => setEmbedOpen(true)}>{L.embed}</DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        {manage ? (
-          <div className="flex flex-col gap-2">
-            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim(), "indexed", ""); setName(""); }}>
-              <Input value={name} placeholder={L.libraryPh} onChange={(e) => setName(e.target.value)} aria-label={L.libraryPh} />
-              <Button size="sm" type="submit" variant="ghost">{L.newLibrary}</Button>
-            </form>
-            {props.libId !== "notes" ? (
-              <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="ghost" onClick={() => { void api.pickFiles().then((files) => { if (files.length) void props.onImport(files); }); }}>{L.importFiles}</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { void api.pickFolder().then((path) => { if (path) void props.onCreate(path.split(/[\\/]/).pop() || L.library, "linked", path); }); }}>{L.linkFolder}</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { void props.onRebuild(); }}>{current?.status === "building" ? L.indexing : L.rebuild}</Button>
-                  <span className="text-[12px] text-muted">{current?.status}{current?.last_error ? " · " + current.last_error : ""}</span>
-                </div>
-                <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void props.onEmbed(model); }}>
-                  <Input value={model} placeholder={L.embedPh} onChange={(e) => setModel(e.target.value)} aria-label={L.embedPh} />
-                </form>
-              </>
-            ) : null}
-          </div>
-        ) : null}
+      )}
+    >
+      <div className="mx-auto flex max-w-[720px] flex-col gap-4 px-8 py-6">
+        <LibraryPick libs={props.libs} libId={props.libId} label={L.libraries} onPick={props.onPick} />
         {props.libId !== "notes" ? (
-          <>
-            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void props.onSearch(query); }}>
-              <Input value={query} placeholder={L.searchPh} onChange={(e) => setQuery(e.target.value)} aria-label={L.searchPh} />
-            </form>
-            {props.hits ? <div><Button size="sm" variant="ghost" onClick={props.onClearSearch}>{L.backToFiles}</Button></div> : null}
-            {props.hitMsg ? <p className="text-[13px] text-muted">{props.hitMsg}</p> : null}
-            {props.hits && props.hits.length === 0 && !props.hitMsg ? <EmptyState title={L.noHits} body={L.noHitsHint} /> : null}
-            {rows.length === 0 && !props.hits ? <EmptyState title={L.filesEmpty} body={L.filesEmptyHint} /> : null}
-            <ul className="flex flex-col">
-              {rows.map((hit) => (
-                <li key={hit.document_id + hit.excerpt} className="flex items-start justify-between gap-3 border-b border-border/60 py-3">
-                  <div className="min-w-0">
-                    <p className="text-[14px]">{hit.title}</p>
-                    <p className="mt-1 line-clamp-2 text-[12px] text-muted">{hit.excerpt}</p>
-                  </div>
-                  <div className="flex shrink-0 gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => { const doc = props.docs.find((item) => item.id === hit.document_id) || { id: hit.document_id, title: hit.title, rel_path: hit.title, status: "" }; void props.onOpenDoc(doc); }}>{L.open}</Button>
-                    {props.docs.some((doc) => doc.id === hit.document_id) ? <Button size="sm" variant="ghost" onClick={() => { void props.onRemove(hit.document_id); }}>{L.remove}</Button> : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </>
+          <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void props.onSearch(query); }}>
+            <Input className="min-w-0 flex-1" value={query} placeholder={L.searchPh} onChange={(e) => setQuery(e.target.value)} aria-label={L.searchPh} />
+            <Button size="sm" type="submit" variant="ghost" className="shrink-0 whitespace-nowrap">{L.search}</Button>
+          </form>
         ) : null}
+        {naming ? (
+          <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; void props.onCreate(name.trim(), "indexed", ""); setName(""); setNaming(false); }}>
+            <div className="min-w-0 flex-1"><Field label={L.libraryPh}><Input value={name} onChange={(e) => setName(e.target.value)} /></Field></div>
+            <Button size="sm" type="submit" className="shrink-0 whitespace-nowrap">{L.newLibrary}</Button>
+          </form>
+        ) : null}
+        {embedOpen && props.libId !== "notes" ? (
+          <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); void props.onEmbed(model); }}>
+            <div className="min-w-0 flex-1"><Field label={L.embedPh}><Input value={model} onChange={(e) => setModel(e.target.value)} /></Field></div>
+            <Button size="sm" type="submit" className="shrink-0 whitespace-nowrap">{L.applyEmbed}</Button>
+          </form>
+        ) : null}
+        {props.hitMsg ? <p className="text-[13px] text-muted">{props.hitMsg}</p> : null}
+        {searching && props.hits && props.hits.length === 0 && !props.hitMsg ? <EmptyState title={L.noHits} body={L.noHitsHint} /> : null}
+        {!searching && rows.length === 0 && props.libId !== "notes" ? <EmptyState title={L.filesEmpty} body={L.filesEmptyHint} /> : null}
+        <ul className="flex flex-col">
+          {rows.map((hit) => {
+            const removable = props.docs.some((doc) => doc.id === hit.document_id);
+            return (
+              <li key={`${hit.document_id}:${hit.page}:${hit.excerpt}`} className="flex items-center gap-3 border-b border-border/60">
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 py-3 text-left"
+                  onClick={() => {
+                    const doc = props.docs.find((item) => item.id === hit.document_id) || { id: hit.document_id, title: hit.title, rel_path: hit.title, status: "" };
+                    void props.onOpenDoc(doc);
+                  }}
+                >
+                  <span className="block truncate text-[14px]">{hit.title}</span>
+                  {searching && hit.excerpt ? <span className="mt-0.5 block truncate text-[12px] text-muted">{hit.excerpt}</span> : null}
+                </button>
+                {removable ? (
+                  <button type="button" className="shrink-0 whitespace-nowrap text-[12px] text-muted hover:text-foreground" onClick={() => { void props.onRemove(hit.document_id); }}>{L.remove}</button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
       </div>
-    </div>
+    </LearnShell>
+  );
+}
+
+function LibraryPick(props: { libs: Lib[]; libId: string; label: string; onPick: (id: string) => void }) {
+  if (!props.libs.some((lib) => lib.id === props.libId)) return null;
+  return (
+    <Select value={props.libId} onValueChange={props.onPick}>
+      <SelectTrigger className="w-full max-w-xs" aria-label={props.label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {props.libs.map((lib) => (
+          <SelectItem key={lib.id} value={lib.id}>{lib.name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
 function BookPane(props: {
+  tabs: ReactNode;
+  libs: Lib[];
   libId: string;
+  onPick: (id: string) => void;
   books: Book[];
   openBook: Book | null;
   onBook: (title: string) => Promise<void>;
   onSelect: (id: string) => void;
   onCompile: (id: string, proposal: string, spine: string) => Promise<void>;
   onPage: (id: string, page: number) => Promise<void>;
+  onClose: () => void;
 }) {
   const L = useCopy().learn;
   const [title, setTitle] = useState("");
+  const [creating, setCreating] = useState(false);
   const [proposal, setProposal] = useState("");
   const [spine, setSpine] = useState("");
   const [loaded, setLoaded] = useState("");
-  const [editing, setEditing] = useState(true);
+  const [editing, setEditing] = useState(false);
   const book = props.openBook;
   useEffect(() => {
     if (!book || book.id === loaded) return;
@@ -916,61 +1073,81 @@ function BookPane(props: {
     setEditing(book.status === "draft" || !(book.blocks || []).length);
   }, [book, loaded]);
   const mine = props.books.filter((item) => !item.library_id || item.library_id === props.libId || props.libId === "notes");
-  const page = book?.page || 1;
-  const pages = Math.max(1, ...(book?.blocks || []).map((block) => block.page || 1), 1);
-  const blocks = (book?.blocks || []).filter((block) => block.page === page);
+  if (!book) {
+    return (
+      <LearnShell
+        title={L.library}
+        subtitle={L.wayBookHint}
+        tabs={props.tabs}
+        action={<Button size="sm" className="whitespace-nowrap" disabled={props.libId === "notes"} aria-expanded={creating} onClick={() => setCreating((v) => !v)}>{L.newBook}</Button>}
+      >
+        <div className="mx-auto flex max-w-[720px] flex-col gap-4 px-8 py-6" data-testid="learn-book">
+          <LibraryPick libs={props.libs} libId={props.libId} label={L.libraries} onPick={props.onPick} />
+          {creating ? (
+            <form className="mb-4 flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!title.trim() || props.libId === "notes") return; void props.onBook(title.trim()); setTitle(""); setCreating(false); }}>
+              <div className="min-w-0 flex-1"><Field label={L.bookPh}><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field></div>
+              <Button size="sm" type="submit" className="shrink-0 whitespace-nowrap" disabled={props.libId === "notes"}>{L.newBook}</Button>
+            </form>
+          ) : null}
+          {mine.length === 0 ? <EmptyState title={L.bookEmpty} body={L.bookEmptyHint} /> : (
+            <ul>
+              {mine.map((item) => (
+                <li key={item.id}>
+                  <button type="button" onClick={() => props.onSelect(item.id)} className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left hover:bg-lift/40">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-lift text-muted"><BookOpen className="size-4" aria-hidden /></span>
+                    <span className="min-w-0 flex-1 truncate text-[14px]">{item.title}</span>
+                    <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{bookStatus(item.status)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </LearnShell>
+    );
+  }
+  const page = book.page || 1;
+  const pages = Math.max(1, ...(book.blocks || []).map((block) => block.page || 1), 1);
+  const blocks = (book.blocks || []).filter((block) => block.page === page);
   return (
-    <div className="min-h-0 flex-1 overflow-auto" data-testid="learn-book">
-      <div className="mx-auto flex max-w-[720px] flex-col gap-5 px-6 py-6">
-        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!title.trim() || props.libId === "notes") return; void props.onBook(title.trim()); setTitle(""); }}>
-          <Input value={title} placeholder={L.bookPh} onChange={(e) => setTitle(e.target.value)} aria-label={L.bookPh} />
-          <Button size="sm" type="submit" variant="ghost" disabled={props.libId === "notes"}>{L.newBook}</Button>
-        </form>
-        {mine.length === 0 && !book ? <EmptyState title={L.bookEmpty} body={L.bookEmptyHint} /> : null}
-        <ul className="flex flex-col">
-          {mine.map((item) => (
-            <li key={item.id}>
-              <button type="button" aria-pressed={book?.id === item.id} onClick={() => props.onSelect(item.id)} className={cn("flex w-full items-baseline justify-between border-b border-border/60 py-3 text-left", book?.id === item.id && "text-accent")}>
-                <span className="text-[14px]">{item.title}</span>
-                <span className="text-[12px] text-muted">{bookStatus(item.status)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        {book ? (
-          <article className="flex flex-col gap-4 border-t border-border/60 pt-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-[18px] font-semibold tracking-[-0.03em]">{book.title}</h2>
-              <span className="tabular-nums text-[12px] text-muted">{fill(L.pageOf, { page, pages })}</span>
-            </div>
-            <div><Button size="sm" variant="ghost" onClick={() => setEditing((v) => !v)}>{editing ? L.hideSpine : L.editSpine}</Button></div>
-            {editing ? (
-              <div className="flex flex-col gap-2">
-                <Input value={proposal} placeholder={L.proposalPh} onChange={(e) => setProposal(e.target.value)} aria-label={L.proposalPh} />
-                <textarea className="min-h-24 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-[13px]" value={spine} placeholder={L.spinePh} onChange={(e) => setSpine(e.target.value)} aria-label={L.spinePh} />
-                <div><Button size="sm" onClick={() => { void props.onCompile(book.id, proposal, spine); }}>{L.compile}</Button></div>
-              </div>
-            ) : null}
-            {blocks.map((block, i) => (
-              <div key={`${block.kind}-${i}`}>
-                {blockLabel(block.kind) ? <p className="mb-1 text-[11px] text-muted">{blockLabel(block.kind)}</p> : null}
-                <div className={cn(
-                  "text-[14px] leading-[1.7]",
-                  block.kind === "section" && "text-[16px] font-semibold tracking-[-0.02em]",
-                  block.kind === "callout" && "border-l border-border pl-3 text-muted",
-                  block.kind === "code" && "whitespace-pre-wrap rounded-lg bg-sidebar px-3 py-2 font-mono text-[12px]",
-                  block.kind !== "code" && "whitespace-pre-wrap",
-                )}>{block.body}</div>
-              </div>
-            ))}
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => { void props.onPage(book.id, page - 1); }}>{L.prevPage}</Button>
-              <Button size="sm" variant="ghost" disabled={page >= pages} onClick={() => { void props.onPage(book.id, page + 1); }}>{L.nextPage}</Button>
-            </div>
-          </article>
+    <LearnShell
+      title={book.title}
+      subtitle={fill(L.pageOf, { page, pages })}
+      back={{ label: L.backToBooks, onClick: props.onClose }}
+      action={(
+        <div className="flex items-center gap-1">
+          <Button size="icon" variant="ghost" aria-label={L.prevPage} disabled={page <= 1} onClick={() => { void props.onPage(book.id, page - 1); }}><ChevronLeft /></Button>
+          <Button size="icon" variant="ghost" aria-label={L.nextPage} disabled={page >= pages} onClick={() => { void props.onPage(book.id, page + 1); }}><ChevronRight /></Button>
+        </div>
+      )}
+    >
+      <article className="mx-auto flex max-w-[680px] flex-col gap-5 px-8 py-6" data-testid="learn-book">
+        <div>
+          <button type="button" className="whitespace-nowrap text-[12px] text-muted hover:text-foreground" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>{editing ? L.hideSpine : L.editSpine}</button>
+        </div>
+        {editing ? (
+          <div className="flex flex-col gap-3">
+            <Field label={L.proposalPh}><Input value={proposal} onChange={(e) => setProposal(e.target.value)} /></Field>
+            <Field label={L.spinePh}>
+              <textarea className="min-h-24 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-[13px]" value={spine} onChange={(e) => setSpine(e.target.value)} />
+            </Field>
+            <div><Button size="sm" className="whitespace-nowrap" onClick={() => { void props.onCompile(book.id, proposal, spine); }}>{L.compile}</Button></div>
+          </div>
         ) : null}
-      </div>
-    </div>
+        {blocks.map((block, i) => (
+          <div key={`${block.kind}-${i}`}>
+            {blockLabel(block.kind) ? <p className="mb-1 text-[11px] text-muted">{blockLabel(block.kind)}</p> : null}
+            <div className={cn(
+              "text-[14px] leading-[1.7]",
+              block.kind === "section" && "text-[16px] font-semibold tracking-[-0.02em]",
+              block.kind === "callout" && "border-l border-border pl-3 text-muted",
+              block.kind === "code" && "whitespace-pre-wrap rounded-lg bg-sidebar px-3 py-2 font-mono text-[12px]",
+              block.kind !== "code" && "whitespace-pre-wrap",
+            )}>{block.body}</div>
+          </div>
+        ))}
+      </article>
+    </LearnShell>
   );
 }
 
@@ -992,27 +1169,29 @@ function ReaderPane(props: {
   useEffect(() => { void load(); }, [load]);
   const pageMarks = marks.filter((item) => !item.page || item.page === props.reader.page);
   return (
-    <div className="h-full overflow-auto" data-testid="learn-reader">
-      <div className="mx-auto flex max-w-[760px] flex-col gap-4 px-6 py-6">
-        <div className="flex items-center gap-3">
-          <Button size="sm" variant="ghost" onClick={props.onBack}>{L.back}</Button>
-          <h2 className="min-w-0 flex-1 truncate text-[16px] font-semibold">{props.reader.title}</h2>
-          <span className="tabular-nums text-[12px] text-muted">{fill(L.pageOf, { page: props.reader.page, pages: props.reader.pages })}</span>
+    <LearnShell
+      title={props.reader.title}
+      subtitle={fill(L.pageOf, { page: props.reader.page, pages: props.reader.pages })}
+      back={{ label: L.back, onClick: props.onBack }}
+      action={(
+        <div className="flex items-center gap-1">
+          <Button size="icon" variant="ghost" aria-label={L.prevPage} disabled={props.reader.page <= 1} onClick={() => props.onPage(props.reader.page - 1)}><ChevronLeft /></Button>
+          <Button size="icon" variant="ghost" aria-label={L.nextPage} disabled={props.reader.page >= props.reader.pages} onClick={() => props.onPage(props.reader.page + 1)}><ChevronRight /></Button>
         </div>
-        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void props.onFind(query); }}>
-          <Input value={query} placeholder={L.searchPh} onChange={(e) => setQuery(e.target.value)} aria-label={L.searchPh} />
+      )}
+    >
+      <div className="mx-auto flex max-w-[680px] flex-col gap-5 px-8 py-6" data-testid="learn-reader">
+        <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void props.onFind(query); }}>
+          <Input className="min-w-0 flex-1" value={query} placeholder={L.searchPh} onChange={(e) => setQuery(e.target.value)} aria-label={L.searchPh} />
+          <Button size="sm" type="submit" variant="ghost" className="shrink-0 whitespace-nowrap">{L.search}</Button>
         </form>
         <article className="whitespace-pre-wrap text-[14px] leading-[1.7]">
           <Highlighted text={props.reader.text || L.noHits} quote={props.reader.highlight} />
         </article>
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" disabled={props.reader.page <= 1} onClick={() => props.onPage(props.reader.page - 1)}>{L.prevPage}</Button>
-          <Button size="sm" variant="ghost" disabled={props.reader.page >= props.reader.pages} onClick={() => props.onPage(props.reader.page + 1)}>{L.nextPage}</Button>
-        </div>
         {pageMarks.length > 0 ? (
           <section>
             <h3 className="text-[13px] text-muted">{L.margin}</h3>
-            <ul className="mt-2 flex flex-col">
+            <ul className="mt-2">
               {pageMarks.map((item) => (
                 <li key={item.id} className="border-b border-border/60 py-2 text-[13px]">
                   {item.quote ? <p className="text-muted">{item.quote}</p> : null}
@@ -1022,12 +1201,12 @@ function ReaderPane(props: {
             </ul>
           </section>
         ) : null}
-        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!note.trim()) return; void props.onNote(note.trim(), props.reader.highlight).then(() => { setNote(""); void load(); }); }}>
-          <Input value={note} placeholder={L.annotatePh} onChange={(e) => setNote(e.target.value)} aria-label={L.annotatePh} />
-          <Button size="sm" type="submit" variant="ghost">{L.saveNote}</Button>
+        <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!note.trim()) return; void props.onNote(note.trim(), props.reader.highlight).then(() => { setNote(""); void load(); }); }}>
+          <div className="min-w-0 flex-1"><Field label={L.annotatePh}><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
+          <Button size="sm" type="submit" variant="ghost" className="shrink-0 whitespace-nowrap">{L.saveNote}</Button>
         </form>
       </div>
-    </div>
+    </LearnShell>
   );
 }
 
@@ -1044,7 +1223,14 @@ function Highlighted(props: { text: string; quote: string }) {
   );
 }
 
-function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onChange: (cards: Card[]) => void; onReload: () => Promise<void>; onFail: (e: unknown) => void }) {
+function PracticePane(props: {
+  cards: Card[];
+  desk: Desk;
+  focusId: string;
+  onReload: () => Promise<void>;
+  onFail: (e: unknown) => void;
+  onLeave: () => void;
+}) {
   const L = useCopy().learn;
   const [stem, setStem] = useState("");
   const [answer, setAnswer] = useState("");
@@ -1052,21 +1238,84 @@ function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onCha
   const [qtype, setQtype] = useState("short");
   const [guess, setGuess] = useState("");
   const [reveal, setReveal] = useState<{ correct?: boolean; answer?: string; explanation?: string } | null>(null);
+  const [session, setSession] = useState(Boolean(props.focusId));
+  const [adding, setAdding] = useState(false);
+  useEffect(() => { if (props.focusId) setSession(true); }, [props.focusId]);
   const ordered = props.focusId
     ? [...props.cards.filter((card) => card.id === props.focusId), ...props.cards.filter((card) => card.id !== props.focusId)]
     : props.cards;
   const card = ordered[0];
   const objective = card && card.qtype !== "short" && card.qtype !== "fill";
   useEffect(() => { setGuess(""); setReveal(null); }, [card?.id]);
-  const done = !card && (props.desk.reviewed || 0) > 0;
-  const [adding, setAdding] = useState(false);
+  const dueN = typeof props.desk.due === "number" ? props.desk.due : ordered.length;
+  const reviewed = props.desk.reviewed || 0;
+  const done = !card && reviewed > 0;
+  const leave = () => { setSession(false); props.onLeave(); };
+  const importForm = adding ? (
+    <form className="flex flex-col gap-3" onSubmit={(e) => {
+      e.preventDefault();
+      if (!stem.trim()) return;
+      const opts = options.split("\n").map((line) => line.trim()).filter(Boolean);
+      void api.learnCall("learn.questions.import", { stem, answer, qtype, options: qtype === "choice" ? opts : [] }).then(async () => {
+        setStem("");
+        setAnswer("");
+        setOptions("");
+        setAdding(false);
+        await props.onReload();
+      }).catch(props.onFail);
+    }}>
+      <LearnSegment
+        label={L.bank}
+        value={qtype}
+        onChange={setQtype}
+        options={[
+          { id: "short", label: L.shortType },
+          { id: "choice", label: L.choice },
+        ]}
+      />
+      <Field label={L.stemPh}><Input value={stem} onChange={(e) => setStem(e.target.value)} /></Field>
+      <Field label={L.answerPh}><Input value={answer} onChange={(e) => setAnswer(e.target.value)} /></Field>
+      {qtype === "choice" ? (
+        <Field label={L.optionsPh}>
+          <textarea className="min-h-20 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-[13px]" value={options} onChange={(e) => setOptions(e.target.value)} />
+        </Field>
+      ) : null}
+      <div><Button size="sm" type="submit" className="whitespace-nowrap">{L.addCard}</Button></div>
+    </form>
+  ) : null;
+  if (!session) {
+    return (
+      <LearnShell
+        title={L.practice}
+        subtitle={L.wayPracticeHint}
+        action={<Button size="sm" variant="ghost" className="whitespace-nowrap" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>{adding ? L.hideCard : L.addCard}</Button>}
+      >
+        <div className="mx-auto flex max-w-[640px] flex-col gap-6 px-8 py-6">
+          <section className="rounded-xl border border-border/60 p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[21px] font-semibold tabular-nums tracking-[-0.03em]">{dueN}</p>
+                <p className="mt-1 text-[13px] text-muted">{L.due}</p>
+              </div>
+              <Button className="shrink-0 whitespace-nowrap" disabled={ordered.length === 0} onClick={() => setSession(true)}>{L.startReview}</Button>
+            </div>
+            <p className="mt-5 border-t border-border/60 pt-4 text-[13px] tabular-nums text-muted">{fill(L.reviewedToday, { n: reviewed })}</p>
+          </section>
+          {dueN === 0 ? <EmptyState title={done ? L.doneToday : L.emptyBank} body={done ? L.doneTodayHint : L.emptyBankHint} /> : null}
+          {importForm}
+        </div>
+      </LearnShell>
+    );
+  }
+  const progress = reviewed + dueN > 0 ? (reviewed / (reviewed + dueN)) * 100 : 0;
   return (
-    <div className="h-full overflow-auto">
-      <div className="mx-auto flex max-w-[640px] flex-col gap-6 px-6 py-8">
-        <p className="flex gap-4 text-[12px] text-muted">
-          <span className="tabular-nums">{fill(L.dueCount, { n: props.desk.due || ordered.length })}</span>
-          <span className="tabular-nums">{fill(L.reviewedToday, { n: props.desk.reviewed || 0 })}</span>
-        </p>
+    <LearnShell
+      title={L.practice}
+      subtitle={fill(L.dueCount, { n: dueN })}
+      back={{ label: L.backToPractice, onClick: leave }}
+    >
+      <div className="mx-auto flex max-w-[640px] flex-col gap-5 px-8 py-6">
+        <ProgressHairline value={progress} />
         {!card ? <EmptyState title={done ? L.doneToday : L.emptyBank} body={done ? L.doneTodayHint : L.emptyBankHint} /> : (
           <article data-testid="learn-practice-card" className="flex flex-col gap-4">
             <p className="text-[18px] font-semibold leading-snug tracking-[-0.03em]">{card.stem}</p>
@@ -1087,20 +1336,22 @@ function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onCha
                     ))}
                   </div>
                 ) : (
-                  <Input value={guess} placeholder={L.answerLabel} onChange={(e) => setGuess(e.target.value)} aria-label={L.answerLabel} />
+                  <Field label={L.answerLabel}><Input value={guess} onChange={(e) => setGuess(e.target.value)} /></Field>
                 )}
-                <div><Button size="sm" type="submit">{L.check}</Button></div>
+                <div><Button size="sm" type="submit" className="whitespace-nowrap">{L.check}</Button></div>
               </form>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                <p className="w-full text-[13px] text-muted">{L.rate}</p>
-                {(["again", "hard", "good", "easy"] as const).map((rating) => (
-                  <Button key={rating} size="sm" variant="ghost" onClick={() => {
-                    void api.learnCall("learn.practice.rate", { id: card.id, rating }).then((res) => {
-                      setReveal({ answer: res?.reveal?.answer, explanation: res?.reveal?.explanation });
-                    }).catch(props.onFail);
-                  }}>{L[rating]}</Button>
-                ))}
+              <div className="flex flex-col gap-2">
+                <p className="text-[13px] text-muted">{L.rate}</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {(["again", "hard", "good", "easy"] as const).map((rating) => (
+                    <Button key={rating} variant="outline" className="w-full whitespace-nowrap px-1 text-[12px]" onClick={() => {
+                      void api.learnCall("learn.practice.rate", { id: card.id, rating }).then((res) => {
+                        setReveal({ answer: res?.reveal?.answer, explanation: res?.reveal?.explanation });
+                      }).catch(props.onFail);
+                    }}>{L[rating]}</Button>
+                  ))}
+                </div>
               </div>
             )}
             {reveal ? (
@@ -1108,36 +1359,13 @@ function PracticePane(props: { cards: Card[]; desk: Desk; focusId: string; onCha
                 {reveal.correct !== undefined ? <p>{reveal.correct ? L.correct : L.incorrect}</p> : null}
                 {reveal.answer ? <p className="mt-1 text-muted">{reveal.answer}</p> : null}
                 {reveal.explanation ? <p className="mt-1 text-muted">{reveal.explanation}</p> : null}
-                <Button size="sm" className="mt-3" variant="ghost" onClick={() => { setReveal(null); setGuess(""); void props.onReload(); }}>{L.nextCard}</Button>
+                <Button size="sm" className="mt-3 whitespace-nowrap" onClick={() => { setReveal(null); setGuess(""); void props.onReload(); }}>{L.nextCard}</Button>
               </div>
             ) : null}
           </article>
         )}
-        <button type="button" className="w-fit text-[13px] text-muted hover:text-foreground" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>{adding ? L.hideCard : L.addCard}</button>
-        {adding ? <form className="flex flex-col gap-2" onSubmit={(e) => {
-          e.preventDefault();
-          if (!stem.trim()) return;
-          const opts = options.split("\n").map((line) => line.trim()).filter(Boolean);
-          void api.learnCall("learn.questions.import", { stem, answer, qtype, options: qtype === "choice" ? opts : [] }).then(async () => {
-            setStem("");
-            setAnswer("");
-            setOptions("");
-            setAdding(false);
-            await props.onReload();
-          }).catch(props.onFail);
-        }}>
-          <h3 className="text-[13px] text-muted">{L.bank}</h3>
-          <div className="flex gap-2">
-            <Button size="sm" type="button" variant={qtype === "short" ? "default" : "ghost"} aria-pressed={qtype === "short"} onClick={() => setQtype("short")}>{L.shortType}</Button>
-            <Button size="sm" type="button" variant={qtype === "choice" ? "default" : "ghost"} aria-pressed={qtype === "choice"} onClick={() => setQtype("choice")}>{L.choice}</Button>
-          </div>
-          <Input value={stem} placeholder={L.stemPh} onChange={(e) => setStem(e.target.value)} aria-label={L.stemPh} />
-          <Input value={answer} placeholder={L.answerPh} onChange={(e) => setAnswer(e.target.value)} aria-label={L.answerPh} />
-          {qtype === "choice" ? <textarea className="min-h-20 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-[13px]" value={options} placeholder={L.optionsPh} onChange={(e) => setOptions(e.target.value)} aria-label={L.optionsPh} /> : null}
-          <div><Button size="sm" type="submit" variant="ghost">{L.addCard}</Button></div>
-        </form> : null}
       </div>
-    </div>
+    </LearnShell>
   );
 }
 
