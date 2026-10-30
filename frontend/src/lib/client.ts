@@ -3194,3 +3194,49 @@ export const video = {
   /** providerMenu 走 videoCall("video.providers.menu")。capability 写入字段 capability。 */
   providerMenu: (capability = "") => videoCall("video.providers.menu", { capability }),
 };
+
+/** imCall 优先走桌面绑定，生成模块没有这个方法时改走 Call.ByName，浏览器门再走 /api。 */
+async function imCall(method: string, args: any[], path: string, init?: RequestInit): Promise<any> {
+  const s = await wailsService();
+  const fn = svcMethod(s, method);
+  if (fn) return fn(...args);
+  if (nativeDesktop()) {
+    const alt = namedDesktopService();
+    return alt[method](...args);
+  }
+  return http(path, init);
+}
+
+/** imSnapshot 拉取消息目录、规则、账号和状态。 */
+export function imSnapshot(): Promise<any> {
+  return imCall("IMSnapshot", [], "/api/im");
+}
+
+/** imSaveSettings 保存共用的唤醒和监听规则。settings 放进请求体。 */
+export function imSaveSettings(settings: any): Promise<any> {
+  return imCall("IMSaveSettings", [settings], "/api/im/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+/** imSaveAccount 保存一个机器人。空的密钥字段表示保留原值。 */
+export function imSaveAccount(account: any, secrets: Record<string, string>): Promise<any> {
+  return imCall("IMSaveAccount", [account, secrets], "/api/im/accounts", {
+    method: "PUT",
+    body: JSON.stringify({ account, secrets }),
+  });
+}
+
+/** imDeleteAccount 删除机器人并清掉它的密钥。 */
+export function imDeleteAccount(id: string): Promise<any> {
+  return imCall("IMDeleteAccount", [id], `/api/im/accounts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** imSend 用一个已启用的机器人主动发文本。 */
+export function imSend(accountId: string, chatId: string, text: string): Promise<any> {
+  return imCall("IMSend", [accountId, chatId, text], "/api/im/send", {
+    method: "POST",
+    body: JSON.stringify({ account_id: accountId, chat_id: chatId, text }),
+  });
+}

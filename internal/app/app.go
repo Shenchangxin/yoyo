@@ -24,6 +24,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/home"
 	"github.com/Shenchangxin/yoyo/internal/idol"
+	"github.com/Shenchangxin/yoyo/internal/im"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
@@ -180,6 +181,9 @@ type App struct {
 	Video      *video.Engine
 	Skins      *skin.Store
 	Idols      *idol.Store
+	IM         *im.Runtime
+	imLaneMu   sync.Mutex
+	imLanes    map[string]*sync.Mutex
 	idolMu     sync.Mutex
 	idolCancel context.CancelFunc
 	schedStop  chan struct{}
@@ -394,6 +398,10 @@ func Open(root, bundledEvals string) (*App, error) {
 		_ = a.SaveConfig()
 	}
 	if err := a.openPersonal(); err != nil {
+		return nil, err
+	}
+	if err := a.openIM(); err != nil {
+		_ = a.Close()
 		return nil, err
 	}
 	if err := a.openVideo(); err != nil {
@@ -668,6 +676,9 @@ func (a *App) Close() error {
 		default:
 			close(a.updateStop)
 		}
+	}
+	if a.IM != nil {
+		a.IM.Close()
 	}
 	diaglog.Info("app close", "component", "boot")
 	if a.Video != nil {

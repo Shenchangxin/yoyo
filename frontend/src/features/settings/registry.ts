@@ -35,6 +35,7 @@ export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "generation", group: "agent", icon: "film" },
   { key: "policy", group: "agent", icon: "shield" },
   { key: "extensions", group: "agent", icon: "blocks" },
+  { key: "messaging", group: "agent", icon: "message" },
   { key: "personal", group: "agent", icon: "brain" },
   { key: "advanced", group: "system", icon: "wrench" },
 ];
@@ -73,6 +74,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "extensions-mcp", tab: "extensions", titleKey: "extensionsMcp", keywords: "mcp server stdio http json" },
   { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm" },
   { id: "extensions-connectors", tab: "extensions", titleKey: "extensionsConnectors", keywords: "connector oauth gmail feishu" },
+  { id: "messaging-policy", tab: "messaging", titleKey: "messagingPolicy", keywords: "im bot telegram qq discord slack wechat lark dingtalk line whatsapp wake mention 消息 机器人 唤醒" },
+  { id: "messaging-accounts", tab: "messaging", titleKey: "messagingAccounts", keywords: "im account bot token webhook 账号 令牌 回调" },
   { id: "personal-memory", tab: "personal", titleKey: "personalMemory", keywords: "memory profile staging" },
   { id: "personal-profiles", tab: "personal", titleKey: "personalProfiles", keywords: "profile identity role tools mcp" },
   { id: "personal-jobs", tab: "personal", titleKey: "personalJobs", keywords: "automation schedule cron job" },
