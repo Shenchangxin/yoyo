@@ -19,6 +19,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/osutil"
+	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
 // ProtocolVersion 是 initialize 使用的 MCP 协议版本，值为 2025-11-25。
@@ -420,7 +421,7 @@ func (s *Server) ensure() error {
 	return s.handshake()
 }
 
-// handshake 发送 initialize。capabilities 里 roots.listChanged 为 true，并带上空的 elicitation。clientInfo 的 name 是 yoyo，version 是 0.6.0。成功后发送 notifications/initialized；有根目录时再发 notifications/roots/list_changed。然后刷新工具、资源和提示。
+// handshake 发送 initialize。capabilities 里 roots.listChanged 为 true，并带上空的 elicitation。clientInfo 的 name 是 yoyo，version 用 version.Version。成功后发送 notifications/initialized；有根目录时再发 notifications/roots/list_changed。然后刷新工具、资源和提示。
 func (s *Server) handshake() error {
 	caps := map[string]any{
 		"roots":       map[string]any{"listChanged": true},
@@ -429,7 +430,7 @@ func (s *Server) handshake() error {
 	_, err := s.call("initialize", map[string]any{
 		"protocolVersion": ProtocolVersion,
 		"capabilities":    caps,
-		"clientInfo":      map[string]any{"name": "yoyo", "version": "0.6.0"},
+		"clientInfo":      map[string]any{"name": "yoyo", "version": version.Version},
 	})
 	if err != nil {
 		return err

@@ -18,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/im"
 	"github.com/Shenchangxin/yoyo/internal/pages"
 	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/project"
@@ -1633,6 +1634,58 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return raw, nil
 		}
 		return decoded, nil
+	case "im.snapshot":
+		if a.IM == nil {
+			return nil, fmt.Errorf("messaging is not running")
+		}
+		return a.IM.Snapshot(), nil
+	case "im.settings":
+		var p im.Settings
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a.IM == nil {
+			return nil, fmt.Errorf("messaging is not running")
+		}
+		return map[string]any{"ok": true}, a.IM.SaveSettings(p)
+	case "im.account.save":
+		var p struct {
+			Account im.Account        `json:"account"`
+			Secrets map[string]string `json:"secrets"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a.IM == nil {
+			return nil, fmt.Errorf("messaging is not running")
+		}
+		return a.IM.SaveAccount(p.Account, p.Secrets)
+	case "im.account.delete":
+		var p struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a.IM == nil {
+			return nil, fmt.Errorf("messaging is not running")
+		}
+		return map[string]any{"ok": true}, a.IM.DeleteAccount(p.ID)
+	case "im.send":
+		var p struct {
+			AccountID string `json:"account_id"`
+			ChatID    string `json:"chat_id"`
+			Text      string `json:"text"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a.IM == nil {
+			return nil, fmt.Errorf("messaging is not running")
+		}
+		ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		defer cancel()
+		return map[string]any{"ok": true}, a.IM.Push(ctx, p.AccountID, p.ChatID, p.Text)
 	default:
 		return nil, errMethod(method)
 	}

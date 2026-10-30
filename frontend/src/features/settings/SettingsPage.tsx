@@ -19,6 +19,7 @@ import {
   GenerationSettings,
 } from "./pages";
 import { ExtensionsSettings } from "./ExtensionsPanel";
+import { MessagingSettings } from "./MessagingSettings";
 import { PersonalSettings } from "./PersonalPanel";
 import { IdolSettings } from "./IdolSettings";
 
@@ -98,6 +99,7 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
             {tab === "generation" ? <GenerationSettings /> : null}
             {tab === "policy" ? <PolicySettings host={host} /> : null}
             {tab === "extensions" ? <ExtensionsSettings host={host} /> : null}
+            {tab === "messaging" ? <MessagingSettings /> : null}
             {tab === "personal" ? <PersonalSettings /> : null}
             {tab === "idol" ? <IdolSettings /> : null}
             {tab === "advanced" ? <AdvancedSettings host={host} /> : null}
