@@ -61,12 +61,12 @@ export function LearnTutor(props: {
       </div>
       <p className="px-3 pb-2 text-[12px] leading-relaxed text-muted">{props.about}</p>
       {prompts.length > 0 ? (
-        <div className="flex flex-wrap gap-1 px-3 pb-2">
+        <div className="flex flex-col px-2 pb-2">
           {prompts.map((prompt) => (
             <button
               key={prompt.id}
               type="button"
-              className={cn("rounded-md px-2 py-1 text-left text-[12px] text-muted hover:bg-lift hover:text-foreground")}
+              className={cn("truncate whitespace-nowrap rounded-md px-2 py-1.5 text-left text-[12px] text-muted hover:bg-lift hover:text-foreground")}
               onClick={() => props.onPrompt?.(prompt.text)}
             >
               {prompt.label}
