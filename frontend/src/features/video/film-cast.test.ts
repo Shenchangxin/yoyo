@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { filmReading, type FilmCast } from "./film-cast.ts";
+import { filmCommission, filmReading, type FilmCast } from "./film-cast.ts";
 
 const cast: FilmCast = {
   subject: "Three things I use",
@@ -59,5 +59,26 @@ describe("film reading", () => {
     assert.deepEqual(beats[0].lines.map((line) => line.fresh), [true, false, false]);
     assert.deepEqual(beats[2].lines.map((line) => line.text), ["Phone", "Headphones", "Mug"]);
     assert.equal(beats[2].lines[2].fresh, true);
+  });
+});
+
+describe("film commission", () => {
+  /** 简报点名 Hypit，并带上榜上的三名。 */
+  it("hands the ranking to Hypit", () => {
+    const text = filmCommission("ranking", cast, "Earlier places stay on the board.");
+    assert.match(text, /@skill:hypit/);
+    assert.match(text, /Format: ranking/);
+    assert.match(text, /1\. Phone/);
+    assert.match(text, /3\. Mug/);
+    assert.match(text, /assemble an mp4/);
+    assert.doesNotMatch(text, /Ask:/);
+    assert.doesNotMatch(text, /Hypit Studio/);
+  });
+
+  /** 对谈简报带上两个人和一问一答。 */
+  it("hands the conversation to Hypit", () => {
+    const text = filmCommission("podcast", cast, "One asks. The other answers.");
+    assert.match(text, /Left: Her/);
+    assert.match(text, /Reply: I do\. I'm still tired\./);
   });
 });

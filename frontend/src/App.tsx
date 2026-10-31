@@ -61,7 +61,7 @@ import { useCutDesk } from "./features/video/cut-desk";
 import { useFilmDesk } from "./features/video/film-desk";
 import { useRemakeDesk } from "./features/video/remake-desk";
 import { useCreateMode } from "./features/video/create-mode";
-import { CreateModeTabs } from "./features/video/CreateModeTabs";
+import { CreateSkills } from "./features/video/CreateSkills";
 import { useStudioSelection } from "./features/video/workshop-store";
 import { studioSessionId } from "./features/video/studio-session";
 import { sessionLane } from "./features/video/video-lanes";
@@ -117,7 +117,6 @@ function WorkstationApp() {
   const filmOpen = useFilmDesk((s) => !!s.project?.id);
   const remakeOpen = useRemakeDesk((s) => !!s.draft?.id);
   const createLauncher = createDesk && !cutBound && !filmOpen && !remakeOpen;
-  const filmLauncher = createLauncher && createMode !== "clip";
   const finishDesk = createDesk && cutBound;
   const talkDesk = createDesk;
   const studioId = useStudioSelection((s) => s.studioId);
@@ -305,21 +304,10 @@ function WorkstationApp() {
       ctx={ws.ctx}
       queued={ws.queued}
       onSend={(opts) => {
-        if (filmLauncher) {
-          void ws.startFilm(createMode, opts?.text || "");
-          return;
-        }
         useCreateMode.getState().setEngaged(true);
         void ws.onSend(opts);
       }}
-      placeholder={createLauncher ? (
-        createMode === "ranking" ? copy.video.conductor.rankingPlaceholder
-          : createMode === "podcast" ? copy.video.conductor.podcastPlaceholder
-            : createMode === "interview" ? copy.video.conductor.interviewPlaceholder
-              : copy.video.conductor.clipPlaceholder
-      ) : undefined}
-      sendLabel={filmLauncher ? copy.video.film.makePicture : undefined}
-      allowEmptySend={filmLauncher}
+      placeholder={createLauncher ? copy.video.conductor.clipPlaceholder : undefined}
       onStop={ws.onStop}
       onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
       onModel={async (model) => {
@@ -511,7 +499,7 @@ function WorkstationApp() {
           className={cn(
             "flex min-h-0 min-w-0 w-full flex-1 flex-col",
             home && !railNarrow && "home-stage empty-rise",
-            home && !railNarrow && (directing ? "overflow-hidden" : "overflow-auto"),
+            home && !railNarrow && (directing && filmOpen ? "overflow-hidden" : "overflow-auto"),
             home && railNarrow && "home-stage",
             home && !createDesk && !railNarrow && "justify-center py-10",
           )}
@@ -559,25 +547,14 @@ function WorkstationApp() {
             onJumpLatest={ws.jumpToLatest}
           />
         )}
-        {home && !railNarrow && filmSurface && createLauncher ? (
-          <div className="mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-5 sm:px-8">
-            <CreateModeTabs />
-          </div>
-        ) : null}
         {home && !railNarrow && filmSurface ? homeStarters : null}
-        {directing && !(createLauncher && railNarrow) ? null : (
         <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
-          {createLauncher && (!filmSurface || railNarrow) ? <CreateModeTabs /> : null}
-          {directing ? null : (
-            <>
+          {createLauncher ? <CreateSkills onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)} /> : null}
           {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
           {composer}
-            </>
-          )}
         </div>
-        )}
         {home && !railNarrow && !filmSurface ? homeStarters : null}
         </div>
       </div>
@@ -686,6 +663,9 @@ function WorkstationApp() {
       onQuery={ws.setQuery}
       onSelect={(t) => { leaveRail(); ws.openThread(t); }}
       onSelectProject={(p) => { leaveRail(); void ws.openVideoProject(p); }}
+      onOpenCut={(id) => { leaveRail(); void ws.openCut(id); }}
+      onOpenFilm={(film) => { leaveRail(); useFilmDesk.getState().setProject(film); useUI.getState().openVideoPane("create"); }}
+      onOpenRemake={(cut) => { leaveRail(); useRemakeDesk.getState().setDraft(cut); useUI.getState().openVideoPane("create"); }}
       videoProjects={ws.videoProjects}
       canvasProjectId={ws.canvasProjectId}
       dramaId={ws.dramaId}

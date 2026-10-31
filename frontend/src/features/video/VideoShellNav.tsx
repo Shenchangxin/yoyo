@@ -24,7 +24,7 @@ const LIBRARY: { id: Extract<VideoPane, "assets" | "skills" | "plugins" | "tasks
   { id: "tasks", icon: History },
 ];
 
-/** VideoShellNav 画出创作、短片、短剧、画布，以及素材、技能、插件、任务。props 的 layout 为 bar 时画横条，否则画侧栏；onNavigate 在真正切栏时调用。 */
+/** VideoShellNav 画出创作、短片、短剧、画布，以及素材、技能、插件。窄横条仍保留创作历史入口；宽侧栏的创作历史在项目列表上。props 的 layout 为 bar 时画横条，否则画侧栏；onNavigate 在真正切栏时调用。 */
 export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () => void }) {
   const bar = props.layout === "bar";
   const copy = useCopy();
@@ -88,12 +88,14 @@ export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () 
     );
   }
 
+  const library = bar ? LIBRARY : LIBRARY.filter((item) => item.id !== "tasks");
+
   if (bar) {
     return (
       <nav aria-label={copy.video.shell} data-testid="video-shell-nav" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 py-2 [scrollbar-width:none]">
         {PRIMARY.map(row)}
         <span aria-hidden className="mx-1 w-px shrink-0 self-stretch bg-border" />
-        {LIBRARY.map(row)}
+        {library.map(row)}
       </nav>
     );
   }
@@ -104,7 +106,7 @@ export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () 
       {PRIMARY.map(row)}
       <div className="mx-2 my-1.5 h-px bg-border" />
       <div className="px-2.5 pb-1 text-[11px] font-medium text-muted">{copy.video.shellLibrary}</div>
-      {LIBRARY.map(row)}
+      {library.map(row)}
     </nav>
   );
 }

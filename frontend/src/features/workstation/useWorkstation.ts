@@ -44,7 +44,7 @@ import { useCutDesk, type CutProject } from "../video/cut-desk";
 import { useCreateMode } from "../video/create-mode";
 import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
 import { useFilmDesk } from "../video/film-desk";
-import { castPayload, readCast, useFilmCast, type FilmMode } from "../video/film-cast";
+import { filmCommission, readCast, useFilmCast, type FilmMode } from "../video/film-cast";
 
 /** 蛇形或驼峰键存在时用 num，缺省按 0。两个键都没有就沿用 prev。p 为真时才继续，按下标读取。snake 用作下标。camel 用作下标。 */
 function sliceNum(p: Record<string, any>, snake: string, camel: string, prev?: number): number | undefined {
@@ -2329,25 +2329,23 @@ export function useWorkstation() {
     }
   }
 
-  /** 用模板建片，再把榜、对谈或街采上的字写进去，然后做出画面。structure 选择模板。description 非空时只换题目。 */
+  /** 把这种片子的简报交给 Hypit。structure 选择关系。description 非空时只换题目。 */
   async function startFilm(structure: FilmMode, description = "") {
-    const toastId = toast.loading(copy.video.film.working);
-    try {
-      const typed = description.trim();
-      const cast = { ...readCast(structure, copy.video.film), ...(typed ? { subject: typed } : {}) };
-      if (typed) useFilmCast.getState().write(structure, cast);
-      const project = await api.video.filmDescribe(structure, cast.subject, "");
-      if (!project?.id) throw new Error(copy.video.film.needPicture);
-      const shaped = await api.video.filmShape(project.id, castPayload(cast));
-      if (!shaped?.id) throw new Error(copy.video.film.needPicture);
-      useFilmDesk.getState().setProject(shaped);
-      const built = await api.video.filmBuild(shaped.id);
-      if (built?.id) useFilmDesk.getState().setProject(built);
-      useUI.getState().setDraft(draftKey, "");
-      toast.success(copy.video.film.pictureReady, { id: toastId });
-    } catch (e) {
-      toast.error(api.errMessage(e), { id: toastId });
-    }
+    const film = copy.video.film;
+    const hints: Record<FilmMode, string> = {
+      talking: film.talkingHint,
+      drama: film.dramaHint,
+      podcast: film.podcastHint,
+      interview: film.interviewHint,
+      ranking: film.rankingHint,
+      explainer: film.explainerHint,
+      narration: film.narrationHint,
+    };
+    const typed = description.trim();
+    const cast = { ...readCast(structure, film), ...(typed ? { subject: typed } : {}) };
+    if (typed) useFilmCast.getState().write(structure, cast);
+    useCreateMode.getState().setEngaged(true);
+    await onSend({ text: filmCommission(structure, cast, hints[structure]) });
   }
 
   /** 空 id 返回。打开创作窗格。不是当前会话才切换过去。 */

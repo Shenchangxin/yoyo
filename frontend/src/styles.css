@@ -2717,6 +2717,36 @@ details[open] > .fold-summary::before {
   outline: 2px solid var(--foreground);
   outline-offset: 2px;
 }
+.create-skill-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: min(100%, 40rem);
+  margin: 0 auto 12px;
+}
+.create-skill-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+.create-skill-row button svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.create-skill-row button:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
 .creation-start-primary {
   display: flex;
   align-items: center;
@@ -3186,6 +3216,12 @@ details[open] > .fold-summary::before {
 }
 .film-studio-timeline span[data-fresh="true"] { color: var(--foreground); font-weight: 600; }
 .film-strip > .film-slot:first-child:nth-last-child(4) { grid-column: 1 / -1; }
+.creation-home-handoff:has(.film-stage) {
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
+  margin-top: 0;
+}
 .creation-home-handoff:has(.film-studio) {
   width: 100%;
   flex: 1;

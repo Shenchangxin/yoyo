@@ -957,7 +957,7 @@ export function Composer(props: {
                     }}
                   />
                   <div className="sc-modes">
-                    {props.onAuthMode && !talkDesk && !dramaDesk && !copilotDesk ? (
+                    {props.onAuthMode && !talkDesk && !dramaDesk ? (
                       <PermissionSelect
                         value={props.authMode}
                         disabled={disabled}

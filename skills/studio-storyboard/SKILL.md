@@ -1,11 +1,15 @@
 ---
 name: studio-storyboard
-description: Turn a shorts script into storyboard shots that point at CAS image_hash or video_hash. Use after the script exists, or when the operator asks for 分镜 / 镜头.
+description: Turn a shorts script into storyboard shots that point at CAS image_hash or video_hash. Use after the script exists, or when the operator asks for 分镜, 镜头, or 生图.
 license: Apache-2.0
 allowed-tools: studio_get studio_update studio_generate_shot studio_generate_missing studio_set_identity studio_catalog studio_preflight load_skill list_skills update_plan
 ---
 
 # Studio board
+
+If no short is bound, `video_route` dest=studio and use their sentence as the title. `studio_*` arrives once that short is bound. If those tools are absent on this turn, stop after the route and continue on the bound short.
+
+A one-picture request is one spoken line and one shot. Show the line. `studio_approve_script` only after they confirm. Then `studio_generate_shot`.
 
 `studio_get`. The script must be `approved` before spending image. `studio_preflight` `visuals` if unsure the image adapter is configured.
 
