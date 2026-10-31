@@ -126,6 +126,28 @@ export function sameCast(a: FilmCast, b: FilmCast) {
     && a.rows[2] === b.rows[2];
 }
 
+/** filmCommission 写成交给 Hypit 的简报。mode 是片子。cast 是操作者改过的字。relationship 是这种片子留住的关系。 */
+export function filmCommission(mode: FilmMode, cast: FilmCast, relationship: string) {
+  const lines = [
+    "@skill:hypit",
+    "",
+    "Finish this film with Hypit.",
+    `Format: ${mode}`,
+    `Relationship: ${relationship}`,
+    `Subject: ${cast.subject.trim()}`,
+  ];
+  if (mode === "podcast" || mode === "drama") {
+    lines.push(`Left: ${cast.left.trim()}`, `Ask: ${cast.ask.trim()}`, `Right: ${cast.right.trim()}`, `Reply: ${cast.reply.trim()}`);
+  } else {
+    cast.rows.forEach(/** row 按出现顺序写进简报。index 从 1 起。 */ (row, index) => {
+      lines.push(`${index + 1}. ${row.trim()}`);
+    });
+    if (mode === "talking" && cast.left.trim()) lines.push(`Speaker: ${cast.left.trim()}`);
+  }
+  lines.push("Open a short and assemble an mp4. Ask before image or speech.");
+  return lines.join("\n");
+}
+
 /** castPayload 收成接口要的字段。cast 的三行展开成数组。 */
 export function castPayload(cast: FilmCast) {
   return {

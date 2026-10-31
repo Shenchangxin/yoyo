@@ -236,10 +236,10 @@ const studioBootstrap = "Do not inspect the git workspace. Open the bound shorts
 const studioRuntimePin = "This is a Shorts turn. Use studio_* tools on the bound shorts project. Do not inspect the git workspace. Do not call shell, list_dir, glob, or grep. Approve the script before Speak or image gen. Use studio_generate_shot / studio_generate_missing for stills. Never invent CAS hashes. If generation is not configured, tell the operator to upload stills on the Shorts desk or add an image adapter."
 
 // conductorBootstrap 是指挥席开场白，要求先问片子类型或导入素材，并用 cut_*、video_route、provider_menu。正文保持英文。
-const conductorBootstrap = "You are the Video conductor. Ask what kind of piece they want, or ingest a source clip. Do not inspect the git workspace. Use cut_* on footage. Use video_route after they pick 短片 / 短剧 / 画布. Use provider_menu before spending a vendor — missing Settings accounts do not exist. load_skill for cut-edit, cut-dub, studio-script, or canvas as needed. Never invent CAS hashes or API keys."
+const conductorBootstrap = "You are the Video conductor. Ask what kind of piece they want, or ingest a source clip. Do not inspect the git workspace. Use cut_* on footage. Use video_route after they pick 短片 / 短剧 / 画布. A film format brief (talking, drama, podcast, interview, ranking, explainer, narration) is finished with load_skill hypit. Use provider_menu before spending a vendor — missing Settings accounts do not exist. load_skill for cut-edit, cut-dub, studio-script, or canvas as needed. Never invent CAS hashes or API keys."
 
 // conductorRuntimePin 是指挥席回合的固定提示，正文保持英文。正文要求使用 cut_*、video_route 和 provider_menu，并写明绑定到具体车间后不再沿用这条提示。
-const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route and provider_menu. A bound workshop drops this pin. Do not call shell, list_dir, glob, or grep. Do not dump 短片 six-gate tools until video_route dest=studio. Prefer Chinese chips: 剪这条, 配音, 做短片, 做短剧, 去画布."
+const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route and provider_menu. A film format is load_skill hypit. A bound workshop drops this pin. Do not call shell, list_dir, glob, or grep. Do not dump 短片 six-gate tools until video_route dest=studio. Prefer Chinese chips: 剪这条, 配音, 做短片, 做短剧, 去画布."
 
 // studioDeniedTools 是短片和指挥席从广告名里拿掉的工具：list_dir、glob、grep、shell、git_status、git_diff、git_commit。
 var studioDeniedTools = []string{"list_dir", "glob", "grep", "shell", "git_status", "git_diff", "git_commit"}

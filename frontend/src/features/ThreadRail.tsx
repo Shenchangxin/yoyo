@@ -14,6 +14,8 @@ import {
   Copy as CopyIcon,
   Film,
   Folder,
+  History,
+  Scissors,
   LayoutGrid,
   MessageSquarePlus,
   MoreHorizontal,
@@ -37,18 +39,24 @@ import {
 import { cn } from "../lib/utils";
 import { readLocalMap, writeLocalMap } from "../lib/local-map";
 import { useCopy } from "../lib/i18n";
+import { useUI } from "../lib/store";
 import { writeClipboard } from "../lib/clipboard";
 import { desktopWindow, isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
 import type { Lab, Surface, Thread, VideoProject } from "../lib/protocol";
 import { isSubagentThread, threadChannel } from "../lib/protocol";
+import * as api from "../lib/client";
 import { railBody } from "../lib/rail-body";
 import { SidebarCard } from "./shell/AppFrame";
 import { RailDock } from "./shell/RailDock";
 import { YoyoMark } from "./shell/YoyoMark";
 import { SettingsRailNav } from "./settings/SettingsSidebar";
 import { VideoShellNav } from "./video/VideoShellNav";
+import type { CutProject } from "./video/cut-desk";
+import { useCutDesk } from "./video/cut-desk";
+import type { FilmProject } from "./video/film-desk";
+import { useFilmDesk } from "./video/film-desk";
 import { LearnRailNav } from "./learn/LearnRailNav";
 import { SkillsRailNav } from "./skills/SkillsRailNav";
 import { HarnessRailNav } from "./harness/HarnessRailNav";
@@ -60,7 +68,9 @@ type RailEntry =
   | { kind: "label"; id: string; label: string }
   | { kind: "space"; id: string; label: string; path: string }
   | { kind: "thread"; thread: Thread }
-  | { kind: "project"; project: VideoProject };
+  | { kind: "project"; project: VideoProject }
+  | { kind: "film"; film: FilmProject }
+  | { kind: "clip"; cut: CutProject };
 
 /** 优先 originWorkspace，否则 workspace，并把反斜杠换成斜杠。t 读取 originWorkspace、workspace。 */
 function workspaceKey(t: Thread): string {
@@ -161,22 +171,24 @@ function visibleEntries(entries: RailEntry[], collapsed: Record<string, boolean>
     if (hidePath) {
       if (e.kind === "thread" && (workspaceKey(e.thread) === hidePath || hidePath === "chats")) continue;
       if (e.kind === "project" && e.project.kind === hidePath) continue;
+      if (e.kind === "film" && hidePath === "film") continue;
+      if (e.kind === "clip" && hidePath === "cut") continue;
     }
     out.push(e);
   }
   return out;
 }
 
-/** 查询同时对标题和 id。已绑到工程的会话不再进聊天组。空组不画。顺序是短片、画布、短剧、聊天。threads 做过滤。projects 做映射，做过滤。copy 读取 video、rail。q 转成小写后，为假时走另一支，传给 includes。 */
-function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Copy, q: string): RailEntry[] {
+/** 查询同时对标题和 id。空组不画。顺序是短片、画布、短剧、片子、剪辑。projects、films、clips 做过滤。copy 读取 video。q 转成小写后，为假时走另一支，传给 includes。 */
+function videoRailEntries(projects: VideoProject[], films: FilmProject[], clips: CutProject[], copy: Copy, q: string): RailEntry[] {
   const query = q.toLowerCase();
   /** 查询为空，或标题、id 里含有查询词。title 拼进字符串。 */
   const match = (title: string, id: string) => !query || `${title} ${id}`.toLowerCase().includes(query);
-  const bound = new Set(projects.map((p) => p.sessionId).filter(Boolean));
   const canvases = projects.filter((p) => p.kind === "canvas" && match(p.title || "", p.id));
   const dramas = projects.filter((p) => p.kind === "drama" && match(p.title || "", p.id));
   const studios = projects.filter((p) => p.kind === "studio" && match(p.title || "", p.id));
-  const chats = threads.filter((t) => !bound.has(t.id) && match(t.title || "", t.id));
+  const filmRows = films.filter((film) => film.id && match(film.title || "", film.id || ""));
+  const clipRows = clips.filter((cut) => cut.id && match(cut.title || "", cut.id || ""));
   const out: RailEntry[] = [];
   /** 没有条目就不画这个空间头。path 加上 g-，写入字段 path。label 写入字段 label。items 读取 length，用来遍历。 */
   const push = (path: string, label: string, items: RailEntry[]) => {
@@ -187,7 +199,8 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
   push("studio", copy.video.shellStudio, studios.map((project) => ({ kind: "project", project })));
   push("canvas", copy.video.canvas, canvases.map((project) => ({ kind: "project", project })));
   push("drama", copy.video.drama, dramas.map((project) => ({ kind: "project", project })));
-  push("chats", copy.rail.chats, chats.map((thread) => ({ kind: "thread", thread })));
+  push("film", copy.video.historyFilms, filmRows.map((film) => ({ kind: "film", film })));
+  push("cut", copy.video.historyCuts, clipRows.map((cut) => ({ kind: "clip", cut })));
   return out;
 }
 
@@ -210,6 +223,9 @@ export function ThreadRail(props: {
   onQuery: (q: string) => void;
   onSelect: (t: Thread) => void;
   onSelectProject?: (p: VideoProject) => void;
+  onOpenCut?: (id: string) => void;
+  onOpenFilm?: (film: FilmProject) => void;
+  onOpenRemake?: (cut: CutProject) => void;
   videoProjects?: VideoProject[];
   canvasProjectId?: string;
   dramaId?: string;
@@ -239,6 +255,8 @@ export function ThreadRail(props: {
   onIdolSlot?: (node: HTMLDivElement | null) => void;
 }) {
   const copy = useCopy();
+  const videoPane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
+  const openVideoPane = useUI(/** s 取出 openVideoPane。 */ (s) => s.openVideoPane);
   const mac = isMac();
   const refs = parseHarnessRefs(props.harness, props.fallbackActive);
   const dirty = stagingDirty(refs);
@@ -256,12 +274,32 @@ export function ThreadRail(props: {
   const settingsOn = body === "settings";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readLocalMap("yoyo-rail-collapsed"));
+  const [clips, setClips] = useState<CutProject[]>([]);
+  const [films, setFilms] = useState<FilmProject[]>([]);
+  const openFilmId = useFilmDesk(/** s 取出当前成片 id。 */ (s) => s.project?.id || "");
+  const openCutId = useCutDesk(/** s 取出当前剪辑 id。 */ (s) => s.project?.id || "");
   useEffect(() => {
     writeLocalMap("yoyo-rail-collapsed", collapsed);
   }, [collapsed]);
+  useEffect(() => {
+    if (!videoOn) return;
+    let alive = true;
+    void api.video.cutList().then(/** list 收成剪辑数组，按更新时间新的在前。 */ (list) => {
+      if (!alive) return;
+      const rows = (Array.isArray(list) ? list : []) as CutProject[];
+      rows.sort(/** b 的 updated_at 和 a 比较。空的当空字符串。 */ (a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+      setClips(rows.filter(/** row 要有 id。 */ (row) => !!row?.id));
+    }).catch(() => { if (alive) setClips([]); });
+    void api.video.filmList().then(/** list 是数组就当作成片。 */ (list) => {
+      if (!alive) return;
+      const rows = (Array.isArray(list) ? list : []) as FilmProject[];
+      setFilms(rows.filter(/** row 要有 id。 */ (row) => !!row?.id));
+    }).catch(() => { if (alive) setFilms([]); });
+    return () => { alive = false; };
+  }, [videoOn, props.videoProjects]);
   const entries = visibleEntries(
     videoOn
-      ? videoRailEntries(list, props.videoProjects || [], copy, q)
+      ? videoRailEntries(props.videoProjects || [], films, clips, copy, q)
       : railEntries(list, copy, { groupSpaces: !q, homeWorkspace: props.workspace }),
     collapsed,
   );
@@ -280,6 +318,37 @@ export function ThreadRail(props: {
           collapsed={!!collapsed[e.path]}
           onToggle={() => setCollapsed((c) => ({ ...c, [e.path]: !c[e.path] }))}
           onNew={!videoOn && props.onNewIn ? () => props.onNewIn?.(e.path) : undefined}
+        />
+      );
+    }
+    if (e.kind === "film") {
+      const film = e.film;
+      return (
+        <HistoryRow
+          key={`film-${film.id}`}
+          testId={`video-project-film-${film.id}`}
+          title={displayTitle(film.title, copy.video.historyFilms)}
+          active={!!film.id && film.id === openFilmId}
+          icon={Film}
+          onSelect={() => props.onOpenFilm?.(film)}
+        />
+      );
+    }
+    if (e.kind === "clip") {
+      const cut = e.cut;
+      const remake = cut.kind === "remake" && !cut.result_hash;
+      return (
+        <HistoryRow
+          key={`cut-${cut.id}`}
+          testId={`video-project-cut-${cut.id}`}
+          title={displayTitle(cut.title, copy.video.historyCuts)}
+          active={!!cut.id && cut.id === openCutId}
+          icon={Scissors}
+          onSelect={() => {
+            if (!cut.id) return;
+            if (remake) props.onOpenRemake?.(cut);
+            else props.onOpenCut?.(cut.id);
+          }}
         />
       );
     }
@@ -385,7 +454,27 @@ export function ThreadRail(props: {
         </div>
       ) : null}
       {body === "idol" ? <div ref={props.onIdolSlot} className="flex min-h-0 flex-1 flex-col overflow-hidden" /> : null}
-      {videoOn ? <div className="min-h-0 flex-1" /> : null}
+      {videoOn ? (
+        <nav aria-label={copy.video.shellTasks} data-testid="video-rail-history" className="flex min-h-0 flex-1 flex-col overflow-hidden px-1.5 pb-1">
+          <SpaceHeader
+            label={copy.video.shellTasks}
+            path="creation-history"
+            title={copy.video.shellTasks}
+            collapsed={!!collapsed["creation-history"]}
+            onToggle={() => setCollapsed((c) => ({ ...c, "creation-history": !c["creation-history"] }))}
+            openLabel={copy.video.historyBoard}
+            openCurrent={videoPane === "tasks"}
+            onOpen={() => openVideoPane("tasks")}
+          />
+          {collapsed["creation-history"] ? null : (
+            <div className="min-h-0 flex-1 overflow-auto">
+              {entries.length === 0 ? (
+                <p className="px-2.5 py-2 text-[12px] text-muted">{copy.video.historyEmptyCuts}</p>
+              ) : entries.map(renderEntry)}
+            </div>
+          )}
+        </nav>
+      ) : null}
       <div className="rail-dock">
         <RailDock
           copy={copy}
@@ -413,6 +502,26 @@ function RailLabel({ label }: { label: string }) {
   );
 }
 
+/** HistoryRow 画出创作历史里的一条片子或剪辑。props 读取 testId、title、active、icon、onSelect。 */
+function HistoryRow(props: { testId: string; title: string; active: boolean; icon: typeof Film; onSelect: () => void }) {
+  const Icon = props.icon;
+  return (
+    <button
+      type="button"
+      data-testid={props.testId}
+      aria-current={props.active ? "page" : undefined}
+      className={cn(
+        "mb-px ml-2 flex min-h-8 w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
+        props.active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
+      )}
+      onClick={props.onSelect}
+    >
+      <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+      <span className="truncate">{props.title}</span>
+    </button>
+  );
+}
+
 /** 短剧用系列标题，短片和画布用显示标题。图标按 kind 区分。props 读取 project、active、onSelect。 */
 function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: () => void }) {
   const copy = useCopy();
@@ -436,13 +545,17 @@ function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: (
   );
 }
 
-/** 点标题切换收起。新建按钮阻止冒泡，平时藏起，悬停或聚焦才出现。props 读取 onToggle、collapsed、path、label、onNew，调用 onNew。 */
+/** 点标题切换收起。新建按钮阻止冒泡，平时藏起，悬停或聚焦才出现。打开项目板的按钮一直可见，也不冒泡。props 读取 onToggle、collapsed、path、label、onNew、onOpen，调用 onNew，调用 onOpen。 */
 function SpaceHeader(props: {
   label: string;
   path: string;
+  title?: string;
   collapsed: boolean;
   onToggle: () => void;
   onNew?: () => void;
+  onOpen?: () => void;
+  openLabel?: string;
+  openCurrent?: boolean;
 }) {
   const copy = useCopy();
   return (
@@ -451,13 +564,34 @@ function SpaceHeader(props: {
         type="button"
         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12px] font-medium tracking-[-0.01em] text-foreground/80 transition-colors hover:bg-lift/55 hover:text-foreground"
         onClick={props.onToggle}
+        data-testid={props.path === "creation-history" ? "video-rail-history-toggle" : undefined}
         aria-expanded={!props.collapsed}
-        title={props.path}
+        title={props.title || props.path}
       >
         {props.collapsed ? <ChevronRight className="size-3.5 shrink-0 text-muted" aria-hidden /> : <ChevronDown className="size-3.5 shrink-0 text-muted" aria-hidden />}
         <Folder className="size-3.5 shrink-0 text-muted" aria-hidden />
         <span className="truncate">{props.label}</span>
       </button>
+      {props.onOpen && props.openLabel ? (
+        <Tooltip content={props.openLabel}>
+          <button
+            type="button"
+            className={cn(
+              "grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-lift hover:text-foreground",
+              props.openCurrent ? "bg-lift text-foreground" : "text-muted",
+            )}
+            data-testid="video-shell-tasks"
+            aria-label={props.openLabel}
+            aria-current={props.openCurrent ? "page" : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onOpen?.();
+            }}
+          >
+            <History className="size-3.5" aria-hidden />
+          </button>
+        </Tooltip>
+      ) : null}
       {props.onNew ? (
         <Tooltip content={copy.rail.newInSpace}>
           <button
