@@ -1,4 +1,4 @@
-// 会话元数据、发送回合，以及评测和演进入口。发送进入 runtime.Run。
+// 会话元数据、发送回合，以及评测和演进入口。桌面发送进入 dsh 代理。Harbor 和会话 overlay 仍调用 runtime.Run。
 
 package app
 
@@ -17,6 +17,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/observe"
@@ -343,7 +344,7 @@ func (a *App) ClientFor(meta SessionMeta) (runtime.Client, error) {
 	return nil, fmt.Errorf("missing API key — paste the token in Settings")
 }
 
-// Send 发送一轮，不进入计划模式，并进入 runtime.Run。
+// Send 发送一轮，不进入计划模式。模型循环是 dsh 代理。
 func (a *App) Send(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event)) (string, error) {
 	return a.SendOpts(ctx, sessionID, message, client, onEvent, false)
 }
@@ -706,7 +707,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if err != nil {
 		return "", err
 	}
-	loop, frags, pb, skills, _, pol, err := a.Materials(hash)
+	loop, frags, _, skills, _, pol, err := a.Materials(hash)
 	if err != nil {
 		return "", err
 	}
@@ -748,7 +749,6 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if meta.Model != "" {
 		model = meta.Model
 	}
-	preHooks, stopHooks, preCompact := runtime.LoadHookFile(toolRoot)
 	if a.MCP != nil && strings.TrimSpace(toolRoot) != "" {
 		a.MCP.SetRoots([]string{toolRoot})
 	}
@@ -825,11 +825,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		userCommitted = userCommitNeeded(message, atts)
 	}
 	hist := []runtime.Message{}
-	roundSeq := 0
 	// 历史只取最后一次检查点之后的事件。更早的原文留在 JSONL，不进这一轮的模型消息。
 	if evs, err := a.Traces.ReadFromCheckpoint(sessionID); err == nil {
 		hist = runtime.MessagesFromEventsOpts(evs, tools.Spill)
-		roundSeq = runtime.MaxAssistantRound(evs)
 	}
 	if userCommitted {
 		// 刚写入的用户行已经在轨迹里。从历史末尾拿掉同一句，避免模型看见两条。
@@ -955,51 +953,27 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			pageCtx += journal
 		}
 	}
-	out, runErr = runtime.Run(ctx, runtime.RunRequest{
+	// 这一轮交给 dsh 代理。停止看模型自己停、取消和 max-tokens，不再用 192 的软地平线。
+	out, runErr = a.agentDesk().Run(ctx, dshdesk.Turn{
 		SessionID:        sessionID,
 		TurnID:           turnID,
-		TraceID:          turnSpan.TraceID,
-		Observe:          a.Observe,
+		Prompt:           dshdesk.PromptText(frags, profile, pageCtx),
 		User:             message,
-		UserCommitted:    userCommitted && !resume,
-		RequestID:        requestIDOf(atts),
-		UserParts:        userParts,
 		Inject:           inject,
-		Workspace:        toolRoot,
-		Home:             a.Home.Root,
-		Harness:          snap,
+		Model:            model,
+		MaxTokens:        maxOutputTokensFor(model),
+		Budget:           loop.MaxBudgetUSD,
+		History:          hist,
+		Client:           client,
+		Tools:            tools,
+		Trace:            a.Traces,
+		OnEvent:          wrapped,
+		ShowThinking:     a.Config.ShowThinking,
 		HarnessHash:      hash,
 		ModelFingerprint: Fingerprint(a.Config),
-		Model:            model,
-		ModelWindow:      window,
-		MaxOutputTokens:  maxOutputTokensFor(model),
-		Loop:             loop,
-		Policy:           pol,
-		Fragments:        frags,
-		Playbook:         pb,
-		Skills:           skills,
-		History:          hist,
-		RoundSeq:         roundSeq,
-		Tools:            tools,
-		Client:           client,
-		Trace:            a.Traces,
-		Events:           a.Kernel.Events(),
-		FileHooks:        preHooks,
-		StopHooks:        stopHooks,
-		PreCompactHooks:  preCompact,
-		ProfileMemory:    profile,
-		PageContext:      pageCtx,
-		OnEvent:          wrapped,
-		OnChild: func(id, prompt string, done bool) {
-			a.noteChildRun(sessionID, id, prompt, meta, done)
-		},
-		OnShape: func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
-		Meter:   meter,
-		// 转向文本在下一次模型调用之前被拉走。流式生成中途不插入。
-		PullSteer: func() string { return a.pullSteer(sessionID) },
-		// 桌面这条路径打开软地平线。停轮看 192 和停滞窗口，for 不会因为 MaxTurns 用尽而退出。
-		SoftHorizon:  true,
-		ShowThinking: a.Config.ShowThinking,
+		Meter:            meter,
+		UserParts:        userParts,
+		PullSteer:        func() string { return a.pullSteer(sessionID) },
 	})
 	a.markRunDone(sessionID)
 	if a.Threads != nil {
@@ -1123,6 +1097,9 @@ func (a *App) StopTurn(sessionID string) InterruptResult {
 	a.mu.Unlock()
 	if slot != nil && slot.cancel != nil {
 		slot.cancel()
+	}
+	if a.desk != nil {
+		a.desk.Interrupt(sessionID)
 	}
 	if !was {
 		return InterruptResult{SessionID: sessionID, State: "idle"}

@@ -1,4 +1,4 @@
-// 忙时把回合入队；Steer 只追加文本，由运行时在下一次模型调用前收走。
+// 忙时把回合入队。正在跑的会话把 Steer 交给 dsh 代理；代理还没建好时仍先放进内存，由这一轮开场收走。
 
 package app
 
@@ -188,9 +188,9 @@ func (a *App) kickQueue(sessionID string) {
 	_ = a.StartSendOpts(sessionID, next.Text, next.Plan, next.Attachments)
 }
 
-// Steer 只在会话正在跑时把文本追加进内存 steers，并 PushSteer 写进运行状态。它不取消当前回合。空文本或会话没在跑则返回错误。
+// Steer 在会话正在跑时把 text 交给 dsh 代理。代理还没建好时追加进内存 steers，由这一轮开场收走。空文本或会话没在跑则返回错误。
 // sessionID 传给 Running 和 PushSteer，并用作 steers 的键。
-// text 为空则返回错误，否则追加进 steers，并传给 PushSteer 和 recordInbox。
+// text 为空则返回错误。代理收下时不再写入 steers，避免同一句被投递两次。
 func (a *App) Steer(sessionID, text string) error {
 	if text == "" {
 		return errString("empty steer")
@@ -200,6 +200,10 @@ func (a *App) Steer(sessionID, text string) error {
 	}
 	if a.Threads != nil {
 		_ = a.Threads.PushSteer(sessionID, text)
+	}
+	if a.agentDesk().Steer(sessionID, text) {
+		a.recordInbox(sessionID, "enqueue", "next-step", "", text)
+		return nil
 	}
 	a.queueMu.Lock()
 	a.steers[sessionID] = append(a.steers[sessionID], text)

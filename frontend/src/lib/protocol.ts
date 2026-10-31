@@ -7,8 +7,8 @@
 export type Lab = "agent" | "harbor" | "evolve" | "harness";
 /** HarnessTab Harness 表面的四个页签。 */
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
-/** Surface 壳层当前打开的表面。 */
-export type Surface = "agent" | "harness" | "settings" | "skills" | "video" | "pages" | "idol";
+/** Surface 壳层当前打开的表面。编排是单独一页，不叠在对话上。 */
+export type Surface = "agent" | "harness" | "settings" | "skills" | "video" | "pages" | "idol" | "orchestrator";
 /** VideoMode 视频工作台的模式：剧集、画布或创作。 */
 export type VideoMode = "drama" | "canvas" | "creative";
 /** VideoPane 视频表面里的一块面板。 */

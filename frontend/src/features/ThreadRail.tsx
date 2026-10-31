@@ -236,6 +236,7 @@ export function ThreadRail(props: {
   onLab: (lab: Lab) => void;
   onChats: () => void;
   onHarness: () => void;
+  onOrchestrator: () => void;
   onSkills: () => void;
   onPages: () => void;
   onIdol: () => void;
@@ -486,6 +487,7 @@ export function ThreadRail(props: {
           onPages={props.onPages}
           onIdol={props.onIdol}
           onHarness={props.onHarness}
+          onOrchestrator={props.onOrchestrator}
           onSettings={props.onSettings}
         />
       </div>

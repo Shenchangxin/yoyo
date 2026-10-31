@@ -1,0 +1,122 @@
+.orch {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 16px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--lift, var(--card, transparent)) 88%, transparent);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.orch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+.orch-title {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.orch-meta, .orch-hint {
+  color: var(--muted, color-mix(in srgb, var(--foreground) 62%, transparent));
+}
+
+.orch-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--muted, #888);
+}
+
+.orch-dot.orch-ok { background: #3c9a62; }
+.orch-dot.orch-err { background: #c4554a; }
+
+.orch-err {
+  margin: 0;
+  padding: 0 10px 8px;
+  color: #c4554a;
+}
+
+.orch-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 10px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.orch-tabs, .orch-modes, .orch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.orch-tabs { padding: 8px 0; }
+
+.orch-tabs button, .orch-modes button, .orch-actions button, .orch-cell select {
+  border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.orch-tabs button.on, .orch-modes button.on {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.orch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.orch-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.orch-list strong {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.orch-list span, .orch-cell span {
+  color: var(--muted, color-mix(in srgb, var(--foreground) 62%, transparent));
+}
+
+.orch-cells {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.orch-cell {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.orch-state.orch-ok { color: #3c9a62; }
+.orch-state.orch-error { color: #c4554a; }
+.orch-decisions { margin-top: 8px; }

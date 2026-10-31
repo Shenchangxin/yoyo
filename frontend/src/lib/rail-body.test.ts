@@ -8,9 +8,10 @@ import { railBody } from "./rail-body.ts";
  */
 
 describe("railBody", () => {
-  /** 会话表面保留会话列表。视频和设置沿用各自的导航。 */
+  /** 会话表面保留会话列表。编排页也留着这份列表。视频和设置沿用各自的导航。 */
   it("keeps the session list on the agent surface only", () => {
     assert.equal(railBody("agent"), "sessions");
+    assert.equal(railBody("orchestrator"), "sessions");
     assert.equal(railBody("video"), "video");
     assert.equal(railBody("settings"), "settings");
   });
