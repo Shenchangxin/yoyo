@@ -111,7 +111,7 @@ func RemotionStatus() map[string]any {
 	return (&Engine{}).RemotionSnapshot()
 }
 
-// RemotionSnapshot 报告 node、npm、npx 和托管安装。托管命令存在时 source 为 managed 且 ready 为真。否则再看系统 remotion 或 npx --no-install remotion --version，3 秒超时。
+// RemotionSnapshot 报告 node、npm、npx 和托管安装。托管命令存在时 source 为 managed 且 ready 为真。否则再看系统 remotion，或用 3 秒超时跑 npx --no-install remotion --version。
 func (e *Engine) RemotionSnapshot() map[string]any {
 	node := ""
 	npx := ""
@@ -156,11 +156,10 @@ func (e *Engine) RemotionSnapshot() map[string]any {
 	} else if npx != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		cmd := quiet(exec.CommandContext(ctx, npx, "--no-install", "remotion", "--version"))
-		b, err := cmd.CombinedOutput()
-		if err == nil && strings.TrimSpace(string(b)) != "" {
+		text, err := probeNpxRemotion(ctx, npx)
+		if err == nil && strings.TrimSpace(text) != "" {
 			out["detected"] = true
-			out["remotion"] = strings.TrimSpace(string(b))
+			out["remotion"] = strings.TrimSpace(text)
 			out["source"] = "npx"
 		}
 	}
@@ -170,6 +169,30 @@ func (e *Engine) RemotionSnapshot() map[string]any {
 		out["hint"] = "A system Remotion CLI was found, but Yoyo still needs the local composition under the video home. Click Install so title wrap can run."
 	}
 	return out
+}
+
+// probeNpxRemotion 运行 npx --no-install remotion --version，并返回它的合并输出。
+// Windows 上 npx.cmd 交给 cmd，再由 cmd 拉起 node。上下文取消时如果只杀掉 cmd，node 仍握着标准输出管道，CombinedOutput 就不会返回。
+// 取消时用 taskkill 拆掉整棵进程树，WaitDelay 则在管道还开着时让等待结束。
+// ctx 传给命令，到点就取消。npx 是要执行的程序路径。
+func probeNpxRemotion(ctx context.Context, npx string) (string, error) {
+	cmd := quiet(exec.CommandContext(ctx, npx, "--no-install", "remotion", "--version"))
+	cmd.WaitDelay = time.Second
+	if runtime.GOOS == "windows" {
+		prev := cmd.Cancel
+		cmd.Cancel = func() error {
+			if cmd.Process != nil {
+				kill := quiet(exec.Command("taskkill", "/PID", strconv.Itoa(cmd.Process.Pid), "/T", "/F"))
+				_ = kill.Run()
+			}
+			if prev != nil {
+				return prev()
+			}
+			return nil
+		}
+	}
+	b, err := cmd.CombinedOutput()
+	return string(b), err
 }
 
 // RemotionInstallSnapshot 返回安装阶段、百分比和错误。已经就绪且不在安装中时，空闲或错误阶段改报 ready、100。
