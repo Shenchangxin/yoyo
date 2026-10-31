@@ -3,7 +3,7 @@
  * 不拥有：切到哪一面。点下去只调用外面传入的回调。
  */
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Clapperboard, FileText, GitBranch, Heart, MessageSquare, Settings } from "lucide-react";
+import { BookOpen, Clapperboard, FileText, GitBranch, Hammer, Heart, MessageSquare, Settings } from "lucide-react";
 import GlassIcons from "./GlassIcons";
 import { useTheme } from "../../lib/theme";
 import type { Copy } from "../../lib/copy";
@@ -55,7 +55,7 @@ function useDockTokens() {
   return { light, tokens };
 }
 
-const DOCK_COUNT = 7;
+const DOCK_COUNT = 8;
 const DOCK_MAX = 44;
 const DOCK_MIN = 18;
 /** 间距大约是图标边长的这个比例，宽栏时图标到顶后间距继续拉开。 */
@@ -86,7 +86,7 @@ function useRowSize() {
   return { hostRef, size };
 }
 
-/** RailDock 画出侧栏底部的七个入口。当前面加一圈强调色，Harness 有未提交改动时右上角加一点。 */
+/** RailDock 画出侧栏底部的八个入口。当前面加一圈强调色，Harness 有未提交改动时右上角加一点。 */
 export function RailDock(props: {
   copy: Copy;
   surface: Surface;
@@ -97,6 +97,7 @@ export function RailDock(props: {
   onPages: () => void;
   onIdol: () => void;
   onHarness: () => void;
+  onOrchestrator: () => void;
   onSettings: () => void;
 }) {
   const { light, tokens } = useDockTokens();
@@ -109,6 +110,7 @@ export function RailDock(props: {
     { id: "pages", icon: <FileText />, color: tokens.muted, label: label.pages, onClick: props.onPages, current: props.surface === "pages" },
     { id: "idol", icon: <Heart />, color: tokens.markDeep, label: label.idol, onClick: props.onIdol, current: props.surface === "idol" },
     { id: "harness", icon: <GitBranch />, color: tokens.success, label: label.harness, onClick: props.onHarness, current: props.surface === "harness", className: props.mark ? "has-mark" : "" },
+    { id: "orchestrator", icon: <Hammer />, color: tokens.mark, label: label.orchestrator, onClick: props.onOrchestrator, current: props.surface === "orchestrator" },
     { id: "settings", icon: <Settings />, color: tokens.muted, label: label.settings, onClick: props.onSettings, current: props.surface === "settings" },
   ];
   return (

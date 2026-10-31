@@ -1634,6 +1634,59 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return raw, nil
 		}
 		return decoded, nil
+	case "orchestrator.view":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.OrchestratorView(), nil
+	case "orchestrator.decide":
+		var decide struct {
+			TriggerID string `json:"triggerId"`
+			Kind      string `json:"kind"`
+			Reason    string `json:"reason"`
+		}
+		if err := json.Unmarshal(params, &decide); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.OrchestratorDecide(decide.TriggerID, decide.Kind, decide.Reason)
+	case "orchestrator.mode":
+		var mode struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.Unmarshal(params, &mode); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.OrchestratorMode(mode.Mode)
+	case "orchestrator.paused":
+		var paused struct {
+			Paused bool `json:"paused"`
+		}
+		if err := json.Unmarshal(params, &paused); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.OrchestratorPaused(paused.Paused)
+	case "orchestrator.admission":
+		var cells struct {
+			ListedUnaddressed   string `json:"listedUnaddressed"`
+			UnlistedAddressed   string `json:"unlistedAddressed"`
+			UnlistedUnaddressed string `json:"unlistedUnaddressed"`
+		}
+		if err := json.Unmarshal(params, &cells); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.OrchestratorAdmission(cells.ListedUnaddressed, cells.UnlistedAddressed, cells.UnlistedUnaddressed)
 	case "im.snapshot":
 		if a.IM == nil {
 			return nil, fmt.Errorf("messaging is not running")

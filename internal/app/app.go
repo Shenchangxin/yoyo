@@ -1,4 +1,4 @@
-// Package app 是桌面、HTTP 和命令行共用的应用对象。发送进入 runtime.Run。
+// Package app 是桌面、HTTP 和命令行共用的应用对象。桌面发送进入 dsh 代理。Harbor 和会话 overlay 仍调用 runtime.Run。
 package app
 
 import (
@@ -20,6 +20,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/computeruse"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/home"
@@ -43,6 +44,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/skin"
+	"github.com/Shenchangxin/yoyo/internal/superagent"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/vault"
@@ -152,6 +154,10 @@ type App struct {
 
 	mu   sync.Mutex
 	runs map[string]*runSlot
+
+	deskMu sync.Mutex
+	desk   *dshdesk.Host
+	orch   *superagent.Runtime
 
 	shapeMu   sync.Mutex
 	lastShape map[string]runtime.ShapeReport
@@ -663,6 +669,7 @@ func (a *App) SaveConfig() error {
 
 // Close 停掉调度和更新循环，关闭视频、MCP、WASM 和日志，再卸下内核。
 func (a *App) Close() error {
+	a.stopOrchestrator()
 	if a.schedStop != nil {
 		select {
 		case <-a.schedStop:

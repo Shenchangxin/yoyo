@@ -31,6 +31,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mountPersonal(mux, a)
 	mountIM(mux, a)
+	mountOrchestrator(mux, a)
 	mountSurfaces(mux, a)
 	mountVideo(mux, a)
 	mountIdol(mux, a)

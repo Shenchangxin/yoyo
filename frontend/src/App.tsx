@@ -22,6 +22,7 @@ import { Titlebar } from "./features/Titlebar";
 import { UpdateButton } from "./features/UpdateButton";
 import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
+import { OrchestratorDesk } from "./features/superagent/OrchestratorDesk";
 import { TurnOutline } from "./features/TurnOutline";
 import { HomeHero, HomeStarters } from "./features/HomeStage";
 import { ChatNotWorking } from "./features/harness/ChatNotWorking";
@@ -106,6 +107,7 @@ function WorkstationApp() {
   const skills = !popout && ws.surface === "skills";
   const paging = !popout && ws.surface === "pages";
   const idling = !popout && ws.surface === "idol";
+  const orchestrating = !popout && ws.surface === "orchestrator";
   const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
   const videoPane = useUI((s) => s.videoPane);
@@ -680,6 +682,11 @@ function WorkstationApp() {
         if (ws.surface === "harness") ws.showConversation();
         else ws.openHarness("overview");
       }}
+      onOrchestrator={() => {
+        leaveRail();
+        if (ws.surface === "orchestrator") ws.closeOrchestrator();
+        else ws.openOrchestrator();
+      }}
       onSkills={() => {
         leaveRail();
         if (ws.surface === "skills") ws.closeSkills();
@@ -984,6 +991,10 @@ function WorkstationApp() {
   ) : idling ? (
     <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="idol-surface">
       <IdolStage />
+    </div>
+  ) : orchestrating ? (
+    <div className="no-drag flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden" data-skin-pane data-testid="orchestrator-surface">
+      <OrchestratorDesk />
     </div>
   ) : harnessing ? (
     <Suspense fallback={null}>

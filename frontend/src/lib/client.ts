@@ -3242,3 +3242,40 @@ export function imSend(accountId: string, chatId: string, text: string): Promise
     body: JSON.stringify({ account_id: accountId, chat_id: chatId, text }),
   });
 }
+
+/** orchestratorView 拉取编排台快照。 */
+export function orchestratorView(): Promise<any> {
+  return imCall("OrchestratorView", [], "/api/orchestrator");
+}
+
+/** orchestratorDecide 评估一条触发。triggerId 是触发编号。kind 是 accept、ignore 或 stop。reason 是给人看的原因。 */
+export function orchestratorDecide(triggerId: string, kind: string, reason = ""): Promise<any> {
+  return imCall("OrchestratorDecide", [triggerId, kind, reason], "/api/orchestrator/decide", {
+    method: "POST",
+    body: JSON.stringify({ triggerId, kind, reason }),
+  });
+}
+
+/** orchestratorMode 换成 off、observe 或 auto。mode 原样传给宿主。 */
+export function orchestratorMode(mode: string): Promise<any> {
+  return imCall("OrchestratorMode", [mode], "/api/orchestrator/mode", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+/** orchestratorPaused 暂停或恢复编排。paused 为真时不再接受新触发。 */
+export function orchestratorPaused(paused: boolean): Promise<any> {
+  return imCall("OrchestratorPaused", [paused], "/api/orchestrator/paused", {
+    method: "POST",
+    body: JSON.stringify({ paused }),
+  });
+}
+
+/** orchestratorAdmission 写下三格准入。三个格子只能是 explicit、inferred 或 ignore。 */
+export function orchestratorAdmission(listedUnaddressed: string, unlistedAddressed: string, unlistedUnaddressed: string): Promise<any> {
+  return imCall("OrchestratorAdmission", [listedUnaddressed, unlistedAddressed, unlistedUnaddressed], "/api/orchestrator/admission", {
+    method: "POST",
+    body: JSON.stringify({ listedUnaddressed, unlistedAddressed, unlistedUnaddressed }),
+  });
+}

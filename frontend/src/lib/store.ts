@@ -65,6 +65,8 @@ type UIState = {
   closePages: () => void;
   openIdol: () => void;
   closeIdol: () => void;
+  openOrchestrator: () => void;
+  closeOrchestrator: () => void;
   skillsTab: SkillsTab;
   setSkillsTab: (t: SkillsTab) => void;
   openVideo: () => void;
@@ -345,6 +347,10 @@ export const useUI = create<UIState>((set, get) => ({
   openIdol: () => set({ surface: "idol" }),
   /** 关掉 idol 表面，回到对话。 */
   closeIdol: () => get().showConversation(),
+  /** 打开编排表面。工单和来源在这一页，不进对话栏。 */
+  openOrchestrator: () => set({ surface: "orchestrator" }),
+  /** 关掉编排表面，回到对话。 */
+  closeOrchestrator: () => get().showConversation(),
   skillsTab: "market",
   /** 切换技能页签。skillsTab 写入字段 skillsTab。 */
   setSkillsTab: (skillsTab) => set({ skillsTab }),

@@ -92,6 +92,8 @@ type WorkspaceTools struct {
 	ReadOnly bool
 	// ChatOverlay 为真表示桌面或 CLI 的个人聊天。Harbor 评测保持为假，使 shell、计划用语和工具菜单保持评测稳定。
 	ChatOverlay bool
+	// DshShell 为真时，聊天叠加层的空闲和阻塞熔断不杀掉 shell。命令仍受自己的超时限制。
+	DshShell bool
 	// OperatorVoice 是聊天叠加层里最近一句真实的操作者原话。
 	OperatorVoice string
 	// VerifyHint 在聊天带着未完成计划试图结束时为真，用来把 verify-artifact 重新注入工作记忆。
@@ -1026,7 +1028,7 @@ func (t *WorkspaceTools) repeatVerifyBlocked() (string, bool) {
 	return t.repeatRefusal, true
 }
 
-// shell 先看重复拦截，再展开技能脚本、修理工作区路径并去掉多余的 cd。Windows 上把 unix find 转成 glob，聊天叠加层把 cat 或 sed 读文件转成 readFile。超时小于等于 0 时用 60 秒。ChatOverlay 且超时大于 chatShellBlock 时启用空闲和阻塞熔断，熔断后不再给命令加超时上下文。能力级别是 Shell。
+// shell 先看重复拦截，再展开技能脚本、修理工作区路径并去掉多余的 cd。Windows 上把 unix find 转成 glob，聊天叠加层把 cat 或 sed 读文件转成 readFile。超时小于等于 0 时用 60 秒。ChatOverlay 且没有 DshShell、并且超时大于 chatShellBlock 时启用空闲和阻塞熔断，熔断后不再给命令加超时上下文。能力级别是 Shell。
 // command 先交给 repeatBlocked，再展开技能脚本、修理路径、去掉多余 cd，并作为最终要执行的命令。
 // timeoutSec 小于等于 0 时改成 60 秒；聊天叠加层下再交给 chatShellFuse。
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
@@ -1115,7 +1117,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		parent = context.Background()
 	}
 	timeout := time.Duration(timeoutSec) * time.Second
-	idle, block, fuse := chatShellFuse(t != nil && t.ChatOverlay, timeout)
+	idle, block, fuse := chatShellFuse(t != nil && t.ChatOverlay && !t.DshShell, timeout)
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if fuse {

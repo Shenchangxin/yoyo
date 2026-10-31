@@ -245,6 +245,8 @@ export function useWorkstation() {
   const closePages = useUI((s) => s.closePages);
   const openIdol = useUI((s) => s.openIdol);
   const closeIdol = useUI((s) => s.closeIdol);
+  const openOrchestrator = useUI((s) => s.openOrchestrator);
+  const closeOrchestrator = useUI((s) => s.closeOrchestrator);
   const openVideo = useUI((s) => s.openVideo);
   const closeVideo = useUI((s) => s.closeVideo);
   const showConversation = useUI((s) => s.showConversation);
@@ -2224,7 +2226,7 @@ export function useWorkstation() {
           }
           return;
         }
-        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol") {
+        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol" || useUI.getState().surface === "orchestrator") {
           showConversation();
           return;
         }
@@ -2507,7 +2509,7 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openIdol, closeIdol, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openIdol, closeIdol, openOrchestrator, closeOrchestrator, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
