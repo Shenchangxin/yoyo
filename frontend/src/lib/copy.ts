@@ -124,7 +124,7 @@ export const en = {
     harness: "Harness",
     harnessHint: "Improve, check, then switch",
     orchestrator: "Orchestrator",
-    orchestratorHint: "Tickets, threads, and sources. Separate from the chat.",
+    orchestratorHint: "Work waiting on you, triggers, and execution. Separate from the chat.",
     stagingDirty: "yours",
     canaryDirty: "improved",
     pinned: "Pinned",

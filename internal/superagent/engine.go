@@ -331,6 +331,7 @@ func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) 
 		return "filtered", nil, nil
 	}
 	cp := in
+	stamp(&cp, e.now())
 	cp.Threads = threads
 	cp.Reached = nil
 	cp.Handbacks = nil
@@ -671,9 +672,18 @@ func (e *Engine) storeFiltered(in Trigger, code string) {
 		return
 	}
 	cp := in
+	stamp(&cp, e.now())
 	cp.Filtered = code
 	cp.Queued = false
 	e.triggers[cp.ID] = &cp
+}
+
+// stamp 在 in 的 At 还是零时写上 now。in 为 nil 时直接返回。
+func stamp(in *Trigger, now time.Time) {
+	if in == nil || !in.At.IsZero() {
+		return
+	}
+	in.At = now.UTC()
 }
 
 // runningAssignment 返回 t 上状态为 running 的派工。没有时返回 nil。

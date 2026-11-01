@@ -408,3 +408,36 @@ func acceptOn(t *testing.T, eng *Engine, id, thread string) string {
 	}
 	return d.TicketID
 }
+
+// TestReceiveStampsArrival 锁住收下的触发带上到达时刻，相同编号的第二次接收不改这个时刻。
+func TestReceiveStampsArrival(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	if eng.Receive(human("m", "hello")) != "stored" {
+		t.Fatal("stored")
+	}
+	snap, err := eng.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first time.Time
+	for _, tr := range snap.Triggers {
+		if tr.ID == "m" {
+			first = tr.At
+		}
+	}
+	if first.IsZero() {
+		t.Fatal("at")
+	}
+	if eng.Receive(human("m", "again")) != "duplicate" {
+		t.Fatal("duplicate")
+	}
+	snap, err = eng.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tr := range snap.Triggers {
+		if tr.ID == "m" && !tr.At.Equal(first) {
+			t.Fatal("kept")
+		}
+	}
+}

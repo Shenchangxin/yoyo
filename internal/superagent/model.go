@@ -23,6 +23,8 @@ type Trigger struct {
 	Queued       bool
 	Filtered     string
 	StrengthHold string
+	// At 是这条触发到达的时刻。旧快照没有这一项时为零，不计入最近一天。
+	At time.Time `json:"At,omitempty"`
 }
 
 // Thread 按时间收触发。Subs 是订阅它的工单。Queued 是还没评估的触发。

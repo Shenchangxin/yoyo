@@ -1,4 +1,4 @@
-// view.go 把引擎快照收成界面要的几列。
+// view.go 把引擎快照收成编排台的几页：标题、线程消息、最近一天的流量和执行负载。
 // 不改引擎。Runtime.View 调用它。
 
 package superagent
@@ -28,6 +28,27 @@ type View struct {
 	Health      string         `json:"health"`
 	At          string         `json:"at"`
 	EvalTimeout int            `json:"evalTimeout"`
+	// Flow 是最近一天的到达、滤掉、已评、接单和忽略。没有到达时刻的旧触发不计入。
+	Flow FlowView `json:"flow"`
+	// Load 是执行器正在跑、排队和空闲的工单数。MaxWorkers 是普通槽位。
+	Load LoadView `json:"load"`
+}
+
+// FlowView 是最近二十四小时的流量。Received 含 Filtered。Ignored 是这段里被忽略的决定。
+type FlowView struct {
+	Received int `json:"received"`
+	Filtered int `json:"filtered"`
+	Judged   int `json:"judged"`
+	Accepted int `json:"accepted"`
+	Ignored  int `json:"ignored"`
+}
+
+// LoadView 是执行器负载。Running 是正在做的工单，Queued 是还在排队的，Idle 是在等下一条触发的。
+type LoadView struct {
+	Running    int `json:"running"`
+	Queued     int `json:"queued"`
+	Idle       int `json:"idle"`
+	MaxWorkers int `json:"maxWorkers"`
 }
 
 // AdmissionView 是填好默认值的三格准入。
@@ -62,6 +83,7 @@ type TicketRow struct {
 	Attention     string          `json:"attention,omitempty"`
 	DeliveryError string          `json:"deliveryError,omitempty"`
 	OriginURL     string          `json:"originUrl,omitempty"`
+	Title         string          `json:"title"`
 	Inputs        []InputRow      `json:"inputs"`
 	Follows       []FollowRow     `json:"follows"`
 	Assignments   []AssignmentRow `json:"assignments"`
@@ -90,7 +112,7 @@ type AssignmentRow struct {
 	Summary string `json:"summary,omitempty"`
 }
 
-// ProblemRow 是总览上要人看的一条故障。Kind 取 source、unavailable、outgoing。
+// ProblemRow 是总览上要人看的一条故障。Kind 取 source、unavailable、outgoing、overdue。
 type ProblemRow struct {
 	Kind       string `json:"kind"`
 	ID         string `json:"id"`
@@ -98,22 +120,36 @@ type ProblemRow struct {
 	Detail     string `json:"detail,omitempty"`
 	TriggerID  string `json:"triggerId,omitempty"`
 	DecisionID string `json:"decisionId,omitempty"`
+	Thread     string `json:"thread,omitempty"`
+	TicketID   string `json:"ticketId,omitempty"`
 }
 
 // ThreadRow 是线程一行。Queued 是还没评估的触发数。Subs 是订阅它的工单数。
+// Title 是最近一条正文。Items 是这条线程上的触发，按到达顺序，最多四十条。
 type ThreadRow struct {
-	Key    string `json:"key"`
-	Queued int    `json:"queued"`
-	Subs   int    `json:"subs"`
+	Key        string       `json:"key"`
+	Title      string       `json:"title"`
+	Queued     int          `json:"queued"`
+	Subs       int          `json:"subs"`
+	Followers  []string     `json:"followers"`
+	Evaluating bool         `json:"evaluating"`
+	Recent     bool         `json:"recent"`
+	At         string       `json:"at,omitempty"`
+	Sender     string       `json:"sender,omitempty"`
+	Items      []TriggerRow `json:"items"`
 }
 
-// TriggerRow 是排队触发的一行。Text 最多保留一段给人看的正文。
+// TriggerRow 是一条触发。Text 最多保留一段给人看的正文。Filtered 非空表示这条没有进入评估。
 type TriggerRow struct {
 	ID        string `json:"id"`
 	Source    string `json:"source"`
 	Sender    string `json:"sender"`
 	Text      string `json:"text"`
 	Addressed bool   `json:"addressed"`
+	Thread    string `json:"thread,omitempty"`
+	At        string `json:"at,omitempty"`
+	Filtered  string `json:"filtered,omitempty"`
+	Queued    bool   `json:"queued,omitempty"`
 }
 
 // DecisionRow 是一条评估决定。Dismissed 为真时人已经把它从待处理里拿掉。
@@ -122,6 +158,7 @@ type DecisionRow struct {
 	TriggerID string `json:"triggerId"`
 	Kind      string `json:"kind"`
 	Reason    string `json:"reason"`
+	Thread    string `json:"thread,omitempty"`
 	TicketID  string `json:"ticketId,omitempty"`
 	Dismissed bool   `json:"dismissed,omitempty"`
 	At        string `json:"at,omitempty"`
@@ -173,6 +210,7 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 		Problems:    []ProblemRow{},
 		Allowed:     allowedNames(snap.Policy.Allowed),
 		Workers:     workers,
+		Load:        LoadView{MaxWorkers: workers},
 		EvalTimeout: int(snap.Policy.evalTimeout() / time.Second),
 		Health:      health,
 		At:          at,
@@ -193,35 +231,79 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 			})
 		}
 	}
-	sort.Slice(view.Tickets, func(i, j int) bool { return view.Tickets[i].ID < view.Tickets[j].ID })
+	sort.Slice(view.Tickets, func(i, j int) bool {
+		ri, rj := stageRank(view.Tickets[i].Stage), stageRank(view.Tickets[j].Stage)
+		if ri != rj {
+			return ri < rj
+		}
+		return view.Tickets[i].ID < view.Tickets[j].ID
+	})
+	for _, row := range view.Tickets {
+		switch {
+		case row.Stage == "working" && row.Action == "queued":
+			view.Load.Queued++
+		case row.Stage == "working":
+			view.Load.Running++
+		case row.Stage == "idle":
+			view.Load.Idle++
+		}
+	}
 	now := time.Now().UTC()
+	since := now.Add(-24 * time.Hour)
 	for _, th := range snap.Threads {
-		view.Threads = append(view.Threads, ThreadRow{Key: th.Key, Queued: len(th.Queued), Subs: len(th.Subs)})
+		items := threadItems(th.Context, byID)
+		row := ThreadRow{
+			Key: th.Key, Title: threadTitle(th, byID), Queued: len(th.Queued), Subs: len(th.Subs),
+			Followers: append([]string{}, th.Subs...), Evaluating: th.Evaluating != nil, Items: items,
+		}
+		if row.Followers == nil {
+			row.Followers = []string{}
+		}
+		for _, item := range items {
+			if item.At >= row.At {
+				row.At = item.At
+				row.Sender = item.Sender
+			}
+			if inDay(item.At, since) {
+				row.Recent = true
+			}
+		}
+		view.Threads = append(view.Threads, row)
 		if th.Evaluating == nil {
 			continue
 		}
-		row := EvalRow{
+		eval := EvalRow{
 			ID: th.Evaluating.ID, Thread: th.Key, Strength: th.Evaluating.Strength,
 			Delivered: !th.Evaluating.Delivered.IsZero(), Triggers: len(th.Evaluating.TriggerIDs),
 		}
-		if row.Delivered {
-			row.Deadline = th.Evaluating.Deadline.UTC().Format(time.RFC3339)
+		if eval.Delivered {
+			eval.Deadline = th.Evaluating.Deadline.UTC().Format(time.RFC3339)
 			if !th.Evaluating.Deadline.After(now) {
 				view.Problems = append(view.Problems, ProblemRow{
-					Kind: "overdue", ID: row.ID, Title: th.Key, Detail: row.Deadline, TriggerID: th.Evaluating.Primary,
+					Kind: "overdue", ID: eval.ID, Title: row.Title, Detail: eval.Deadline,
+					TriggerID: th.Evaluating.Primary, Thread: th.Key,
 				})
 			}
 		}
-		view.Evals = append(view.Evals, row)
+		view.Evals = append(view.Evals, eval)
 	}
-	sort.Slice(view.Threads, func(i, j int) bool { return view.Threads[i].Key < view.Threads[j].Key })
+	sort.Slice(view.Threads, func(i, j int) bool {
+		if view.Threads[i].At != view.Threads[j].At {
+			return view.Threads[i].At > view.Threads[j].At
+		}
+		return view.Threads[i].Key < view.Threads[j].Key
+	})
 	for _, tr := range snap.Triggers {
+		if inDay(tr.At.UTC().Format(time.RFC3339), since) {
+			view.Flow.Received++
+			if tr.Filtered != "" {
+				view.Flow.Filtered++
+			}
+		}
 		if !tr.Queued {
 			continue
 		}
-		view.Queued = append(view.Queued, TriggerRow{
-			ID: tr.ID, Source: tr.Source, Sender: tr.Sender, Text: clip(tr.Text, 240), Addressed: tr.Addressed,
-		})
+		view.Queued = append(view.Queued, triggerRow(tr))
 	}
 	sort.Slice(view.Queued, func(i, j int) bool { return view.Queued[i].ID < view.Queued[j].ID })
 	decisions := snap.Decisions
@@ -234,11 +316,28 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 			at = d.At.UTC().Format(time.RFC3339)
 		}
 		view.Decisions = append(view.Decisions, DecisionRow{
-			ID: d.ID, TriggerID: d.TriggerID, Kind: d.Kind, Reason: d.Reason, TicketID: d.TicketID, Dismissed: d.Dismissed, At: at,
+			ID: d.ID, TriggerID: d.TriggerID, Kind: d.Kind, Reason: d.Reason, Thread: d.Thread,
+			TicketID: d.TicketID, Dismissed: d.Dismissed, At: at,
 		})
+		if inDay(at, since) {
+			view.Flow.Judged++
+			if d.Kind == "accept" {
+				view.Flow.Accepted++
+			}
+			if d.Kind == "ignore" {
+				view.Flow.Ignored++
+			}
+		}
 		if d.Kind == "unavailable" && !d.Dismissed {
+			title := d.TriggerID
+			if tr, ok := byID[d.TriggerID]; ok {
+				if line := oneLine(tr.Text); line != "" {
+					title = line
+				}
+			}
 			view.Problems = append(view.Problems, ProblemRow{
-				Kind: "unavailable", ID: d.ID, Title: d.TriggerID, Detail: d.Reason, TriggerID: d.TriggerID, DecisionID: d.ID,
+				Kind: "unavailable", ID: d.ID, Title: title, Detail: d.Reason,
+				TriggerID: d.TriggerID, DecisionID: d.ID, Thread: d.Thread,
 			})
 		}
 	}
@@ -249,7 +348,9 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 	}
 	for _, msg := range snap.Outbox {
 		if msg.Status == "error" {
-			view.Problems = append(view.Problems, ProblemRow{Kind: "outgoing", ID: msg.ID, Title: msg.Source, Detail: clip(msg.Text, 160)})
+			view.Problems = append(view.Problems, ProblemRow{
+				Kind: "outgoing", ID: msg.ID, Title: msg.Source, Detail: clip(msg.Text, 160), TicketID: msg.TicketID,
+			})
 		}
 	}
 	return view
@@ -271,6 +372,13 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 	}
 	if origin, ok := byID[ticket.Origin]; ok {
 		row.OriginURL = originURL(origin)
+		row.Title = oneLine(origin.Text)
+	}
+	if row.Title == "" && len(ticket.Inputs) > 0 {
+		row.Title = oneLine(ticket.Inputs[0].Text)
+	}
+	if row.Title == "" {
+		row.Title = ticket.ID
 	}
 	for _, in := range ticket.Inputs {
 		row.Inputs = append(row.Inputs, InputRow{ID: in.ID, Text: clip(in.Text, 240), Human: in.Human, Delivered: !undelivered[in.ID]})
@@ -326,4 +434,99 @@ func clip(text string, n int) string {
 		return text
 	}
 	return text[:n]
+}
+
+// clipRunes 把 text 收成最多 n 个字符。n 小于 1 时返回空串。
+func clipRunes(text string, n int) string {
+	if n < 1 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= n {
+		return text
+	}
+	return string(runes[:n])
+}
+
+// oneLine 取 text 的第一行，最多八十个字符。text 空白时返回空串。
+func oneLine(text string) string {
+	text = strings.TrimSpace(text)
+	if i := strings.IndexAny(text, "\r\n"); i >= 0 {
+		text = text[:i]
+	}
+	return clipRunes(strings.TrimSpace(text), 80)
+}
+
+// stageRank 给 stage 一个总览排序。person 在前，ended 在后。不认识的阶段排在最后。
+func stageRank(stage string) int {
+	switch stage {
+	case "person":
+		return 0
+	case "working":
+		return 1
+	case "idle":
+		return 2
+	case "ended":
+		return 3
+	default:
+		return 4
+	}
+}
+
+// inDay 判断 at 是否不早于 since。at 为空时为假。
+func inDay(at string, since time.Time) bool {
+	if at == "" {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		return false
+	}
+	return !parsed.Before(since)
+}
+
+// threadTitle 用 th 最近一条有正文的触发当标题。都没有时用 th.Key。byID 用来取正文。
+func threadTitle(th Thread, byID map[string]Trigger) string {
+	for i := len(th.Context) - 1; i >= 0; i-- {
+		tr, ok := byID[th.Context[i]]
+		if !ok {
+			continue
+		}
+		if line := oneLine(tr.Text); line != "" {
+			return line
+		}
+	}
+	return th.Key
+}
+
+// threadItems 按 ids 的顺序收触发。byID 里没有的编号跳过。超过四十条时只留最后四十条。
+func threadItems(ids []string, byID map[string]Trigger) []TriggerRow {
+	rows := []TriggerRow{}
+	for _, id := range ids {
+		tr, ok := byID[id]
+		if !ok {
+			continue
+		}
+		rows = append(rows, triggerRow(tr))
+	}
+	if len(rows) > 40 {
+		rows = rows[len(rows)-40:]
+	}
+	return rows
+}
+
+// triggerRow 把 tr 收成界面一行。正文按字符截断。
+func triggerRow(tr Trigger) TriggerRow {
+	at := ""
+	if !tr.At.IsZero() {
+		at = tr.At.UTC().Format(time.RFC3339)
+	}
+	thread := tr.Primary
+	if thread == "" && len(tr.Threads) > 0 {
+		thread = tr.Threads[0]
+	}
+	return TriggerRow{
+		ID: tr.ID, Source: tr.Source, Sender: tr.Sender, Text: clipRunes(strings.TrimSpace(tr.Text), 240),
+		Addressed: tr.Addressed, Thread: thread, At: at, Filtered: tr.Filtered, Queued: tr.Queued,
+	}
 }
