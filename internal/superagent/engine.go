@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Engine 保存触发、线程、决定、工单和发件箱。同一时刻只有它改这些记录。
@@ -26,6 +27,15 @@ type Engine struct {
 	OnLaunch func(ticketID string)
 	// OnInput 在活人的工单收到一条消息时调用。ticketID 是工单，text 是消息正文。
 	OnInput func(ticketID, text string)
+	clock   func() time.Time
+}
+
+// now 返回引擎时钟。clock 为空时用 time.Now。
+func (e *Engine) now() time.Time {
+	if e != nil && e.clock != nil {
+		return e.clock()
+	}
+	return time.Now()
 }
 
 // NewEngine 返回使用 p 的引擎。p.Mode 为空时当作 observe。p.Version 小于 1 时当作 1。
@@ -537,7 +547,7 @@ func (e *Engine) putDecision(tr *Trigger, kind, reason, ticketID string) Decisio
 	if thread == "" && len(tr.Threads) > 0 {
 		thread = tr.Threads[0]
 	}
-	d := Decision{ID: fmt.Sprintf("dec-%d", e.n), TriggerID: tr.ID, Thread: thread, Kind: kind, Reason: reason, TicketID: ticketID}
+	d := Decision{ID: fmt.Sprintf("dec-%d", e.n), TriggerID: tr.ID, Thread: thread, Kind: kind, Reason: reason, TicketID: ticketID, At: e.now()}
 	e.decisions = append(e.decisions, d)
 	tr.DecisionID = d.ID
 	return d
@@ -587,10 +597,17 @@ func (e *Engine) queue(tr *Trigger) {
 	}
 }
 
-// unqueue 把 tr 从所有线程的待评估列拿走。
+// unqueue 把 tr 从所有线程的待评估列拿走，并把它从正在进行的评估里摘出来。
+// 同一轮里其余还没决定的触发回到队列，等下一轮评估。
 func (e *Engine) unqueue(tr *Trigger) {
+	if tr == nil {
+		return
+	}
 	tr.Queued = false
 	for _, th := range e.threads {
+		if th == nil {
+			continue
+		}
 		out := th.Queued[:0]
 		for _, id := range th.Queued {
 			if id != tr.ID {
@@ -598,6 +615,35 @@ func (e *Engine) unqueue(tr *Trigger) {
 			}
 		}
 		th.Queued = out
+	}
+	e.releaseEval(tr.ID)
+}
+
+// releaseEval 把 id 从正在进行的评估里拿走。同轮其余触发重新排队。id 不在任何评估里时什么都不做。
+func (e *Engine) releaseEval(id string) {
+	for _, th := range e.threads {
+		if th == nil || th.Evaluating == nil {
+			continue
+		}
+		found := false
+		var keep []string
+		for _, tid := range th.Evaluating.TriggerIDs {
+			if tid == id {
+				found = true
+				continue
+			}
+			keep = append(keep, tid)
+		}
+		if !found {
+			continue
+		}
+		th.Evaluating = nil
+		for _, tid := range keep {
+			other := e.triggers[tid]
+			if other != nil && other.DecisionID == "" {
+				e.queue(other)
+			}
+		}
 	}
 }
 

@@ -2,30 +2,51 @@
 
 package superagent
 
+import "time"
+
 // Trigger 是一次不可变事件。ID 相同的第二次接收会被当成重复。
 type Trigger struct {
-	ID         string
-	Source     string
-	Threads    []string
-	Primary    string
-	Human      bool
-	Addressed  bool
-	Sender     string
-	Text       string
-	Reached    []string
-	Handbacks  []string
-	Requeued   bool
-	DecisionID string
-	Queued     bool
-	Filtered   string
+	ID           string
+	Source       string
+	Threads      []string
+	Primary      string
+	Human        bool
+	Addressed    bool
+	Sender       string
+	Text         string
+	Channel      string
+	Ref          string
+	Reached      []string
+	Handbacks    []string
+	Requeued     bool
+	DecisionID   string
+	Queued       bool
+	Filtered     string
+	StrengthHold string
 }
 
 // Thread 按时间收触发。Subs 是订阅它的工单。Queued 是还没评估的触发。
+// Evaluating 非空表示这一批评触发正在评估。Expired 是连续过期后重新排队的次数。
 type Thread struct {
-	Key     string
-	Subs    []string
-	Context []string
-	Queued  []string
+	Key        string
+	Subs       []string
+	Context    []string
+	Queued     []string
+	Evaluating *Evaluation
+	Expired    int
+}
+
+// Evaluation 是一条线程上的一轮评估。Deadline 从交给编排台的时刻起算。
+// Delivered 为零表示还没交到评估者，过期逻辑不会把它判成超时。PausedAt 非零表示暂停开始的时刻。
+type Evaluation struct {
+	ID            string
+	TriggerIDs    []string
+	Primary       string
+	Strength      string
+	Deadline      time.Time
+	Delivered     time.Time
+	PausedAt      time.Time
+	PolicyVersion int
 }
 
 // Mandate 是接受时授予的范围。Version 是当时的策略版本。Strength 为 explicit 或 inferred。
@@ -103,6 +124,8 @@ type Decision struct {
 	Kind      string
 	Reason    string
 	TicketID  string
+	Dismissed bool
+	At        time.Time
 }
 
 // Outbound 是准备发回渠道的一条消息。
@@ -112,6 +135,9 @@ type Outbound struct {
 	Kind     string
 	Text     string
 	Status   string
+	Source   string
+	Ref      string
+	Key      string
 }
 
 // Error 是人能造成的拒绝。Code 是稳定短码。

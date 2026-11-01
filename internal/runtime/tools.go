@@ -94,6 +94,10 @@ type WorkspaceTools struct {
 	ChatOverlay bool
 	// DshShell 为真时，聊天叠加层的空闲和阻塞熔断不杀掉 shell。命令仍受自己的超时限制。
 	DshShell bool
+	// FileHooks 是工作区 .yoyo/hooks.json 的 pre_tool。匹配到 Deny 时 Call 不执行工具。
+	FileHooks []FileHook
+	// StopHooks 是同一份文件里的 stop。模型准备结束时由桌面回合拿去决定要不要继续。
+	StopHooks []FileHook
 	// OperatorVoice 是聊天叠加层里最近一句真实的操作者原话。
 	OperatorVoice string
 	// VerifyHint 在聊天带着未完成计划试图结束时为真，用来把 verify-artifact 重新注入工作记忆。
@@ -334,6 +338,12 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	}
 	if t != nil && !t.toolAllowed(name) {
 		return ToolResult{Err: fmt.Errorf("tool %s is not advertised for this harness/skill", name)}
+	}
+	if t != nil && len(t.FileHooks) > 0 {
+		hook := applyFileHooks(t.FileHooks, ToolHook{Name: name, Arguments: argsJSON, SessionID: t.SessionID})
+		if hook.Deny {
+			return ToolResult{Err: fmt.Errorf("%s", hook.Reason)}
+		}
 	}
 	if t != nil && t.ReadOnly && !readOnlySubagentCall(name) {
 		return ToolResult{Err: fmt.Errorf("read-only subagent: write/shell tools are disabled; return findings in the final letter")}
@@ -1042,10 +1052,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	}
 	command = repairWorkspacePathEscapes(command, ws)
 	command = stripRedundantWorkspaceCd(command, ws)
-	if runtime.GOOS == "windows" {
-		command = normalizeWindowsQuotes(command)
-	}
-	command, cleanupInline := rewriteInlineInterpreters(command, ws)
+	command, cleanupInline := prepareShellCommand(command, ws)
 	defer cleanupInline()
 	if runtime.GOOS == "windows" && t != nil {
 		if pat, ok := parseUnixFindGlob(command); ok {

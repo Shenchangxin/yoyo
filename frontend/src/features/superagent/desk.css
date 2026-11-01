@@ -65,6 +65,35 @@
 
 .orch-tabs { padding: 8px 0; }
 
+.orch-search, .orch-detail textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.orch-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.orch-list button.as-text {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
 .orch-tabs button, .orch-modes button, .orch-actions button, .orch-cell select {
   border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
   border-radius: 999px;
@@ -120,3 +149,26 @@
 .orch-state.orch-ok { color: #3c9a62; }
 .orch-state.orch-error { color: #c4554a; }
 .orch-decisions { margin-top: 8px; }
+
+.orch-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+.orch-pills button.on {
+  background: var(--lift, rgba(0, 0, 0, 0.06));
+  color: inherit;
+}
+
+.orch-detail input, .orch-detail select {
+  min-width: 0;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: transparent;
+  padding: 4px 8px;
+}
+
+.orch-block { margin-top: 10px; }
+.orch-block a { color: inherit; text-decoration: underline; }

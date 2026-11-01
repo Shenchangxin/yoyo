@@ -25,23 +25,81 @@ func TestAdmissionCellOverridesDefault(t *testing.T) {
 	}
 }
 
-// TestEvaluateDueAcceptsExplicit 锁住自动模式会在轮次里接受显式触发，观察模式则留在队列里。
-func TestEvaluateDueAcceptsExplicit(t *testing.T) {
+// TestEvaluateDueOpensEval 锁住轮次会把显式触发收成评估，而不是直接开工单。观察模式同样开评，接受仍要 Decide。
+func TestEvaluateDueOpensEval(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	if eng.Receive(human("m1", "fix")) != "stored" {
 		t.Fatal("stored")
 	}
 	eng.EvaluateDue()
 	tr, ok := eng.Trigger("m1")
-	if !ok || tr.Queued || tr.DecisionID == "" {
+	if !ok || tr.Queued || tr.DecisionID != "" {
 		t.Fatalf("trigger %+v", tr)
+	}
+	th, ok := eng.Thread("room")
+	if !ok || th.Evaluating == nil || th.Evaluating.Primary != "m1" {
+		t.Fatalf("eval %+v", th.Evaluating)
 	}
 	quiet := NewEngine(Policy{Version: 1, Mode: "observe", Allowed: map[string]bool{"ada": true}})
 	quiet.Receive(human("m2", "fix"))
 	quiet.EvaluateDue()
 	tr, ok = quiet.Trigger("m2")
-	if !ok || !tr.Queued {
+	if !ok || tr.Queued || tr.DecisionID != "" {
 		t.Fatalf("observe %+v", tr)
+	}
+}
+
+// TestUndeliveredEvalDoesNotExpire 锁住还没交给编排台的评估，时间过去也不会记成超时。
+func TestUndeliveredEvalDoesNotExpire(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	eng.clock = func() time.Time { return now }
+	eng.Receive(human("m1", "fix"))
+	eng.EvaluateDue()
+	now = now.Add(time.Hour)
+	eng.EvaluateDue()
+	tr, _ := eng.Trigger("m1")
+	if tr.DecisionID != "" || tr.Queued {
+		t.Fatalf("trigger %+v", tr)
+	}
+	th, _ := eng.Thread("room")
+	if th.Evaluating == nil || !th.Evaluating.Delivered.IsZero() {
+		t.Fatalf("eval %+v", th.Evaluating)
+	}
+}
+
+// TestEvalExpiresThenUnavailable 锁住评估过期两次会重新排队，第三次记 unavailable。
+func TestEvalExpiresThenUnavailable(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	eng.clock = func() time.Time { return now }
+	if eng.Receive(human("m1", "fix")) != "stored" {
+		t.Fatal("stored")
+	}
+	eng.EvaluateDue()
+	if eng.DeliverOpen() != 1 {
+		t.Fatal("deliver")
+	}
+	for i := 0; i < requeues; i++ {
+		now = now.Add(121 * time.Second)
+		eng.EvaluateDue()
+		if eng.DeliverOpen() != 1 {
+			t.Fatal("redeliver")
+		}
+		tr, _ := eng.Trigger("m1")
+		if tr.DecisionID != "" {
+			t.Fatalf("early decision %+v", tr)
+		}
+	}
+	now = now.Add(121 * time.Second)
+	eng.EvaluateDue()
+	tr, _ := eng.Trigger("m1")
+	if tr.Queued || tr.DecisionID == "" {
+		t.Fatalf("trigger %+v", tr)
+	}
+	d, ok := eng.decision(tr.DecisionID)
+	if !ok || d.Kind != "unavailable" || d.Reason != "timeout" {
+		t.Fatalf("decision %+v", d)
 	}
 }
 
@@ -57,6 +115,9 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	}
 	rt.SetSources(SourceConfig{})
 	rt.eng.Receive(human("m1", "fix"))
+	if _, err := rt.eng.Decide("m1", "accept", "ok"); err != nil {
+		t.Fatal(err)
+	}
 	rt.Pass(time.Now())
 	rt.Stop()
 

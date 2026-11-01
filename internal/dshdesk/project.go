@@ -4,6 +4,7 @@
 package dshdesk
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -79,7 +80,7 @@ func emitNew(turn Turn, agent *dsh.Agent, cursor int) int {
 	return len(evs)
 }
 
-// emitDsh 把 ev 译成一条轨迹。系统提示、请求头和来源为空的用户消息不发。
+// emitDsh 把 ev 译成一条轨迹。系统提示、请求头和来源为空的用户消息不发。来源为 job 的完成写回工具结果。
 func emitDsh(turn Turn, ev dsh.Event) {
 	switch ev.Type {
 	case dsh.EventTurnStart:
@@ -89,9 +90,28 @@ func emitDsh(turn Turn, ev dsh.Event) {
 		turn.emit(trace.Event{Type: trace.TypeTurnEnd, Source: "dsh", Payload: map[string]any{
 			"turn": ev.Turn, "kind": end.Kind, "reason": end.Reason,
 		}}, true)
+	case dsh.EventStepStart:
+		turn.emit(trace.Event{Type: trace.TypeStepStart, Source: "dsh", Payload: map[string]any{
+			"turn": ev.Turn, "step": ev.Step,
+		}}, true)
+	case dsh.EventStepEnd:
+		turn.emit(trace.Event{Type: trace.TypeStepEnd, Source: "dsh", Payload: map[string]any{
+			"turn": ev.Turn, "step": ev.Step,
+		}}, true)
 	case dsh.EventUser:
 		msg, _ := ev.Data.(dsh.UserMessage)
-		if msg.Source != "steer" && msg.Source != "job" {
+		if msg.Source == "job" {
+			id, body, ok := jobCompletion(msg)
+			if !ok {
+				return
+			}
+			// 后台命令的输出写回原来的工具结果。模型仍从会话日志里读到这条完成，界面不再把它当成一条新消息。
+			turn.emit(trace.Event{Type: trace.TypeToolResult, Source: "tool", Payload: map[string]any{
+				"id": id, "content": body, "ok": true,
+			}}, true)
+			return
+		}
+		if msg.Source != "steer" {
 			return
 		}
 		turn.emit(trace.Event{Type: trace.TypeUser, Source: msg.Source, Payload: map[string]any{
@@ -99,10 +119,24 @@ func emitDsh(turn Turn, ev dsh.Event) {
 		}}, true)
 	case dsh.EventAssistant:
 		msg, _ := ev.Data.(dsh.Assistant)
-		if strings.TrimSpace(msg.Text) == "" {
+		if strings.TrimSpace(msg.Text) == "" && msg.AttemptID == "" {
 			return
 		}
-		turn.emit(trace.Event{Type: trace.TypeAssistant, Source: "model", Payload: map[string]any{"text": msg.Text}}, true)
+		payload := map[string]any{}
+		if msg.Text != "" {
+			payload["text"] = msg.Text
+		}
+		if msg.AttemptID != "" {
+			payload["id"] = msg.AttemptID
+			payload["round"] = msg.AttemptID
+			payload["attempt_id"] = msg.AttemptID
+			payload["turn"] = ev.Turn
+			payload["step"] = ev.Step
+		}
+		if msg.Interrupted {
+			payload["interrupted"] = true
+		}
+		turn.emit(trace.Event{Type: trace.TypeAssistant, Source: "model", Payload: payload}, true)
 	case dsh.EventToolCall:
 		call, _ := ev.Data.(dsh.ToolCall)
 		turn.emit(trace.Event{Type: trace.TypeToolCall, Source: "tool", Payload: map[string]any{
@@ -141,37 +175,165 @@ func (t Turn) emit(ev trace.Event, persist bool) {
 	}
 }
 
-// wireStream 让 bridge 把流式块发给 turn。第一块之前发开始帧，finish 块发结束帧。不写入 JSONL。
+// wireStream 让 bridge 把每一次模型调用发成独立的流。帧序号按块递增，不复用内容块下标。不写入 JSONL。
+// 同一回合里下一次调用会重新发开始帧，界面才能接着画，而不是把后一段丢在已经结束的尝试上。
 func wireStream(bridge *Bridge, turn Turn) {
 	if bridge == nil {
 		return
 	}
-	attempt := turn.TurnID
-	if attempt == "" {
-		attempt = turn.SessionID
-	}
-	rev := 1
-	started := false
-	bridge.OnStream = func(ch runtime.StreamChunk) {
-		if !started {
+	n := 0
+	bridge.OpenStream = func(modelTurn, step int) (string, func(runtime.StreamChunk), func(string)) {
+		n++
+		id := streamAttemptID(turn, modelTurn, step, n)
+		rev := 0
+		started := false
+		closed := false
+		ensure := func() {
+			if started {
+				return
+			}
 			started = true
-			turn.emit(trace.Event{Type: trace.TypeAssistantStream, Source: "model", Payload: map[string]any{
-				"kind": "start", "attempt_id": attempt, "revision": rev,
-			}}, false)
-			rev++
+			rev = 1
+			emitStream(turn, map[string]any{
+				"kind": runtime.StreamFrameStart, "attempt_id": id, "revision": rev,
+				"turn": modelTurn, "step": step, "round": id, "id": id,
+			})
 		}
-		if ch.Type == runtime.ChunkFinish {
-			turn.emit(trace.Event{Type: trace.TypeAssistantStream, Source: "model", Payload: map[string]any{
-				"kind": "end", "attempt_id": attempt, "revision": rev,
-			}}, false)
+		emit := func(ch runtime.StreamChunk) {
+			if closed {
+				return
+			}
+			if ch.Type == runtime.ChunkFinish {
+				ensure()
+				closed = true
+				rev++
+				emitStream(turn, map[string]any{
+					"kind": runtime.StreamFrameEnd, "attempt_id": id, "revision": rev,
+					"turn": modelTurn, "step": step, "round": id, "id": id,
+					"outcome": streamOutcome(ch),
+				})
+				return
+			}
+			ensure()
 			rev++
-			return
+			idx := rev - 2
+			if idx < 0 {
+				idx = 0
+			}
+			emitStream(turn, map[string]any{
+				"kind": runtime.StreamFrameChunk, "attempt_id": id, "revision": rev,
+				"index": idx, "turn": modelTurn, "step": step, "round": id, "id": id,
+				"chunk": chunkPayload(ch),
+			})
 		}
-		turn.emit(trace.Event{Type: trace.TypeAssistantStream, Source: "model", Payload: map[string]any{
-			"kind": "chunk", "attempt_id": attempt, "revision": rev, "index": ch.Index, "chunk": chunkPayload(ch),
-		}}, false)
-		rev++
+		end := func(outcome string) {
+			if !started || closed {
+				return
+			}
+			closed = true
+			if outcome == "" {
+				outcome = runtime.StreamOutcomeCommitted
+			}
+			rev++
+			emitStream(turn, map[string]any{
+				"kind": runtime.StreamFrameEnd, "attempt_id": id, "revision": rev,
+				"turn": modelTurn, "step": step, "round": id, "id": id,
+				"outcome": outcome,
+			})
+		}
+		return id, emit, end
 	}
+}
+
+// streamAttemptID 拼出这一次模型调用的流标识。turn 提供回合 id，空则用会话 id。
+// modelTurn 和 step 是代理里的回合与步骤。n 是这一轮桌面发送里的第几次调用，从 1 起。
+func streamAttemptID(turn Turn, modelTurn, step, n int) string {
+	base := turn.TurnID
+	if base == "" {
+		base = turn.SessionID
+	}
+	if base == "" {
+		base = "turn"
+	}
+	return fmt.Sprintf("%s:%d:%d:%d", base, modelTurn, step, n)
+}
+
+// streamOutcome 从结束块读结果。ch 的原因是 aborted 或 error 时为 abandoned，其余为 committed。
+func streamOutcome(ch runtime.StreamChunk) string {
+	if ch.Reason != nil {
+		switch ch.Reason.Kind {
+		case runtime.FinishAborted, runtime.FinishError:
+			return runtime.StreamOutcomeAbandoned
+		}
+	}
+	return runtime.StreamOutcomeCommitted
+}
+
+// emitStream 发出一帧助手流。payload 原样放进载荷。不写入 JSONL。
+func emitStream(turn Turn, payload map[string]any) {
+	turn.emit(trace.Event{Type: trace.TypeAssistantStream, Source: "model", Payload: payload}, false)
+}
+
+// recordedTurn 读出轨迹里已经记下的最大回合号。store 或 sessionID 为空、读失败时返回 0。
+// 新进程的代理用它接着编号，避免下一句又从 1 开始。
+func recordedTurn(store *trace.Store, sessionID string) int {
+	if store == nil || sessionID == "" {
+		return 0
+	}
+	evs, err := store.Read(sessionID)
+	if err != nil {
+		return 0
+	}
+	max := 0
+	for _, ev := range evs {
+		if ev.Type != trace.TypeTurnStart && ev.Type != trace.TypeTurnEnd {
+			continue
+		}
+		n := numberOf(ev.Payload["turn"])
+		if n > max {
+			max = n
+		}
+	}
+	return max
+}
+
+// numberOf 把轨迹载荷里的数字收成 int。JSON 读回来是 float64。不是数字时返回 0。
+func numberOf(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+// jobCompletion 从一条后台完成里取出工具调用 id 和输出。msg 的正文要以 job 加空格开头，并含有 finished。对不上时 ok 为假。
+func jobCompletion(msg dsh.UserMessage) (id, body string, ok bool) {
+	const head = "job "
+	text := msg.Text
+	if !strings.HasPrefix(text, head) {
+		return "", "", false
+	}
+	rest := text[len(head):]
+	const marker = " finished"
+	i := strings.Index(rest, marker)
+	if i <= 0 {
+		return "", "", false
+	}
+	id = strings.TrimSpace(rest[:i])
+	if id == "" || strings.ContainsAny(id, " \t\r\n") {
+		return "", "", false
+	}
+	body = strings.TrimPrefix(rest[i+len(marker):], "\n")
+	body = strings.TrimRight(body, "\r\n")
+	if strings.TrimSpace(body) == "" {
+		body = "finished"
+	}
+	return id, body, true
 }
 
 // chunkPayload 留下界面拼字需要的字段。ch 的类型、下标、文本、调用 id、名字和参数增量原样放进 map。

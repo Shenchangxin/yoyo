@@ -55,6 +55,33 @@ func (s *Service) OrchestratorPaused(paused bool) error {
 	return s.App.OrchestratorPaused(paused)
 }
 
+// OrchestratorDeliver 把还没交给编排台的评估标成已交付。
+func (s *Service) OrchestratorDeliver() error {
+	if s.RPC != nil {
+		_, err := s.call("orchestrator.deliver", nil)
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("app is not running")
+	}
+	s.App.OrchestratorDeliver()
+	return nil
+}
+
+// OrchestratorAct 执行编排台动作。kind、ticketID、triggerID、text 和 reason 原样交给应用。
+func (s *Service) OrchestratorAct(kind, ticketID, triggerID, text, reason string) error {
+	if s.RPC != nil {
+		_, err := s.call("orchestrator.act", map[string]any{
+			"kind": kind, "ticketId": ticketID, "triggerId": triggerID, "text": text, "reason": reason,
+		})
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("app is not running")
+	}
+	return s.App.OrchestratorAct(kind, ticketID, triggerID, text, reason)
+}
+
 // OrchestratorAdmission 写下三格准入。listedUnaddressed、unlistedAddressed、unlistedUnaddressed 只能是空、explicit、inferred 或 ignore。
 func (s *Service) OrchestratorAdmission(listedUnaddressed, unlistedAddressed, unlistedUnaddressed string) error {
 	if s.RPC != nil {

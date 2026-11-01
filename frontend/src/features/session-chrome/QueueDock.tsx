@@ -2,7 +2,7 @@
  * 拥有：下一轮内存队列的停靠条。接到的是内存里的下一轮队列，不是 Cordis 收件箱。
  * 不拥有：入队。取消和排序交给外面，不调用 api。
  */
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { ChevronDown, ChevronUp, CornerDownLeft, X } from "lucide-react";
 import type { Copy } from "../../lib/copy";
 
 /** QueueDock 列出排队的下一轮，取消和排序交给外面。props 读取 items、copy、onReorder，调用 onReorder，调用 onCancel。 */
@@ -10,6 +10,7 @@ export function QueueDock(props: {
   items: { id?: string; text?: string; plan?: boolean }[];
   onCancel?: (id: string) => void;
   onReorder?: (id: string, delta: number) => void;
+  onSteer?: (id: string) => void;
   copy: Copy;
 }) {
   if (!props.items.length) return null;
@@ -43,6 +44,16 @@ export function QueueDock(props: {
                   </button>
                 </>
               ) : null}
+              <button
+                type="button"
+                className="grid size-6 place-items-center rounded-md text-muted hover:bg-background hover:text-foreground disabled:opacity-40"
+                aria-label={props.copy.composer.queueSteer}
+                title={props.onSteer ? props.copy.composer.queueSteer : props.copy.composer.steerHint}
+                disabled={!props.onSteer}
+                onClick={() => props.onSteer?.(id)}
+              >
+                <CornerDownLeft size={14} strokeWidth={1} />
+              </button>
               <button
                 type="button"
                 className="grid size-6 place-items-center rounded-md text-muted hover:bg-danger/10 hover:text-danger"

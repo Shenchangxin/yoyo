@@ -1,4 +1,4 @@
-// 会话元数据、发送回合，以及评测和演进入口。桌面发送进入 dsh 代理。Harbor 和会话 overlay 仍调用 runtime.Run。
+// 会话元数据、发送回合，以及评测和演进入口。桌面发送和会话 overlay 都进入 dsh 代理。
 
 package app
 
@@ -662,7 +662,7 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil, false, false, "")
 }
 
-// sendLocked 在运行槽已经占用后执行这一轮，并调用 runtime.Run。模型调用发生在 Run 里。
+// sendLocked 在运行槽已经占用后执行这一轮，并调用 dshdesk.Host.Run。模型调用发生在 Run 里。
 // 进入 Run 之前会解析 harness：按会话的 HarnessPolicy、钉住的哈希和当前 ActiveHash 调用 session.ResolveHarness，再装入快照和材料。
 // 然后对循环预设调用 runtime.ApplyChatHorizon。历史用 ReadFromCheckpoint 取出；超预算时 runtime.MaybeCheckpoint 做检查点。
 // Hub 非空时包装 onEvent，事件先 Publish 进 Hub，再交给原来的回调。
@@ -778,6 +778,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			a.rememberCapture(sessionID, kind, path, summary)
 		},
 	}
+	preHooks, stopHooks, _ := runtime.LoadHookFile(toolRoot)
+	tools.FileHooks = preHooks
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
 	a.attachCanvasTools(tools, sessionID)
@@ -839,6 +841,12 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
 	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window, frags)
+	checkpoint := ""
+	if a.Traces != nil {
+		if evs, err := a.Traces.Read(sessionID); err == nil {
+			checkpoint = compactMark(evs)
+		}
+	}
 	wrapped := onEvent
 	if a.Hub != nil {
 		prev := wrapped
@@ -957,7 +965,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	out, runErr = a.agentDesk().Run(ctx, dshdesk.Turn{
 		SessionID:        sessionID,
 		TurnID:           turnID,
-		Prompt:           dshdesk.PromptText(frags, profile, pageCtx),
+		Prompt:           dshdesk.PromptText([]artifact.PromptFragment{{Text: runtime.AssembleIdentity(loop, frags)}}, profile, pageCtx),
 		User:             message,
 		Inject:           inject,
 		Model:            model,
@@ -974,6 +982,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Meter:            meter,
 		UserParts:        userParts,
 		PullSteer:        func() string { return a.pullSteer(sessionID) },
+		StopHooks:        stopHooks,
+		Checkpoint:       checkpoint,
 	})
 	a.markRunDone(sessionID)
 	if a.Threads != nil {
@@ -1068,13 +1078,34 @@ func (a *App) commitUser(sessionID, message string, atts []Attachment, turnID st
 	return nil
 }
 
+// compactMark 用检查点条数和最后一条的时间标出轨迹上的压缩边界。没有检查点时返回空串。
+func compactMark(evs []trace.Event) string {
+	n := 0
+	mark := ""
+	for _, ev := range evs {
+		if ev.Type != trace.TypeCompact {
+			continue
+		}
+		kind, _ := ev.Payload["kind"].(string)
+		if kind != "checkpoint" {
+			continue
+		}
+		n++
+		mark = ev.TS.UTC().Format(time.RFC3339Nano)
+	}
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d:%s", n, mark)
+}
+
 // InterruptResult 是 StopTurn 的结果：会话 id 和 idle、cancelled 或 already_done。
 type InterruptResult struct {
 	SessionID string `json:"session_id"`
 	State     string `json:"state"`
 }
 
-// StopTurn 取消该会话运行槽的 context，并让线程管理器打断 actor。它不追加 steer。sessionID 为空时对每个正在跑的会话各做一次，返回最后一次的结果。没在跑则是 idle；取消后仍显示在跑则是 cancelled，否则是 already_done。
+// StopTurn 取消该会话运行槽的 context，并丢掉还没开跑的排队回合。它不追加 steer。sessionID 为空时对每个正在跑的会话各做一次，返回最后一次的结果。没在跑则是 idle；取消后仍显示在跑则是 cancelled，否则是 already_done。
 func (a *App) StopTurn(sessionID string) InterruptResult {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -1089,6 +1120,9 @@ func (a *App) StopTurn(sessionID string) InterruptResult {
 		return last
 	}
 	was := a.Running(sessionID)
+	if was {
+		a.clearQueue(sessionID)
+	}
 	if a.Threads != nil {
 		a.Threads.Interrupt(sessionID)
 	}

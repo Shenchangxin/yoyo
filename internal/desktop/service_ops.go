@@ -252,6 +252,30 @@ func (s *Service) ApplySessionWorktree(id string) (app.SessionMeta, error) {
 	return s.App.ApplySessionWorktree(id)
 }
 
+// SteerQueued 把一条排队回合插进正在跑的这一步。id 是会话，itemID 是队列项。
+func (s *Service) SteerQueued(id, itemID string) error {
+	if s.RPC != nil {
+		_, err := s.call("thread.queue.steer", map[string]any{"session": id, "id": itemID})
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("app is not running")
+	}
+	return s.App.SteerQueued(id, itemID)
+}
+
+// SteerQueue 把这条会话上全部排队回合插进正在跑的这一步。id 是会话。
+func (s *Service) SteerQueue(id string) error {
+	if s.RPC != nil {
+		_, err := s.call("thread.queue.steerAll", map[string]any{"session": id})
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("app is not running")
+	}
+	return s.App.SteerQueue(id)
+}
+
 // Steer 在 RPC 非空时调用 turn.steer，否则走 App.Steer。
 // id 在 RPC 非空时作为 turn.steer 的 session。否则传给 App.Steer。
 // text 在 RPC 非空时放进 turn.steer。否则传给 App.Steer。

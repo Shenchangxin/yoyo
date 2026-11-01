@@ -118,6 +118,7 @@ func (a *App) DeleteSession(id string) error {
 	if a.Threads != nil {
 		a.Threads.Forget(id)
 	}
+	a.agentDesk().Forget(id)
 	a.mu.Lock()
 	if slot := a.runs[id]; slot != nil {
 		if slot.cancel != nil {

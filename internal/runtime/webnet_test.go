@@ -3,12 +3,14 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/webcontent"
 )
@@ -103,6 +105,104 @@ func TestWebFetchJinaFallback(t *testing.T) {
 	}
 	if !sawJina || !strings.Contains(res.Content, "(jina)") || !strings.Contains(res.Content, "Article") {
 		t.Fatalf("sawJina=%v %s", sawJina, res.Content)
+	}
+}
+
+// TestWebFetchHTTPErrorIsNotSuccess 锁住 403 页面返回错误，正文不再被当成成功。
+func TestWebFetchHTTPErrorIsNotSuccess(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(403)
+		_, _ = w.Write([]byte("<html>安全验证</html>"))
+	}))
+	t.Cleanup(origin.Close)
+	res := (&WorkspaceTools{}).webFetch(origin.URL)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "403") {
+		t.Fatalf("err=%v content=%s", res.Err, res.Content)
+	}
+}
+
+// TestWebFetchEmptyBodyIsError 锁住 HTTP 200 的空正文返回错误，并且不因此去等阅读器。
+func TestWebFetchEmptyBodyIsError(t *testing.T) {
+	var sawJina bool
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+	}))
+	t.Cleanup(origin.Close)
+	jina := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		sawJina = true
+		_, _ = w.Write([]byte("should not be asked"))
+	}))
+	t.Cleanup(jina.Close)
+	prev := builtinJinaReader
+	builtinJinaReader = jina.URL + "/"
+	t.Cleanup(func() { builtinJinaReader = prev })
+	res := (&WorkspaceTools{}).webFetch(origin.URL)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "empty") {
+		t.Fatalf("err=%v content=%s", res.Err, res.Content)
+	}
+	if sawJina {
+		t.Fatal("empty body waited on jina")
+	}
+}
+
+// TestWebFetchJinaMissStaysError 锁住阅读器失败后，源站 403 仍然是错误。
+func TestWebFetchJinaMissStaysError(t *testing.T) {
+	prevSkip := jinaSkipLoopback
+	jinaSkipLoopback = false
+	t.Cleanup(func() { jinaSkipLoopback = prevSkip })
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(403)
+		_, _ = w.Write([]byte("<html>blocked</html>"))
+	}))
+	t.Cleanup(origin.Close)
+	jina := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(404)
+	}))
+	t.Cleanup(jina.Close)
+	prev := builtinJinaReader
+	builtinJinaReader = jina.URL + "/"
+	t.Cleanup(func() { builtinJinaReader = prev })
+	res := (&WorkspaceTools{}).webFetch(origin.URL)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "403") {
+		t.Fatalf("err=%v content=%s", res.Err, res.Content)
+	}
+}
+
+// TestWebSearchDoesNotExtendBudget 锁住检索时限用完后不再另开一次搜索页抓取。
+func TestWebSearchDoesNotExtendBudget(t *testing.T) {
+	prevBudget := webSearchBudget
+	webSearchBudget = 200 * time.Millisecond
+	t.Cleanup(func() { webSearchBudget = prevBudget })
+	var fallback bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "page") {
+			fallback = true
+			_, _ = w.Write([]byte("page"))
+			return
+		}
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+	prevJina, prevPage := builtinJinaSearch, builtinSearchPage
+	builtinJinaSearch = srv.URL + "/jina?q="
+	builtinSearchPage = srv.URL + "/page?q="
+	t.Cleanup(func() {
+		builtinJinaSearch, builtinSearchPage = prevJina, prevPage
+	})
+	parent, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	res := (&WorkspaceTools{Ctx: parent}).webSearch("hotlist")
+	if res.Err == nil {
+		t.Fatal("expected search error")
+	}
+	if fallback {
+		t.Fatal("fallback page was fetched after the budget")
+	}
+	if !strings.Contains(res.Err.Error(), "jina") {
+		t.Fatalf("%v", res.Err)
 	}
 }
 

@@ -35,6 +35,8 @@ type Turn struct {
 	Meter            *runtime.Meter
 	UserParts        []runtime.ContentPart
 	PullSteer        func() string
+	StopHooks        []runtime.FileHook
+	Checkpoint       string
 }
 
 // Host 按会话保存正在跑的代理，供 Steer 和 Interrupt 找到它。
@@ -43,12 +45,14 @@ type Host struct {
 	sessions map[string]*live
 }
 
-// live 是一个会话当前这一轮的代理、工具和补全桥。
+// live 是一个会话上长期活着的代理、工具和补全桥。同一会话的下一轮发送复用它，不再重灌历史。
 type live struct {
-	agent  *dsh.Agent
-	reg    *dsh.Registry
-	box    *toolBox
-	bridge *Bridge
+	agent      *dsh.Agent
+	reg        *dsh.Registry
+	box        *toolBox
+	bridge     *Bridge
+	ready      bool
+	checkpoint string
 }
 
 // New 返回空的宿主。
@@ -56,7 +60,8 @@ func New() *Host {
 	return &Host{sessions: map[string]*live{}}
 }
 
-// Run 用一轮新的代理跑 turn。ctx 取消时停掉模型和这一轮的命令。返回最后一条助手正文。
+// Run 用这个会话上的代理跑 turn。第一次发送建代理并灌入历史，之后的发送复用同一代理。
+// ctx 取消时停掉模型和这一轮的命令。返回最后一条助手正文。
 func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 	if h == nil {
 		return "", errString("no desk")
@@ -73,38 +78,77 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 		sessionID = "session"
 		turn.SessionID = sessionID
 	}
-	box := &toolBox{note: make(chan struct{}, 1)}
-	box.set(turn.Tools)
-	bridge := &Bridge{
-		Client:       turn.Client,
-		Model:        turn.Model,
-		MaxTokens:    turn.MaxTokens,
-		ShowThinking: turn.ShowThinking,
-		Meter:        turn.Meter,
-		UserParts:    turn.UserParts,
-	}
-	reg := dsh.NewRegistry()
-	agent := dsh.New(sessionID, bridge, reg, dsh.Options{
-		Prompt:    turn.Prompt,
-		Model:     turn.Model,
-		MaxTokens: turn.MaxTokens,
-	})
-	cur := &live{agent: agent, reg: reg, box: box, bridge: bridge}
 	h.mu.Lock()
 	if h.sessions == nil {
 		h.sessions = map[string]*live{}
 	}
-	h.sessions[sessionID] = cur
+	cur := h.sessions[sessionID]
 	h.mu.Unlock()
-	seedHistory(agent, turn.History)
+	var (
+		box    *toolBox
+		bridge *Bridge
+		reg    *dsh.Registry
+		agent  *dsh.Agent
+	)
+	if cur != nil && cur.ready && cur.agent != nil {
+		box, bridge, reg, agent = cur.box, cur.bridge, cur.reg, cur.agent
+		box.set(turn.Tools)
+		bridge.Client = turn.Client
+		bridge.Model = turn.Model
+		bridge.MaxTokens = turn.MaxTokens
+		bridge.ShowThinking = turn.ShowThinking
+		bridge.Meter = turn.Meter
+		bridge.UserParts = turn.UserParts
+		bridge.partsUsed = false
+		agent.SetPrompt(turn.Prompt)
+		agent.SetRoute(turn.Model, turn.MaxTokens)
+		if cur.checkpoint != turn.Checkpoint {
+			agent.ResetSession()
+			seedHistory(agent, turn.History)
+			cur.checkpoint = turn.Checkpoint
+		}
+	} else {
+		box = &toolBox{note: make(chan struct{}, 1)}
+		box.set(turn.Tools)
+		bridge = &Bridge{
+			Client:       turn.Client,
+			Model:        turn.Model,
+			MaxTokens:    turn.MaxTokens,
+			ShowThinking: turn.ShowThinking,
+			Meter:        turn.Meter,
+			UserParts:    turn.UserParts,
+		}
+		reg = dsh.NewRegistry()
+		agent = dsh.New(sessionID, bridge, reg, dsh.Options{
+			Prompt:    turn.Prompt,
+			Model:     turn.Model,
+			MaxTokens: turn.MaxTokens,
+		})
+		cur = &live{agent: agent, reg: reg, box: box, bridge: bridge, ready: true, checkpoint: turn.Checkpoint}
+		h.mu.Lock()
+		h.sessions[sessionID] = cur
+		h.mu.Unlock()
+		agent.ResumeTurn(recordedTurn(turn.Trace, sessionID))
+		seedHistory(agent, turn.History)
+	}
+	agent.SetBeforeModel(func(context.Context) {
+		reg.Reset()
+		box.bind(reg, agent)
+	})
+	reg.Reset()
 	box.bind(reg, agent)
 	wireStream(bridge, turn)
 
 	stopProject := make(chan struct{})
 	projDone := make(chan struct{})
+	// 游标要在 Followup 之前记下。放进协程里再读，回合开始事件可能已经写上，投影会把它跳过。
+	cursor := 0
+	if agent.Session() != nil {
+		cursor = len(agent.Session().Events())
+	}
 	go func() {
 		defer close(projDone)
-		project(turn, agent, len(agent.Session().Events()), stopProject)
+		project(turn, agent, cursor, stopProject)
 	}()
 	stopPull := make(chan struct{})
 	var pullOnce sync.Once
@@ -155,6 +199,17 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 		return lastAssistant(agent), stopCancelled(ctx.Err())
 	}
 	end := lastEnd(agent)
+	if end.Kind == "completed" {
+		for hop := 0; hop < 4 && ctx.Err() == nil; hop++ {
+			block, msg := denyStop(turn.StopHooks)
+			if !block {
+				break
+			}
+			agent.Followup(dsh.UserMessage{Text: msg, Source: "hook"})
+			waitIdle(ctx, agent, box)
+		}
+		end = lastEnd(agent)
+	}
 	text := lastAssistant(agent)
 	if end.Kind == "error" {
 		reason := end.Reason
@@ -186,6 +241,16 @@ func (h *Host) Steer(sessionID, text string) bool {
 	return true
 }
 
+// Forget 丢掉 sessionID 上的代理。下一轮发送会按当时的历史重新建一个。
+func (h *Host) Forget(sessionID string) {
+	if h == nil || sessionID == "" {
+		return
+	}
+	h.mu.Lock()
+	delete(h.sessions, sessionID)
+	h.mu.Unlock()
+}
+
 // Interrupt 取消 sessionID 正在跑的代理。没有代理时什么都不做。已投递的收件箱清掉。
 func (h *Host) Interrupt(sessionID string) {
 	if h == nil {
@@ -198,6 +263,21 @@ func (h *Host) Interrupt(sessionID string) {
 		return
 	}
 	cur.agent.Cancel(dsh.CancelCause{Kind: "user", Reason: "stop"}, false)
+}
+
+// denyStop 在 rules 里第一条 Deny 上返回真和要继续的消息。reason 为空时用钩子文件的默认句子。
+func denyStop(rules []runtime.FileHook) (bool, string) {
+	for _, rule := range rules {
+		if !rule.Deny {
+			continue
+		}
+		msg := rule.Reason
+		if msg == "" {
+			msg = "blocked by .yoyo/hooks.json stop hook"
+		}
+		return true, msg
+	}
+	return false, ""
 }
 
 // composeUser 拼出这一轮要跟进的用户文本。turn 的 User 和 Inject 都空时用 Continue.。

@@ -25,6 +25,19 @@ type Slots struct {
 	running  map[string]bool
 }
 
+// SetMax 改普通槽位数。n 小于 1 时当作 1。已经占着的槽继续跑完。
+func (s *Slots) SetMax(n int) {
+	if s == nil {
+		return
+	}
+	if n < 1 {
+		n = 1
+	}
+	s.mu.Lock()
+	s.max = n
+	s.mu.Unlock()
+}
+
 // NewSlots 返回 max 个普通槽。max 小于 1 时当作 1。
 func NewSlots(max int) *Slots {
 	if max < 1 {
@@ -96,6 +109,9 @@ type Executor struct {
 
 	mu     sync.Mutex
 	agents map[string]*dsh.Agent
+	bgMu   sync.Mutex
+	bg     map[string]int
+	bgNote map[string]chan struct{}
 }
 
 // NewExecutor 返回执行器。slots 为 nil 时用 3 个槽，与原型 maxWorkers 的默认值相同。
@@ -144,7 +160,7 @@ func (e *Executor) Launch(ticketID string) error {
 		Model:  "yoyo-dsh",
 	})
 	reg.Add(e.reportTool(ticketID))
-	reg.Add(e.shellTool(agent))
+	reg.Add(e.shellTool(agent, ticketID))
 	e.mu.Lock()
 	e.agents[ticketID] = agent
 	e.mu.Unlock()
@@ -154,9 +170,66 @@ func (e *Executor) Launch(ticketID string) error {
 	go func() {
 		defer e.Slots.Free(ticketID)
 		agent.Followup(dsh.UserMessage{Text: text, Source: "assignment"})
-		agent.WhenIdle()
+		for {
+			agent.WhenIdle()
+			if e.backgroundLeft(ticketID) == 0 {
+				return
+			}
+			e.waitBackground(ticketID)
+		}
 	}()
 	return nil
+}
+
+// beginBackground 记 ticketID 上一个还没结束的后台命令。
+func (e *Executor) beginBackground(ticketID string) {
+	e.bgMu.Lock()
+	defer e.bgMu.Unlock()
+	if e.bg == nil {
+		e.bg = map[string]int{}
+	}
+	if e.bgNote == nil {
+		e.bgNote = map[string]chan struct{}{}
+	}
+	if e.bgNote[ticketID] == nil {
+		e.bgNote[ticketID] = make(chan struct{}, 1)
+	}
+	e.bg[ticketID]++
+}
+
+// endBackground 结束 ticketID 上一个后台命令，并在归零时叫醒等待槽位的循环。
+func (e *Executor) endBackground(ticketID string) {
+	e.bgMu.Lock()
+	if e.bg[ticketID] > 0 {
+		e.bg[ticketID]--
+	}
+	left := e.bg[ticketID]
+	ch := e.bgNote[ticketID]
+	e.bgMu.Unlock()
+	if left == 0 && ch != nil {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// backgroundLeft 返回 ticketID 上还没结束的后台命令数。
+func (e *Executor) backgroundLeft(ticketID string) int {
+	e.bgMu.Lock()
+	defer e.bgMu.Unlock()
+	return e.bg[ticketID]
+}
+
+// waitBackground 等到 ticketID 的后台命令数发生变化。没有通道时直接返回。
+func (e *Executor) waitBackground(ticketID string) {
+	e.bgMu.Lock()
+	ch := e.bgNote[ticketID]
+	e.bgMu.Unlock()
+	if ch == nil {
+		return
+	}
+	<-ch
 }
 
 // Deliver 把 text 交给 ticketID 的代理，作为人的下一步消息。代理还没启动时什么都不做。
@@ -194,13 +267,13 @@ func (e *Executor) reportTool(ticketID string) dsh.Tool {
 	}
 }
 
-// shellTool 返回 agent 上的 shell。命令在前台预算内结束就把输出交回，否则转入后台。
-func (e *Executor) shellTool(agent *dsh.Agent) dsh.Tool {
+// shellTool 返回 agent 上的 shell。ticketID 用来在后台命令结束前占住工人槽。命令在前台预算内结束就把输出交回，否则转入后台。
+func (e *Executor) shellTool(agent *dsh.Agent, ticketID string) dsh.Tool {
 	return dsh.Tool{
 		Name:        "shell",
 		Description: "运行一条命令。超过前台预算后转入后台，完成时再投递输出。",
 		Mode:        func(dsh.ToolCall) string { return dsh.ModeExclusive },
-		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
+		Run: func(ctx context.Context, call dsh.ToolCall) (dsh.Result, error) {
 			var body struct {
 				Command string `json:"command"`
 			}
@@ -208,16 +281,26 @@ func (e *Executor) shellTool(agent *dsh.Agent) dsh.Tool {
 				return dsh.Result{Text: err.Error(), IsError: true}, nil
 			}
 			budget := e.Foreground
-			view := agent.RunJob(call.ID, budget, func(ctx context.Context) (string, error) {
+			view := dsh.RunForeground(ctx, call.ID, budget, func(ctx context.Context) (string, error) {
 				if e.Shell == nil {
 					return "", errCode("no_shell")
 				}
 				return e.Shell(ctx, body.Command)
+			}, func(output string, err error) {
+				text := output
+				if err != nil && text == "" {
+					text = err.Error()
+				}
+				if agent != nil {
+					agent.Steer(dsh.UserMessage{Text: "job " + call.ID + " finished\n" + text, Source: "job"})
+				}
+				e.endBackground(ticketID)
 			})
 			if view.Err != nil && !view.Background {
 				return dsh.Result{Text: view.Err.Error(), IsError: true}, nil
 			}
 			if view.Background {
+				e.beginBackground(ticketID)
 				return dsh.Result{Text: "background job " + view.ID}, nil
 			}
 			return dsh.Result{Text: view.Output}, nil

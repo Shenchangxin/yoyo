@@ -6,9 +6,24 @@ package runtime
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode"
 )
+
+// prepareShellCommand 先整理 Windows 引号，再把内联脚本改写成文件。
+// 改写会给带反斜杠的路径重新加引号。交给 cmd 的命令要再放宽一次，否则这个引号会留在 python 的文件名里。将走 bash 的命令保留引号。
+// command 是模型给出的命令。workspace 是临时脚本的目录，空则用系统临时目录。
+func prepareShellCommand(command, workspace string) (string, func()) {
+	if runtime.GOOS == "windows" {
+		command = normalizeWindowsQuotes(command)
+	}
+	command, cleanup := rewriteInlineInterpreters(command, workspace)
+	if runtime.GOOS == "windows" && !looksPosixUnix(command) {
+		command = relaxRedundantShellQuotes(command)
+	}
+	return command, cleanup
+}
 
 // rewriteInlineInterpreters 把 `python -c` 和 `py -c` 的正文落到工作区临时文件。cmd.exe 剥引号会把 `python -c "import glob; print(glob.glob('*.pdf'))"` 变成语法错误（`"import`）；-c 里再嵌引号时，直接按 argv 执行同样不稳。文件才是各平台都稳的约定。
 // 同时处理 node -e、-p 和 --eval。写文件失败则保留尚未改写的剩余命令。

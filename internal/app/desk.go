@@ -111,6 +111,24 @@ func (a *App) OrchestratorPaused(paused bool) error {
 	return rt.SetPaused(paused)
 }
 
+// OrchestratorDeliver 把还没交给编排台的评估标成已交付。返回新交付的轮数。
+func (a *App) OrchestratorDeliver() int {
+	rt := a.orchestrator()
+	if rt == nil {
+		return 0
+	}
+	return rt.Deliver()
+}
+
+// OrchestratorAct 执行编排台动作。kind、ticketID、triggerID、text 和 reason 交给运行时。
+func (a *App) OrchestratorAct(kind, ticketID, triggerID, text, reason string) error {
+	rt := a.orchestrator()
+	if rt == nil {
+		return errString("orchestrator unavailable")
+	}
+	return rt.Act(kind, ticketID, triggerID, text, reason)
+}
+
 // OrchestratorAdmission 写下三格准入。listedUnaddressed、unlistedAddressed、unlistedUnaddressed 只能是空、explicit、inferred 或 ignore。
 func (a *App) OrchestratorAdmission(listedUnaddressed, unlistedAddressed, unlistedUnaddressed string) error {
 	rt := a.orchestrator()

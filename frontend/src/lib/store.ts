@@ -154,6 +154,25 @@ function writeDrafts(drafts: Record<string, string>) {
   }
 }
 
+/** 忙时 Enter 的默认动作。queue 排到下一轮，steer 插进当前这一步。 */
+export type BusyEnter = "queue" | "steer";
+
+/** 读忙时 Enter 的偏好。缺省是排队。 */
+export function readBusyEnter(): BusyEnter {
+  try {
+    return localStorage.getItem("yoyo-busy-enter") === "steer" ? "steer" : "queue";
+  } catch {
+    return "queue";
+  }
+}
+
+/** 记下忙时 Enter 的偏好。mode 为 steer 时 Enter 插话，否则排队。 */
+export function writeBusyEnter(mode: BusyEnter) {
+  try {
+    localStorage.setItem("yoyo-busy-enter", mode);
+  } catch { /* 隐私模式写不进去时，这一次会话仍用内存里的选择。 */ }
+}
+
 /** 读差异模式。缺省为单栏。 */
 function readDiffMode(): DiffMode {
   try {

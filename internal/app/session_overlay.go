@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
@@ -206,8 +207,8 @@ type overlayProbeReq struct {
 	maxWall  time.Duration
 }
 
-// overlayProbe 用 runtime.IsolateWorkspace 得到一份临时工作目录，在其中调用 runtime.Run，再按任务里点名的文件判断是否交付。
-// ctx 用来做超时上下文，再传给 runtime.Run。
+// overlayProbe 用 runtime.IsolateWorkspace 得到一份临时工作目录，在其中调用 dshdesk.Host.Run，再按任务里点名的文件判断是否交付。
+// ctx 用来做超时上下文，再传给 Host.Run。
 // req 用来读 label、toolRoot、maxWall、session、mats、model、task 和 client；toolRoot 去掉空白后为空则返回错误。
 func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.OverlayRollout, error) {
 	out := evolve.OverlayRollout{Label: req.label}
@@ -248,26 +249,22 @@ func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.Ove
 		SkillMeta:  skillMeta,
 		Advertised: advertised,
 	}
-	loop := req.mats.Loop
-	loop.AllowLLMCompact = false
+	preHooks, stopHooks, _ := runtime.LoadHookFile(work)
+	tools.FileHooks = preHooks
 	meter := &runtime.Meter{USDPerMTok: a.Config.USDPerMTok}
-	_, runErr := runtime.Run(tctx, runtime.RunRequest{
+	_, runErr := a.agentDesk().Run(tctx, dshdesk.Turn{
 		SessionID:        probeID,
-		TaskID:           req.label,
+		Prompt:           runtime.AssembleIdentity(req.mats.Loop, req.mats.Fragments),
 		User:             req.task,
-		Workspace:        work,
-		Harness:          req.mats.Snap,
-		HarnessHash:      req.mats.Hash,
-		ModelFingerprint: Fingerprint(a.Config),
 		Model:            req.model,
-		Loop:             loop,
-		Fragments:        req.mats.Fragments,
-		Playbook:         req.mats.Playbook,
-		Skills:           req.mats.Skills,
-		Tools:            tools,
+		MaxTokens:        maxOutputTokensFor(req.model),
 		Client:           req.client,
+		Tools:            tools,
 		Trace:            a.Traces,
 		Meter:            meter,
+		HarnessHash:      req.mats.Hash,
+		ModelFingerprint: Fingerprint(a.Config),
+		StopHooks:        stopHooks,
 	})
 	_, _, usd := meter.Totals()
 	out.USD = usd

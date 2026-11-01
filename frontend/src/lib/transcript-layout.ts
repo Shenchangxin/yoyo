@@ -622,6 +622,7 @@ export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
     agent = [];
   };
   for (const it of items) {
+    if (it.type === "user" && (it.source === "job" || it.name === "job")) continue;
     if (it.type === "user" && it.source !== "steer") {
       flushAgent(false, true);
       turnKey = itemTurnKey(it);

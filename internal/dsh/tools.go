@@ -55,6 +55,13 @@ func NewRegistry() *Registry {
 	return &Registry{tools: map[string]Tool{}}
 }
 
+// Reset 清空注册表。下一轮工具清单以重新登记的为准。
+func (r *Registry) Reset() {
+	r.mu.Lock()
+	r.tools = map[string]Tool{}
+	r.mu.Unlock()
+}
+
 // Add 登记 tool。同名后来的覆盖先前的。tool.Name 是查找键。
 func (r *Registry) Add(tool Tool) {
 	r.mu.Lock()

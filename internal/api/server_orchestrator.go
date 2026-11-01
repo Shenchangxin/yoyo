@@ -39,6 +39,35 @@ func mountOrchestrator(mux *http.ServeMux, a *app.App) {
 		}
 		writeJSON(w, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("POST /api/orchestrator/deliver", func(w http.ResponseWriter, r *http.Request) {
+		if a == nil {
+			writeJSONStatus(w, 503, map[string]any{"error": "app is not running"})
+			return
+		}
+		writeJSON(w, map[string]any{"n": a.OrchestratorDeliver()})
+	})
+	mux.HandleFunc("POST /api/orchestrator/act", func(w http.ResponseWriter, r *http.Request) {
+		if a == nil {
+			writeJSONStatus(w, 503, map[string]any{"error": "app is not running"})
+			return
+		}
+		var body struct {
+			Kind      string `json:"kind"`
+			TicketID  string `json:"ticketId"`
+			TriggerID string `json:"triggerId"`
+			Text      string `json:"text"`
+			Reason    string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSONStatus(w, 400, map[string]any{"error": err.Error()})
+			return
+		}
+		if err := a.OrchestratorAct(body.Kind, body.TicketID, body.TriggerID, body.Text, body.Reason); err != nil {
+			writeJSONStatus(w, 400, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
 	mux.HandleFunc("POST /api/orchestrator/mode", func(w http.ResponseWriter, r *http.Request) {
 		if a == nil {
 			writeJSONStatus(w, 503, map[string]any{"error": "app is not running"})

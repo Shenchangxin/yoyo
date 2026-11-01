@@ -40,6 +40,10 @@ type Request struct {
 	Messages  []Message
 	Tools     []ToolSchema
 	MaxTokens int
+	// Turn 是这一步所属的回合，写进实时流的帧。
+	Turn int
+	// Step 是回合内的步骤，从 1 起。
+	Step int
 }
 
 // Completer 跑一次模型请求。ctx 取消时返回已说出的前缀和错误。
@@ -57,6 +61,7 @@ type Options struct {
 	MaxParallel   int
 	MaxTokens     int
 	PreStep       func(ctx context.Context, claimed []UserMessage) (enter bool, messages []UserMessage, err error)
+	BeforeModel   func(ctx context.Context)
 }
 
 // TurnEnd 是 turn/end 的载荷。Kind 取 completed、blocked、aborted、error、max-tokens。
@@ -111,6 +116,36 @@ func (a *Agent) ID() string { return a.id }
 
 // Session 返回这份代理的日志。
 func (a *Agent) Session() *Session { return a.session }
+
+// ResetSession 清空会话日志，并让下一步重新写系统提示。检查点之后由宿主灌入压缩后的历史。
+func (a *Agent) ResetSession() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.session != nil {
+		a.session.Reset()
+	}
+	a.headerLog = false
+	a.toolSig = ""
+}
+
+// ResumeTurn 把下一回合的起点设成 turn。进程重启后从轨迹里已有的最大回合号接上。小于 1，或驱动器不在空闲时，不改。
+// turn 大于当前 lastTurn 时写入 lastTurn。
+func (a *Agent) ResumeTurn(turn int) {
+	if a == nil || turn < 1 {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.phaseKind != phaseIdle {
+		return
+	}
+	if turn > a.lastTurn {
+		a.lastTurn = turn
+	}
+}
 
 // Status 返回 idle 或 running。维护任务对外仍是 idle。
 func (a *Agent) Status() string {
@@ -420,6 +455,12 @@ func (a *Agent) runStep(ctx context.Context, turn, step int, claimed []UserMessa
 	for _, m := range claimed {
 		a.session.Append(EventUser, turn, step, m)
 	}
+	a.mu.Lock()
+	before := a.opts.BeforeModel
+	a.mu.Unlock()
+	if before != nil {
+		before(ctx)
+	}
 	schemas := a.tools.Schemas()
 	sig := schemaSig(schemas)
 	if !a.headerLog || sig != a.toolSig {
@@ -433,6 +474,7 @@ func (a *Agent) runStep(ctx context.Context, turn, step int, claimed []UserMessa
 	req := Request{
 		Provider: a.opts.Provider, Model: a.opts.Model,
 		Messages: a.session.Derive(), Tools: schemas, MaxTokens: a.opts.MaxTokens,
+		Turn: turn, Step: step,
 	}
 	out, callErr := a.model.Complete(ctx, req)
 	if callErr != nil {
@@ -495,6 +537,13 @@ func (a *Agent) recover(turn, step int) {
 func (a *Agent) SetPrompt(text string) {
 	a.mu.Lock()
 	a.opts.Prompt = text
+	a.mu.Unlock()
+}
+
+// SetBeforeModel 换成每步调用模型前要跑的准备。fn 为空时不再准备。fn 的 ctx 是这一步的上下文。
+func (a *Agent) SetBeforeModel(fn func(ctx context.Context)) {
+	a.mu.Lock()
+	a.opts.BeforeModel = fn
 	a.mu.Unlock()
 }
 

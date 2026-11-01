@@ -49,6 +49,8 @@ export function ChatDock(props: {
   queueItems?: { id?: string; text?: string; plan?: boolean }[];
   onQueueCancel?: (id: string) => void;
   onQueueReorder?: (id: string, delta: number) => void;
+  onQueueSteer?: (id: string) => void;
+  onSteerQueue?: () => void;
   onSend: (opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) => void;
   onStop: () => void;
   onClipboard?: () => Promise<string>;
@@ -91,6 +93,8 @@ export function ChatDock(props: {
         queueItems={props.queueItems}
         onQueueCancel={props.onQueueCancel}
         onQueueReorder={props.onQueueReorder}
+        onQueueSteer={props.onQueueSteer}
+        onSteerQueue={props.onSteerQueue}
         files={props.files}
         sessions={props.sessions}
         skills={props.skills}

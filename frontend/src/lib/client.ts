@@ -1019,6 +1019,36 @@ export async function queueCancel(sessionID: string, itemID: string): Promise<bo
  * itemID 传给 QueueReorder，放进请求体。
  * delta 传给 QueueReorder，放进请求体。
  */
+/** steerQueued 把一条排队回合插进正在跑的这一步。sessionID 是会话，itemID 是队列项。 */
+export async function steerQueued(sessionID: string, itemID: string): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.SteerQueued) {
+    await s.SteerQueued(sessionID, itemID);
+    return true;
+  }
+  if (s) return false;
+  const r = await http<any>(`/api/sessions/${sessionID}/queue/steer`, {
+    method: "POST",
+    body: JSON.stringify({ id: itemID }),
+  });
+  return asBool(pick(r, "ok", "Ok") ?? r);
+}
+
+/** steerQueue 把这条会话上全部排队回合插进正在跑的这一步。sessionID 是会话。 */
+export async function steerQueue(sessionID: string): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.SteerQueue) {
+    await s.SteerQueue(sessionID);
+    return true;
+  }
+  if (s) return false;
+  const r = await http<any>(`/api/sessions/${sessionID}/queue/steer`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return asBool(pick(r, "ok", "Ok") ?? r);
+}
+
 export async function queueReorder(sessionID: string, itemID: string, delta: number): Promise<boolean> {
   const s = await wailsService();
   if (s?.QueueReorder) return asBool(await s.QueueReorder(sessionID, itemID, delta));
@@ -3243,6 +3273,11 @@ export function imSend(accountId: string, chatId: string, text: string): Promise
   });
 }
 
+/** orchestratorDeliver 让编排台领走还没开始倒计时的评估。 */
+export function orchestratorDeliver(): Promise<any> {
+  return imCall("OrchestratorDeliver", [], "/api/orchestrator/deliver", { method: "POST" });
+}
+
 /** orchestratorView 拉取编排台快照。 */
 export function orchestratorView(): Promise<any> {
   return imCall("OrchestratorView", [], "/api/orchestrator");
@@ -3269,6 +3304,14 @@ export function orchestratorPaused(paused: boolean): Promise<any> {
   return imCall("OrchestratorPaused", [paused], "/api/orchestrator/paused", {
     method: "POST",
     body: JSON.stringify({ paused }),
+  });
+}
+
+/** orchestratorAct 执行编排台动作。kind 是动作名。ticketId、triggerId、text 和 reason 按动作使用。 */
+export function orchestratorAct(kind: string, ticketId = "", triggerId = "", text = "", reason = ""): Promise<any> {
+  return imCall("OrchestratorAct", [kind, ticketId, triggerId, text, reason], "/api/orchestrator/act", {
+    method: "POST",
+    body: JSON.stringify({ kind, ticketId, triggerId, text, reason }),
   });
 }
 

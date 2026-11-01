@@ -10,7 +10,12 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
-// Bridge 用 runtime.Client 完成一次 dsh 请求。OnStream 非空且客户端实现 Streamer 时走流式。
+// streamOpen 在一次 Complete 开始时打开实时流。
+// turn 和 step 写入帧。返回的 id 记到助手消息上，界面用它把增量收成同一条。
+// emit 接收每一块。end 在没有 finish 块时补结束帧，outcome 取 committed 或 abandoned。
+type streamOpen func(turn, step int) (id string, emit func(runtime.StreamChunk), end func(outcome string))
+
+// Bridge 用 runtime.Client 完成一次 dsh 请求。OpenStream 非空且客户端实现 Streamer 时走流式。
 type Bridge struct {
 	Client       runtime.Client
 	Model        string
@@ -18,11 +23,11 @@ type Bridge struct {
 	ShowThinking bool
 	Meter        *runtime.Meter
 	UserParts    []runtime.ContentPart
-	OnStream     func(runtime.StreamChunk)
+	OpenStream   streamOpen
 	partsUsed    bool
 }
 
-// Complete 调用 Client。req 的消息和工具清单转成 runtime 的形状。ctx 取消时把已说出的前缀交回去。
+// Complete 调用 Client。req 的消息和工具清单转成 runtime 的形状，Turn 和 Step 用来给这一次流编号。ctx 取消时把已说出的前缀交回去，并标成中断。
 func (b *Bridge) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant, error) {
 	if b == nil || b.Client == nil {
 		return dsh.Assistant{}, errString("missing model client")
@@ -44,18 +49,40 @@ func (b *Bridge) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant, 
 	}
 	var msg runtime.Message
 	var err error
-	if stream, ok := b.Client.(runtime.Streamer); ok && b.OnStream != nil {
+	var attemptID string
+	if stream, ok := b.Client.(runtime.Streamer); ok && b.OpenStream != nil {
+		var emit func(runtime.StreamChunk)
+		var end func(string)
+		attemptID, emit, end = b.OpenStream(req.Turn, req.Step)
+		finished := false
 		msg, err = stream.ChatStream(ctx, chat, func(ch runtime.StreamChunk) error {
-			b.OnStream(ch)
+			if ch.Type == runtime.ChunkFinish {
+				finished = true
+			}
+			if emit != nil {
+				emit(ch)
+			}
 			return nil
 		})
+		if end != nil && !finished {
+			outcome := runtime.StreamOutcomeCommitted
+			if err != nil {
+				outcome = runtime.StreamOutcomeAbandoned
+			}
+			end(outcome)
+		}
 	} else {
 		msg, err = b.Client.Chat(ctx, chat)
 	}
 	if b.Meter != nil {
 		b.Meter.Add(msg.PromptTokens, msg.CompletionTokens)
 	}
-	return toAssistant(msg), err
+	out := toAssistant(msg)
+	out.AttemptID = attemptID
+	if err != nil && ctx.Err() != nil {
+		out.Interrupted = true
+	}
+	return out, err
 }
 
 // toRuntimeMessages 把 msgs 转成 runtime 消息。角色、正文、工具调用和工具结果 id 原样保留。

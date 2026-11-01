@@ -36,6 +36,23 @@ function cloneItem(it: Item, patch: Partial<Item> & { payload?: Record<string, a
   };
 }
 
+/** parseJobNotice 从后台完成正文里取出工具调用 id 和输出。text 要以 job 加空格开头，并含有 finished。对不上时没有结果。 */
+function parseJobNotice(text: string): { id: string; body: string } | undefined {
+  const head = "job ";
+  if (!text.startsWith(head)) return undefined;
+  const rest = text.slice(head.length);
+  const marker = " finished";
+  const at = rest.indexOf(marker);
+  if (at <= 0) return undefined;
+  const id = rest.slice(0, at).trim();
+  if (!id || /[\s]/.test(id)) return undefined;
+  let body = rest.slice(at + marker.length);
+  if (body.startsWith("\n")) body = body.slice(1);
+  body = body.replace(/[\r\n]+$/, "");
+  if (!body.trim()) body = "finished";
+  return { id, body };
+}
+
 /** 助手条目的键，按会话和回合。sessionId 拼进字符串。round 拼进字符串。 */
 function assistantKey(sessionId: string, round: string): string {
   return `${sessionId}:assistant:${round}`;
@@ -146,6 +163,10 @@ export class ConversationFold {
       if (kind !== "checkpoint") return;
     }
 
+    if (ev.type === "user" && (ev.source === "job" || ev.name === "job")) {
+      this.acceptJobNotice(ev);
+      return;
+    }
     if (ev.type === "user") {
       this.acceptUser(ev);
       return;
@@ -164,6 +185,25 @@ export class ConversationFold {
     }
     if (ev.key && this.list.some((x) => x.key === ev.key)) return;
     this.list = [...this.list, ev];
+  }
+
+  /**
+   * 后台命令完成不另开一条消息。正文能对上已有工具结果时，写回那条结果。对不上则丢掉，模型仍从会话日志里读到它。
+   * ev 读取 text，传给 parseJobNotice。
+   */
+  private acceptJobNotice(ev: Item): void {
+    const parsed = parseJobNotice(ev.text || "");
+    if (!parsed) return;
+    const idx = this.list.findIndex((x) => x.type === "tool_result" && String(x.payload?.id || "") === parsed.id);
+    if (idx < 0) return;
+    const cur = this.list[idx];
+    const copy = this.list.slice();
+    copy[idx] = cloneItem(cur, {
+      text: parsed.body,
+      delta: false,
+      payload: { ...cur.payload, content: parsed.body, delta: false, ok: true },
+    });
+    this.list = copy;
   }
 
   /**

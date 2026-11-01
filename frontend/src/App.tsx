@@ -276,6 +276,8 @@ function WorkstationApp() {
     onQueueCancel: (id: string) => { void ws.onQueueCancel(id); },
     /** onQueueReorder 调用 onQueueReorder。id 传给 ws.onQueueReorder。delta 传给 ws.onQueueReorder。 */
     onQueueReorder: (id: string, delta: number) => { void ws.onQueueReorder(id, delta); },
+    onQueueSteer: (id: string) => { void ws.onQueueSteer(id); },
+    onSteerQueue: () => { void ws.onSteerQueue(); },
     onApplyWorktree: () => { void ws.onApplyWorktree(); },
     taskPlan: latestTaskPlan(ws.items) || parsePlanText(ws.active?.planText || ""),
     methodologyActive: ws.methodologyActive,

@@ -152,6 +152,36 @@ func (m *Manager) PrependQueue(id string, turn QueuedTurn) {
 	m.persist(id)
 }
 
+// ClearQueue 丢掉 id 上还没开跑的排队回合。
+func (m *Manager) ClearQueue(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	if len(st.Queue) == 0 {
+		return
+	}
+	st.Queue = nil
+	m.runs[id] = st
+	m.persist(id)
+}
+
+// TakeQueue 按 itemID 取出并删掉一条排队回合。找不到时 ok 为假。
+func (m *Manager) TakeQueue(id, itemID string) (QueuedTurn, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	for i, turn := range st.Queue {
+		if turn.ID != itemID {
+			continue
+		}
+		st.Queue = append(st.Queue[:i], st.Queue[i+1:]...)
+		m.runs[id] = st
+		m.persist(id)
+		return turn, true
+	}
+	return QueuedTurn{}, false
+}
+
 // CancelQueue 按 itemID 删掉一条队列项。找到返回 true。
 // id 传给 state 和 persist。
 func (m *Manager) CancelQueue(id, itemID string) bool {

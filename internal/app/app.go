@@ -1,4 +1,4 @@
-// Package app 是桌面、HTTP 和命令行共用的应用对象。桌面发送进入 dsh 代理。Harbor 和会话 overlay 仍调用 runtime.Run。
+// Package app 是桌面、HTTP 和命令行共用的应用对象。桌面发送和会话 overlay 都进入 dsh 代理。
 package app
 
 import (

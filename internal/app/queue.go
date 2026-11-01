@@ -122,6 +122,79 @@ func (a *App) QueueReorder(sessionID, itemID string, delta int) bool {
 	return true
 }
 
+// clearQueue 丢掉 sessionID 上还没开跑的排队回合，以及还没被代理领走的插话。
+func (a *App) clearQueue(sessionID string) {
+	if a == nil {
+		return
+	}
+	if a.Threads != nil {
+		a.Threads.ClearQueue(sessionID)
+	}
+	a.queueMu.Lock()
+	delete(a.queue, sessionID)
+	delete(a.steers, sessionID)
+	a.queueMu.Unlock()
+}
+
+// takeQueue 按 itemID 取出并删掉一条排队回合。找不到时 ok 为假。
+func (a *App) takeQueue(sessionID, itemID string) (QueuedTurn, bool) {
+	if a.Threads != nil {
+		turn, ok := a.Threads.TakeQueue(sessionID, itemID)
+		if !ok {
+			return QueuedTurn{}, false
+		}
+		return fromSessionQueued(turn), true
+	}
+	a.queueMu.Lock()
+	defer a.queueMu.Unlock()
+	q := a.queue[sessionID]
+	for i, turn := range q {
+		if turn.ID != itemID {
+			continue
+		}
+		a.queue[sessionID] = append(q[:i], q[i+1:]...)
+		return turn, true
+	}
+	return QueuedTurn{}, false
+}
+
+// SteerQueued 把 itemID 从下一轮队列拿出来，插进 sessionID 正在跑的这一步。会话没在跑或找不到时返回错误。
+func (a *App) SteerQueued(sessionID, itemID string) error {
+	if !a.Running(sessionID) {
+		return errString("session is not running")
+	}
+	turn, ok := a.takeQueue(sessionID, itemID)
+	if !ok {
+		return errString("queue item not found")
+	}
+	text := steerText(turn)
+	if text == "" {
+		return nil
+	}
+	return a.Steer(sessionID, text)
+}
+
+// SteerQueue 按队列顺序把 sessionID 上全部下一轮插进正在跑的这一步。会话没在跑时返回错误。
+func (a *App) SteerQueue(sessionID string) error {
+	if !a.Running(sessionID) {
+		return errString("session is not running")
+	}
+	var first error
+	for {
+		turn, ok := a.popQueue(sessionID)
+		if !ok {
+			return first
+		}
+		text := steerText(turn)
+		if text == "" {
+			continue
+		}
+		if err := a.Steer(sessionID, text); err != nil && first == nil {
+			first = err
+		}
+	}
+}
+
 // popQueue 取出队列第一条并把它从队列里删掉。空队列返回假。
 // sessionID 传给 Threads.PopQueue，或用作 queue 的键。
 func (a *App) popQueue(sessionID string) (QueuedTurn, bool) {
@@ -189,7 +262,7 @@ func (a *App) kickQueue(sessionID string) {
 }
 
 // Steer 在会话正在跑时把 text 交给 dsh 代理。代理还没建好时追加进内存 steers，由这一轮开场收走。空文本或会话没在跑则返回错误。
-// sessionID 传给 Running 和 PushSteer，并用作 steers 的键。
+// sessionID 传给 Running。代理收下时写入收件箱；没收下时传给 PushSteer，并用作 steers 的键。
 // text 为空则返回错误。代理收下时不再写入 steers，避免同一句被投递两次。
 func (a *App) Steer(sessionID, text string) error {
 	if text == "" {
@@ -198,18 +271,40 @@ func (a *App) Steer(sessionID, text string) error {
 	if !a.Running(sessionID) {
 		return errString("session is not running")
 	}
-	if a.Threads != nil {
-		_ = a.Threads.PushSteer(sessionID, text)
-	}
 	if a.agentDesk().Steer(sessionID, text) {
 		a.recordInbox(sessionID, "enqueue", "next-step", "", text)
 		return nil
+	}
+	if a.Threads != nil {
+		_ = a.Threads.PushSteer(sessionID, text)
 	}
 	a.queueMu.Lock()
 	a.steers[sessionID] = append(a.steers[sessionID], text)
 	a.queueMu.Unlock()
 	a.recordInbox(sessionID, "enqueue", "next-step", "", text)
 	return nil
+}
+
+// steerText 用排队正文。正文为空但有附件时，改成点出附件名字的一行。两者都空时返回空串。
+func steerText(turn QueuedTurn) string {
+	text := strings.TrimSpace(turn.Text)
+	if text != "" {
+		return text
+	}
+	var names []string
+	for _, att := range turn.Attachments {
+		name := strings.TrimSpace(att.Name)
+		if name == "" {
+			name = strings.TrimSpace(att.Path)
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "Attachments: " + strings.Join(names, ", ")
 }
 
 // pullSteer 一次取走该会话内存里的全部 steer，拼成一段，并记一条 next-step 的领取。没有则返回空串。运行时在下一次模型调用前调用它。
