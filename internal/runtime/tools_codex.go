@@ -182,9 +182,21 @@ func (t *WorkspaceTools) viewImage(rel string) ToolResult {
 // webFetchUA 是 web_fetch 的 User-Agent。
 const webFetchUA = "Yoyo/0.3 (+https://github.com/Shenchangxin/yoyo)"
 
-// webFetch 只接受带主机的 http 或 https。先用 blockedHost 拒绝主机，再做 Network 审批，超时 20 秒。SiteText 成功则截到 12000 个 rune。否则 httpGet。状态 406 时 retryHTTPOn406 得到的地址会再取一次。XML 源保留标签；非 JSON 且非源则去掉标签。shouldJinaReader 为真时再试 Jina。正文截到 12000 个 rune。
-// rawURL 交给 url.Parse；方案不是 http 或 https，或没有 Host 时返回错误。通过后交给 SiteText，失败再交给 httpGet。
+// webFetch 只接受带主机的 http 或 https。先用 blockedHost 拒绝主机，再做 Network 审批，超时 20 秒。SiteText 成功则截到 12000 个 rune。否则 httpGet。状态 406 时 retryHTTPOn406 得到的地址会再取一次。XML 源保留标签；非 JSON 且非源则去掉标签。shouldJinaReader 为真时再试 Jina。Jina 没有可用正文时，4xx、5xx、空正文和拦截页返回错误，不再把页面当成功。正文截到 12000 个 rune。
+// rawURL 交给 url.Parse；方案不是 http 或 https，或没有 Host 时返回错误。通过后交给 webFetchCtx。
 func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
+	ctx := t.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	return t.webFetchCtx(ctx, rawURL)
+}
+
+// webFetchCtx 用调用方给出的 ctx 抓 rawURL，不再另开 20 秒。检索的最后一跳因此停在同一次时限里。
+// ctx 取消时 httpGet 返回该错误。rawURL 的方案或主机不合法时返回错误。
+func (t *WorkspaceTools) webFetchCtx(ctx context.Context, rawURL string) ToolResult {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return ToolResult{Err: fmt.Errorf("web_fetch: need http(s) URL")}
@@ -195,12 +207,9 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	if err := t.check(capability.Network, "web_fetch", "", rawURL); err != nil {
 		return ToolResult{Err: err}
 	}
-	ctx := t.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
 	if text, ok, _ := webcontent.SiteText(ctx, webHTTP, rawURL); ok {
 		capped, _ := capText(text, 12_000)
 		return ToolResult{Content: "site " + rawURL + "\n\n" + capped}
@@ -216,9 +225,12 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	}
 	text := body
 	feed := false
-	if compact, ok := formatFeed(body); ok {
-		return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, compact)}
-	} else if isXMLFeed(ct, body) {
+	if status >= 200 && status < 300 {
+		if compact, ok := formatFeed(body); ok {
+			return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, compact)}
+		}
+	}
+	if isXMLFeed(ct, body) {
 		feed = true
 		// 保留标签，省略之后 id 和标题仍能认出来。
 	} else if !strings.Contains(strings.ToLower(ct), "json") {
@@ -230,19 +242,48 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 			return ToolResult{Content: fmt.Sprintf("HTTP %d %s (jina)\n\n%s", status, finalURL, capped)}
 		}
 	}
+	if status < 200 || status >= 300 {
+		return fetchFailure(status, finalURL, text)
+	}
+	if strings.TrimSpace(text) == "" {
+		return ToolResult{
+			Content: fmt.Sprintf("HTTP %d %s\n\nempty body", status, finalURL),
+			Err:     fmt.Errorf("web_fetch: HTTP %d empty body from %s", status, finalURL),
+		}
+	}
+	if webcontent.LooksAntibot(body) {
+		return fetchFailure(status, finalURL, text)
+	}
 	capped, _ := capText(text, 12_000)
 	return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, capped)}
+}
+
+// fetchFailure 把非成功的抓取收成错误。status 和 finalURL 写进正文和错误。body 只留前 400 个字节，空则不附。
+func fetchFailure(status int, finalURL, body string) ToolResult {
+	snippet := strings.TrimSpace(body)
+	if len(snippet) > 400 {
+		cut := 400
+		for cut > 0 && !utf8.RuneStart(snippet[cut]) {
+			cut--
+		}
+		snippet = snippet[:cut]
+	}
+	text := fmt.Sprintf("HTTP %d %s", status, finalURL)
+	if snippet != "" {
+		text += "\n\n" + snippet
+	}
+	return ToolResult{Content: text, Err: fmt.Errorf("web_fetch: HTTP %d %s", status, finalURL)}
 }
 
 // jinaSkipLoopback 为真时，localhost、以 .localhost 结尾的名字和环回 IP 不走 Jina。测试可把它改成假。
 var jinaSkipLoopback = true
 
-// shouldJinaReader 在 u 为空、环回（当 jinaSkipLoopback 为真）、主机名含 jina.ai 或 duckduckgo.com、或内容类型含 json 时返回假。状态 403、429、503 返回真。其余看 LooksAntibot 或 ThinExtract。
+// shouldJinaReader 在 u 为空、raw 去掉空白后为空、环回（当 jinaSkipLoopback 为真）、主机名含 jina.ai 或 duckduckgo.com、或内容类型含 json 时返回假。状态 403、429、503 返回真。其余看 LooksAntibot 或 ThinExtract。
 // status 等于 403、429 或 503 时返回真。
-// raw 交给 LooksAntibot，并和 stripped 一起交给 ThinExtract。
+// raw 去掉空白后为空时返回假，不再为空白响应等阅读器。交给 LooksAntibot，并和 stripped 一起交给 ThinExtract。
 // stripped 连同 raw 交给 ThinExtract。
 func shouldJinaReader(u *url.URL, status int, ct, raw, stripped string) bool {
-	if u == nil {
+	if u == nil || strings.TrimSpace(raw) == "" {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())

@@ -96,6 +96,18 @@ func NewSession() *Session {
 	return &Session{}
 }
 
+// Reset 清空日志和模型可见表面。检查点替换历史时调用。
+func (s *Session) Reset() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.events = nil
+	s.nodes = nil
+	s.seq = 0
+	s.mu.Unlock()
+}
+
 // Append 追加一条事件并更新表面。turn 和 step 写入事件。data 原样保存。返回序号。
 func (s *Session) Append(typ string, turn, step int, data any) int {
 	s.mu.Lock()
@@ -200,6 +212,8 @@ type Assistant struct {
 	ToolCalls   []ToolCall
 	Finish      string
 	Interrupted bool
+	// AttemptID 是这一次模型调用的流标识。界面用它把增量收成同一条助手消息。空表示没有流。
+	AttemptID string
 }
 
 // UnansweredToolCalls 返回本步助手消息里还没有结果的调用。started 为真表示日志里已有 tool/call。

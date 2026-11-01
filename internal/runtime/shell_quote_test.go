@@ -68,6 +68,27 @@ func TestNormalizeWindowsQuotesRelaxesForCmd(t *testing.T) {
 	}
 }
 
+// TestPrepareShellCommandRelaxesInlinePath 确认交给 cmd 的内联脚本路径不再带着引号，bash 命令仍保留引号。
+func TestPrepareShellCommandRelaxesInlinePath(t *testing.T) {
+	ws := t.TempDir()
+	got, done := prepareShellCommand(`python fetch.py && python -c "print(1)"`, ws)
+	defer done()
+	if !strings.Contains(got, "yoyo-inline-") || !strings.Contains(got, "fetch.py") {
+		t.Fatalf("rewrite dropped the script or the first stage: %s", got)
+	}
+	if strings.Contains(got, `\"`) {
+		t.Fatalf("escaped quote remains: %s", got)
+	}
+	if runtime.GOOS == "windows" && strings.Contains(got, `"`) {
+		t.Fatalf("cmd path still quoted: %s", got)
+	}
+	bash, bashDone := prepareShellCommand(`python -c "print(1)" 2>/dev/null`, ws)
+	defer bashDone()
+	if runtime.GOOS == "windows" && !strings.Contains(bash, `"`) {
+		t.Fatalf("bash path lost its quotes: %s", bash)
+	}
+}
+
 // TestInlineScriptPathSurvivesRewrite 确认改写后的脚本在 workspace/.yoyo/tmp，含反斜杠的路径以引号开头。
 func TestInlineScriptPathSurvivesRewrite(t *testing.T) {
 	ws := t.TempDir()

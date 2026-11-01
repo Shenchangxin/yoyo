@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,20 +24,22 @@ import (
 
 // Runtime 把引擎、副作用、来源轮询和快照放在一起。两秒轮次调用 Pass。
 type Runtime struct {
-	mu         sync.Mutex
-	eng        *Engine
-	effects    *Queue
-	exec       *Executor
-	ready      func() error
-	db         *sql.DB
-	cancel     context.CancelFunc
-	client     *http.Client
-	sources    SourceConfig
-	status     map[string]SourceState
-	health     string
-	at         time.Time
-	lastGitHub time.Time
-	lastFeishu time.Time
+	mu           sync.Mutex
+	eng          *Engine
+	effects      *Queue
+	exec         *Executor
+	ready        func() error
+	db           *sql.DB
+	cancel       context.CancelFunc
+	client       *http.Client
+	sources      SourceConfig
+	status       map[string]SourceState
+	health       string
+	at           time.Time
+	workers      int
+	sourcesSaved bool
+	lastGitHub   time.Time
+	lastFeishu   time.Time
 }
 
 // Open 打开 path 上的快照并还原引擎。path 为空时只放在内存里。policy 在没有快照时作为初始策略。
@@ -81,7 +85,10 @@ func (rt *Runtime) Bind(ready func() error, model dsh.Completer, shell func(ctx 
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.ready = ready
-	rt.exec = NewExecutor(rt.eng, NewSlots(3), model)
+	if rt.workers < 1 {
+		rt.workers = 3
+	}
+	rt.exec = NewExecutor(rt.eng, NewSlots(rt.workers), model)
 	rt.exec.Shell = shell
 	rt.effects.Handle("launch", 3, func(payload any) error {
 		id, _ := payload.(string)
@@ -170,7 +177,24 @@ func (rt *Runtime) Pass(now time.Time) {
 	rt.at = now
 	rt.mu.Unlock()
 	rt.poll(now)
+	rt.flushOutbox()
 	rt.save()
+}
+
+// SetEvalTimeout 改评估时限。d 小于等于 0 时改回两分钟。改完立刻落盘。
+func (rt *Runtime) SetEvalTimeout(d time.Duration) {
+	if rt == nil || rt.eng == nil {
+		return
+	}
+	if d <= 0 {
+		d = 120 * time.Second
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.eng.mu.Lock()
+	rt.eng.policy.EvalTimeout = d
+	rt.eng.mu.Unlock()
+	rt.saveLocked()
 }
 
 // Decide 评估 triggerID。kind 和 reason 写进决定。成功后立刻泵一次派工并落盘。
@@ -237,9 +261,84 @@ func (rt *Runtime) SetSources(cfg SourceConfig) {
 	}
 	rt.mu.Lock()
 	rt.sources = cfg
+	rt.sourcesSaved = true
 	rt.lastGitHub = time.Time{}
 	rt.lastFeishu = time.Time{}
 	rt.mu.Unlock()
+}
+
+// Deliver 把还没交给编排台的评估标成已交付。有新交付时落盘。返回新交付的轮数。
+func (rt *Runtime) Deliver() int {
+	if rt == nil || rt.eng == nil {
+		return 0
+	}
+	n := rt.eng.DeliverOpen()
+	if n > 0 {
+		rt.save()
+	}
+	return n
+}
+
+// Act 执行编排台动作。kind 取 attach、reply、note、handback、reevaluate、dismiss、unsubscribe、stop、retry、requestStatus、markUnrelated、follow 或 timeout。
+// ticketID、triggerID、text 和 reason 按动作使用。成功后立刻泵一次派工并落盘。
+func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
+	if rt == nil || rt.eng == nil {
+		return errCode("empty")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	var err error
+	switch kind {
+	case "attach":
+		err = rt.eng.Attach(ticketID, triggerID, text)
+	case "reply":
+		_, err = rt.eng.Reply(ticketID, reason, triggerID, text)
+	case "note":
+		err = rt.eng.Note(ticketID, text)
+	case "handback":
+		_, err = rt.eng.Handback(ticketID, triggerID, reason)
+	case "reevaluate":
+		_, err = rt.eng.Reevaluate(triggerID)
+	case "dismiss":
+		err = rt.eng.Dismiss(triggerID)
+	case "unsubscribe":
+		rt.eng.Unsubscribe(text)
+	case "stop":
+		err = rt.eng.Stop(ticketID, reason)
+	case "retry":
+		err = rt.eng.Retry(ticketID)
+	case "requestStatus":
+		_, err = rt.eng.RequestStatus(ticketID)
+	case "markUnrelated":
+		err = rt.eng.MarkUnrelated(ticketID, text, reason)
+	case "follow":
+		_, err = rt.eng.FollowForContext(ticketID, text)
+	case "timeout":
+		sec, conv := strconv.Atoi(strings.TrimSpace(text))
+		d := time.Duration(sec) * time.Second
+		if conv != nil || d <= 0 {
+			d = 120 * time.Second
+		}
+		rt.eng.mu.Lock()
+		rt.eng.policy.EvalTimeout = d
+		rt.eng.mu.Unlock()
+	case "allowed":
+		err = rt.applyAllowed(text)
+	case "workers":
+		rt.applyWorkers(text)
+	case "sources":
+		err = rt.applySources(text)
+	default:
+		err = errCode("bad_action")
+	}
+	if err != nil {
+		return err
+	}
+	if rt.effects != nil {
+		rt.effects.Pump(time.Now())
+	}
+	rt.saveLocked()
+	return nil
 }
 
 // View 返回当前快照。引擎还没有记录时，模式和准入仍来自策略。
@@ -254,12 +353,13 @@ func (rt *Runtime) View() View {
 	if !rt.at.IsZero() {
 		at = rt.at.UTC().Format(time.RFC3339)
 	}
+	workers := rt.workers
 	rt.mu.Unlock()
 	snap, err := rt.eng.Export()
 	if err != nil {
-		return View{Health: err.Error(), Sources: sources, At: at}
+		return View{Health: err.Error(), Sources: sources, At: at, Tickets: []TicketRow{}, Threads: []ThreadRow{}, Queued: []TriggerRow{}, Evals: []EvalRow{}, Decisions: []DecisionRow{}, Executions: []ExecutionRow{}, Problems: []ProblemRow{}, Allowed: []string{}}
 	}
-	return buildView(snap, sources, health, at)
+	return buildView(snap, sources, health, at, workers)
 }
 
 // updatePolicy 用 edit 改策略并落盘。edit 收到当前策略，返回要写回的策略。
@@ -273,7 +373,12 @@ func (rt *Runtime) updatePolicy(edit func(Policy) Policy) error {
 	if err != nil {
 		return err
 	}
-	rt.eng.SetPolicy(edit(snap.Policy))
+	from := snap.Policy.Mode
+	next := edit(snap.Policy)
+	rt.eng.SetPolicy(next)
+	if from != next.Mode {
+		rt.eng.PolicyChanged(from, next.Mode)
+	}
 	rt.saveLocked()
 	return nil
 }
@@ -287,9 +392,100 @@ func (rt *Runtime) sourceList() []SourceState {
 			st = SourceState{Name: name, State: "unconfigured", Detail: "还没轮询"}
 		}
 		st.Name = name
+		if name == "github" {
+			st.Repo = rt.sources.GitHubRepo
+			st.API = rt.sources.GitHubAPI
+			st.HasSecret = strings.TrimSpace(rt.sources.GitHubToken) != ""
+		}
+		if name == "feishu" {
+			st.Chat = rt.sources.FeishuChat
+			st.App = rt.sources.FeishuAppID
+			st.API = rt.sources.FeishuAPI
+			st.HasSecret = strings.TrimSpace(rt.sources.FeishuSecret) != ""
+		}
 		out = append(out, st)
 	}
 	return out
+}
+
+// applyAllowed 用 text 里逗号分开的名字重写允许发送者。调用时要已持有锁。
+func (rt *Runtime) applyAllowed(text string) error {
+	snap, err := rt.eng.Export()
+	if err != nil {
+		return err
+	}
+	next := snap.Policy
+	allowed := map[string]bool{}
+	for _, part := range strings.Split(text, ",") {
+		name := strings.TrimSpace(part)
+		if name != "" {
+			allowed[name] = true
+		}
+	}
+	next.Allowed = allowed
+	rt.eng.SetPolicy(next)
+	return nil
+}
+
+// applyWorkers 把普通工人槽改成 text 里的数字。调用时要已持有锁。小于 1 当作 1，大于 32 当作 32。
+func (rt *Runtime) applyWorkers(text string) {
+	n, err := strconv.Atoi(strings.TrimSpace(text))
+	if err != nil || n < 1 {
+		n = 1
+	}
+	if n > 32 {
+		n = 32
+	}
+	rt.workers = n
+	if rt.exec != nil && rt.exec.Slots != nil {
+		rt.exec.Slots.SetMax(n)
+	}
+}
+
+// sourceForm 是编排台提交的来源表。密钥留空表示保持原值，Clear 为真才清掉。
+type sourceForm struct {
+	GitHubToken       string `json:"githubToken"`
+	GitHubRepo        string `json:"githubRepo"`
+	GitHubAPI         string `json:"githubApi"`
+	FeishuAppID       string `json:"feishuAppId"`
+	FeishuSecret      string `json:"feishuSecret"`
+	FeishuChat        string `json:"feishuChat"`
+	FeishuAPI         string `json:"feishuApi"`
+	ClearGitHubToken  bool   `json:"clearGithubToken"`
+	ClearFeishuSecret bool   `json:"clearFeishuSecret"`
+}
+
+// applySources 按 form 改来源。仓库、应用号和会话空串会清掉。调用时要已持有锁。
+func (rt *Runtime) applySources(text string) error {
+	var form sourceForm
+	if err := json.Unmarshal([]byte(text), &form); err != nil {
+		return err
+	}
+	next := rt.sources
+	next.GitHubRepo = strings.TrimSpace(form.GitHubRepo)
+	next.FeishuAppID = strings.TrimSpace(form.FeishuAppID)
+	next.FeishuChat = strings.TrimSpace(form.FeishuChat)
+	if api := strings.TrimSpace(form.GitHubAPI); api != "" {
+		next.GitHubAPI = api
+	}
+	if api := strings.TrimSpace(form.FeishuAPI); api != "" {
+		next.FeishuAPI = api
+	}
+	if form.ClearGitHubToken {
+		next.GitHubToken = ""
+	} else if token := strings.TrimSpace(form.GitHubToken); token != "" {
+		next.GitHubToken = token
+	}
+	if form.ClearFeishuSecret {
+		next.FeishuSecret = ""
+	} else if secret := strings.TrimSpace(form.FeishuSecret); secret != "" {
+		next.FeishuSecret = secret
+	}
+	rt.sources = next
+	rt.sourcesSaved = true
+	rt.lastGitHub = time.Time{}
+	rt.lastFeishu = time.Time{}
+	return nil
 }
 
 // load 读出快照并还原。没有快照行时保持 Open 时的策略。
@@ -305,12 +501,26 @@ func (rt *Runtime) load() error {
 	if err != nil {
 		return err
 	}
-	var snap Snapshot
-	if err := json.Unmarshal([]byte(body), &snap); err != nil {
+	var stored diskBody
+	if err := json.Unmarshal([]byte(body), &stored); err != nil {
 		return err
 	}
-	rt.eng.Import(snap)
+	rt.eng.Import(stored.Snapshot)
+	if stored.Sources != nil {
+		rt.sources = *stored.Sources
+		rt.sourcesSaved = true
+	}
+	if stored.Workers > 0 {
+		rt.workers = stored.Workers
+	}
 	return nil
+}
+
+// diskBody 是落盘的快照。Sources 为空指针表示仍用环境变量。Workers 为 0 表示还没改过槽位数。
+type diskBody struct {
+	Snapshot
+	Sources *SourceConfig `json:"sources,omitempty"`
+	Workers int           `json:"workers,omitempty"`
 }
 
 // save 在锁内把快照写入数据库。
@@ -333,7 +543,12 @@ func (rt *Runtime) saveLocked() {
 		rt.health = err.Error()
 		return
 	}
-	raw, err := json.Marshal(snap)
+	stored := diskBody{Snapshot: snap, Workers: rt.workers}
+	if rt.sourcesSaved {
+		cfg := rt.sources
+		stored.Sources = &cfg
+	}
+	raw, err := json.Marshal(stored)
 	if err != nil {
 		rt.health = err.Error()
 		return

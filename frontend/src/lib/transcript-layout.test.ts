@@ -62,6 +62,24 @@ describe("layoutRows: one turn stays one agent row", () => {
     assert.deepEqual(rows.map((r) => r.kind), ["user", "agent"]);
   });
 
+  /** 后台命令完成不另开一条用户消息，也不把这一轮拆开。 */
+  it("a finished background job does not open a user row", () => {
+    const rows = layoutRows([
+      user,
+      ...read("c1"),
+      item({
+        key: "job1",
+        type: "user",
+        source: "job",
+        name: "job",
+        text: "job call_1 finished\n快照已保存\n",
+      }),
+      assistant("a2", "done"),
+    ]);
+    assert.deepEqual(rows.map((r) => r.kind), ["user", "agent"]);
+    assert.equal(rows.filter((r) => r.kind === "user").length, 1);
+  });
+
   /** 没有打开的回合时，检查点单独成一条分隔。 */
   it("a checkpoint with no open turn stays a solo divider", () => {
     const rows = layoutRows([

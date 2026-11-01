@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -87,10 +88,11 @@ func (rt *Runtime) pollGitHub(cfg SourceConfig) {
 		return
 	}
 	var issues []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		User   struct {
+		Number      int             `json:"number"`
+		Title       string          `json:"title"`
+		Body        string          `json:"body"`
+		PullRequest json.RawMessage `json:"pull_request"`
+		User        struct {
 			Login string `json:"login"`
 		} `json:"user"`
 	}
@@ -98,17 +100,27 @@ func (rt *Runtime) pollGitHub(cfg SourceConfig) {
 		rt.setSource("github", "error", clip(string(body), 180))
 		return
 	}
-	n := 0
+	issuesN, prsN := 0, 0
 	for _, issue := range issues {
 		if issue.Number <= 0 {
 			continue
 		}
 		text := strings.TrimSpace(issue.Title + "\n" + issue.Body)
 		thread := "github:" + repo
+		id := fmt.Sprintf("github:%s#%d", repo, issue.Number)
+		if len(issue.PullRequest) > 0 && string(issue.PullRequest) != "null" {
+			thread = "github:" + repo + "/pulls"
+			id = fmt.Sprintf("github:%s!pr#%d", repo, issue.Number)
+			prsN++
+		} else {
+			issuesN++
+		}
 		rt.mu.Lock()
 		rt.eng.Receive(Trigger{
-			ID:        fmt.Sprintf("github:%s#%d", repo, issue.Number),
+			ID:        id,
 			Source:    "github",
+			Channel:   "github",
+			Ref:       strconv.Itoa(issue.Number),
 			Threads:   []string{thread},
 			Primary:   thread,
 			Human:     true,
@@ -117,9 +129,66 @@ func (rt *Runtime) pollGitHub(cfg SourceConfig) {
 			Text:      clip(text, 4000),
 		})
 		rt.mu.Unlock()
-		n++
 	}
-	rt.setSource("github", "ok", fmt.Sprintf("开放议题 %d", n))
+	rt.pollGitHubComments(cfg, root, parts[0], parts[1], repo, issues)
+	rt.setSource("github", "ok", fmt.Sprintf("议题 %d，拉取请求 %d", issuesN, prsN))
+}
+
+// pollGitHubComments 补拉最多八个议题的评论。单条请求失败不影响议题本身。cfg 提供令牌，root、owner、name 和 repo 组成地址。
+func (rt *Runtime) pollGitHubComments(cfg SourceConfig, root, owner, name, repo string, issues []struct {
+	Number      int             `json:"number"`
+	Title       string          `json:"title"`
+	Body        string          `json:"body"`
+	PullRequest json.RawMessage `json:"pull_request"`
+	User        struct {
+		Login string `json:"login"`
+	} `json:"user"`
+}) {
+	fetched := 0
+	for _, issue := range issues {
+		if issue.Number <= 0 || (len(issue.PullRequest) > 0 && string(issue.PullRequest) != "null") {
+			continue
+		}
+		if fetched >= 8 {
+			break
+		}
+		fetched++
+		endpoint := root + "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name) + "/issues/" + strconv.Itoa(issue.Number) + "/comments?per_page=10"
+		body, err := rt.request(http.MethodGet, endpoint, cfg.GitHubToken, nil, "application/vnd.github+json")
+		if err != nil {
+			continue
+		}
+		var comments []struct {
+			ID   int    `json:"id"`
+			Body string `json:"body"`
+			User struct {
+				Login string `json:"login"`
+			} `json:"user"`
+		}
+		if json.Unmarshal(body, &comments) != nil {
+			continue
+		}
+		thread := "github:" + repo
+		for _, comment := range comments {
+			if comment.ID <= 0 || strings.TrimSpace(comment.Body) == "" {
+				continue
+			}
+			rt.mu.Lock()
+			rt.eng.Receive(Trigger{
+				ID:        fmt.Sprintf("github:%s#comment%d", repo, comment.ID),
+				Source:    "github",
+				Channel:   "github",
+				Ref:       strconv.Itoa(issue.Number),
+				Threads:   []string{thread},
+				Primary:   thread,
+				Human:     true,
+				Addressed: strings.Contains(comment.Body, "@"),
+				Sender:    comment.User.Login,
+				Text:      clip(comment.Body, 4000),
+			})
+			rt.mu.Unlock()
+		}
+	}
 }
 
 // pollFeishu 用 cfg 换租户令牌，再读指定会话的消息。凭证或会话为空时不请求。
@@ -188,6 +257,8 @@ func (rt *Runtime) pollFeishu(cfg SourceConfig) {
 		rt.eng.Receive(Trigger{
 			ID:        "feishu:" + item.MessageID,
 			Source:    "feishu",
+			Channel:   "feishu",
+			Ref:       item.MessageID,
 			Threads:   []string{thread},
 			Primary:   thread,
 			Human:     true,
@@ -255,6 +326,82 @@ func (rt *Runtime) request(method, endpoint, token string, payload any, accept s
 		return nil, fmt.Errorf("http %d %s", res.StatusCode, clip(string(body), 160))
 	}
 	return body, nil
+}
+
+// flushOutbox 把 pending 的发件箱写回 GitHub 或飞书。没有凭证的来源保持 pending。写失败标成 error，避免同一条永远重试。
+func (rt *Runtime) flushOutbox() {
+	if rt == nil || rt.eng == nil {
+		return
+	}
+	pending := rt.eng.PendingOutbox()
+	rt.mu.Lock()
+	cfg := rt.sources
+	rt.mu.Unlock()
+	for _, msg := range pending {
+		switch msg.Source {
+		case "github":
+			if cfg.GitHubToken == "" || strings.TrimSpace(cfg.GitHubRepo) == "" || msg.Ref == "" {
+				continue
+			}
+			parts := strings.Split(strings.Trim(cfg.GitHubRepo, "/"), "/")
+			if len(parts) != 2 {
+				rt.eng.MarkOutbound(msg.ID, "error")
+				continue
+			}
+			root := strings.TrimRight(cfg.GitHubAPI, "/")
+			endpoint := root + "/repos/" + url.PathEscape(parts[0]) + "/" + url.PathEscape(parts[1]) + "/issues/" + url.PathEscape(msg.Ref) + "/comments"
+			_, err := rt.request(http.MethodPost, endpoint, cfg.GitHubToken, map[string]string{"body": msg.Text}, "application/vnd.github+json")
+			status := "sent"
+			if err != nil {
+				status = "error"
+			}
+			rt.eng.MarkOutbound(msg.ID, status)
+		case "feishu":
+			if cfg.FeishuAppID == "" || cfg.FeishuSecret == "" || cfg.FeishuChat == "" {
+				continue
+			}
+			token, err := rt.feishuToken(cfg)
+			if err != nil {
+				rt.eng.MarkOutbound(msg.ID, "error")
+				continue
+			}
+			root := strings.TrimRight(cfg.FeishuAPI, "/")
+			content, _ := json.Marshal(map[string]string{"text": msg.Text})
+			_, err = rt.request(http.MethodPost, root+"/open-apis/im/v1/messages?receive_id_type=chat_id", token, map[string]string{
+				"receive_id": cfg.FeishuChat, "msg_type": "text", "content": string(content),
+			}, "application/json")
+			status := "sent"
+			if err != nil {
+				status = "error"
+			}
+			rt.eng.MarkOutbound(msg.ID, status)
+		default:
+			rt.eng.MarkOutbound(msg.ID, "sent")
+		}
+	}
+}
+
+// feishuToken 用 cfg 换一张租户令牌。凭证为空或接口拒绝时返回错误。
+func (rt *Runtime) feishuToken(cfg SourceConfig) (string, error) {
+	root := strings.TrimRight(cfg.FeishuAPI, "/")
+	body, err := rt.request(http.MethodPost, root+"/open-apis/auth/v3/tenant_access_token/internal", "", map[string]string{
+		"app_id": cfg.FeishuAppID, "app_secret": cfg.FeishuSecret,
+	}, "application/json")
+	if err != nil {
+		return "", err
+	}
+	var tok struct {
+		Code  int    `json:"code"`
+		Token string `json:"tenant_access_token"`
+		Msg   string `json:"msg"`
+	}
+	if err := json.Unmarshal(body, &tok); err != nil || tok.Code != 0 || tok.Token == "" {
+		if tok.Msg != "" {
+			return "", fmt.Errorf("%s", tok.Msg)
+		}
+		return "", fmt.Errorf("feishu token")
+	}
+	return tok.Token, nil
 }
 
 // setSource 记下 name 的 state 和 detail。name 为空时什么都不做。

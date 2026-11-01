@@ -590,6 +590,25 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": a.QueueCancel(p.Session, p.ID)}, nil
+	case "thread.queue.steer":
+		var one struct {
+			Session string `json:"session"`
+			ID      string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &one)
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.SteerQueued(one.Session, one.ID)
+	case "thread.queue.steerAll":
+		var all struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &all)
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.SteerQueue(all.Session)
 	case "thread.queue.reorder":
 		var p struct {
 			Session string `json:"session"`
@@ -1652,6 +1671,26 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, fmt.Errorf("app is not running")
 		}
 		return map[string]any{"ok": true}, a.OrchestratorDecide(decide.TriggerID, decide.Kind, decide.Reason)
+	case "orchestrator.deliver":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"n": a.OrchestratorDeliver()}, nil
+	case "orchestrator.act":
+		var act struct {
+			Kind      string `json:"kind"`
+			TicketID  string `json:"ticketId"`
+			TriggerID string `json:"triggerId"`
+			Text      string `json:"text"`
+			Reason    string `json:"reason"`
+		}
+		if err := json.Unmarshal(params, &act); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.OrchestratorAct(act.Kind, act.TicketID, act.TriggerID, act.Text, act.Reason)
 	case "orchestrator.mode":
 		var mode struct {
 			Mode string `json:"mode"`

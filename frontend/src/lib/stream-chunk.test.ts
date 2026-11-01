@@ -85,6 +85,89 @@ describe("ConversationFold", () => {
     assert.equal(settled?.delta, false);
   });
 
+  /** 后台命令的完成写回原来的工具，不另开一条用户消息。 */
+  it("folds a finished background job back onto its tool", () => {
+    const f = new ConversationFold();
+    f.accept(item({
+      key: "s:tool_call:call_1",
+      type: "tool_call",
+      name: "shell",
+      payload: { id: "call_1", name: "shell" },
+    }));
+    f.accept(item({
+      key: "s:tool_result:call_1",
+      type: "tool_result",
+      name: "shell",
+      text: "command moved to background as call_1",
+      payload: { id: "call_1", name: "shell", content: "command moved to background as call_1" },
+    }));
+    f.accept(item({
+      key: "s:user:job",
+      type: "user",
+      source: "job",
+      name: "job",
+      text: "job call_1 finished\n14:15:29 快照已保存\n",
+    }));
+    const users = f.items().filter((x) => x.type === "user");
+    assert.equal(users.length, 0);
+    const result = f.items().find((x) => x.type === "tool_result");
+    assert.equal(result?.text, "14:15:29 快照已保存");
+    assert.equal(result?.payload?.content, "14:15:29 快照已保存");
+  });
+
+  /** 同一回合的下一次模型调用另开一条，前一条收成正文后不再吃后面的增量。 */
+  it("opens a second assistant bubble for the next model attempt", () => {
+    const f = new ConversationFold();
+    f.accept(item({
+      key: "st",
+      type: "assistant_stream",
+      payload: { kind: "start", attempt_id: "a1", round: "a1", id: "a1", turn: 1, step: 1 },
+    }));
+    f.accept(item({
+      key: "c1",
+      type: "assistant_stream",
+      payload: {
+        kind: "chunk", attempt_id: "a1", round: "a1", index: 0, index_from: 0,
+        chunk: { type: "text-delta", index: 0, text: "he" },
+      },
+    }));
+    f.accept(item({
+      key: "c2",
+      type: "assistant_stream",
+      payload: {
+        kind: "chunk", attempt_id: "a1", round: "a1", index: 1, index_from: 1,
+        chunk: { type: "text-delta", index: 0, text: "llo" },
+      },
+    }));
+    f.accept(item({
+      key: "end1",
+      type: "assistant_stream",
+      payload: { kind: "end", attempt_id: "a1", round: "a1", outcome: "committed" },
+    }));
+    f.accept(item({
+      key: "s:assistant:a1",
+      type: "assistant",
+      text: "hello",
+      payload: { id: "a1", round: "a1", attempt_id: "a1", text: "hello" },
+    }));
+    f.accept(item({
+      key: "st2",
+      type: "assistant_stream",
+      payload: { kind: "start", attempt_id: "a2", round: "a2", id: "a2", turn: 1, step: 2 },
+    }));
+    f.accept(item({
+      key: "c3",
+      type: "assistant_stream",
+      payload: {
+        kind: "chunk", attempt_id: "a2", round: "a2", index: 0, index_from: 0,
+        chunk: { type: "text-delta", index: 0, text: "ok" },
+      },
+    }));
+    const texts = f.items().filter((x) => x.type === "assistant").map((x) => x.text);
+    assert.deepEqual(texts, ["hello", "ok"]);
+    assert.equal(f.items().filter((x) => x.type === "assistant" && x.delta).length, 1);
+  });
+
   /** 各自 from 出来的列表也能把文本增量接上。 */
   it("mergeItem grows text across independent from() calls", () => {
     let list: Item[] = [];

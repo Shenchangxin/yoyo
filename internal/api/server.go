@@ -471,6 +471,24 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			writeJSON(w, map[string]any{"ok": true})
 			return
 		}
+		if len(parts) > 2 && parts[1] == "queue" && parts[2] == "steer" && r.Method == http.MethodPost {
+			var body struct {
+				ID string `json:"id"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			var err error
+			if body.ID == "" {
+				err = a.SteerQueue(id)
+			} else {
+				err = a.SteerQueued(id, body.ID)
+			}
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
 		if len(parts) > 1 && parts[1] == "queue" {
 			if r.Method == http.MethodDelete {
 				ok := a.QueueCancel(id, r.URL.Query().Get("id"))

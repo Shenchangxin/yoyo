@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { useCopy } from "../lib/i18n";
 import { desktopWindow } from "../lib/chrome";
 import type { Copy } from "../lib/copy";
-import { useUI } from "../lib/store";
+import { readBusyEnter, useUI, writeBusyEnter, type BusyEnter } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
 import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Profile, SkillInfo } from "../lib/protocol";
 import type { TurnStatus } from "../lib/turn-status";
@@ -74,6 +74,12 @@ import { TurnStatusBar } from "./transcript/TurnStatusBar";
 import type { SessionStats } from "../lib/session-stats";
 import { PresencePerch } from "./presence";
 
+/** submitMode 在正在跑且有内容时决定这一下是排队还是插话。accelerated 为真时用偏好的反面。 */
+function submitMode(preferred: BusyEnter, accelerated: boolean): BusyEnter {
+  if (preferred === "steer") return accelerated ? "queue" : "steer";
+  return accelerated ? "steer" : "queue";
+}
+
 /**
  * Composer 在短剧桌且正在跑时不能发送，除非是改道。没有正文、芯片和附件时，只有 allowEmptySend 才能发。需要工作区但还没有路径时整框禁用。
  * props 读取 draftKey、compact、onBrowseWorkspace、workspace、disabled、hero 等，调用 onSearchFiles，调用 onSlash，调用 onIngestVideo，调用 onPickFiles，调用 onScreenshot，调用 onClipboard，调用 onSend，调用 onWorkspace，调用 onBrowseWorkspace，调用 onAuthMode，调用 onIsolate，调用 onApplyWorktree，调用 onModel，调用 onStop。
@@ -93,6 +99,8 @@ export function Composer(props: {
   queueItems?: { id?: string; text?: string; plan?: boolean }[];
   onQueueCancel?: (id: string) => void;
   onQueueReorder?: (id: string, delta: number) => void;
+  onQueueSteer?: (id: string) => void;
+  onSteerQueue?: () => void;
   onApplyWorktree?: () => void;
   skills?: SkillInfo[];
   files?: FileHit[];
@@ -166,6 +174,7 @@ export function Composer(props: {
   const [drop, setDrop] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [busyEnter, setBusyEnter] = useState<BusyEnter>(readBusyEnter);
   const editorRef = useRef<DraftEditorHandle>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
@@ -633,9 +642,9 @@ export function Composer(props: {
     editorRef.current?.insertText((value && !/\s$/.test(value) ? "\n" : "") + t);
   }
 
-  /** 短剧桌正在跑且不是改道时不发。正文、附件都空且不允许空发时不发。发出后清空附件、芯片和编辑器。steer 为假时走另一支，写入字段 steer。 */
-  function send(steer?: boolean) {
-    if (attaching || (dramaDesk && props.running && !steer)) return;
+  /** 短剧桌正在跑且不是改道时不发。正文、附件都空且不允许空发时不发。正在跑且有内容时，Enter 用偏好，Ctrl 或 Cmd 加 Enter 用相反的那个。发出后清空附件、芯片和编辑器。 */
+  function send(accelerated?: boolean) {
+    if (attaching || (dramaDesk && props.running && !accelerated)) return;
     const snap = editorRef.current?.snapshot() || { text: value, chips, caret, before: value };
     const settled = settleBareAtPaths(snap.text, props.files || []);
     const peeled = peelCompletedMentions(settled);
@@ -643,6 +652,7 @@ export function Composer(props: {
     const stamp = footageStamp(atts);
     const body = [composeDraft(pins, peeled.text), stamp].filter(Boolean).join("\n\n");
     if (!body && !atts.length && !props.allowEmptySend) return;
+    const steer = !!props.running && (!!body || atts.length > 0) && submitMode(busyEnter, !!accelerated) === "steer";
     props.onSend({ steer, attachments: atts, text: body });
     setAtts([]);
     setChips([]);
@@ -707,11 +717,11 @@ export function Composer(props: {
         return true;
       }
       if (canSteerQueue && (e.metaKey || e.ctrlKey)) {
-        props.onSend({ steer: true, text: "" });
+        props.onSteerQueue?.();
         return true;
       }
       if (!canSend) return true;
-      send(props.running && (e.metaKey || e.ctrlKey));
+      send(!!(e.metaKey || e.ctrlKey));
       return true;
     }
     return false;
@@ -725,7 +735,7 @@ export function Composer(props: {
   const pad = props.flush ? "" : props.compact || copilotDesk ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : THREAD_COL;
   const primaryStops = orbStops;
-  const shownLabel = primaryStops ? copy.composer.stop : props.running && hasPayload ? copy.composer.sendQueue : (props.sendLabel || copy.composer.send);
+  const shownLabel = primaryStops ? copy.composer.stop : props.running && hasPayload ? (busyEnter === "steer" ? copy.composer.sendSteer : copy.composer.sendQueue) : (props.sendLabel || copy.composer.send);
   const placeholderText = canSteerQueue ? copy.composer.steerQueue : placeholder;
   const pendingTool = toolApproval && toolApproval.action !== "ask_user" ? toolApproval : null;
   const perch = !!props.perch;
@@ -777,10 +787,24 @@ export function Composer(props: {
             <div className="sc-upper">
               <TurnStatusBar status={props.turnStatus} compact={props.compact} />
               <TodoPanel plan={props.taskPlan} copy={copy} />
+              {props.running ? (
+                <button
+                  type="button"
+                  className="mb-1 self-start rounded-md px-2 py-0.5 text-[11px] text-muted hover:bg-background hover:text-foreground"
+                  onClick={() => {
+                    const next: BusyEnter = busyEnter === "queue" ? "steer" : "queue";
+                    writeBusyEnter(next);
+                    setBusyEnter(next);
+                  }}
+                >
+                  {busyEnter === "steer" ? copy.composer.busyEnterSteer : copy.composer.busyEnterQueue}
+                </button>
+              ) : null}
               <QueueDock
                 items={props.queueItems || []}
                 onCancel={props.onQueueCancel}
                 onReorder={props.onQueueReorder}
+                onSteer={props.running ? props.onQueueSteer : undefined}
                 copy={copy}
               />
             </div>
@@ -1087,7 +1111,7 @@ export function Composer(props: {
                         testId="composer-send"
                         disabled={!canSend}
                         ariaLabel={shownLabel}
-                        title={props.running && hasPayload ? copy.composer.queueHint : undefined}
+                        title={props.running && hasPayload ? (busyEnter === "steer" ? copy.composer.steerHint : copy.composer.queueHint) : undefined}
                         onSend={() => send()}
                       />
                     </Tooltip>

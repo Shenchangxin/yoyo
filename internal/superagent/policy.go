@@ -2,14 +2,25 @@
 
 package superagent
 
+import "time"
+
 // Policy 是当前策略。Allowed 的键是来源上的发送者标识。
 // Admission 的空格子用默认：在名单里但没点名，以及点了名但不在名单里，都是 inferred；两个都不满足是 ignore。
 type Policy struct {
-	Version   int
-	Mode      string
-	Allowed   map[string]bool
-	Paused    bool
-	Admission Admission
+	Version     int
+	Mode        string
+	Allowed     map[string]bool
+	Paused      bool
+	Admission   Admission
+	EvalTimeout time.Duration
+}
+
+// evalTimeout 返回一轮评估的期限。EvalTimeout 小于等于 0 时用 120 秒，与原型默认 timeoutSeconds 一致。
+func (p Policy) evalTimeout() time.Duration {
+	if p.EvalTimeout <= 0 {
+		return 120 * time.Second
+	}
+	return p.EvalTimeout
 }
 
 // Admission 是三格准入。取值是 explicit、inferred 或 ignore。空字符串表示用默认。

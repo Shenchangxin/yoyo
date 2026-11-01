@@ -1468,7 +1468,15 @@ export function useWorkstation() {
    * 正文和附件都空就返回。工作区没就绪时提示并打开常规设置。工作室桌子没有短片 id 就返回。正在跑且是改道时只调用 steer。创作窗格里 yoyo-cut 附件只绑定、不随消息发出。错误文字含 queued 或 already running 时只把队列加一。
    * opts 读取 text、attachments、steer，为空时不读。
    */
-  async function onSend(opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) {
+  async function onSend(opts?: { steer?: boolean; steerQueue?: boolean; attachments?: Attachment[]; text?: string }) {
+    if (opts?.steerQueue) {
+      if (!activeId || !running[activeId]) return;
+      await api.steerQueue(activeId);
+      const q = await api.queueList(activeId).catch(() => []);
+      setQueueItems(q);
+      setQueued(q.length);
+      return;
+    }
     const text = (opts?.text !== undefined ? opts.text : (useUI.getState().drafts[draftKey] || "")).trim();
     if (!text && !(opts?.attachments && opts.attachments.length)) return;
     const turnWs = active?.workspace || channelWorkspace(channelForSurface(useUI.getState().surface));
@@ -2539,6 +2547,16 @@ export function useWorkstation() {
       const q = await api.queueList(activeId).catch(() => []);
       setQueueItems(q);
       setQueued(q.length);
+    },
+    onQueueSteer: async (id: string) => {
+      if (!activeId || !running[activeId]) return;
+      await api.steerQueued(activeId, id);
+      const q = await api.queueList(activeId).catch(() => []);
+      setQueueItems(q);
+      setQueued(q.length);
+    },
+    onSteerQueue: async () => {
+      await onSend({ steerQueue: true });
     },
     /** 没有当前会话就返回。成功后把返回的会话并进列表。 */
     onApplyWorktree: async () => {
