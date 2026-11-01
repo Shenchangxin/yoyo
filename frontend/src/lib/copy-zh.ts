@@ -125,7 +125,7 @@ export const zhCN = {
     harness: "Harness",
     harnessHint: "先改进、再检查、再切换",
     orchestrator: "编排",
-    orchestratorHint: "工单、线程和来源。跟对话分开。",
+    orchestratorHint: "等人处理的工作、触发和执行。跟对话分开。",
     stagingDirty: "你的",
     canaryDirty: "已改进",
     pinned: "置顶",
