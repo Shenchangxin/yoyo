@@ -10,13 +10,13 @@ const KEY = "yoyo-layout-v1";
 /** 审阅要放下一块差异。1440 宽的窗口上 30% 大约是 430 像素的块。 */
 const FALLBACK: ShellLayout = { rail: 19, main: 51, inspect: 30 };
 
-/** readLayout 从本地读出三栏。缺字段或损坏时用缺省。轨道夹在 14 到 34，主栏 30 到 80，检查器 18 到 42。 */
+/** readLayout 从本地读出三栏。缺字段或损坏时用缺省。轨道夹在 14 到 42，主栏 30 到 80，检查器 18 到 42。 */
 export function readLayout(): ShellLayout {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "");
     if (v && typeof v.rail === "number" && typeof v.main === "number") {
       return {
-        rail: clamp(v.rail, 14, 34),
+        rail: clamp(v.rail, 14, 42),
         main: clamp(v.main, 30, 80),
         inspect: clamp(v.inspect ?? FALLBACK.inspect, 18, 42),
       };
@@ -31,7 +31,7 @@ export function readLayout(): ShellLayout {
 export function writeLayout(next: Partial<ShellLayout>) {
   const cur = readLayout();
   const merged: ShellLayout = {
-    rail: clamp(next.rail ?? cur.rail, 14, 34),
+    rail: clamp(next.rail ?? cur.rail, 14, 42),
     main: clamp(next.main ?? cur.main, 30, 80),
     inspect: clamp(next.inspect ?? cur.inspect, 18, 42),
   };

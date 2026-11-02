@@ -1,9 +1,9 @@
 /**
- * 拥有：左侧会话栏：分组、搜索、码头和悬停卡片。
+ * 拥有：左侧栏。会话表面放今天、任务和记忆。其他表面放各自的列表。底部码头保留。
  * 不拥有：会话列表怎么来。只投影传入的 threads，打开、置顶和删除都回调，不调用 api。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
   Check,
@@ -254,6 +254,7 @@ export function ThreadRail(props: {
   showArchived?: boolean;
   onShowArchived?: (on: boolean) => void;
   onIdolSlot?: (node: HTMLDivElement | null) => void;
+  day?: ReactNode;
 }) {
   const copy = useCopy();
   const videoPane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
@@ -275,6 +276,7 @@ export function ThreadRail(props: {
   const settingsOn = body === "settings";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readLocalMap("yoyo-rail-collapsed"));
+  const showSessions = body === "sessions";
   const [clips, setClips] = useState<CutProject[]>([]);
   const [films, setFilms] = useState<FilmProject[]>([]);
   const openFilmId = useFilmDesk(/** s 取出当前成片 id。 */ (s) => s.project?.id || "");
@@ -389,7 +391,10 @@ export function ThreadRail(props: {
         </Tooltip>
       </div>
       {videoOn ? <VideoShellNav onNavigate={() => { if (window.matchMedia("(max-width: 799px)").matches) props.onCollapse(); }} /> : null}
-      {body === "sessions" ? (
+      {body === "home" && props.day ? (
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{props.day}</div>
+      ) : null}
+      {showSessions ? (
       <div className="px-2.5 pb-2">
         <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
@@ -419,7 +424,7 @@ export function ThreadRail(props: {
         ) : null}
       </div>
       ) : null}
-      {body === "sessions" ? (
+      {showSessions ? (
       <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
         {empty ? (
           <EmptyState icon={<YoyoMark compact />} title={copy.rail.noChats} />

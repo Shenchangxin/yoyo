@@ -365,8 +365,11 @@ func (a *Agent) runTurn(ctx context.Context) (cont bool, err error) {
 		reason := ""
 		if ctx.Err() != nil {
 			if c, ok := context.Cause(ctx).(CancelCause); ok {
-				reason = c.Kind
+				reason = c.Error()
 			}
+		}
+		if err != nil && reason == "" {
+			reason = err.Error()
 		}
 		a.session.Append(EventTurnEnd, turn, 0, TurnEnd{Kind: ended, Reason: reason})
 	}()

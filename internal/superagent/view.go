@@ -28,6 +28,10 @@ type View struct {
 	Health      string         `json:"health"`
 	At          string         `json:"at"`
 	EvalTimeout int            `json:"evalTimeout"`
+	// Prepare 是派工前在执行根里跑的命令。空着时只建工单目录。
+	Prepare string `json:"prepare,omitempty"`
+	// Rules 是还写在策略里的主动规则。空着时推断的工作不能自动开工。
+	Rules []Rule `json:"rules,omitempty"`
 	// Flow 是最近一天的到达、滤掉、已评、接单和忽略。没有到达时刻的旧触发不计入。
 	Flow FlowView `json:"flow"`
 	// Load 是执行器正在跑、排队和空闲的工单数。MaxWorkers 是普通槽位。
@@ -67,6 +71,7 @@ type SourceState struct {
 	Chat      string `json:"chat,omitempty"`
 	App       string `json:"app,omitempty"`
 	API       string `json:"api,omitempty"`
+	Account   string `json:"account,omitempty"`
 	HasSecret bool   `json:"hasSecret,omitempty"`
 }
 
@@ -148,6 +153,7 @@ type TriggerRow struct {
 	Addressed bool   `json:"addressed"`
 	Thread    string `json:"thread,omitempty"`
 	At        string `json:"at,omitempty"`
+	Due       string `json:"due,omitempty"`
 	Filtered  string `json:"filtered,omitempty"`
 	Queued    bool   `json:"queued,omitempty"`
 }
@@ -212,6 +218,7 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 		Workers:     workers,
 		Load:        LoadView{MaxWorkers: workers},
 		EvalTimeout: int(snap.Policy.evalTimeout() / time.Second),
+		Rules:       append([]Rule(nil), snap.Policy.Rules...),
 		Health:      health,
 		At:          at,
 	}
@@ -409,6 +416,9 @@ func originURL(tr Trigger) string {
 	}
 	repo := strings.TrimPrefix(tr.Primary, "github:")
 	repo = strings.TrimSuffix(repo, "/pulls")
+	if i := strings.IndexAny(repo, "#!"); i >= 0 {
+		repo = repo[:i]
+	}
 	kind := "issues"
 	if strings.Contains(tr.ID, "!pr#") {
 		kind = "pull"
@@ -527,6 +537,6 @@ func triggerRow(tr Trigger) TriggerRow {
 	}
 	return TriggerRow{
 		ID: tr.ID, Source: tr.Source, Sender: tr.Sender, Text: clipRunes(strings.TrimSpace(tr.Text), 240),
-		Addressed: tr.Addressed, Thread: thread, At: at, Filtered: tr.Filtered, Queued: tr.Queued,
+		Addressed: tr.Addressed, Thread: thread, At: at, Due: tr.Due, Filtered: tr.Filtered, Queued: tr.Queued,
 	}
 }

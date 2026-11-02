@@ -37,6 +37,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
+	"github.com/Shenchangxin/yoyo/internal/poi"
 	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
@@ -172,6 +173,7 @@ type App struct {
 	askAns map[string]string
 
 	Memory     *memory.Store
+	Poi        *poi.Store
 	Schedule   *schedule.Service
 	Projects   *project.Store
 	Inbox      *inbox.Store

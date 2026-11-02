@@ -271,6 +271,36 @@ describe("work details folding", () => {
   });
 });
 
+describe("layoutRows: desk notices stay their own row", () => {
+  /** 简报跟在已有回复后面时，不把上一回合收进过程轨。 */
+  it("keeps a pushed brief beside the previous answer", () => {
+    const rows = layoutRows([
+      user,
+      assistant("a1", "done"),
+      item({
+        key: "brief",
+        type: "assistant",
+        source: "desk",
+        text: "早上这一份在这里。",
+        payload: { kind: "brief", chip: "晨间简报 · 11月2日", id: "brief:morning:2026-11-02" },
+      }),
+    ]);
+    assert.equal(rows.length, 3);
+    assert.equal(rows[2].kind, "agent");
+    if (rows[2].kind === "agent") {
+      assert.equal(rows[2].parts.length, 1);
+      const part = rows[2].parts[0];
+      assert.equal(part.kind, "item");
+      if (part.kind === "item") assert.equal(part.item.payload?.chip, "晨间简报 · 11月2日");
+    }
+    if (rows[1].kind === "agent") {
+      const answer = rows[1].parts.find((part) => part.kind === "item" || part.kind === "stream");
+      assert.ok(answer && (answer.kind === "item" || answer.kind === "stream"));
+      if (answer && (answer.kind === "item" || answer.kind === "stream")) assert.equal(answer.item.text, "done");
+    }
+  });
+});
+
 describe("hydrateLayout", () => {
   /** 流式正文换新时只补文本，座位不重建。 */
   it("patches streaming text without rebuilding seats", () => {

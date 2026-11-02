@@ -39,6 +39,26 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 		}
 		writeJSON(w, a.ProjectsList())
 	})
+	mux.HandleFunc("/api/desk/push", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, map[string]any{"ok": false})
+			return
+		}
+		var note app.DeskNote
+		_ = json.NewDecoder(r.Body).Decode(&note)
+		writeJSON(w, map[string]any{"ok": a.DeskPush(note)})
+	})
+	mux.HandleFunc("/api/poi", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var body struct {
+				Sig string `json:"sig"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			writeJSON(w, map[string]any{"ok": a.PoiAck(body.Sig)})
+			return
+		}
+		writeJSON(w, a.PoiRefresh())
+	})
 	mux.HandleFunc("/api/memory", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var body struct {

@@ -3,7 +3,7 @@
  * 不拥有：拉取快照和提交动作。那一段在 OrchestratorDesk。
  */
 
-export type Source = { name: string; state: string; detail: string; repo?: string; chat?: string; app?: string; api?: string; hasSecret?: boolean };
+export type Source = { name: string; state: string; detail: string; repo?: string; chat?: string; app?: string; api?: string; account?: string; hasSecret?: boolean };
 export type Input = { id: string; text: string; human: boolean; delivered: boolean };
 export type Follow = { thread: string; own: boolean; closed?: string };
 export type Assignment = { id: string; state: string; report?: string; summary?: string };
@@ -15,7 +15,7 @@ export type Ticket = {
 };
 export type Trigger = {
   id: string; source: string; sender: string; text: string; addressed: boolean;
-  thread?: string; at?: string; filtered?: string; queued?: boolean;
+  thread?: string; at?: string; due?: string; filtered?: string; queued?: boolean;
 };
 export type Thread = {
   key: string; title: string; queued: number; subs: number; followers?: string[];
@@ -43,9 +43,13 @@ export type DeskView = {
   health: string;
   at: string;
   evalTimeout?: number;
+  prepare?: string;
+  rules?: Rule[];
   flow?: Flow;
   load?: Load;
 };
+
+export type Rule = { id: string; text: string; enabled: boolean };
 
 export const tabs = ["overview", "source", "trigger", "eval", "execution", "settings"] as const;
 export type Tab = (typeof tabs)[number];

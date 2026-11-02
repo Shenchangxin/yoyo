@@ -297,6 +297,13 @@ func (e *Engine) MarkUnrelated(ticketID, thread, reason string) error {
 			}
 		}
 		th.Subs = subs
+		watch := th.Watch[:0]
+		for _, id := range th.Watch {
+			if id != ticketID {
+				watch = append(watch, id)
+			}
+		}
+		th.Watch = watch
 	}
 	if strings.TrimSpace(reason) != "" {
 		e.addNote(t, reason, false)
@@ -321,7 +328,7 @@ func (e *Engine) FollowForContext(ticketID, thread string) (bool, error) {
 		}
 	}
 	e.follow(t, thread, false)
-	e.subscribe(ticketID, thread)
+	e.watch(ticketID, thread)
 	th := e.ensureThread(thread)
 	if !contains(th.Context, ticketID) {
 		th.Context = append(th.Context, ticketID)
@@ -345,28 +352,38 @@ func (e *Engine) RequestStatus(ticketID string) (bool, error) {
 	return true, nil
 }
 
-// PendingOutbox 返回状态还是 pending 的发件箱副本。
+// PendingOutbox 返回还要发送的发件箱副本。失败未满三次的仍在里面。同一工单、同一来源按原顺序。
 func (e *Engine) PendingOutbox() []Outbound {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var out []Outbound
 	for _, msg := range e.outbox {
-		if msg.Status == "" || msg.Status == "pending" {
-			out = append(out, msg)
+		if msg.Status == "sent" || msg.Status == "dropped" {
+			continue
 		}
+		if msg.Status == "error" && msg.Attempts >= 3 {
+			continue
+		}
+		out = append(out, msg)
 	}
 	return out
 }
 
-// MarkOutbound 把 id 的状态写成 status。没找到时什么都不做。
+// MarkOutbound 把 id 的状态写成 status。error 累加失败次数。没找到时什么都不做。
 func (e *Engine) MarkOutbound(id, status string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for i := range e.outbox {
-		if e.outbox[i].ID == id {
-			e.outbox[i].Status = status
+		if e.outbox[i].ID != id {
+			continue
+		}
+		if status == "error" {
+			e.outbox[i].Attempts++
+			e.outbox[i].Status = "error"
 			return
 		}
+		e.outbox[i].Status = status
+		return
 	}
 }
 

@@ -26,7 +26,7 @@ export function BrowserShotCard(props: { call?: Item; result?: Item }) {
       data-testid="browser-shot-card"
       onClick={() => {
         useUI.getState().setInspTab("browser");
-        useUI.getState().setInspector(true);
+        useUI.getState().askWorkReview();
       }}
     >
       {src ? (

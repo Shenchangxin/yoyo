@@ -38,3 +38,15 @@ func TestBuildViewNamesTheWork(t *testing.T) {
 		t.Fatal(view.Decisions[0].Thread)
 	}
 }
+
+// TestOriginURLKeepsRepo 锁住每件工作自己的线程仍能打开对应的 GitHub 页面。
+func TestOriginURLKeepsRepo(t *testing.T) {
+	issue := originURL(Trigger{Source: "github", Ref: "7", Primary: "github:acme/widgets#7", ID: "github:acme/widgets#7"})
+	if issue != "https://github.com/acme/widgets/issues/7" {
+		t.Fatal(issue)
+	}
+	pr := originURL(Trigger{Source: "github", Ref: "3", Primary: "github:acme/widgets!3", ID: "github:acme/widgets!pr#3"})
+	if pr != "https://github.com/acme/widgets/pull/3" {
+		t.Fatal(pr)
+	}
+}

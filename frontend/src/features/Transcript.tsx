@@ -10,6 +10,7 @@ import { SendSling } from "../components/SendSling";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import { toast } from "sonner";
+import { askBrief } from "./superagent/BriefOverlay";
 import { Markdown } from "../lib/markdown";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
@@ -521,6 +522,16 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         videoing ? null : { key: "plan", node: <><kbd className="mr-1">⇧⇥</kbd>{copy.transcript.hintPlan}</> },
       ]
   ).filter(Boolean) as { key: string; node: ReactNode }[];
+  if (surface === "agent") {
+    const hour = new Date().getHours();
+    const hello = hour < 12 ? copy.transcript.helloMorning : hour < 18 ? copy.transcript.helloAfternoon : copy.transcript.helloEvening;
+    return (
+      <div className="empty-rise" data-testid="empty-turn">
+        <p className="text-[13px] tracking-[-0.01em] text-muted">{hello}</p>
+        <h1 className="mt-1 max-w-[16ch] text-[21px] font-semibold leading-[1.2] tracking-[-0.036em] text-foreground">{copy.transcript.ready}</h1>
+      </div>
+    );
+  }
   return (
     <div className="empty-rise" data-testid="empty-turn">
       {studioDesk ? null : <MarkWell />}
@@ -1320,11 +1331,27 @@ const ItemRow = memo(function ItemRow({
     );
   }
   if (shown.type === "assistant") {
+    const briefKind = String(shown.payload?.kind || "");
     return (
       <div className="assistant-prose w-full min-w-0">
         <div className={cn(streaming && "assistant-live")}>
           <Markdown text={shown.text} streaming={streaming} rich={!!rich && !streaming} />
         </div>
+        {briefKind === "brief" && shown.payload?.chip ? (
+          <button
+            type="button"
+            className="mt-3 inline-flex h-9 items-center rounded-full bg-card px-3.5 text-[13px] font-medium shadow-[var(--shadow-card)] hover:bg-lift"
+            onClick={() => askBrief({
+              id: String(shown.payload?.id || ""),
+              chip: String(shown.payload?.chip || ""),
+              slot: String(shown.payload?.slot || ""),
+              day: String(shown.payload?.day || ""),
+              brief: String(shown.payload?.brief || ""),
+            })}
+          >
+            {String(shown.payload.chip)}
+          </button>
+        ) : null}
       </div>
     );
   }

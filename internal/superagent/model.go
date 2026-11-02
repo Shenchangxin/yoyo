@@ -25,6 +25,8 @@ type Trigger struct {
 	StrengthHold string
 	// At 是这条触发到达的时刻。旧快照没有这一项时为零，不计入最近一天。
 	At time.Time `json:"At,omitempty"`
+	// Due 是日历上的开始时间。空着表示没有到期点。
+	Due string `json:"Due,omitempty"`
 }
 
 // Thread 按时间收触发。Subs 是订阅它的工单。Queued 是还没评估的触发。
@@ -36,6 +38,8 @@ type Thread struct {
 	Queued     []string
 	Evaluating *Evaluation
 	Expired    int
+	// Watch 是只为了上下文跟随的工单。它们能收到消息，但不能恢复已结束的工单，也不拥有人的后续。
+	Watch []string
 }
 
 // Evaluation 是一条线程上的一轮评估。Deadline 从交给编排台的时刻起算。
@@ -97,11 +101,13 @@ type Follow struct {
 }
 
 // End 是工单结束记录。By 为 executor 或 human。Outcome 为 completed、dropped、stopped、merged、closed。
+// At 是结束时刻。旧快照没有这一项时为零，订阅线程不再为了它多读两周。
 type End struct {
 	By      string
 	Outcome string
 	Reason  string
 	Seq     int
+	At      time.Time
 }
 
 // Ticket 是一份已授权的工作。Ended 为 nil 表示还开着。
@@ -116,6 +122,9 @@ type Ticket struct {
 	DeliveryErr string
 	Undelivered []string
 	Ended       *End
+	// Directory 是这张工单的工作目录。Name 是短名，准备命令和重试沿用它。
+	Directory string
+	Name      string
 }
 
 // Decision 是一次评估结果。Kind 为 accept、stop、ignore、unavailable。
@@ -140,6 +149,8 @@ type Outbound struct {
 	Source   string
 	Ref      string
 	Key      string
+	// Attempts 是发送失败的次数。同一对话里前面一条失败三次后，后面的才继续发。
+	Attempts int
 }
 
 // Error 是人能造成的拒绝。Code 是稳定短码。

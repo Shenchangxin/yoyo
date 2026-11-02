@@ -177,7 +177,7 @@ func TestGitHubPollStoresIssue(t *testing.T) {
 	rt.SetSources(SourceConfig{GitHubToken: "t", GitHubRepo: "acme/widgets", GitHubAPI: srv.URL})
 	rt.Pass(time.Now())
 	view := rt.View()
-	if len(view.Queued) != 1 || view.Queued[0].ID != "github:acme/widgets#7" {
+	if len(view.Queued) != 1 || view.Queued[0].ID != "github:acme/widgets#7" || view.Queued[0].Thread != "github:acme/widgets#7" {
 		t.Fatalf("queued %+v sources %+v", view.Queued, view.Sources)
 	}
 	var github SourceState
@@ -188,5 +188,37 @@ func TestGitHubPollStoresIssue(t *testing.T) {
 	}
 	if github.State != "ok" {
 		t.Fatalf("github %+v", github)
+	}
+}
+
+// TestGitHubIssuesStayApart 锁住同一仓库的两件工作各走各的线程，并且只认指定账号的点名。
+func TestGitHubIssuesStayApart(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/acme/widgets/issues" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"number": 1, "title": "One", "body": "@yoyo please", "user": map[string]string{"login": "ada"}},
+			{"number": 2, "title": "Two", "body": "@other no", "user": map[string]string{"login": "bea"}},
+		})
+	}))
+	defer srv.Close()
+	rt, err := Open("", autoPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.client = srv.Client()
+	rt.SetSources(SourceConfig{GitHubToken: "t", GitHubRepo: "acme/widgets", GitHubAPI: srv.URL, GitHubAccount: "yoyo"})
+	rt.Pass(time.Now())
+	view := rt.View()
+	found := map[string]bool{}
+	seen := map[string]bool{}
+	for _, row := range view.Queued {
+		found[row.Thread] = row.Addressed
+		seen[row.Thread] = true
+	}
+	if !seen["github:acme/widgets#1"] || !seen["github:acme/widgets#2"] || !found["github:acme/widgets#1"] || found["github:acme/widgets#2"] {
+		t.Fatalf("queued %+v", view.Queued)
 	}
 }

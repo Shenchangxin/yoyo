@@ -5,6 +5,8 @@ package superagent
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -97,8 +99,23 @@ func (e *Engine) Receive(in Trigger) string {
 // 推断候选在 Mode 不是 auto 时记为 ignore，原因是 observed，不开工单。
 // 人的后续消息只有 kind 为 stop 时能改工单，否则返回 workerDecides。
 func (e *Engine) Decide(triggerID, kind, reason string) (Decision, error) {
+	return e.decideOuter(triggerID, kind, reason, nil, false)
+}
+
+// DecideMatched 和 Decide 一样。rules 是这条推断命中的规则编号，必须都还启用。
+func (e *Engine) DecideMatched(triggerID, kind, reason string, rules []string) (Decision, error) {
+	return e.decideOuter(triggerID, kind, reason, rules, false)
+}
+
+// Confirm 是人在面板上作出的决定。推断候选不会被观察模式改写成「本来会接」。
+func (e *Engine) Confirm(triggerID, kind, reason string) (Decision, error) {
+	return e.decideOuter(triggerID, kind, reason, nil, true)
+}
+
+// decideOuter 在锁外启动派工。confirmed 为真表示人已经点了接受。
+func (e *Engine) decideOuter(triggerID, kind, reason string, rules []string, confirmed bool) (Decision, error) {
 	e.mu.Lock()
-	d, launch, err := e.decide(triggerID, kind, reason)
+	d, launch, err := e.decide(triggerID, kind, reason, rules, confirmed)
 	e.mu.Unlock()
 	if err == nil && launch != "" && e.OnLaunch != nil {
 		e.OnLaunch(launch)
@@ -146,6 +163,368 @@ func (e *Engine) Report(ticketID string, report Report) error {
 	}
 	e.applyReportEnd(t, report)
 	return nil
+}
+
+// FailStart 在准备目录失败时结束 ticketID。outcome 是 failed。已经结束时返回 ticketEnded。
+func (e *Engine) FailStart(ticketID, reason string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return errCode("unknownTicket")
+	}
+	if t.Ended != nil {
+		return errCode("ticketEnded")
+	}
+	e.finish(t, "executor", "failed", reason)
+	return nil
+}
+
+// SetDirectory 记下 ticketID 的目录和短名。已经记过目录时不改路径，重试沿用它。
+func (e *Engine) SetDirectory(ticketID, dir, name string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return
+	}
+	if t.Directory == "" {
+		t.Directory = dir
+	}
+	if t.Name == "" && name != "" {
+		t.Name = name
+	}
+}
+
+// DeskSession 返回开工这张工单的桌面会话。来源不是桌面时返回空串。
+func (e *Engine) DeskSession(ticketID string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.deskSessionLocked(e.tickets[ticketID])
+}
+
+// deskSessionLocked 返回 t 的桌面会话。调用时要已持有锁。
+func (e *Engine) deskSessionLocked(t *Ticket) string {
+	if t == nil {
+		return ""
+	}
+	tr := e.triggers[t.Origin]
+	if tr == nil {
+		return ""
+	}
+	for _, key := range tr.Threads {
+		if strings.HasPrefix(key, "desk:") {
+			return strings.TrimPrefix(key, "desk:")
+		}
+	}
+	return ""
+}
+
+// DeskSessionsFollowing 返回跟随 thread 的工单所在的桌面会话。
+func (e *Engine) DeskSessionsFollowing(thread string) []string {
+	if e == nil || strings.TrimSpace(thread) == "" {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var out []string
+	seen := map[string]bool{}
+	for _, t := range e.tickets {
+		if t == nil {
+			continue
+		}
+		hit := false
+		for _, f := range t.Follows {
+			if f.Thread == thread {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			continue
+		}
+		sid := e.deskSessionLocked(t)
+		if sid == "" || seen[sid] {
+			continue
+		}
+		seen[sid] = true
+		out = append(out, sid)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// PendingInputs 返回 ticketID 上还没投递给工人的正文，以及对应的输入编号。
+func (e *Engine) PendingInputs(ticketID string) (texts []string, ids []string) {
+	if e == nil {
+		return nil, nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return nil, nil
+	}
+	pending := map[string]bool{}
+	for _, id := range t.Undelivered {
+		pending[id] = true
+	}
+	for _, in := range t.Inputs {
+		if pending[in.ID] && strings.TrimSpace(in.Text) != "" {
+			texts = append(texts, in.Text)
+			ids = append(ids, in.ID)
+		}
+	}
+	return texts, ids
+}
+
+// AckInputs 把 ids 从 ticketID 的未投递列表里拿掉。ids 为空时什么都不做。
+func (e *Engine) AckInputs(ticketID string, ids []string) {
+	if e == nil || len(ids) == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return
+	}
+	drop := map[string]bool{}
+	for _, id := range ids {
+		drop[id] = true
+	}
+	var kept []string
+	for _, id := range t.Undelivered {
+		if !drop[id] {
+			kept = append(kept, id)
+		}
+	}
+	t.Undelivered = kept
+}
+
+// UndeliveredEvals 返回还没交给评估者的评估编号。
+func (e *Engine) UndeliveredEvals() []string {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var out []string
+	for _, th := range e.threads {
+		if th == nil || th.Evaluating == nil || !th.Evaluating.Delivered.IsZero() {
+			continue
+		}
+		out = append(out, th.Evaluating.ID)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DeliverEval 把 id 这一轮评估标成已交付，并从此刻起算截止时间。已经交付时返回假。
+func (e *Engine) DeliverEval(id string) bool {
+	if e == nil || id == "" {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := e.now()
+	for _, th := range e.threads {
+		if th == nil || th.Evaluating == nil || th.Evaluating.ID != id || !th.Evaluating.Delivered.IsZero() {
+			continue
+		}
+		th.Evaluating.Delivered = now
+		th.Evaluating.Deadline = now.Add(e.policy.evalTimeout())
+		return true
+	}
+	return false
+}
+
+// ClaimBranch 让短名等于 short 的开着的工单跟随 thread，并记成工单自己打开的。
+func (e *Engine) ClaimBranch(thread, short string) {
+	if e == nil {
+		return
+	}
+	thread = strings.TrimSpace(thread)
+	short = strings.TrimSpace(short)
+	if thread == "" || short == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, t := range e.tickets {
+		if t == nil || t.Ended != nil || t.Name != short {
+			continue
+		}
+		e.subscribe(t.ID, thread)
+		e.follow(t, thread, true)
+	}
+}
+
+// branchName 把标题收成分支短名。只留小写字母、数字和连字符。
+func branchName(text string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(text)) {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if !ok {
+			r = '-'
+		}
+		if r == '-' {
+			if prevDash || b.Len() == 0 {
+				continue
+			}
+			prevDash = true
+		} else {
+			prevDash = false
+		}
+		b.WriteRune(r)
+		if b.Len() >= 40 {
+			break
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// pollHorizon 是工单结束后仍继续读它订阅的线程的时间。与原型两周窗口一致。
+const pollHorizon = 14 * 24 * time.Hour
+
+// PollableThreads 返回还要读的线程。活着的订阅一直读。结束后，从最近一条消息或结束时刻起两周内仍读。
+func (e *Engine) PollableThreads(now time.Time) []string {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var out []string
+	for key, th := range e.threads {
+		if th == nil || len(th.Subs) == 0 || !e.pollableLocked(th, now) {
+			continue
+		}
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// pollableLocked 判断 th 是否还在读取窗口里。调用时要已持有锁。
+func (e *Engine) pollableLocked(th *Thread, now time.Time) bool {
+	latest := time.Time{}
+	for _, id := range th.Subs {
+		ticket := e.tickets[id]
+		if ticket == nil {
+			continue
+		}
+		if ticket.Ended == nil {
+			return true
+		}
+		if ticket.Ended.At.After(latest) {
+			latest = ticket.Ended.At
+		}
+	}
+	for _, id := range th.Context {
+		tr := e.triggers[id]
+		if tr != nil && tr.At.After(latest) {
+			latest = tr.At
+		}
+	}
+	if latest.IsZero() {
+		return false
+	}
+	return now.Sub(latest) < pollHorizon
+}
+
+// FollowThreads 返回还开着的工单正在跟随的线程。
+func (e *Engine) FollowThreads() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var out []string
+	seen := map[string]bool{}
+	for _, t := range e.tickets {
+		if t == nil || t.Ended != nil {
+			continue
+		}
+		for _, f := range t.Follows {
+			if f.Thread == "" || f.Closed != nil || seen[f.Thread] {
+				continue
+			}
+			seen[f.Thread] = true
+			out = append(out, f.Thread)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// RecoverHost 结束仍标成 running 的派工，并按工单编号从旧到新返回要重开的工单。
+// waiting、ready、blocked、failed 保持原样。pending 的派工也包含在返回值里。
+func (e *Engine) RecoverHost() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	ids := make([]string, 0, len(e.tickets))
+	for id := range e.tickets {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ticketOrder(ids[i]) < ticketOrder(ids[j]) })
+	var out []string
+	for _, id := range ids {
+		t := e.tickets[id]
+		if t == nil || t.Ended != nil {
+			continue
+		}
+		asg := latestAssignment(t)
+		if asg == nil {
+			continue
+		}
+		if asg.State == "running" {
+			if settled(asg) && !inputAfter(t, asg.Reports[len(asg.Reports)-1].Seq) {
+				continue
+			}
+			asg.State = "ended"
+			e.addAssignment(t)
+			e.addNote(t, "宿主重启了。先看工作目录、git 和 GitHub，不要重复已经做过的外部动作。", false)
+			out = append(out, id)
+			continue
+		}
+		if asg.State == "pending" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// settled 在最近一次报告已经是等待、完成、受阻或失败时为真。
+func settled(asg *Assignment) bool {
+	if asg == nil || len(asg.Reports) == 0 {
+		return false
+	}
+	switch asg.Reports[len(asg.Reports)-1].State {
+	case "waiting", "ready", "blocked", "failed", "dropped":
+		return true
+	default:
+		return false
+	}
+}
+
+// inputAfter 在报告之后还有新输入时为真。那种情况要重新开工。
+func inputAfter(t *Ticket, seq int) bool {
+	if t == nil {
+		return false
+	}
+	for _, in := range t.Inputs {
+		if in.Seq > seq {
+			return true
+		}
+	}
+	return false
+}
+
+// ticketOrder 取出 tkt- 后面的序号。认不出时放到后面。
+func ticketOrder(id string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(id, "tkt-"))
+	if err != nil {
+		return 1 << 30
+	}
+	return n
 }
 
 // Stop 由人结束 ticketID。reason 记在结束记录上。已经结束时返回 ticketEnded。
@@ -299,6 +678,7 @@ func (e *Engine) Thread(key string) (Thread, bool) {
 	}
 	out := *th
 	out.Subs = append([]string(nil), th.Subs...)
+	out.Watch = append([]string(nil), th.Watch...)
 	out.Context = append([]string(nil), th.Context...)
 	out.Queued = append([]string(nil), th.Queued...)
 	return out, true
@@ -364,6 +744,17 @@ func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) 
 			}
 			inputs = append(inputs, ticket.ID)
 		}
+		for _, tid := range append([]string(nil), th.Watch...) {
+			if contains(th.Subs, tid) || contains(tr.Reached, tid) {
+				continue
+			}
+			ticket := e.tickets[tid]
+			if ticket == nil || ticket.Ended != nil {
+				continue
+			}
+			e.addInput(ticket, tr)
+			inputs = append(inputs, ticket.ID)
+		}
 	}
 	if len(e.owners(tr)) == 0 {
 		e.queue(tr)
@@ -372,7 +763,7 @@ func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) 
 }
 
 // decide 评估 triggerID。kind 与 reason 写进决定。第二个返回值是要启动的工单，没有则为空。
-func (e *Engine) decide(triggerID, kind, reason string) (Decision, string, error) {
+func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirmed bool) (Decision, string, error) {
 	tr := e.triggers[triggerID]
 	if tr == nil || tr.Filtered != "" {
 		return Decision{}, "", errCode("unknownTrigger")
@@ -396,15 +787,23 @@ func (e *Engine) decide(triggerID, kind, reason string) (Decision, string, error
 	}
 	switch kind {
 	case "accept":
-		if strength != "explicit" && e.policy.Mode != "auto" {
+		if !confirmed && strength != "explicit" && e.policy.Mode != "auto" {
 			d := e.putDecision(tr, "ignore", "observed", "")
 			e.unqueue(tr)
 			return d, "", nil
 		}
+		matched := []string(nil)
+		if strength != "explicit" && !confirmed {
+			var ok bool
+			matched, ok = e.policy.MatchRules(rules)
+			if !ok {
+				return Decision{}, "", errCode("needs_rule")
+			}
+		}
 		e.n++
 		ticketID := fmt.Sprintf("tkt-%d", e.n)
 		d := e.putDecision(tr, "accept", reason, ticketID)
-		e.openTicket(tr, strength, ticketID)
+		e.openTicket(tr, strength, ticketID, reason, matched)
 		e.unqueue(tr)
 		if e.policy.Paused {
 			return d, "", nil
@@ -437,11 +836,16 @@ func (e *Engine) decide(triggerID, kind, reason string) (Decision, string, error
 	}
 }
 
-// openTicket 用 tr 和 strength 开出 ticketID。授权版本取当前策略。
-func (e *Engine) openTicket(tr *Trigger, strength, ticketID string) {
-	t := &Ticket{ID: ticketID, Origin: tr.ID, Mandate: Mandate{Version: e.policy.Version, Strength: strength, Sender: tr.Sender}}
-	if strength == "explicit" {
+// openTicket 用 tr 和 strength 开出 ticketID。name 收成分支短名，空的就先不记。
+func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules []string) {
+	t := &Ticket{ID: ticketID, Origin: tr.ID, Name: branchName(name), Mandate: Mandate{Version: e.policy.Version, Strength: strength, Sender: tr.Sender}}
+	switch {
+	case strength == "explicit":
 		t.Mandate.Rules = []string{"addressed"}
+	case len(rules) == 0:
+		t.Mandate.Rules = []string{"person"}
+	default:
+		t.Mandate.Rules = append([]string(nil), rules...)
 	}
 	e.addAssignment(t)
 	e.tickets[ticketID] = t
@@ -456,6 +860,7 @@ func (e *Engine) openTicket(tr *Trigger, strength, ticketID string) {
 	e.n++
 	e.outbox = append(e.outbox, Outbound{
 		ID: fmt.Sprintf("out-%d", e.n), TicketID: ticketID, Kind: "acknowledgement", Text: "已接单", Status: "pending",
+		Source: tr.Source, Ref: tr.Ref,
 	})
 }
 
@@ -512,7 +917,7 @@ func (e *Engine) finish(t *Ticket, by, outcome, reason string) {
 		return
 	}
 	e.seq++
-	t.Ended = &End{By: by, Outcome: outcome, Reason: reason, Seq: e.seq}
+	t.Ended = &End{By: by, Outcome: outcome, Reason: reason, Seq: e.seq, At: e.now()}
 	if asg := latestAssignment(t); asg != nil && asg.State != "ended" {
 		asg.State = "ended"
 	}
@@ -656,6 +1061,15 @@ func (e *Engine) ensureThread(key string) *Thread {
 		e.threads[key] = th
 	}
 	return th
+}
+
+// watch 让 ticketID 只为上下文跟随 key。不授予后续，也不恢复已结束的工单。
+func (e *Engine) watch(ticketID, key string) {
+	th := e.ensureThread(key)
+	if contains(th.Subs, ticketID) || contains(th.Watch, ticketID) {
+		return
+	}
+	th.Watch = append(th.Watch, ticketID)
 }
 
 // subscribe 让 ticketID 订阅 key。已经订阅时不重复加。

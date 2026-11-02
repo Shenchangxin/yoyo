@@ -92,6 +92,8 @@ type WorkspaceTools struct {
 	ReadOnly bool
 	// ChatOverlay 为真表示桌面或 CLI 的个人聊天。Harbor 评测保持为假，使 shell、计划用语和工具菜单保持评测稳定。
 	ChatOverlay bool
+	// RouteOnly 为真时只广告 Extra 里的路由工具。写文件、shell 和浏览器不在这张表里。
+	RouteOnly bool
 	// DshShell 为真时，聊天叠加层的空闲和阻塞熔断不杀掉 shell。命令仍受自己的超时限制。
 	DshShell bool
 	// FileHooks 是工作区 .yoyo/hooks.json 的 pre_tool。匹配到 Deny 时 Call 不执行工具。
@@ -181,6 +183,9 @@ func BuiltinToolJSON() []ToolJSON {
 
 // AllToolJSON 组装本回合广告给模型的工具。深度达到 MaxTaskDepth 时去掉 task。ReadOnly 时只留 readOnlySubagentCall 允许的名字。Advertised 或 AllowedTools 非空时按它们过滤，alwaysAdvertise 的名字保留。额外工具超过 8 个或 ChatOverlay 为真时，未启用的推迟并写入溢出或宿主索引。同名只留先出现的宿主 schema。
 func AllToolJSON(t *WorkspaceTools) []ToolJSON {
+	if t != nil && t.RouteOnly {
+		return extraToolJSON(t)
+	}
 	out := BuiltinToolJSON()
 	if t != nil && t.Depth >= MaxTaskDepth {
 		var filtered []ToolJSON
@@ -275,6 +280,23 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	WriteMCPCatalog(t.Workspace, t.Extra)
 	// 网关会因同名工具拒绝整轮。宿主 schema 保留，后出现的同名扩展（例如画布上的 ask_user）丢掉。
 	return uniqueToolJSON(out)
+}
+
+// extraToolJSON 只返回 Extra 里的工具，按名字排序。路由回合用它，不带宿主写盘工具。
+func extraToolJSON(t *WorkspaceTools) []ToolJSON {
+	if t == nil || len(t.Extra) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(t.Extra))
+	for name := range t.Extra {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]ToolJSON, 0, len(names))
+	for _, name := range names {
+		out = append(out, t.Extra[name].JSON)
+	}
+	return out
 }
 
 // uniqueToolJSON 按名字去重，保留第一次出现。空名字丢掉。少于两条时原样返回。
@@ -404,6 +426,13 @@ func (t *WorkspaceTools) toolAllowed(name string) bool {
 	}
 	if t.toolDenied(name) {
 		return false
+	}
+	if t.RouteOnly {
+		if t.Extra == nil {
+			return false
+		}
+		_, ok := t.Extra[name]
+		return ok
 	}
 	if t.Extra != nil {
 		if _, ok := t.Extra[name]; ok {

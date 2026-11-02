@@ -1653,6 +1653,31 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return raw, nil
 		}
 		return decoded, nil
+	case "desk.push":
+		var note app.DeskNote
+		if err := json.Unmarshal(params, &note); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": a.DeskPush(note)}, nil
+	case "poi.refresh":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.PoiRefresh(), nil
+	case "poi.ack":
+		var ack struct {
+			Sig string `json:"sig"`
+		}
+		if err := json.Unmarshal(params, &ack); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": a.PoiAck(ack.Sig)}, nil
 	case "orchestrator.view":
 		if a == nil {
 			return nil, fmt.Errorf("app is not running")
