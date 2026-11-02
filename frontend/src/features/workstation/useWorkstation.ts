@@ -908,7 +908,7 @@ export function useWorkstation() {
           const preview = workspacePreviewPath(name, { ...args, url: args.url || item.payload?.path }) || path;
           if (name === "browser_open" || name === "browser_takeover") {
             if (preview) setReviewFile(preview);
-            setInspector(true);
+            useUI.getState().askWorkReview();
             setInspTab("browser");
           }
         }
@@ -918,7 +918,7 @@ export function useWorkstation() {
           const preview = workspacePreviewPath(name, { ...args, url: args.url || item.payload?.path });
           if ((name === "browser_open" || name === "browser_takeover") && preview) {
             setReviewFile(preview);
-            setInspector(true);
+            useUI.getState().askWorkReview();
             setInspTab("browser");
           }
         }
@@ -2185,7 +2185,10 @@ export function useWorkstation() {
         const ui = useUI.getState();
         if (ui.surface === "video") return;
         if (ui.surface === "harness") setChatDock((v) => !v);
-        else setInspector((v) => !v);
+        else if (ui.surface === "agent") {
+          if (ui.inspector) setInspector(false);
+          else ui.askWorkReview();
+        } else setInspector((v) => !v);
       }
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !typing && useUI.getState().surface === "harness") {
         const idx = ["1", "2", "3", "4"].indexOf(e.key);
@@ -2479,8 +2482,12 @@ export function useWorkstation() {
   /** review 在视频表面不做。认不出的命令交给 onSlash，并补上斜杠。c 与 review、sidebar、dock、harness、video、run-eval 等比较是否相等，加上 /。 */
   handlers.current.command = (c) => {
     if (c === "review") {
-      if (useUI.getState().surface === "video") return;
-      setInspector((v) => !v);
+      const ui = useUI.getState();
+      if (ui.surface === "video") return;
+      if (ui.surface === "agent") {
+        if (ui.inspector) setInspector(false);
+        else ui.askWorkReview();
+      } else setInspector((v) => !v);
     }
     else if (c === "sidebar") setSidebarCollapsed((v) => !v);
     else if (c === "dock") setChatDock((v) => !v);

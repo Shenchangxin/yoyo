@@ -6,6 +6,7 @@ package dshdesk
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
@@ -58,6 +59,25 @@ func (b *toolBox) jobsLeft() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.jobs
+}
+
+// MountWorkspace 把 tools 登记进 reg。shell 超过五秒转入后台。
+// jobs 返回还没结束的后台命令数。wait 最多阻塞 d，命令先结束就返回。
+func MountWorkspace(reg *dsh.Registry, agent *dsh.Agent, tools *runtime.WorkspaceTools) (jobs func() int, wait func(time.Duration)) {
+	box := &toolBox{note: make(chan struct{}, 1)}
+	box.set(tools)
+	box.bind(reg, agent)
+	return box.jobsLeft, func(d time.Duration) {
+		if box.jobsLeft() == 0 || d <= 0 {
+			return
+		}
+		timer := time.NewTimer(d)
+		defer timer.Stop()
+		select {
+		case <-box.note:
+		case <-timer.C:
+		}
+	}
 }
 
 // bind 把当前工具集登记进 reg。同名覆盖。shell 和 run_skill_script 走后台预算，其余直接 Call。

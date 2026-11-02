@@ -34,6 +34,8 @@ type UIState = {
   /** 打开设置小节时写入的时间戳，用来再次触发滚动。 */
   settingsNav: number;
   inspector: boolean;
+  /** 审查被点开时递增，工作栏据此切到审查。 */
+  workReview: number;
   chatDock: boolean;
   palette: boolean;
   query: string;
@@ -97,6 +99,7 @@ type UIState = {
   lastThreadId: (ch: ThreadChannel) => string;
   setSettingsTab: (tab: SettingsTab) => void;
   setInspector: (v: boolean | ((p: boolean) => boolean)) => void;
+  askWorkReview: () => void;
   setChatDock: (v: boolean | ((p: boolean) => boolean)) => void;
   setPalette: (v: boolean | ((p: boolean) => boolean)) => void;
   setQuery: (q: string) => void;
@@ -306,6 +309,7 @@ export const useUI = create<UIState>((set, get) => ({
   settingsSection: "",
   settingsNav: 0,
   inspector: false,
+  workReview: 0,
   chatDock: readChatDock(),
   palette: false,
   query: "",
@@ -517,6 +521,8 @@ export const useUI = create<UIState>((set, get) => ({
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   /** 打开或关掉检查器。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.inspector。 */
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),
+  /** 打开审查页。工作栏看到 workReview 变化后切过去。 */
+  askWorkReview: () => set((s) => ({ inspector: true, workReview: s.workReview + 1 })),
   /** 打开或关掉对话坞，并写入本地。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.chatDock。 */
   setChatDock: (v) =>
     set((s) => {

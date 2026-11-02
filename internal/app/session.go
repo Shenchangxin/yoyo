@@ -786,6 +786,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	a.attachCutTools(tools, sessionID)
 	a.attachStudioTools(tools, sessionID)
 	a.attachConductorTools(tools, sessionID)
+	routing := a.beginRoute(tools, meta, sessionID)
 	tools.Sessions = func(id string) []runtime.Message {
 		evs, err := a.Traces.ReadFromCheckpoint(id)
 		if err != nil {
@@ -869,6 +870,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 
 	inject := ""
 	voice := runtime.OperatorVoice(message, hist)
+	routeNote := ""
+	if routing && !resume {
+		routeNote = a.intakeDesk(sessionID, turnID, message)
+	}
 	if resume {
 		message = ""
 		atts = nil
@@ -927,6 +932,12 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			inject += extra
 		}
 	}
+	if routeNote != "" {
+		if inject != "" {
+			inject += "\n"
+		}
+		inject += routeNote
+	}
 	userParts := runtime.ImageParts(toolRoot, toRuntimeAtts(atts))
 	profile := ""
 	if a.Memory != nil {
@@ -946,6 +957,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	if p := a.sessionProfile(sessionID); p != nil && strings.TrimSpace(p.Instructions) != "" {
 		frags = append(frags, artifact.PromptFragment{Slot: "role", Text: p.Instructions})
+	}
+	if routing {
+		frags = append(frags, routeFragment())
 	}
 	pageCtx := ""
 	if meta.PageID != "" && a.Pages != nil {

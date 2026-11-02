@@ -5,6 +5,8 @@ package superagent
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -113,7 +115,7 @@ func TestBackgroundShellThenReport(t *testing.T) {
 		}}}, nil
 	}})
 	ex.Foreground = 30 * time.Millisecond
-	ex.Shell = func(context.Context, string) (string, error) {
+	ex.Shell = func(context.Context, string, string) (string, error) {
 		once.Do(func() { close(started) })
 		<-release
 		return "output", nil
@@ -143,6 +145,29 @@ func waitOutcome(t *testing.T, eng *Engine, ticketID, outcome string) {
 	}
 	ticket, _ := eng.Ticket(ticketID)
 	t.Fatalf("ticket %+v", ticket)
+}
+
+// TestTicketDirsStayApart 锁住两张工单各有一个目录，坏编号写不出执行根。
+func TestTicketDirsStayApart(t *testing.T) {
+	ex := NewExecutor(NewEngine(autoPolicy()), nil, nil)
+	ex.Root = t.TempDir()
+	one, err := ex.ticketDir("tkt-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := ex.ticketDir("tkt-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one == two || !strings.HasSuffix(one, filepath.Join("tickets", "tkt-1")) {
+		t.Fatal(one, two)
+	}
+	if _, err := os.Stat(two); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ex.ticketDir("../escape"); err == nil {
+		t.Fatal("escaped")
+	}
 }
 
 // scriptModel 把测试函数当成一次模型完成。

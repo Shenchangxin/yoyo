@@ -2136,6 +2136,60 @@ export async function triggerWebhook(id: string): Promise<void> {
   await http(`/api/hooks/${encodeURIComponent(id)}`, { method: "POST" });
 }
 
+export type DeskNote = {
+  sessionId: string;
+  kind: string;
+  slot: string;
+  day: string;
+  text: string;
+  chip: string;
+  brief: string;
+};
+
+export type PoiPoint = { id?: string; name: string; kind: string; weight?: number };
+export type PoiSnapshot = { points: PoiPoint[]; added: string[]; dropped: string[]; sig: string; pending: boolean };
+
+/** deskPush 把简报或兴趣变化写进主会话。同一天同一档只写一次。 */
+export async function deskPush(note: DeskNote): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.DeskPush) return asBool(await s.DeskPush(note));
+  if (s) return false;
+  const r = await http<any>("/api/desk/push", { method: "POST", body: JSON.stringify(note) });
+  return asBool(pick(r, "ok", "Ok"));
+}
+
+/** poiRefresh 用记忆和桌面表层名字刷新兴趣库。 */
+export async function poiRefresh(): Promise<PoiSnapshot> {
+  const s = await wailsService();
+  const raw = s?.PoiRefresh ? await s.PoiRefresh() : s ? null : await http<any>("/api/poi");
+  return normalizePoi(raw);
+}
+
+/** poiAck 记下这一版兴趣库已经推进过。 */
+export async function poiAck(sig: string): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.PoiAck) return asBool(await s.PoiAck(sig));
+  if (s) return false;
+  const r = await http<any>("/api/poi", { method: "POST", body: JSON.stringify({ sig }) });
+  return asBool(pick(r, "ok", "Ok"));
+}
+
+function normalizePoi(raw: any): PoiSnapshot {
+  const points = asArray(pick(raw, "points", "Points")).map((point) => ({
+    id: str(pick(point, "id", "ID")),
+    name: str(pick(point, "name", "Name")),
+    kind: str(pick(point, "kind", "Kind")),
+    weight: num(pick(point, "weight", "Weight")),
+  })).filter((point) => point.name);
+  return {
+    points,
+    added: asArray(pick(raw, "added", "Added")).map((item) => str(item)).filter(Boolean),
+    dropped: asArray(pick(raw, "dropped", "Dropped")).map((item) => str(item)).filter(Boolean),
+    sig: str(pick(raw, "sig", "Sig")),
+    pending: asBool(pick(raw, "pending", "Pending")),
+  };
+}
+
 /** memoryList 走 MemoryList 或 /api/memory。q 传给 MemoryList，写进 /api/memory?{q}，写入字段 q。kind 传给 MemoryList，写入字段 kind。 */
 export async function memoryList(q = "", kind = ""): Promise<any[]> {
   const s = await wailsService();

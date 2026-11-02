@@ -1,5 +1,5 @@
 /**
- * 拥有：窗口怎么拼起来：侧栏、对话、检查器、各个表面，以及设置页的宿主回调。
+ * 拥有：窗口怎么拼起来：侧栏、对话、工作栏、各个表面，以及设置页的宿主回调。
  * 不拥有：会话状态，那些在 useWorkstation。会调用 api 改工作区、模型、权限、隔离、置顶、归档、分叉、页面和密钥。
  */
 
@@ -23,6 +23,10 @@ import { UpdateButton } from "./features/UpdateButton";
 import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
 import { OrchestratorDesk } from "./features/superagent/OrchestratorDesk";
+import { BriefOverlay } from "./features/superagent/BriefOverlay";
+import { runDeskFeed, setDeskSession } from "./features/superagent/desk-feed";
+import { briefPhrases, WorkPane } from "./features/superagent/WorkPane";
+import { copy as liveCopy } from "./lib/i18n";
 import { TurnOutline } from "./features/TurnOutline";
 import { HomeHero, HomeStarters } from "./features/HomeStage";
 import { ChatNotWorking } from "./features/harness/ChatNotWorking";
@@ -99,6 +103,7 @@ function WorkstationApp() {
   const popout = !!popoutId;
   const [layout, setLayout] = useState(readLayout);
   const reviewFile = useUI((s) => s.reviewFile);
+  const workReview = useUI((s) => s.workReview);
   const setReviewFile = useUI((s) => s.setReviewFile);
   const pendingAuthMode = useUI((s) => s.pendingAuthMode);
   const sheetInspect = useMedia("(max-width: 799px)");
@@ -162,6 +167,23 @@ function WorkstationApp() {
       window.clearInterval(t);
     };
   }, []);
+  const feedRef = useRef({ id: ws.activeId, channel: ws.active?.channel, threads: ws.threads });
+  feedRef.current = { id: ws.activeId, channel: ws.active?.channel, threads: ws.threads };
+  useEffect(() => {
+    if (!ws.booted || popout) return;
+    const tick = () => {
+      const cur = feedRef.current;
+      const id = cur.id && (!cur.channel || cur.channel === "agent")
+        ? cur.id
+        : cur.threads.find((thread) => !thread.channel || thread.channel === "agent")?.id || "";
+      setDeskSession(id);
+      void runDeskFeed(briefPhrases(liveCopy.work));
+    };
+    tick();
+    const timer = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(timer);
+  }, [ws.booted, popout]);
+  const [taskId, setTaskId] = useState("");
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
   /** 欢迎线程还在回放历史或报告残留运行时，创作入口留着。只有从这张桌子发出对话、并且对话里已经有内容时才让开。 */
@@ -172,9 +194,10 @@ function WorkstationApp() {
   const foreignSession = !!(boundCopilotId && ws.activeId && boundCopilotId !== ws.activeId);
   const boundCopilotThread = foreignSession ? ws.threads.find((t) => t.id === boundCopilotId) : undefined;
   const subagentCrumb = liveSubagentCrumb(copilotItems);
-  const three = agent && !popout && ws.inspector && !sheetInspect;
+  const dayInRail = agent && !popout;
+  const three = false;
   const dock = harnessing && ws.chatDock && !sheetInspect;
-  const inspectOpen = three || dock;
+  const inspectOpen = dock;
   const peekOpen = three && !!reviewFile && ws.inspTab === "files";
   const showRail = !popout && !ws.sidebarCollapsed && !railNarrow;
   const overlayRail = !popout && !showRail && ws.sidebarHover;
@@ -187,7 +210,7 @@ function WorkstationApp() {
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
-  const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
+  const sheetRight = sheetInspect && harnessing && ws.chatDock;
   const presenceInput = useMemo(() => ({
     booted: ws.booted,
     running: ws.threadRunning,
@@ -431,6 +454,32 @@ function WorkstationApp() {
     />
   );
 
+  const work = (
+    <WorkPane
+      review={inspect}
+      reviewOpen={ws.inspector}
+      reviewPulse={workReview}
+      onReview={(open) => ws.setInspector(open)}
+      onNewTask={(text) => {
+        if (text) {
+          void ws.onSend({ text });
+          return;
+        }
+        setTaskId("");
+        document.querySelector<HTMLElement>("[data-testid='composer-input']")?.focus();
+      }}
+      onOpenSettings={() => ws.openSettings("extensions", "extensions-work")}
+      onDraft={(text) => {
+        useUI.getState().setDraft(ws.draftKey, text);
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>("[data-testid='composer-input']")?.focus();
+        });
+      }}
+      openTaskId={taskId}
+      onOpenTask={setTaskId}
+    />
+  );
+
   const homeStarters = (
     <HomeStarters
       onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
@@ -448,7 +497,7 @@ function WorkstationApp() {
 
   const agentPane = (
     <section className={cn("relative flex min-h-0 min-w-0 flex-row", studioDesk ? "flex-1" : "h-full")}>
-      {home || studioDesk || talkDesk || paging ? null : (
+      {home || agent || studioDesk || talkDesk || paging ? null : (
       <TurnOutline
         turns={ws.outlineTurns}
         activeKey={ws.activeTurn}
@@ -458,16 +507,16 @@ function WorkstationApp() {
       )}
       <div
         className="@container relative flex min-h-0 min-w-0 flex-1 flex-col"
-        data-testid={home ? "conversation-column" : undefined}
+        data-testid={home && !(agent && !videoing) ? "conversation-column" : undefined}
       >
-        {home || studioDesk || talkDesk || paging ? null : (
+        {home || agent || studioDesk || talkDesk || paging ? null : (
           <SessionHeader
             view={ws.inspector ? "trajectory" : "chat"}
             trail={subagentCrumb || undefined}
             onView={(view) => {
               if (view === "trajectory") {
-                ws.setInspector(true);
                 ws.setInspTab("trace");
+                useUI.getState().askWorkReview();
                 return;
               }
               ws.setInspector(false);
@@ -503,17 +552,18 @@ function WorkstationApp() {
           className={cn(
             "flex min-h-0 min-w-0 w-full flex-1 flex-col",
             home && !railNarrow && "home-stage empty-rise",
-            home && !railNarrow && (directing && filmOpen ? "overflow-hidden" : "overflow-auto"),
+            home && !railNarrow && !agent && (directing && filmOpen ? "overflow-hidden" : "overflow-auto"),
+            agent && "overflow-hidden",
             home && railNarrow && "home-stage",
-            home && !createDesk && !railNarrow && "justify-center py-10",
+            home && !createDesk && !railNarrow && !agent && "justify-center py-10",
           )}
         >
-        {railNarrow && home ? (
+        {railNarrow && home && !(agent && !videoing) ? (
           <div className="min-h-0 flex-1 overflow-auto">
             <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
             {homeStarters}
           </div>
-        ) : home ? (
+        ) : home && !(agent && !videoing) ? (
           <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
         ) : (
           <Transcript
@@ -534,7 +584,7 @@ function WorkstationApp() {
             }}
             onRetry={() => { void ws.onRetryLast(); }}
             onOpenReview={(path) => {
-              ws.setInspector(true);
+              useUI.getState().askWorkReview();
               if (path) {
                 setReviewFile(path);
                 ws.setInspTab(/\.(html?|xhtml)$/i.test(path) ? "browser" : "files");
@@ -559,7 +609,7 @@ function WorkstationApp() {
           ) : null}
           {composer}
         </div>
-        {home && !railNarrow && !filmSurface ? homeStarters : null}
+        {home && !railNarrow && !filmSurface && !agent ? homeStarters : null}
         </div>
       </div>
     </section>
@@ -767,6 +817,7 @@ function WorkstationApp() {
         }).catch((e) => ws.fail(e));
       }}
       onIdolSlot={onIdolSlot}
+      day={dayInRail ? work : undefined}
       onRename={async (t, title) => {
         try {
           await api.renameSession(t.id, title);
@@ -861,11 +912,11 @@ function WorkstationApp() {
       : (
             <Titlebar
               inspector={ws.inspector}
-              hideInspector={false}
+              hideInspector={agent && !popout}
               hideInbox={false}
               paused={!!ws.health.paused}
               onPause={() => { void api.setPaused(!ws.health.paused).then(() => ws.refresh()); }}
-              title={home ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
+              title={home || (ws.surface === "agent" && !popout) ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
               runningStatus={ws.runStatus}
@@ -1024,6 +1075,12 @@ function WorkstationApp() {
       overlay={(
         <>
           <a href="#main-stage" className="skip-to-content no-drag">{copy.app.skipToContent}</a>
+          <BriefOverlay onDraft={(text) => {
+            useUI.getState().setDraft(ws.draftKey, text);
+            requestAnimationFrame(() => {
+              document.querySelector<HTMLElement>("[data-testid='composer-input']")?.focus();
+            });
+          }} />
           {!ws.booted ? <div className="absolute inset-0 z-30"><BootSkeleton /></div> : null}
           <CommandPalette
             open={ws.palette}
@@ -1085,14 +1142,13 @@ function WorkstationApp() {
           }}>
             <SheetContent side="bottom" className="flex h-[min(78dvh,720px)] flex-col rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)]">
               <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
-                <SheetTitle className="text-[13px] font-medium">{agent ? copy.review.toggle : copy.dock.chat}</SheetTitle>
+                <SheetTitle className="text-[13px] font-medium">{agent ? copy.work.title : copy.dock.chat}</SheetTitle>
                 <SheetClose className="grid size-9 place-items-center rounded-lg text-muted" aria-label={copy.rail.collapse}>
                   <X className="size-4" />
                 </SheetClose>
               </div>
               <SheetDescription className="sr-only">{agent ? copy.review.toggle : copy.dock.toggle}</SheetDescription>
               <div className="min-h-0 flex-1 overflow-hidden [&>*]:h-full">
-              {agent ? inspect : (
                 <ChatDock
                   items={ws.items}
                   showThinking={!!ws.savedCfg.showThinking}
@@ -1126,7 +1182,6 @@ function WorkstationApp() {
                   }}
                   {...bindComposer}
                 />
-              )}
               </div>
             </SheetContent>
           </Sheet>
@@ -1139,7 +1194,10 @@ function WorkstationApp() {
         style={{ height: "100%" }}
         orientation="horizontal"
         defaultLayout={showRail
-          ? { rail: layout.rail, stage: Math.max(66, 100 - layout.rail) }
+          ? (() => {
+              const railShare = dayInRail ? Math.min(42, Math.max(layout.rail, 32)) : layout.rail;
+              return { rail: railShare, stage: Math.max(42, 100 - railShare) };
+            })()
           : { stage: 100 }}
         onLayoutChanged={(next, meta) => {
           if (!meta.isUserInteraction || typeof next.rail !== "number") return;
@@ -1150,7 +1208,7 @@ function WorkstationApp() {
         }}
       >
         {showRail ? (
-          <Panel id="rail" minSize="14" maxSize="34" className="h-full min-h-0">
+          <Panel id="rail" minSize={dayInRail ? "24" : "14"} maxSize={dayInRail ? "42" : "34"} className="h-full min-h-0 min-w-0" style={{ overflow: "hidden" }}>
             {rail}
           </Panel>
         ) : null}
@@ -1214,7 +1272,7 @@ function WorkstationApp() {
                 <ResizeHandle />
                 <Panel id="inspect" minSize="14" maxSize={peekOpen ? "28" : "48"} className="h-full min-h-0 min-w-0">
                   <div className="glass-chrome h-full min-h-0 overflow-hidden" data-skin-pane>
-                    {three ? inspect : (
+                    {three ? work : (
                       <ChatDock
                         items={ws.items}
                         showThinking={!!ws.savedCfg.showThinking}

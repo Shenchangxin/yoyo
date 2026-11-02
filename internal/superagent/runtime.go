@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -37,9 +36,19 @@ type Runtime struct {
 	health       string
 	at           time.Time
 	workers      int
+	workRoot     string
 	sourcesSaved bool
 	lastGitHub   time.Time
 	lastFeishu   time.Time
+	commentSince time.Time
+	lastMail     time.Time
+	prepareCmd   string
+	intake       func() []Trigger
+	readMiss     map[string]int
+	cursors      map[string]string
+	logs         map[string][]byte
+	report       func(ticketID, state, summary, question string)
+	notice       func(sessionID, text string)
 }
 
 // Open 打开 path 上的快照并还原引擎。path 为空时只放在内存里。policy 在没有快照时作为初始策略。
@@ -69,6 +78,10 @@ func Open(path string, policy Policy) (*Runtime, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS worker_log (ticket TEXT PRIMARY KEY, body TEXT NOT NULL)`); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	rt.db = db
 	if err := rt.load(); err != nil {
 		_ = db.Close()
@@ -77,8 +90,21 @@ func Open(path string, policy Policy) (*Runtime, error) {
 	return rt, nil
 }
 
-// Bind 接上模型和命令。ready 返回错误时派工先推迟。model 是工单代理的补全。shell 执行工单里的命令。
-func (rt *Runtime) Bind(ready func() error, model dsh.Completer, shell func(ctx context.Context, command string) (string, error)) {
+// SetWorkRoot 记下执行根。每张工单会在这个目录下的 tickets/<id> 里跑命令。还没 Bind 时先记下，Bind 时带上。
+func (rt *Runtime) SetWorkRoot(dir string) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.workRoot = dir
+	if rt.exec != nil {
+		rt.exec.Root = dir
+	}
+}
+
+// Bind 接上模型和命令。ready 返回错误时派工先推迟。model 是工单代理的补全。shell 在给出的目录里执行命令。
+func (rt *Runtime) Bind(ready func() error, model dsh.Completer, shell func(ctx context.Context, dir, command string) (string, error)) {
 	if rt == nil {
 		return
 	}
@@ -89,30 +115,168 @@ func (rt *Runtime) Bind(ready func() error, model dsh.Completer, shell func(ctx 
 		rt.workers = 3
 	}
 	rt.exec = NewExecutor(rt.eng, NewSlots(rt.workers), model)
+	rt.exec.Root = rt.workRoot
+	rt.exec.PrepareCmd = rt.prepareCmd
 	rt.exec.Shell = shell
-	rt.effects.Handle("launch", 3, func(payload any) error {
-		id, _ := payload.(string)
-		if rt.ready != nil {
-			if err := rt.ready(); err != nil {
-				return fmt.Errorf("%w", ErrLater)
-			}
-		}
-		if rt.exec == nil {
-			return fmt.Errorf("%w", ErrLater)
-		}
-		return rt.exec.Launch(id)
-	})
+	rt.refreshEnvLocked()
+	rt.attachExec()
+	rt.wireEffects()
+}
+
+// attachExec 把日志、报告和准备命令接到当前执行器上。Bind 之后调用。
+func (rt *Runtime) attachExec() {
+	if rt == nil || rt.exec == nil {
+		return
+	}
+	rt.exec.LogLoad = rt.loadWorkerLog
+	rt.exec.LogSave = rt.saveWorkerLog
+	rt.exec.OnReport = rt.queueReport
+}
+
+// wireEffects 登记六类先落盘再执行的副作用。调用时要已持有锁。
+func (rt *Runtime) wireEffects() {
+	if rt == nil || rt.effects == nil {
+		return
+	}
+	rt.effects.Handle("launch", 3, rt.runLaunch)
+	rt.effects.Handle("delivery", 4, rt.runDelivery)
+	rt.effects.Handle("assessment", 4, rt.runAssessment)
+	rt.effects.Handle("reply", 1, rt.runReply)
+	rt.effects.HandleOrdered("relay", 1, rt.runRelay)
+	rt.effects.HandleOrdered("notice", 1, rt.runNotice)
+	if rt.eng == nil {
+		return
+	}
 	rt.eng.OnLaunch = func(id string) {
 		rt.effects.Enqueue("launch", id, id)
 	}
 	rt.eng.OnInput = func(id, text string) {
-		if rt.exec != nil {
-			rt.exec.Deliver(id, text)
+		if strings.TrimSpace(text) == "" {
+			return
+		}
+		rt.effects.Enqueue("delivery", id, id)
+	}
+}
+
+// SetPrepareRunner 接上准备命令。它在执行根里跑，环境变量里没有钥匙。
+func (rt *Runtime) SetPrepareRunner(fn func(ctx context.Context, root, command string, env map[string]string) (string, error)) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.exec != nil {
+		rt.exec.RunPrepare = fn
+	}
+}
+
+// Receive 收下 in。第二个返回值是已经落到的工单。
+func (rt *Runtime) Receive(in Trigger) (string, []string) {
+	if rt == nil || rt.eng == nil {
+		return "empty", nil
+	}
+	status := rt.eng.Receive(in)
+	rt.mu.Lock()
+	effects := rt.effects
+	rt.mu.Unlock()
+	if effects != nil {
+		effects.Pump(time.Now())
+	}
+	got, ok := rt.eng.Trigger(in.ID)
+	if !ok {
+		return status, nil
+	}
+	return status, append([]string(nil), got.Reached...)
+}
+
+// DeskSession 返回开工这张工单的桌面会话。来源不是桌面时返回空串。
+func (rt *Runtime) DeskSession(ticketID string) string {
+	if rt == nil || rt.eng == nil {
+		return ""
+	}
+	return rt.eng.DeskSession(ticketID)
+}
+
+// refreshEnvLocked 把来源里不含钥匙的说明写进工人环境。调用时要已持有锁。
+func (rt *Runtime) refreshEnvLocked() {
+	if rt == nil || rt.exec == nil || rt.eng == nil {
+		return
+	}
+	cfg := rt.sources
+	eng := rt.eng
+	rt.exec.Env = func(dir, ticketID string) map[string]string {
+		name := ticketID
+		if t, ok := eng.Ticket(ticketID); ok && strings.TrimSpace(t.Name) != "" {
+			name = t.Name
+		}
+		return map[string]string{
+			"DSH_SUPERAGENT_DIR":               dir,
+			"DSH_SUPERAGENT_NAME":              name,
+			"DSH_SUPERAGENT_TICKET":            ticketID,
+			"DSH_SUPERAGENT_GITHUB_REPOSITORY": cfg.GitHubRepo,
+			"DSH_SUPERAGENT_GITHUB_ACCOUNT":    cfg.GitHubAccount,
+			"DSH_SUPERAGENT_FEISHU_BOT":        cfg.FeishuAppID,
+			"DSH_SUPERAGENT_FEISHU_CHAT":       cfg.FeishuChat,
 		}
 	}
 }
 
-// Start 每两秒跑一次 Pass。重复调用不会再开一条计时器。
+// SetPrepare 记下第一次派工前要跑的命令。空串表示只建空目录。面板才能改它。
+func (rt *Runtime) SetPrepare(command string) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.prepareCmd = strings.TrimSpace(command)
+	if rt.exec != nil {
+		rt.exec.PrepareCmd = rt.prepareCmd
+	}
+}
+
+// SetIntake 接上邮件和日历。fn 返回推断触发，由轮询按固定间隔收下。
+func (rt *Runtime) SetIntake(fn func() []Trigger) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	rt.intake = fn
+	rt.mu.Unlock()
+}
+
+// SetMount 接上工人的工作区工具。dir 是这张工单的目录。
+func (rt *Runtime) SetMount(fn func(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID string) (func() int, func(time.Duration))) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.exec != nil {
+		rt.exec.Mount = fn
+	}
+}
+
+// SetOnReport 在工人报告需要人时调用。progress 不进来。报告先入队，再按顺序写到原会话。
+func (rt *Runtime) SetOnReport(fn func(ticketID, state, summary, question string)) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	rt.report = fn
+	rt.mu.Unlock()
+}
+
+// SetOnNotice 把一条不叫醒路由的通知写进桌面会话。关闭和合并用它。
+func (rt *Runtime) SetOnNotice(fn func(sessionID, text string)) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	rt.notice = fn
+	rt.mu.Unlock()
+}
+
+// Start 每两秒跑一次 Pass。重复调用不会再开一条计时器。启动时先按从旧到新恢复被打断的派工。
 func (rt *Runtime) Start() {
 	if rt == nil {
 		return
@@ -124,7 +288,18 @@ func (rt *Runtime) Start() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	rt.cancel = cancel
+	eng := rt.eng
+	launch := eng.OnLaunch
+	effects := rt.effects
 	rt.mu.Unlock()
+	if eng != nil && launch != nil {
+		for _, id := range eng.RecoverHost() {
+			launch(id)
+		}
+		if effects != nil {
+			effects.Pump(time.Now())
+		}
+	}
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
@@ -164,16 +339,28 @@ func (rt *Runtime) Pass(now time.Time) {
 		return
 	}
 	rt.mu.Lock()
-	if rt.effects != nil {
-		rt.effects.Pump(now)
+	effects := rt.effects
+	eng := rt.eng
+	rt.mu.Unlock()
+	if effects != nil {
+		effects.Pump(now)
 	}
-	if rt.eng != nil {
-		rt.eng.EvaluateDue()
+	if eng != nil {
+		eng.EvaluateDue()
+		if effects != nil {
+			for _, id := range eng.UndeliveredEvals() {
+				effects.Enqueue("assessment", id, id)
+			}
+		}
 	}
-	if rt.effects != nil {
-		rt.effects.Pump(time.Now())
+	if effects != nil {
+		effects.Pump(time.Now())
 	}
+	rt.mu.Lock()
 	rt.health = "ready"
+	if effects != nil && !effects.Healthy() {
+		rt.health = "effect"
+	}
 	rt.at = now
 	rt.mu.Unlock()
 	rt.poll(now)
@@ -199,18 +386,43 @@ func (rt *Runtime) SetEvalTimeout(d time.Duration) {
 
 // Decide 评估 triggerID。kind 和 reason 写进决定。成功后立刻泵一次派工并落盘。
 func (rt *Runtime) Decide(triggerID, kind, reason string) error {
+	return rt.decide(triggerID, kind, reason, nil, false)
+}
+
+// DecideMatched 接受一条推断。rules 必须是还启用的规则编号。
+func (rt *Runtime) DecideMatched(triggerID, kind, reason string, rules []string) error {
+	return rt.decide(triggerID, kind, reason, rules, false)
+}
+
+// Confirm 记下人在面板上的决定。接受不会被观察模式改写成本来会接。
+func (rt *Runtime) Confirm(triggerID, kind, reason string) error {
+	return rt.decide(triggerID, kind, reason, nil, true)
+}
+
+// decide 写决定、落盘，再泵派工。confirmed 为真时走面板确认。
+func (rt *Runtime) decide(triggerID, kind, reason string, rules []string, confirmed bool) error {
 	if rt == nil || rt.eng == nil {
 		return errCode("empty")
 	}
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	if _, err := rt.eng.Decide(triggerID, kind, reason); err != nil {
+	var err error
+	if confirmed {
+		_, err = rt.eng.Confirm(triggerID, kind, reason)
+	} else if len(rules) > 0 {
+		_, err = rt.eng.DecideMatched(triggerID, kind, reason, rules)
+	} else {
+		_, err = rt.eng.Decide(triggerID, kind, reason)
+	}
+	if err != nil {
+		rt.mu.Unlock()
 		return err
 	}
-	if rt.effects != nil {
-		rt.effects.Pump(time.Now())
-	}
 	rt.saveLocked()
+	effects := rt.effects
+	rt.mu.Unlock()
+	if effects != nil {
+		effects.Pump(time.Now())
+	}
 	return nil
 }
 
@@ -286,7 +498,6 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		return errCode("empty")
 	}
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
 	var err error
 	switch kind {
 	case "attach":
@@ -328,16 +539,26 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		rt.applyWorkers(text)
 	case "sources":
 		err = rt.applySources(text)
+	case "rules":
+		err = rt.applyRulesLocked(text)
+	case "prepare":
+		rt.prepareCmd = strings.TrimSpace(text)
+		if rt.exec != nil {
+			rt.exec.PrepareCmd = rt.prepareCmd
+		}
 	default:
 		err = errCode("bad_action")
 	}
 	if err != nil {
+		rt.mu.Unlock()
 		return err
 	}
-	if rt.effects != nil {
-		rt.effects.Pump(time.Now())
-	}
 	rt.saveLocked()
+	effects := rt.effects
+	rt.mu.Unlock()
+	if effects != nil {
+		effects.Pump(time.Now())
+	}
 	return nil
 }
 
@@ -354,12 +575,22 @@ func (rt *Runtime) View() View {
 		at = rt.at.UTC().Format(time.RFC3339)
 	}
 	workers := rt.workers
+	prepare := rt.prepareCmd
 	rt.mu.Unlock()
 	snap, err := rt.eng.Export()
 	if err != nil {
 		return View{Health: err.Error(), Sources: sources, At: at, Tickets: []TicketRow{}, Threads: []ThreadRow{}, Queued: []TriggerRow{}, Evals: []EvalRow{}, Decisions: []DecisionRow{}, Executions: []ExecutionRow{}, Problems: []ProblemRow{}, Allowed: []string{}}
 	}
-	return buildView(snap, sources, health, at, workers)
+	view := buildView(snap, sources, health, at, workers)
+	view.Prepare = prepare
+	if rt.effects != nil {
+		for _, row := range rt.effects.Failing() {
+			view.Problems = append(view.Problems, ProblemRow{
+				Kind: "effect", ID: row.Kind + ":" + row.Key, Title: row.Kind, Detail: row.Payload,
+			})
+		}
+	}
+	return view
 }
 
 // updatePolicy 用 edit 改策略并落盘。edit 收到当前策略，返回要写回的策略。
@@ -395,12 +626,14 @@ func (rt *Runtime) sourceList() []SourceState {
 		if name == "github" {
 			st.Repo = rt.sources.GitHubRepo
 			st.API = rt.sources.GitHubAPI
+			st.Account = rt.sources.GitHubAccount
 			st.HasSecret = strings.TrimSpace(rt.sources.GitHubToken) != ""
 		}
 		if name == "feishu" {
 			st.Chat = rt.sources.FeishuChat
 			st.App = rt.sources.FeishuAppID
 			st.API = rt.sources.FeishuAPI
+			st.Account = rt.sources.FeishuMention
 			st.HasSecret = strings.TrimSpace(rt.sources.FeishuSecret) != ""
 		}
 		out = append(out, st)
@@ -427,6 +660,33 @@ func (rt *Runtime) applyAllowed(text string) error {
 	return nil
 }
 
+// applyRulesLocked 用 text 里的 JSON 数组重写主动规则。调用时要已持有锁。编号和正文都空的行丢掉。
+func (rt *Runtime) applyRulesLocked(text string) error {
+	var rows []Rule
+	if strings.TrimSpace(text) != "" && json.Unmarshal([]byte(text), &rows) != nil {
+		return errCode("bad_rules")
+	}
+	var kept []Rule
+	seen := map[string]bool{}
+	for _, row := range rows {
+		row.ID = strings.TrimSpace(row.ID)
+		row.Text = strings.TrimSpace(row.Text)
+		if row.ID == "" || row.Text == "" || seen[row.ID] || row.ID == "addressed" || row.ID == "person" {
+			continue
+		}
+		seen[row.ID] = true
+		kept = append(kept, row)
+	}
+	snap, err := rt.eng.Export()
+	if err != nil {
+		return err
+	}
+	next := snap.Policy
+	next.Rules = kept
+	rt.eng.SetPolicy(next)
+	return nil
+}
+
 // applyWorkers 把普通工人槽改成 text 里的数字。调用时要已持有锁。小于 1 当作 1，大于 32 当作 32。
 func (rt *Runtime) applyWorkers(text string) {
 	n, err := strconv.Atoi(strings.TrimSpace(text))
@@ -443,16 +703,19 @@ func (rt *Runtime) applyWorkers(text string) {
 }
 
 // sourceForm 是编排台提交的来源表。密钥留空表示保持原值，Clear 为真才清掉。
+// 点名用指针：没带这个字段就保持原值，带了空串才清掉。
 type sourceForm struct {
-	GitHubToken       string `json:"githubToken"`
-	GitHubRepo        string `json:"githubRepo"`
-	GitHubAPI         string `json:"githubApi"`
-	FeishuAppID       string `json:"feishuAppId"`
-	FeishuSecret      string `json:"feishuSecret"`
-	FeishuChat        string `json:"feishuChat"`
-	FeishuAPI         string `json:"feishuApi"`
-	ClearGitHubToken  bool   `json:"clearGithubToken"`
-	ClearFeishuSecret bool   `json:"clearFeishuSecret"`
+	GitHubToken       string  `json:"githubToken"`
+	GitHubRepo        string  `json:"githubRepo"`
+	GitHubAPI         string  `json:"githubApi"`
+	GitHubAccount     *string `json:"githubAccount"`
+	FeishuAppID       string  `json:"feishuAppId"`
+	FeishuSecret      string  `json:"feishuSecret"`
+	FeishuChat        string  `json:"feishuChat"`
+	FeishuAPI         string  `json:"feishuApi"`
+	FeishuMention     *string `json:"feishuMention"`
+	ClearGitHubToken  bool    `json:"clearGithubToken"`
+	ClearFeishuSecret bool    `json:"clearFeishuSecret"`
 }
 
 // applySources 按 form 改来源。仓库、应用号和会话空串会清掉。调用时要已持有锁。
@@ -465,6 +728,12 @@ func (rt *Runtime) applySources(text string) error {
 	next.GitHubRepo = strings.TrimSpace(form.GitHubRepo)
 	next.FeishuAppID = strings.TrimSpace(form.FeishuAppID)
 	next.FeishuChat = strings.TrimSpace(form.FeishuChat)
+	if form.GitHubAccount != nil {
+		next.GitHubAccount = strings.TrimPrefix(strings.TrimSpace(*form.GitHubAccount), "@")
+	}
+	if form.FeishuMention != nil {
+		next.FeishuMention = strings.TrimPrefix(strings.TrimSpace(*form.FeishuMention), "@")
+	}
 	if api := strings.TrimSpace(form.GitHubAPI); api != "" {
 		next.GitHubAPI = api
 	}
@@ -485,6 +754,7 @@ func (rt *Runtime) applySources(text string) error {
 	rt.sourcesSaved = true
 	rt.lastGitHub = time.Time{}
 	rt.lastFeishu = time.Time{}
+	rt.refreshEnvLocked()
 	return nil
 }
 
@@ -513,14 +783,24 @@ func (rt *Runtime) load() error {
 	if stored.Workers > 0 {
 		rt.workers = stored.Workers
 	}
+	rt.prepareCmd = strings.TrimSpace(stored.Prepare)
+	if len(stored.Cursors) > 0 {
+		rt.cursors = stored.Cursors
+	}
+	if rt.effects != nil {
+		rt.effects.Restore(stored.Effects)
+	}
 	return nil
 }
 
 // diskBody 是落盘的快照。Sources 为空指针表示仍用环境变量。Workers 为 0 表示还没改过槽位数。
 type diskBody struct {
 	Snapshot
-	Sources *SourceConfig `json:"sources,omitempty"`
-	Workers int           `json:"workers,omitempty"`
+	Sources *SourceConfig     `json:"sources,omitempty"`
+	Workers int               `json:"workers,omitempty"`
+	Prepare string            `json:"prepare,omitempty"`
+	Effects []savedEffect     `json:"effects,omitempty"`
+	Cursors map[string]string `json:"cursors,omitempty"`
 }
 
 // save 在锁内把快照写入数据库。
@@ -543,7 +823,10 @@ func (rt *Runtime) saveLocked() {
 		rt.health = err.Error()
 		return
 	}
-	stored := diskBody{Snapshot: snap, Workers: rt.workers}
+	stored := diskBody{Snapshot: snap, Workers: rt.workers, Prepare: rt.prepareCmd, Cursors: rt.cursors}
+	if rt.effects != nil {
+		stored.Effects = rt.effects.ExportPending()
+	}
 	if rt.sourcesSaved {
 		cfg := rt.sources
 		stored.Sources = &cfg

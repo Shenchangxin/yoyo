@@ -19,6 +19,7 @@ import {
   SettingSection,
 } from "./SettingChrome";
 import type { SettingsHost } from "./host";
+import { WorkSources } from "../superagent/SourceSettings";
 
 /** 画一行输入。label 用作标签，作为子节点渲染。value 写到 Input 的 value。onChange 被调用，并传入 e.target.value。 */
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -37,6 +38,7 @@ export function ExtensionsSettings({ host }: { host: SettingsHost }) {
       <McpSection host={host} />
       <FiberSection host={host} />
       <ConnectorSection />
+      <WorkSources />
     </>
   );
 }

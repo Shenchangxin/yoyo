@@ -31,7 +31,11 @@ func (a *App) MemoryForget(id string) bool {
 	if a.Memory == nil {
 		return false
 	}
-	return a.Memory.Forget(id)
+	ok := a.Memory.Forget(id)
+	if ok {
+		a.touchPoi()
+	}
+	return ok
 }
 
 // MemoryWrite 按种类、文本和项目写入一条记忆。记忆库为空返回零值。
@@ -42,7 +46,9 @@ func (a *App) MemoryWrite(kind, text, project string) memory.Item {
 	if a.Memory == nil {
 		return memory.Item{}
 	}
-	return a.Memory.Write(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project})
+	it := a.Memory.Write(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project})
+	a.touchPoi()
+	return it
 }
 
 // ConnectorCatalog 返回连接器目录。

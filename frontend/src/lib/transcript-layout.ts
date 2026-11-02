@@ -184,6 +184,12 @@ export function liveSubagentCrumb(items: Item[] | undefined | null): string {
   return crumb;
 }
 
+/** isDeskNotice 是推进进主会话的简报或兴趣变化。它自己成一行，不并进上一回合。it 读取 type、source、payload。 */
+export function isDeskNotice(it: Item): boolean {
+  if (it.type !== "assistant") return false;
+  return it.source === "desk" || it.payload?.kind === "brief" || it.payload?.kind === "poi";
+}
+
 /** isAgentItem 属于智能体回合的条目。提及注入不算。it 读取 type，传给 isMentionInject，传给 isToolish，传给 isSteer。 */
 export function isAgentItem(it: Item): boolean {
   if (isMentionInject(it)) return false;
@@ -639,6 +645,17 @@ export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
     // 回合中的上下文检查点是回合内部的分隔，不是新回合。
     if (it.type === "compaction" && agent.length) {
       agent.push(it);
+      continue;
+    }
+    if (isDeskNotice(it)) {
+      flushAgent(false, false);
+      rows.push({
+        key: `turn:${it.key}`,
+        kind: "agent",
+        parts: [{ key: it.key, kind: "item", item: it }],
+        copyText: it.text.trim(),
+        turnKey,
+      });
       continue;
     }
     if (isAgentItem(it)) {

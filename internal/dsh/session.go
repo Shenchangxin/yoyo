@@ -96,6 +96,26 @@ func NewSession() *Session {
 	return &Session{}
 }
 
+// Restore 用 events 换掉日志，并按同样的顺序重放表面。回合号留给 ResumeTurn。
+func (s *Session) Restore(events []Event) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = nil
+	s.nodes = nil
+	s.seq = 0
+	for _, ev := range events {
+		s.seq++
+		ev.Seq = s.seq
+		s.events = append(s.events, ev)
+		if ev.Data != nil {
+			s.applyLocked(ev.Type, ev.Data)
+		}
+	}
+}
+
 // Reset 清空日志和模型可见表面。检查点替换历史时调用。
 func (s *Session) Reset() {
 	if s == nil {

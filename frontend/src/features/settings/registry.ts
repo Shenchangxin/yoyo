@@ -74,6 +74,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "extensions-mcp", tab: "extensions", titleKey: "extensionsMcp", keywords: "mcp server stdio http json" },
   { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm" },
   { id: "extensions-connectors", tab: "extensions", titleKey: "extensionsConnectors", keywords: "connector oauth gmail feishu" },
+  { id: "extensions-work", tab: "extensions", titleKey: "extensionsWorkSources", keywords: "github feishu source token work 来源 飞书" },
   { id: "messaging-policy", tab: "messaging", titleKey: "messagingPolicy", keywords: "im bot telegram qq discord slack wechat lark dingtalk line whatsapp wake mention 消息 机器人 唤醒" },
   { id: "messaging-accounts", tab: "messaging", titleKey: "messagingAccounts", keywords: "im account bot token webhook 账号 令牌 回调" },
   { id: "personal-memory", tab: "personal", titleKey: "personalMemory", keywords: "memory profile staging" },

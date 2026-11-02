@@ -28,15 +28,16 @@ func (a *App) agentDesk() *dshdesk.Host {
 	return a.desk
 }
 
-// orchestrator 返回编排运行时。第一次调用时打开 SQLite、接上模型，并开始两秒轮次。
+// orchestrator 返回编排运行时。第一次调用时打开 SQLite、接上模型和工人，并开始两秒轮次。
 func (a *App) orchestrator() *superagent.Runtime {
 	if a == nil {
 		return nil
 	}
 	a.deskMu.Lock()
-	defer a.deskMu.Unlock()
 	if a.orch != nil {
-		return a.orch
+		rt := a.orch
+		a.deskMu.Unlock()
+		return rt
 	}
 	path := ""
 	dir := ""
@@ -49,15 +50,23 @@ func (a *App) orchestrator() *superagent.Runtime {
 		rt, _ = superagent.Open("", superagent.Policy{Mode: "observe", Version: 1})
 	}
 	if rt == nil {
+		a.deskMu.Unlock()
 		return nil
 	}
 	work := dir
+	rt.SetWorkRoot(work)
 	rt.Bind(func() error {
 		_, err := a.ClientFor(SessionMeta{})
 		return err
 	}, liveModel{app: a}, orchestratorShell(work))
-	rt.Start()
+	rt.SetMount(a.mountWorker)
+	rt.SetOnReport(a.relayReport)
+	rt.SetOnNotice(a.relayNotice)
+	rt.SetPrepareRunner(orchestratorPrepare(work))
+	rt.SetIntake(a.connectorTriggers)
 	a.orch = rt
+	a.deskMu.Unlock()
+	rt.Start()
 	return rt
 }
 
@@ -89,6 +98,9 @@ func (a *App) OrchestratorDecide(triggerID, kind, reason string) error {
 	rt := a.orchestrator()
 	if rt == nil {
 		return errString("orchestrator unavailable")
+	}
+	if kind == "accept" {
+		return rt.Confirm(triggerID, kind, reason)
 	}
 	return rt.Decide(triggerID, kind, reason)
 }
@@ -159,9 +171,9 @@ func (m liveModel) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant
 	return bridge.Complete(ctx, req)
 }
 
-// orchestratorShell 返回在 dir 里执行命令的函数。command 交给系统 shell，最多跑 10 分钟。
-func orchestratorShell(dir string) func(ctx context.Context, command string) (string, error) {
-	return func(ctx context.Context, command string) (string, error) {
+// orchestratorShell 返回执行命令的函数。dir 非空时用它，否则用 fallback。command 交给系统 shell，最多跑 10 分钟。
+func orchestratorShell(fallback string) func(ctx context.Context, dir, command string) (string, error) {
+	return func(ctx context.Context, dir, command string) (string, error) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
 		var cmd *exec.Cmd
@@ -169,6 +181,9 @@ func orchestratorShell(dir string) func(ctx context.Context, command string) (st
 			cmd = exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", command)
 		} else {
 			cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		}
+		if dir == "" {
+			dir = fallback
 		}
 		if dir != "" {
 			cmd.Dir = dir

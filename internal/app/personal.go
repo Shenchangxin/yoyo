@@ -22,6 +22,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/personal"
+	"github.com/Shenchangxin/yoyo/internal/poi"
 	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
@@ -49,6 +50,16 @@ func (a *App) openPersonal() error {
 		}
 		a.Memory = mem
 		return func() error { a.Memory = nil; return nil }, nil
+	}); err != nil {
+		return err
+	}
+	if err := a.mountFiber("poi", func() (func() error, error) {
+		store, err := poi.Open(a.Home.Memory())
+		if err != nil {
+			return nil, err
+		}
+		a.Poi = store
+		return func() error { a.Poi = nil; return nil }, nil
 	}); err != nil {
 		return err
 	}
@@ -327,7 +338,11 @@ func (a *App) MemoryPromote(id string) bool {
 	if a.Memory == nil {
 		return false
 	}
-	return a.Memory.Promote(id)
+	ok := a.Memory.Promote(id)
+	if ok {
+		a.touchPoi()
+	}
+	return ok
 }
 
 // ScheduleList 返回日程列表。日程为空时返回 nil。

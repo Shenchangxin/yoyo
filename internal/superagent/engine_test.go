@@ -65,7 +65,7 @@ func TestAcceptCreatesTicket(t *testing.T) {
 		t.Fatalf("thread %+v", th)
 	}
 	box := eng.Outbox()
-	if len(box) != 1 || box[0].Kind != "acknowledgement" || box[0].Text != "已接单" {
+	if len(box) != 1 || box[0].Kind != "acknowledgement" || box[0].Text != "已接单" || box[0].Source != "desk" {
 		t.Fatalf("outbox %+v", box)
 	}
 }
