@@ -19,6 +19,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -77,7 +78,8 @@ func TestSeedCheckoutRollback(t *testing.T) {
 	}
 }
 
-// TestAgentLoopTrajectory 发送后工作区出现文件，轨迹里有工具调用和 harness，续发后用户事件增加，且在线整理不把 staging 写成 active。
+// TestAgentLoopTrajectory 在学习车道上发送后工作区出现文件，轨迹里有工具调用和 harness，续发后用户事件增加，且在线整理不把 staging 写成 active。
+// 主会话是路由，没有写文件。学习车道仍走原来的工具循环。
 func TestAgentLoopTrajectory(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -85,7 +87,7 @@ func TestAgentLoopTrajectory(t *testing.T) {
 	}
 	defer a.Close()
 	ws := t.TempDir()
-	sess, err := a.NewSession(ws)
+	sess, err := a.NewSessionOn(ws, session.ChannelLearn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +140,26 @@ func TestAgentLoopTrajectory(t *testing.T) {
 	active := a.ActiveHash()
 	if staged := a.Refs.GetOrEmpty(artifact.RefStaging); staged != "" && staged == active {
 		t.Fatal("online ACE staging must not move refs/active")
+	}
+}
+
+// TestAgentLaneLeavesWorkspaceUntouched 确认主会话是路由，写文件的句子不会改工作区。
+func TestAgentLaneLeavesWorkspaceUntouched(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Send(context.Background(), sess.ID, "Write hello.txt containing hello", runtime.HeuristicSolver{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "hello.txt")); !os.IsNotExist(err) {
+		t.Fatal("router must not write the workspace")
 	}
 }
 

@@ -27,12 +27,13 @@ func TestWaitIdleSilenceReturns(t *testing.T) {
 	killProcess(t, cmd)
 }
 
-// TestWaitBlockReturnsWhileAlive 要求墙钟达到 block 后返回，即使 ping 仍在输出，且耗时不超过 2 秒。
+// TestWaitBlockReturnsWhileAlive 要求墙钟达到 block 后返回，即使 ping 仍在输出。
+// 计时含进程启动。熔断本身是 300 毫秒；20 次 ping 大约 19 秒，8 秒仍能抓住没回来的熔断。
 func TestWaitBlockReturnsWhileAlive(t *testing.T) {
 	cmd := pingLoop(t)
 	start := time.Now()
 	o := Wait(context.Background(), cmd, 0, 300*time.Millisecond)
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
+	if elapsed := time.Since(start); elapsed > 8*time.Second {
 		t.Fatalf("block fuse blocked %s", elapsed)
 	}
 	if !o.Background {
