@@ -160,6 +160,8 @@ type App struct {
 	desk   *dshdesk.Host
 	orch   *superagent.Runtime
 
+	reachMu sync.Mutex
+
 	shapeMu   sync.Mutex
 	lastShape map[string]runtime.ShapeReport
 	usageMu   sync.Mutex

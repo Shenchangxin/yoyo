@@ -44,6 +44,20 @@ func (s *Store) flush() error {
 	return os.Rename(tmp, s.path)
 }
 
+// Seen 复制已经见过的签名。公开检索用它跳过已经说过的链接。
+func (s *Store) Seen() map[string]string {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]string, len(s.book.Seen))
+	for id, sig := range s.book.Seen {
+		out[id] = sig
+	}
+	return out
+}
+
 // Assess 用这一轮材料判断，并把更新后的记录写回磁盘。
 func (s *Store) Assess(in Input) Briefing {
 	if s == nil {

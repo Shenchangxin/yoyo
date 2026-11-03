@@ -19,6 +19,7 @@ func (a *App) assessDesk(snap poi.Snapshot) (initiative.Briefing, bool) {
 		return initiative.Briefing{}, false
 	}
 	facts, idle := initiative.LocalFacts(poi.DefaultRoots())
+	facts = append(facts, a.reachFacts(store.Seen(), time.Now())...)
 	facts = append(facts, lineFacts(snap.Census)...)
 	facts = append(facts, poiFacts(snap)...)
 	facts = append(facts, a.connectorFacts()...)

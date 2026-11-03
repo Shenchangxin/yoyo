@@ -448,6 +448,7 @@ export const zhCN = {
     whyLow: "电量低",
     whyOffline: "网络断了",
     whyWelcome: "第一封信",
+    whyMatch: "公开检索对上了这一句。标题和链接来自检索结果，没有另写。",
     feedbackUsed: "用上了",
     feedbackIgnore: "先不用",
     feedbackWrong: "事实不对",

@@ -53,12 +53,20 @@ type Mute struct {
 	Until   string `json:"until,omitempty"`
 }
 
+// ReachQuota 记下公开检索一天说了几次、上次是什么时候。一天最多三次，两次至少隔三小时。
+type ReachQuota struct {
+	Day string `json:"day,omitempty"`
+	N   int    `json:"n,omitempty"`
+	At  string `json:"at,omitempty"`
+}
+
 // Book 是开口的记忆。Seen 是上次签名，Spoken 是某一类上次开口的日期。
 type Book struct {
 	Seen   map[string]string `json:"seen,omitempty"`
 	Spoken map[string]string `json:"spoken,omitempty"`
 	Mute   map[string]Mute   `json:"mute,omitempty"`
 	Open   []Commitment      `json:"open,omitempty"`
+	Reach  ReachQuota        `json:"reach,omitempty"`
 }
 
 // Briefing 是这一轮的感知、要开口的判断，以及还留着的承诺。
@@ -110,7 +118,9 @@ func Assess(in Input) (Briefing, Book) {
 		}
 		prev, seen := book.Seen[fact.ID]
 		changed := seen && prev != sig
-		book.Seen[fact.ID] = sig
+		if fact.Code != "reach" {
+			book.Seen[fact.ID] = sig
+		}
 		want := false
 		why := ""
 		if fact.Eligible {
@@ -118,6 +128,9 @@ func Assess(in Input) (Briefing, Book) {
 			case "line", "git", "poi":
 				want = changed
 				why = "changed"
+			case "reach":
+				want = !seen || changed
+				why = "match"
 			default:
 				want = true
 				why = fact.State
@@ -129,7 +142,11 @@ func Assess(in Input) (Briefing, Book) {
 			speak = false
 			held = true
 		}
-		if speak && book.Spoken[fact.Class] == day {
+		if speak && book.Spoken[fact.Class] == day && fact.Class != "reach" {
+			speak = false
+			held = true
+		}
+		if speak && fact.Class == "reach" && !reachRoom(book.Reach, now) {
 			speak = false
 			held = true
 		}
@@ -146,12 +163,16 @@ func Assess(in Input) (Briefing, Book) {
 		if want && !speak {
 			held = true
 		}
+		limit := 120
+		if fact.Code == "reach" {
+			limit = 480
+		}
 		signals = append(signals, Signal{
 			ID:       fact.ID,
 			Code:     fact.Code,
 			Class:    fact.Class,
 			Name:     clip(fact.Name, 80),
-			Detail:   clip(fact.Detail, 120),
+			Detail:   clip(fact.Detail, limit),
 			State:    fact.State,
 			Why:      why,
 			Speak:    speak,
@@ -161,6 +182,10 @@ func Assess(in Input) (Briefing, Book) {
 		})
 		if speak {
 			book.Spoken[fact.Class] = day
+			if fact.Code == "reach" {
+				book.Seen[fact.ID] = sig
+				book.Reach = markReach(book.Reach, now)
+			}
 		}
 	}
 	if in.Welcome && !anySpeak(signals) && book.Spoken["welcome"] != day {
@@ -232,6 +257,32 @@ func NoteSchedule(book Book, id, title, day string) Book {
 // AllowSchedule 在编排台明确关掉时不跑日程。空模式仍算人写过的日程，可以跑。
 func AllowSchedule(mode string) bool {
 	return strings.TrimSpace(mode) != "off"
+}
+
+func reachRoom(q ReachQuota, now time.Time) bool {
+	day := now.Format("2006-01-02")
+	if q.Day == day && q.N >= 3 {
+		return false
+	}
+	if q.At == "" {
+		return true
+	}
+	at, err := time.Parse(time.RFC3339, q.At)
+	if err != nil {
+		return true
+	}
+	return now.Sub(at) >= 3*time.Hour
+}
+
+func markReach(q ReachQuota, now time.Time) ReachQuota {
+	day := now.Format("2006-01-02")
+	if q.Day != day {
+		q.Day = day
+		q.N = 0
+	}
+	q.N++
+	q.At = now.Format(time.RFC3339)
+	return q
 }
 
 func muted(book Book, fact Fact, day string) bool {

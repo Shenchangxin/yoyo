@@ -1,6 +1,7 @@
 package initiative
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -94,5 +95,34 @@ func TestScheduleStaysVisibleAndOffStops(t *testing.T) {
 	book = NoteSchedule(book, "job-1", "token inside", "2026-11-03")
 	if book.Open[0].Title != "job-1" {
 		t.Fatalf("secret title leaked: %q", book.Open[0].Title)
+	}
+}
+
+func TestAssessReachSpacesNotesAndKeepsTheLink(t *testing.T) {
+	now := time.Date(2026, 11, 3, 12, 49, 0, 0, time.Local)
+	item := Fact{
+		ID: "reach:a", Code: "reach", Class: "reach", Name: "Step 5 Preview",
+		Detail: "开源模型\nhttps://example.com/step\n免费到 10 月 25 日", State: "match", Sig: "https://example.com/step",
+		Eligible: true,
+	}
+	first, book := Assess(Input{Now: now, Idle: 40 * time.Minute, Facts: []Fact{item}})
+	if !first.Speak || first.Signals[0].Why != "match" || !strings.Contains(first.Signals[0].Detail, "https://example.com/step") {
+		t.Fatalf("first note = %#v", first)
+	}
+	again, book := Assess(Input{Now: now.Add(time.Hour), Facts: []Fact{item}, Book: book})
+	if again.Speak {
+		t.Fatal("same link should stay quiet")
+	}
+	next := item
+	next.ID = "reach:b"
+	next.Sig = "https://example.com/other"
+	next.Detail = "开源模型\nhttps://example.com/other\n另一条"
+	held, book := Assess(Input{Now: now.Add(2 * time.Hour), Facts: []Fact{next}, Book: book})
+	if held.Speak || len(held.Signals) != 1 || !held.Signals[0].Held {
+		t.Fatalf("spacing = %#v", held)
+	}
+	later, book := Assess(Input{Now: now.Add(4 * time.Hour), Facts: []Fact{next}, Book: book})
+	if !later.Speak || book.Reach.N != 2 {
+		t.Fatalf("second note = %#v n=%d", later, book.Reach.N)
 	}
 }

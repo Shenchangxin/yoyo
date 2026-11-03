@@ -447,6 +447,7 @@ export const en = {
     whyLow: "Battery is low",
     whyOffline: "The network is down",
     whyWelcome: "First letter",
+    whyMatch: "A public result matches this line. The title and link are from the search, not rewritten.",
     feedbackUsed: "Useful",
     feedbackIgnore: "Not this",
     feedbackWrong: "Wrong fact",

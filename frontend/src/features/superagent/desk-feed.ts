@@ -60,6 +60,7 @@ async function refreshPoi(): Promise<{ points: { name: string; kind: string }[];
     traces: points.filter((point) => point.kind === "trace" || point.kind === "desk").length,
   } : undefined;
   latest = snap.initiative;
+  await pushSpeaks(snap.initiative, "", "reach");
   if (snap.pending && sessionId) {
     if (snap.initiative) {
       await poiAck(snap.sig).catch(() => false);
@@ -126,20 +127,9 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { point
   if (!sessionId || !shouldPush(scan.initiative, welcome)) return;
   const work = copy.work;
   const chipDay = new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const speaks = signals.filter((signal) => signal.speak && signal.code !== "welcome");
+  const speaks = signals.filter((signal) => signal.speak && signal.code !== "welcome" && signal.code !== "reach");
   if (speaks.length) {
-    for (const signal of speaks) {
-      const text = [signal.name, signal.detail].filter(Boolean).join("\n");
-      await deskPush({
-        sessionId,
-        kind: "speak",
-        slot: signal.class || signal.id,
-        day,
-        text,
-        chip: signal.name,
-        brief: JSON.stringify(brief),
-      }).catch(() => false);
-    }
+    await pushSpeaks(scan.initiative, JSON.stringify(brief));
     return;
   }
   const chip = (slot === "evening" ? work.briefChipEvening : work.briefChipMorning).replace("{day}", chipDay);
@@ -153,6 +143,30 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { point
     chip,
     brief: JSON.stringify(brief),
   }).catch(() => false);
+}
+
+/** pushSpeaks 把这一轮该说的短讯放进主会话。同一条同一天只留一次。检索按链接分开，并且不占用晨间那一条。 */
+async function pushSpeaks(initiative: Initiative | undefined, briefJSON?: string, only?: string): Promise<void> {
+  if (!sessionId || !initiative?.speak) return;
+  const day = briefDay();
+  const speaks = (initiative.signals || []).filter((signal) => {
+    if (!signal.speak || signal.code === "welcome") return false;
+    if (only) return signal.code === only;
+    return signal.code !== "reach";
+  });
+  for (const signal of speaks) {
+    const text = [signal.name, signal.detail].filter(Boolean).join("\n");
+    if (!text) continue;
+    await deskPush({
+      sessionId,
+      kind: "speak",
+      slot: signal.code === "reach" ? signal.id : (signal.class || signal.id),
+      day,
+      text,
+      chip: signal.name,
+      brief: briefJSON || "",
+    }).catch(() => false);
+  }
 }
 
 function senseLabels(): SenseLabels {
@@ -191,6 +205,7 @@ function senseLabels(): SenseLabels {
       low: work.whyLow,
       offline: work.whyOffline,
       welcome: work.whyWelcome,
+      match: work.whyMatch,
     },
   };
 }
