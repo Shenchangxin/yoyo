@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	goruntime "runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +27,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-const routePrompt = "你是主会话的路由。你只有 task_route、task_status、task_note、task_stop 和 memory_read，不能改文件，也不能跑命令。明确的请求立刻路由：接受时给出 title，不要把范围展开成工作计划。推断的工作只有在 auto 下、并且 rules 里写了至少一条还启用的规则编号时才能接受。接受之后用一句话告诉人已经开始，然后结束，不要等工人。只是聊天就忽略。已经交给工人的后续消息，你只能停止。普通进度不要写进对话。"
+const routePrompt = "你是主会话的路由。你只有 task_route、task_status、task_note、task_stop 和 memory_read，不能改文件，也不能跑命令。明确的请求立刻路由。先看材料里列出的工单：和某一张是同一件事，或者明显相关，就用 continue 指到那张工单，沿用它的目录和会话，不要 accept 新开。有多张相关时，继续最贴近的一张。都不相关才 accept，并给出 title，不要把范围展开成工作计划。推断的工作只有在 auto 下、并且 rules 里写了至少一条还启用的规则编号时才能接受。接受或继续之后用一句话告诉人已经开始，然后结束，不要等工人。只是聊天就忽略。人明确要求打断时才 stop。打断只停这一轮，原会话还能继续。工人的阶段性进展和结果会写回这段对话，你不要重做。"
 
 // beginRoute 在智能体主会话上换成路由工具。视频、学习、短片和即时消息会话保持原来的工具。
 func (a *App) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID string) bool {
@@ -56,7 +58,8 @@ func routeFragment() artifact.PromptFragment {
 	return artifact.PromptFragment{Slot: "role", Text: routePrompt}
 }
 
-// intakeDesk 把这一轮桌面消息记成明确触发。已经落到工人的，告诉路由只能停止。
+// intakeDesk 把这一轮桌面消息记成明确触发。已经落到同一条具体线程上的，告诉路由只能停止。
+// 主会话上的新请求先列出最近工单，由路由判断是继续原目录，还是新开。
 func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	text = strings.TrimSpace(text)
 	if a == nil || text == "" || strings.TrimSpace(turnID) == "" {
@@ -74,7 +77,10 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	if len(reached) > 0 {
 		return "这条消息已经交给工单 " + strings.Join(reached, ", ") + "。不要再接受。只有人明确要求停止时才用 task_stop。"
 	}
-	line := "这条桌面消息的触发编号是 " + id + "。要开工就用 task_route 接受，并给出 title。只是聊天就忽略。不要改文件，也不要等工人做完。"
+	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept，并给出 title。只是聊天就忽略。不要改文件，也不要等工人做完。"
+	if roster := taskRoster(rt); roster != "" {
+		line += "\n最近工单：\n" + roster
+	}
 	if rules := enabledRuleLine(rt); rules != "" {
 		line += " 推断接受时 rules 只能从这些编号里选：" + rules
 	}
@@ -130,7 +136,7 @@ func (a *App) routerExtras() map[string]runtime.ExtraTool {
 
 // routeTool 接受、忽略、停止或挂接触发。一次可以有多项。
 func (a *App) routeTool() runtime.ExtraTool {
-	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、title、reason、ticket、rules。action 取 accept、ignore、stop、attach。推断接受时 rules 是启用的规则编号。", map[string]any{
+	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、title、reason、ticket、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。推断接受时 rules 是启用的规则编号。", map[string]any{
 		"items": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
 	}, false, func(args map[string]any) (string, error) {
 		rt := a.orchestrator()
@@ -185,6 +191,14 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 			return "", err
 		}
 		return "accepted " + trigger, nil
+	case "continue", "attach":
+		if ticket == "" {
+			return "", fmt.Errorf("continue needs ticket")
+		}
+		if err := rt.Act("attach", ticket, trigger, title, ""); err != nil {
+			return "", err
+		}
+		return "continued " + ticket, nil
 	case "ignore":
 		if err := rt.Decide(trigger, "ignore", reason); err != nil {
 			return "", err
@@ -201,35 +215,69 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 			return "", err
 		}
 		return "stopped " + trigger, nil
-	case "attach":
-		if err := rt.Act("attach", ticket, trigger, title, ""); err != nil {
-			return "", err
-		}
-		return "attached " + trigger, nil
 	default:
 		return "", fmt.Errorf("bad action %s", action)
 	}
 }
 
-// statusTool 列出还开着的工单。
+// statusTool 列出最近的工单，包含已经停下或做完的。
 func (a *App) statusTool() runtime.ExtraTool {
-	return routeExtra("task_status", "列出还开着的工单。没有参数。", map[string]any{}, true, func(map[string]any) (string, error) {
+	return routeExtra("task_status", "列出最近的工单，包含已经停下或做完的。没有参数。", map[string]any{}, true, func(map[string]any) (string, error) {
 		rt := a.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
-		var b strings.Builder
-		for _, ticket := range rt.View().Tickets {
-			if ticket.Stage == "ended" {
-				continue
-			}
-			fmt.Fprintf(&b, "%s %s %s %s\n", ticket.ID, ticket.Stage, ticket.Action, ticket.Title)
+		text := taskRoster(rt)
+		if text == "" {
+			return "没有工单", nil
 		}
-		if b.Len() == 0 {
-			return "没有开着的工单", nil
-		}
-		return strings.TrimSpace(b.String()), nil
+		return text, nil
 	})
+}
+
+// taskRoster 把最近八张工单收成路由能对照的几行。新的在前。
+func taskRoster(rt *superagent.Runtime) string {
+	if rt == nil {
+		return ""
+	}
+	rows := append([]superagent.TicketRow(nil), rt.View().Tickets...)
+	sort.Slice(rows, func(i, j int) bool {
+		return ticketNum(rows[i].ID) > ticketNum(rows[j].ID)
+	})
+	if len(rows) > 8 {
+		rows = rows[:8]
+	}
+	var b strings.Builder
+	for _, ticket := range rows {
+		title := strings.TrimSpace(ticket.Title)
+		if title == "" {
+			title = "未命名"
+		}
+		fmt.Fprintf(&b, "%s %s %s\n", ticket.ID, ticketState(ticket), title)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func ticketNum(id string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(id, "tkt-"))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func ticketState(ticket superagent.TicketRow) string {
+	if ticket.Stage != "ended" {
+		return "进行中"
+	}
+	switch ticket.Outcome {
+	case "stopped":
+		return "已打断"
+	case "failed", "dropped":
+		return "没做成"
+	default:
+		return "做完了"
+	}
 }
 
 // noteTool 给工单记一条内部备注。
@@ -352,9 +400,33 @@ func (a *App) relayNotice(sessionID, text string) {
 	}
 }
 
-// relayReport 把需要人看的报告写进开工时的那条桌面会话。progress 不进来。
+// relayReport 把需要人看的报告写进开工时的那条桌面会话。
+// 做完、失败、放下和打断会带上已经报过的阶段性进展，并写进记忆。会话写不进去时，记忆仍然留下。
 func (a *App) relayReport(ticketID, state, summary, question string) {
-	if a == nil || a.Traces == nil {
+	if a == nil {
+		return
+	}
+	text := strings.TrimSpace(summary)
+	if strings.TrimSpace(question) != "" {
+		if text != "" {
+			text += "\n"
+		}
+		text += strings.TrimSpace(question)
+	}
+	if taskEndedState(state) {
+		if rt := a.orchestrator(); rt != nil {
+			extra := strings.TrimSpace(rt.StagedProgress(ticketID))
+			if extra != "" && !strings.Contains(text, extra) {
+				if text != "" {
+					text = extra + "\n" + text
+				} else {
+					text = extra
+				}
+			}
+		}
+		a.rememberTask(ticketID, state, text)
+	}
+	if a.Traces == nil || text == "" {
 		return
 	}
 	rt := a.orchestrator()
@@ -365,21 +437,11 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 	if sid == "" {
 		return
 	}
-	text := strings.TrimSpace(summary)
-	if strings.TrimSpace(question) != "" {
-		if text != "" {
-			text += "\n"
-		}
-		text += strings.TrimSpace(question)
-	}
-	if text == "" {
-		return
-	}
 	ev := trace.Event{
 		Type:      trace.TypeAssistant,
 		Source:    "worker",
 		SessionID: sid,
-		Payload:   map[string]any{"text": text, "id": ticketID + ":" + state},
+		Payload:   map[string]any{"text": text, "id": ticketID + ":" + state + ":" + fmt.Sprintf("%d", time.Now().UnixNano())},
 	}
 	if err := a.Traces.AppendDurable(ev); err != nil {
 		return
@@ -387,6 +449,58 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 	if a.Hub != nil {
 		a.Hub.Publish(ev)
 	}
+}
+
+// taskEndedState 在这份结果该留下记忆时为真。卡住和普通进度都不算结束。
+func taskEndedState(state string) bool {
+	switch state {
+	case "ready", "failed", "dropped", "stopped":
+		return true
+	default:
+		return false
+	}
+}
+
+// rememberTask 把工单的结果写成一条情景。同一张工单再写一次会换掉原来的。
+func (a *App) rememberTask(ticketID, state, text string) {
+	if a == nil || a.Memory == nil || strings.TrimSpace(ticketID) == "" {
+		return
+	}
+	label := ticketID
+	if rt := a.orchestrator(); rt != nil {
+		if name := rt.TicketLabel(ticketID); name != "" {
+			label = name
+		}
+	}
+	line := label
+	body := strings.TrimSpace(text)
+	if body != "" && body != label {
+		line = label + "：" + body
+	}
+	switch state {
+	case "failed":
+		line = "没做成。" + line
+	case "dropped":
+		line = "放下了。" + line
+	case "stopped":
+		line = "停下了。" + line
+	}
+	a.Memory.Write(memory.Item{
+		ID:     "task:" + ticketID,
+		Kind:   memory.KindEpisodic,
+		Text:   clipTaskMemory(line),
+		Source: "worker",
+		State:  state,
+	})
+}
+
+// clipTaskMemory 把记忆收成最多四百个字。
+func clipTaskMemory(text string) string {
+	r := []rune(strings.TrimSpace(text))
+	if len(r) > 400 {
+		return string(r[:400])
+	}
+	return string(r)
 }
 
 // connectorTriggers 把邮件和日历收成推断触发。没有真实正文的占位行不收。

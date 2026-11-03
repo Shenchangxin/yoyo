@@ -69,3 +69,28 @@ export function selectSurfaceThread(
   }
   return pickChannelThread(list, channel, preferred, cur);
 }
+
+/**
+ * 主循环还没被人手动点开别的对话时，只打开主会话。
+ * 列表里还没有这条时留空，不用上次记下的旧对话来顶。
+ * 人已经点开一条之后，再按表面去选。
+ */
+export function pickBootThread(
+  list: Thread[],
+  channel: ThreadChannel,
+  preferred: string,
+  cur: Thread | null,
+  holdId: string,
+  mainId: string,
+  agentChosen: boolean,
+): Thread | null {
+  if (channel === "agent" && !agentChosen) {
+    const id = mainId.trim();
+    if (!id) return null;
+    const hit = list.find((t) => t.id === id && !isSubagentThread(t) && threadChannel(t) === "agent");
+    if (hit) return hit;
+    if (cur?.id === id && !isSubagentThread(cur) && threadChannel(cur) === "agent") return cur;
+    return null;
+  }
+  return selectSurfaceThread(list, channel, preferred, cur, holdId);
+}

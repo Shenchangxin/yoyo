@@ -41,6 +41,9 @@ func (rt *Runtime) runLaunch(payload any) error {
 	if err == nil || errors.Is(err, ErrLater) {
 		return err
 	}
+	if err.Error() == "already" && rt.launchWaiting(id) {
+		return fmt.Errorf("%w", ErrLater)
+	}
 	switch err.Error() {
 	case "already", "not_pending", "unknownTicket":
 		return nil
@@ -51,7 +54,20 @@ func (rt *Runtime) runLaunch(payload any) error {
 	if rt.eng != nil {
 		_ = rt.eng.FailStart(id, err.Error())
 	}
+	rt.queueReport(id, "failed", err.Error(), "")
 	return nil
+}
+
+// launchWaiting 在工单还有一轮 pending 派工时为真。正在跑的那一轮占着槽时，新的一轮要再等。
+func (rt *Runtime) launchWaiting(id string) bool {
+	if rt == nil || rt.eng == nil {
+		return false
+	}
+	ticket, ok := rt.eng.Ticket(id)
+	if !ok || len(ticket.Assignments) == 0 {
+		return false
+	}
+	return ticket.Assignments[len(ticket.Assignments)-1].State == "pending"
 }
 
 // runDelivery 把还没送到工人的输入送进去。工人还没起来时先等。

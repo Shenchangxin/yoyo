@@ -132,6 +132,19 @@ func (a *App) OrchestratorDeliver() int {
 	return rt.Deliver()
 }
 
+// WorkerTranscript 返回工单已经落下的会话。ticketID 为空时为空。
+func (a *App) WorkerTranscript(ticketID string) []superagent.TranscriptLine {
+	rt := a.orchestrator()
+	if rt == nil {
+		return []superagent.TranscriptLine{}
+	}
+	lines := rt.WorkerTranscript(ticketID)
+	if lines == nil {
+		return []superagent.TranscriptLine{}
+	}
+	return lines
+}
+
 // OrchestratorAct 执行编排台动作。kind、ticketID、triggerID、text 和 reason 交给运行时。
 func (a *App) OrchestratorAct(kind, ticketID, triggerID, text, reason string) error {
 	rt := a.orchestrator()

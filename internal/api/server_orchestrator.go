@@ -124,4 +124,18 @@ func mountOrchestrator(mux *http.ServeMux, a *app.App) {
 		}
 		writeJSON(w, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("GET /api/orchestrator/transcript", func(w http.ResponseWriter, r *http.Request) {
+		if a == nil {
+			writeJSONStatus(w, 503, map[string]any{"error": "app is not running"})
+			return
+		}
+		writeJSON(w, a.WorkerTranscript(r.URL.Query().Get("ticket")))
+	})
+	mux.HandleFunc("POST /api/today/brief", func(w http.ResponseWriter, r *http.Request) {
+		if a == nil {
+			writeJSONStatus(w, 503, map[string]any{"error": "app is not running"})
+			return
+		}
+		writeJSON(w, a.ComposeToday())
+	})
 }

@@ -1,200 +1,171 @@
 /**
- * 拥有：右侧这一页怎么把一张工单的输入、报告和跟随读出来。
- * 不拥有：工单怎么执行。停止和重试交给编排器，返回后对话还在原来的会话里。
+ * 拥有：任务栏里这一页怎么把一张工单读成一条会话。
+ * 不拥有：身份、模型和权限。那些留在主会话。下一句仍交给这张工单自己的工人。
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
-import { orchestratorAct } from "../../lib/client";
+import { Composer } from "../Composer";
+import { Transcript } from "../Transcript";
+import { orchestratorAct, orchestratorTranscript } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
-import { cn } from "../../lib/utils";
-import type { Assignment, Ticket } from "./desk-model";
-import { manuscriptNames, stageKey } from "./work-model";
+import type { Item } from "../../lib/protocol";
+import type { Assignment, ReportLine, Ticket } from "./desk-model";
+import { stageKey } from "./work-model";
 
-/** TaskRead 把工单读在侧栏里。主会话继续留在原来的位置，不跟着换页。 */
+type TaskLine = { id: string; role: string; text: string; name?: string };
+
+/** TaskRead 把工单读在侧栏里。底下是这条会话的输入，不带身份设置。 */
 export function TaskRead(props: {
   ticket: Ticket | null;
   onBack: () => void;
   onLook: () => void;
-  onContinue?: (text: string) => void;
+  onSent?: () => void;
 }) {
   const copy = useCopy();
+  const ticket = props.ticket;
+  const [lines, setLines] = useState<TaskLine[]>([]);
+  useEffect(() => {
+    if (!ticket?.id) return;
+    let stop = false;
+    const pull = () => {
+      orchestratorTranscript(ticket.id).then((rows) => {
+        if (!stop && Array.isArray(rows)) setLines(rows);
+      }).catch(() => {});
+    };
+    pull();
+    const timer = window.setInterval(pull, 2000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [ticket?.id]);
+  if (!ticket) {
+    return (
+      <div data-testid="task-read" className="px-3 pt-8">
+        <p className="text-[14px] text-muted">{copy.work.noSubtasks}</p>
+      </div>
+    );
+  }
+  const running = ticket.stage === "working";
   return (
-    <div data-testid="task-read" className="px-1 pb-6 pt-2">
-      <div className="flex items-center gap-1">
+    <div data-testid="task-read" className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex shrink-0 items-center gap-1 px-1 pt-1">
         <button type="button" className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-lift hover:text-foreground" onClick={props.onBack} aria-label={copy.work.taskBack}>
           <ChevronLeft className="size-4" />
         </button>
-        <h1 className="min-w-0 truncate text-[16px] font-semibold">{props.ticket?.title || copy.work.taskEmpty}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-[16px] font-semibold">{ticket.title || copy.work.taskEmpty}</h1>
+          <p className="truncate text-[12px] text-muted">{taskStatus(ticket, copy.work)}{ticket.directory ? ` · ${ticket.directory}` : ""}</p>
+        </div>
       </div>
-      {!props.ticket ? (
-        <article className="px-2 pt-8">
-          <p className="text-[14px] text-muted">{copy.work.noSubtasks}</p>
-          <p className="mt-2 text-[13px] leading-6 text-muted">{copy.work.taskEmptyHint}</p>
-        </article>
-      ) : (
-        <TaskDocument ticket={props.ticket} onLook={props.onLook} onContinue={props.onContinue} compact />
-      )}
+      <Transcript compact flush items={sessionItems(ticket, lines)} approvals={[]} running={running} onResolve={() => {}} />
+      <div className="shrink-0 px-2 pb-2">
+        <Composer
+          plain
+          compact
+          flush
+          placeholder={copy.work.taskSayPh}
+          draftKey={`task:${ticket.id}`}
+          running={running}
+          disabled={false}
+          onSend={(opts) => {
+            const line = opts?.text?.trim() || "";
+            if (!line) return;
+            void orchestratorAct("say", ticket.id, "", line, "").then(() => props.onSent?.());
+          }}
+          onStop={() => { void orchestratorAct("stop", ticket.id, "", "", ""); }}
+          sessionId={ticket.id}
+        />
+      </div>
     </div>
   );
 }
 
-/** TaskPage 是任务被点开后的阅读面。没有交互时也把工单本身摆出来。 */
+/** TaskPage 是任务被点开后的整页会话。同样不带身份设置。 */
 export function TaskPage(props: {
   ticket: Ticket | null;
   onBack: () => void;
   onLook: () => void;
+  onSent?: () => void;
 }) {
-  const copy = useCopy();
-  const ticket = props.ticket;
-  return (
-    <div data-testid="task-page" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background text-foreground">
-      <div className="flex shrink-0 items-center px-6 py-3">
-        <button type="button" className="h-8 rounded-full bg-card px-3 text-[12px] text-muted shadow-[var(--shadow-card)] hover:text-foreground" onClick={props.onBack}>
-          {copy.work.taskBack}
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        {!ticket ? (
-          <article className="mx-auto w-full max-w-3xl px-8 py-8">
-            <h1 className="text-[22px] font-semibold tracking-[-0.03em]">{copy.work.taskEmpty}</h1>
-            <p className="mt-2 text-[13px] leading-6 text-muted">{copy.work.taskEmptyHint}</p>
-          </article>
-        ) : (
-          <TaskDocument ticket={ticket} onLook={props.onLook} />
-        )}
-      </div>
-    </div>
-  );
+  return <TaskRead {...props} />;
 }
 
-function TaskDocument(props: { ticket: Ticket; onLook: () => void; onContinue?: (text: string) => void; compact?: boolean }) {
-  const copy = useCopy();
-  const ticket = props.ticket;
-  const key = stageKey(ticket);
-  const inputs = ticket.inputs ?? [];
-  const steps = ticket.assignments ?? [];
-  const follows = ticket.follows ?? [];
-  const latest = steps.slice(-1)[0];
-  const earlier = steps.slice(0, -1);
-  const body = latest ? assignmentBody(latest) : "";
-  const names = manuscriptNames([body, ...inputs.map((row) => row.text), ...follows.map((row) => row.thread)].join("\n"));
-  const empty = !body && inputs.length === 0 && follows.length === 0 && !ticket.deliveryError;
-  return (
-    <article className={cn("mx-auto w-full", props.compact ? "px-2 pb-8 pt-4" : "max-w-3xl px-8 pb-16 pt-2")}>
-      {props.compact ? null : <h1 className="text-[28px] font-semibold leading-9 tracking-[-0.03em]">{ticket.title || ticket.id}</h1>}
-      <p className="text-[12px] text-muted">{copy.work[key]}{ticket.sender ? ` · ${ticket.sender}` : ""}</p>
-      {ticket.attention ? <p className="mt-4 text-[15px] leading-7">{ticket.attention}</p> : null}
-      {empty ? <p className="mt-10 text-center text-[14px] text-muted">{copy.work.noSubtasks}</p> : null}
-      {inputs.length > 0 ? (
-        <div className="mt-4 space-y-3">
-          {inputs.map((row) => (
-            <p key={row.id} className="whitespace-pre-wrap text-[14px] leading-7 text-muted">{row.text}</p>
-          ))}
-        </div>
-      ) : null}
-      {body ? <div className="mt-4 whitespace-pre-wrap text-[14px] leading-7">{body}</div> : null}
-      {earlier.length > 0 ? (
-        <section className="mt-6">
-          <h2 className="text-[13px] text-muted">{copy.work.earlier}</h2>
-          <div className="mt-2 space-y-3">
-            {earlier.map((step) => (
-              <p key={step.id} className="whitespace-pre-wrap text-[13px] leading-6 text-muted">{assignmentBody(step)}</p>
-            ))}
-          </div>
-        </section>
-      ) : null}
-      {names.length > 0 ? (
-        <section className="mt-6">
-          <h2 className="text-[13px] text-muted">{copy.work.taskManuscript}</h2>
-          <ul className="mt-2">
-            {names.map((name) => (
-              <li key={name} className="border-b border-border/40">
-                <button type="button" className="w-full py-2.5 text-left text-[13px] hover:text-foreground" onClick={props.onLook}>{name}</button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {follows.length > 0 ? (
-        <section className="mt-6">
-          <h2 className="text-[13px] text-muted">{copy.work.taskFollows}</h2>
-          <ul className="mt-2">
-            {follows.map((row) => (
-              <li key={row.thread} className="border-b border-border/40 py-2.5 text-[13px]">
-                {row.thread}{row.closed ? ` · ${row.closed}` : ""}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {ticket.deliveryError ? <p className="mt-6 text-[13px] leading-6 text-danger">{ticket.deliveryError}</p> : null}
-      <TaskActions ticket={ticket} onLook={props.onLook} onContinue={props.onContinue} />
-    </article>
-  );
-}
-
-function assignmentBody(step: Assignment): string {
-  const summary = step.summary?.trim() || "";
-  const report = step.report?.trim() || "";
-  if (report && report !== summary) return report;
-  return summary || report || step.state;
-}
-
-function TaskActions(props: { ticket: Ticket; onLook: () => void; onContinue?: (text: string) => void }) {
-  const copy = useCopy();
-  const key = stageKey(props.ticket);
-  const [confirm, setConfirm] = useState<"" | "stop" | "retry">("");
-  const canRetry = key === "blocked" || key === "failed" || key === "delivery";
-  const canStop = props.ticket.stage !== "ended";
-  async function act(kind: "stop" | "retry") {
-    await orchestratorAct(kind, props.ticket.id, "", "", kind === "stop" ? "stopped" : "");
-    setConfirm("");
+function sessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
+  const fromLog = lines.map((line) => lineItem(ticket.id, line));
+  const seen = new Set(fromLog.filter((item) => item.type === "user").map((item) => item.text.trim()));
+  const head: Item[] = [];
+  for (const row of ticket.inputs ?? []) {
+    const text = row.text?.trim();
+    if (!text || seen.has(text)) continue;
+    head.push({
+      key: row.id,
+      type: "user",
+      sessionId: ticket.id,
+      source: "user",
+      ts: "",
+      text,
+      name: "",
+      delta: false,
+      payload: { id: row.id },
+    });
   }
-  return (
-    <div className="mt-8 flex flex-wrap gap-2">
-      {props.onContinue ? (
-        <button
-          type="button"
-          className="h-9 rounded-full bg-card px-3.5 text-[13px] font-medium shadow-[var(--shadow-card)]"
-          onClick={() => props.onContinue?.(`${copy.work.taskContinue}：${props.ticket.title || props.ticket.id}`)}
-        >
-          {copy.work.taskContinue}
-        </button>
-      ) : null}
-      <button type="button" className="h-9 rounded-full bg-card px-3.5 text-[13px] font-medium shadow-[var(--shadow-card)]" onClick={props.onLook}>
-        {copy.work.look}
-      </button>
-      {canStop ? (
-        <button
-          type="button"
-          className={cn("h-9 rounded-full px-3.5 text-[13px] font-medium", confirm === "stop" ? "bg-foreground text-background" : "bg-card shadow-[var(--shadow-card)]")}
-          onClick={() => {
-            if (confirm === "stop") {
-              void act("stop");
-              return;
-            }
-            setConfirm("stop");
-          }}
-        >
-          {confirm === "stop" ? copy.work.confirmStop : copy.work.stop}
-        </button>
-      ) : null}
-      {canRetry ? (
-        <button
-          type="button"
-          className={cn("h-9 rounded-full px-3.5 text-[13px] font-medium", confirm === "retry" ? "bg-foreground text-background" : "bg-card shadow-[var(--shadow-card)]")}
-          onClick={() => {
-            if (confirm === "retry") {
-              void act("retry");
-              return;
-            }
-            setConfirm("retry");
-          }}
-        >
-          {confirm === "retry" ? copy.work.confirmRetry : copy.work.retry}
-        </button>
-      ) : null}
-    </div>
-  );
+  const body = fromLog.some((item) => item.type === "assistant") ? fromLog : [...fromLog, ...reportItems(ticket)];
+  return [...head, ...body];
+}
+
+function lineItem(sessionId: string, line: TaskLine): Item {
+  const role = line.role === "user" || line.role === "tool_call" || line.role === "tool_result" ? line.role : "assistant";
+  return {
+    key: line.id,
+    type: role,
+    sessionId,
+    source: role === "user" ? "user" : "worker",
+    ts: "",
+    text: line.text || "",
+    name: line.name || "",
+    delta: false,
+    payload: { id: line.id, name: line.name || "", ...(role === "tool_call" ? { arguments: line.text || "" } : {}) },
+  };
+}
+
+function reportItems(ticket: Ticket): Item[] {
+  const items: Item[] = [];
+  for (const step of ticket.assignments ?? []) {
+    reportLines(step).forEach((line, index) => {
+      if (line.state === "progress" || line.state === "waiting" || line.state === "pending" || line.state === "running") return;
+      const text = [line.summary, line.question].map((part) => part?.trim() || "").filter((part) => part && part !== "pending" && part !== "running").join("\n\n");
+      if (!text) return;
+      items.push({
+        key: `${step.id}:${index}`,
+        type: "assistant",
+        sessionId: ticket.id,
+        source: "worker",
+        ts: "",
+        text,
+        name: "",
+        delta: false,
+        payload: { id: `${step.id}:${index}` },
+      });
+    });
+  }
+  return items;
+}
+
+function reportLines(step: Assignment): ReportLine[] {
+  if (step.lines && step.lines.length > 0) return step.lines;
+  if (step.summary || step.report) return [{ state: step.report || step.state, summary: step.summary }];
+  return [];
+}
+
+function taskStatus(ticket: Ticket, work: { taskWorking: string; taskDone: string; taskStopped: string; taskFailed: string; queued: string; running: string; waiting: string; ended: string; blocked: string; failed: string; answer: string; reviewWait: string; delivery: string; idle: string }): string {
+  if (ticket.stage === "ended") {
+    if (ticket.outcome === "stopped") return work.taskStopped;
+    if (ticket.outcome === "failed" || ticket.outcome === "dropped") return work.taskFailed;
+    return work.taskDone;
+  }
+  const key = stageKey(ticket);
+  if (key === "queued" || key === "running") return work.taskWorking;
+  return work[key];
 }

@@ -1,16 +1,17 @@
 /**
  * 拥有：编排台的路线、过滤和搜索。页面按这些结果画。
- * 不拥有：拉取快照和提交动作。那一段在 OrchestratorDesk。
+ * 不拥有：拉取快照和提交动作。那一段在主循环和工单运行时。
  */
 
 export type Source = { name: string; state: string; detail: string; repo?: string; chat?: string; app?: string; api?: string; account?: string; hasSecret?: boolean };
 export type Input = { id: string; text: string; human: boolean; delivered: boolean };
 export type Follow = { thread: string; own: boolean; closed?: string };
-export type Assignment = { id: string; state: string; report?: string; summary?: string };
+export type ReportLine = { state: string; summary?: string; question?: string };
+export type Assignment = { id: string; state: string; report?: string; summary?: string; lines?: ReportLine[] };
 export type Ticket = {
   id: string; stage: string; action: string; person: boolean; origin: string; outcome?: string;
   strength?: string; sender?: string; attention?: string; deliveryError?: string; originUrl?: string;
-  title: string;
+  title: string; directory?: string;
   inputs?: Input[]; follows?: Follow[]; assignments?: Assignment[];
 };
 export type Trigger = {

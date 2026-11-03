@@ -697,6 +697,23 @@ export async function createSession(workspace: string, channel: ThreadChannel = 
   return threadOf(raw);
 }
 
+/** mainSession 打开或创建主循环那一条空会话。不把历史里最近的一条收过来。 */
+export async function mainSession(): Promise<Thread> {
+  const s = await wailsService();
+  if (s?.MainSession) return threadOf(await s.MainSession());
+  return threadOf(await http("/api/session/main", { method: "POST", body: "{}" }));
+}
+
+/** adoptMainSession 把人新建的代理会话记成主会话。 */
+export async function adoptMainSession(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.AdoptMainSession) {
+    await s.AdoptMainSession(id);
+    return;
+  }
+  await http("/api/session/main", { method: "POST", body: JSON.stringify({ id, adopt: true }) });
+}
+
 /** listSessions 走 ListSessions 或 /api/sessions。 */
 export async function listSessions(): Promise<Thread[]> {
   const s = await wailsService();
@@ -2151,9 +2168,12 @@ export type PoiCensusItem = { name: string; line?: string; kind?: string };
 /** PoiCensus 是桌面清点。只有名字、大小和修改时间，没有正文。 */
 export type PoiCensus = {
   user?: string;
+  host?: string;
+  os?: string;
+  git?: string;
   hours?: string;
   weekday?: boolean;
-  lines?: { name: string; state?: string; evidence?: string; when?: string }[];
+  lines?: { id?: string; name: string; state?: string; evidence?: string; when?: string }[];
   finished?: PoiCensusItem[];
   empty?: PoiCensusItem[];
   place?: PoiCensusItem[];
@@ -2270,9 +2290,13 @@ function normalizeCensus(raw: unknown): PoiCensus | undefined {
   const list = (key: string, alt: string) => asArray(pick(raw, key, alt)).map(item).filter((row) => row.name);
   return {
     user: str(pick(raw, "user", "User")),
+    host: str(pick(raw, "host", "Host")),
+    os: str(pick(raw, "os", "OS")),
+    git: str(pick(raw, "git", "Git")),
     hours: str(pick(raw, "hours", "Hours")),
     weekday: asBool(pick(raw, "weekday", "Weekday")),
     lines: asArray(pick(raw, "lines", "Lines")).map((line) => ({
+      id: str(pick(line, "id", "ID")),
       name: str(pick(line, "name", "Name")),
       state: str(pick(line, "state", "State")),
       evidence: str(pick(line, "evidence", "Evidence")),
@@ -3456,6 +3480,17 @@ export function orchestratorPaused(paused: boolean): Promise<any> {
     method: "POST",
     body: JSON.stringify({ paused }),
   });
+}
+
+/** orchestratorTranscript 是这张工单已经落下的会话。ticketId 是工单编号。 */
+export function orchestratorTranscript(ticketId: string): Promise<{ id: string; role: string; text: string; name?: string }[]> {
+  const q = encodeURIComponent(ticketId);
+  return imCall("OrchestratorTranscript", [ticketId], `/api/orchestrator/transcript?ticket=${q}`);
+}
+
+/** composeToday 用画像、记忆和最近对话写今天的简报。材料不够时 woven 为假。 */
+export function composeToday(): Promise<{ cards?: { id: string; title: string; kicker?: string; lede?: string; layout?: string; items?: { title: string; detail?: string }[]; choices?: { id?: string; title: string; detail?: string }[]; primary?: string; secondary?: string; task?: string; alt?: string }[]; woven?: boolean; pending?: boolean }> {
+  return imCall("ComposeToday", [], "/api/today/brief", { method: "POST", body: "{}" });
 }
 
 /** orchestratorAct 执行编排台动作。kind 是动作名。ticketId、triggerId、text 和 reason 按动作使用。 */

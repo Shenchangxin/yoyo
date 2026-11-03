@@ -73,7 +73,8 @@ func (e *Executor) workDir(ticketID string) (string, error) {
 // workerPrompt 是工人的系统提示。env 里的值写出来，钥匙不写。
 func workerPrompt(e *Executor, dir, ticketID string) string {
 	var b strings.Builder
-	b.WriteString("你是工人。在工单目录里完成技术工作，自己判断做法并核对结果。\n")
+	b.WriteString("你是工人。每张工单有自己的工作目录，读和写都只在这个目录里。不要改操作者的其他工程。任务如果必须动到别处的文件，用 orchestrator_report 报 blocked，在 question 里写明路径。\n")
+	b.WriteString("自己判断做法并核对结果。\n")
 	b.WriteString("用 orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。提问放在 question。\n")
 	b.WriteString("回复原处用 orchestrator_reply。超出范围用 orchestrator_handback。只跟随上下文用 orchestrator_follow。无关线程用 orchestrator_unrelated。\n")
 	if dir != "" {

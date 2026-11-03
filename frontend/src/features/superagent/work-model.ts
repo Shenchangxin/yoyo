@@ -51,6 +51,16 @@ export function nowTickets(tickets: Ticket[]): Ticket[] {
   return tickets.filter((ticket) => ticket.stage !== "ended" && (ticket.person || ticket.stage === "working"));
 }
 
+/** todayBadge 只计还等着人的消息。正在做的工单留在任务上，不算今天的新进展。 */
+export function todayBadge(tickets: Ticket[], incoming: Trigger[], due: Trigger[]): number {
+  const waiting = tickets.filter((ticket) => {
+    if (ticket.stage === "ended" || !ticket.person) return false;
+    const key = stageKey(ticket);
+    return key === "answer" || key === "blocked" || key === "failed" || key === "delivery" || key === "reviewWait";
+  }).length;
+  return waiting + incoming.length + due.length;
+}
+
 const spoken = new Set(["desk", "github", "feishu"]);
 
 /** visibleIncoming 是还等着人接受的触发。没被点名的邮件和日历不出现在现在。 */
@@ -138,7 +148,11 @@ export function unseenSuggestions(ids: string[]): string[] {
   return suggestedRuleIds.filter((id) => !have.has(id));
 }
 
-export type BriefItem = { title: string; detail: string; tone?: string };
+export type BriefItem = {
+  title: string;
+  detail: string;
+  tone?: string;
+};
 
 /** ParsedNote 是从一段文字里认出的条目。晨间简报本身不走这条。 */
 export type ParsedNote = {
@@ -181,10 +195,11 @@ export type MorningBrief = {
   cards: BriefCard[];
   picked: Record<string, string>;
   welcome?: boolean;
+  woven?: boolean;
 };
 
 /** BRIEF_VERSION 变了，当天旧的流水账就作废，下一轮按新的卡片重写。 */
-export const BRIEF_VERSION = 3;
+export const BRIEF_VERSION = 4;
 
 /** BriefPrefs 是晨间和晚间简报的开关和时间。范围不在这里选。 */
 export type BriefPrefs = {
@@ -224,6 +239,11 @@ export function parseBriefPrefs(raw: string | null): BriefPrefs {
 /** briefDue 在早晨开着、而且本地时间已经到点时为真。 */
 export function briefDue(prefs: BriefPrefs, now = new Date()): boolean {
   return slotDue(prefs, "morning", now);
+}
+
+/** visibleSlot 是此刻该读的那一档。没到晚上就读早晨那封，不等时钟到点才有信。 */
+export function visibleSlot(prefs: BriefPrefs, now = new Date()): BriefSlot {
+  return slotDue(prefs, "evening", now) ? "evening" : "morning";
 }
 
 /** slotDue 看这一档开着没有，以及本地时间过了没有。 */
@@ -298,7 +318,7 @@ function briefFromJson(text: string): ParsedNote | null {
   }
 }
 
-export type BriefMemory = { kind: string; text: string; staging?: boolean };
+export type BriefMemory = { kind: string; text: string; staging?: boolean; source?: string };
 export type BriefSource = { name: string; state: string };
 export type BriefPoint = { name: string; kind: string };
 
@@ -404,6 +424,10 @@ export type BriefPhrases = {
   letterMissing: string;
   letterLines: string;
   letterIdentity: string;
+  letterHost: string;
+  letterOs: string;
+  letterGit: string;
+  letterApps: string;
   letterHours: string;
   letterNoMail: string;
   letterNoMailDetail: string;
@@ -456,9 +480,13 @@ export type BriefPhrases = {
 /** DeskCensus 是本机清点。只有名字、状态和数量，没有文件正文。 */
 export type DeskCensus = {
   user?: string;
+  host?: string;
+  os?: string;
+  git?: string;
   hours?: string;
   weekday?: boolean;
-  lines?: { name: string; state?: string; evidence?: string; when?: string }[];
+  appNames?: string[];
+  lines?: { id?: string; name: string; state?: string; evidence?: string; when?: string }[];
   finished?: { name: string; line?: string; kind?: string }[];
   empty?: { name: string; line?: string; kind?: string }[];
   place?: { name: string; line?: string; kind?: string }[];
@@ -485,7 +513,7 @@ export function parseStoredBrief(raw: string | null, day: string): MorningBrief 
     const body = JSON.parse(raw) as { v?: unknown; day?: unknown; brief?: MorningBrief };
     if (body.v !== BRIEF_VERSION || body.day !== day || !body.brief || !Array.isArray(body.brief.cards) || body.brief.cards.length < 1) return null;
     const picked = body.brief.picked && typeof body.brief.picked === "object" ? body.brief.picked : {};
-    return { cards: body.brief.cards, picked, welcome: body.brief.welcome === true };
+    return { cards: body.brief.cards, picked, welcome: body.brief.welcome === true, woven: body.brief.woven === true };
   } catch {
     return null;
   }
@@ -670,12 +698,17 @@ export function auditBrief(input: {
 function deskCards(census: DeskCensus | undefined, welcome: boolean, hasPlan: boolean, hasFindings: boolean, phrases: BriefPhrases, memory?: BriefMemory[]): BriefCard[] {
   if (!welcome && !censusUseful(census)) return [];
   const cards: BriefCard[] = [];
-  const name = greetName(memory, census?.user || "");
+  const name = greetName(memory, census?.user || "", census?.git || "");
   const known: BriefItem[] = [];
   const lines = census?.lines ?? [];
-  if (lines.length) known.push({ title: fill(phrases.letterLines, { n: String(lines.length) }), detail: lines.map((line) => line.name).join(" · ") });
   if (census?.user) known.push({ title: phrases.letterIdentity, detail: census.user });
+  if (census?.host) known.push({ title: phrases.letterHost, detail: census.host });
+  if (census?.os) known.push({ title: phrases.letterOs, detail: census.os });
+  if (census?.git) known.push({ title: phrases.letterGit, detail: census.git });
   if (census?.hours) known.push({ title: phrases.letterHours, detail: census.hours });
+  if (lines.length) known.push({ title: fill(phrases.letterLines, { n: String(lines.length) }), detail: lines.map((line) => line.name).join(" · ") });
+  const apps = (census?.appNames ?? []).map((item) => item.trim()).filter(Boolean).slice(0, 6);
+  if (apps.length) known.push({ title: phrases.letterApps, detail: apps.join(" · ") });
   const missing: BriefChoice[] = hasPlan ? [] : [
     { id: "mail", title: phrases.letterNoMail, detail: phrases.letterNoMailDetail },
     { id: "plan", title: phrases.letterNoPlan, detail: phrases.letterNoPlanDetail },
@@ -694,7 +727,11 @@ function deskCards(census: DeskCensus | undefined, welcome: boolean, hasPlan: bo
     rightLabel: phrases.letterMissing,
   });
   if (lines.length) {
-    const rows = lines.map((line) => ({ title: line.name, detail: lineDetail(line, phrases), tone: line.state || "quiet" }));
+    const rows = lines.map((line) => ({
+      title: line.name,
+      detail: lineDetail(line, phrases),
+      tone: line.state || "quiet",
+    }));
     const first = lines[0];
     cards.push({
       id: "lines",
@@ -801,14 +838,17 @@ function deskCards(census: DeskCensus | undefined, welcome: boolean, hasPlan: bo
 
 function censusUseful(census?: DeskCensus): boolean {
   if (!census) return false;
-  return Boolean(census.lines?.length || census.finished?.length || census.empty?.length || census.place?.length || census.archive?.length || census.hours || census.projects || census.downloads);
+  return Boolean(census.lines?.length || census.finished?.length || census.empty?.length || census.place?.length || census.archive?.length || census.hours || census.projects || census.downloads || census.user || census.host || census.os || census.git || census.appNames?.length);
 }
 
-function greetName(memory: BriefMemory[] | undefined, fallback: string): string {
-  const profile = (memory ?? []).find((row) => !row.staging && row.kind === "profile" && row.text.trim());
-  const text = profile?.text.trim() ?? "";
-  if (text && [...text].length <= 16 && !/[\s\n。！？!?]/.test(text)) return text;
-  return fallback;
+function greetName(memory: BriefMemory[] | undefined, fallback: string, git?: string): string {
+  const said = (memory ?? []).find((row) => !row.staging && row.kind === "profile" && operatorMemory(row.source) && memoryName(row.text.trim()));
+  if (said) return said.text.trim();
+  const named = (git || "").trim();
+  if (memoryName(named)) return named;
+  const login = fallback.trim();
+  if (memoryName(login)) return login;
+  return "";
 }
 
 function lineDetail(line: { state?: string; evidence?: string; when?: string }, phrases: BriefPhrases): string {
@@ -1011,10 +1051,10 @@ export function shouldPush(initiative: Initiative | undefined, welcome: boolean)
   return welcome || !!initiative.speak;
 }
 
-/** applySenses 把感知写进信和一张现状卡。开口的原因单独成卡，按钮仍只填进输入框。 */
+/** applySenses 把未核对的邮箱日历写进信。电量、前台和桌面文件名不进简报，只有低电量、断网和来源错误才另起一行。 */
 export function applySenses(brief: MorningBrief, signals: SenseSignal[], labels: SenseLabels): MorningBrief {
   const cards = brief.cards.map((card) => card.id === "letter" ? letterWithSenses(card, signals, labels) : card);
-  const sensed = signals.filter((signal) => !signal.speak && senseVisible(signal.code));
+  const sensed = signals.filter(senseRow);
   if (sensed.length) {
     cards.push({
       id: "sense",
@@ -1074,8 +1114,12 @@ function letterWithSenses(card: BriefCard, signals: SenseSignal[], labels: Sense
   return { ...card, choices };
 }
 
-function senseVisible(code: string): boolean {
-  return code === "power" || code === "net" || code === "focus" || code === "git" || code === "idle" || code === "channel" || code === "poi";
+function senseRow(signal: SenseSignal): boolean {
+  if (signal.speak) return false;
+  if (signal.code === "power") return signal.state === "low";
+  if (signal.code === "net") return signal.state === "offline";
+  if (signal.code === "channel") return signal.state === "error";
+  return false;
 }
 
 function senseItem(signal: SenseSignal, labels: SenseLabels): BriefItem {

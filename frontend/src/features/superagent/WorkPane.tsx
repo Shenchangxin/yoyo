@@ -11,7 +11,7 @@ import { cn } from "../../lib/utils";
 import type { DeskView, Rule, Ticket, Trigger } from "./desk-model";
 import { BRIEF_EVENT, latestInitiative, noteFeedback, runDeskFeed } from "./desk-feed";
 import { TaskRead } from "./TaskPage";
-import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, nowTickets, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, taskGroups, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
+import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
 
 type Tab = "now" | "tasks" | "memory";
 
@@ -75,12 +75,12 @@ export function WorkPane(props: {
   }
 
   const tickets = view?.tickets ?? [];
-  const now = nowTickets(tickets);
   const incoming = visibleIncoming(view?.queued ?? []);
   const due = dueItems(view?.queued ?? []);
   const tasks = taskGroups(tickets);
+  const reading = tab === "tasks" && !!props.openTaskId;
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: "now", label: copy.work.now, count: now.length + incoming.length + due.length },
+    { id: "now", label: copy.work.now, count: todayBadge(tickets, incoming, due) },
     { id: "tasks", label: copy.work.tasks, count: tasks.open.length },
     { id: "memory", label: copy.work.memory },
   ];
@@ -123,7 +123,7 @@ export function WorkPane(props: {
         </div>
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden px-2 pb-2">
-        <div className="h-full min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <div className={cn("h-full min-w-0", reading ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden overscroll-contain")}>
           {err ? <p className="px-3 py-2 text-[12px] text-danger">{err}</p> : null}
           {!view && !err ? <p className="px-3 py-3 text-[13px] text-muted">{copy.work.loading}</p> : null}
           {view && tab === "now" ? (
@@ -138,7 +138,7 @@ export function WorkPane(props: {
               ticket={(view.tickets ?? []).find((row) => row.id === props.openTaskId) ?? null}
               onBack={() => props.onOpenTask("")}
               onLook={() => props.onReview(true)}
-              onContinue={(text) => props.onNewTask(text)}
+              onSent={() => { void load(); }}
             />
           ) : null}
           {view && tab === "tasks" && !props.openTaskId ? (
@@ -266,7 +266,6 @@ function Now(props: {
       ) : null}
       {waiting ? <p className="py-10 text-center text-[14px] text-accent">{copy.work.briefRunning}</p> : null}
       {card ? <BriefStack brief={card} onUse={useCard} filledLabel={copy.work.briefFilled} /> : null}
-      {card ? <BriefFeedback /> : null}
       {props.incoming.length > 0 ? (
         <ul className="mt-4 rounded-[24px] bg-card px-4 py-2 shadow-[var(--shadow-card)]">
           {props.incoming.slice(0, 3).map((row) => (
@@ -591,6 +590,10 @@ export function briefPhrases(work: ReturnType<typeof useCopy>["work"]): BriefPhr
     letterMissing: work.letterMissing,
     letterLines: work.letterLines,
     letterIdentity: work.letterIdentity,
+    letterHost: work.letterHost,
+    letterOs: work.letterOs,
+    letterGit: work.letterGit,
+    letterApps: work.letterApps,
     letterHours: work.letterHours,
     letterNoMail: work.letterNoMail,
     letterNoMailDetail: work.letterNoMailDetail,
@@ -639,33 +642,6 @@ export function briefPhrases(work: ReturnType<typeof useCopy>["work"]): BriefPhr
     pauseStopDetail: work.pauseStopDetail,
     pauseNote: work.pauseNote,
   };
-}
-
-function BriefFeedback() {
-  const copy = useCopy();
-  const [noted, setNoted] = useState("");
-  async function send(kind: "used" | "ignore" | "later" | "wrong") {
-    await noteFeedback(kind);
-    setNoted(copy.work.feedbackNoted);
-  }
-  const items = [
-    ["used", copy.work.feedbackUsed],
-    ["ignore", copy.work.feedbackIgnore],
-    ["wrong", copy.work.feedbackWrong],
-    ["later", copy.work.feedbackLater],
-  ] as const;
-  return (
-    <div className="mt-3 px-1">
-      <div className="flex flex-wrap gap-2">
-        {items.map(([kind, label]) => (
-          <button key={kind} type="button" className="h-8 rounded-full bg-card px-3 text-[12px] text-muted shadow-[var(--shadow-card)] hover:text-foreground" onClick={() => { void send(kind); }}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {noted ? <p className="mt-2 text-[12px] text-muted">{noted}</p> : null}
-    </div>
-  );
 }
 
 function Tasks(props: {

@@ -89,6 +89,7 @@ type TicketRow struct {
 	DeliveryError string          `json:"deliveryError,omitempty"`
 	OriginURL     string          `json:"originUrl,omitempty"`
 	Title         string          `json:"title"`
+	Directory     string          `json:"directory,omitempty"`
 	Inputs        []InputRow      `json:"inputs"`
 	Follows       []FollowRow     `json:"follows"`
 	Assignments   []AssignmentRow `json:"assignments"`
@@ -109,12 +110,20 @@ type FollowRow struct {
 	Closed string `json:"closed,omitempty"`
 }
 
-// AssignmentRow 是一次派工的摘要。Summary 是最近一次报告的正文。
+// AssignmentRow 是一次派工的摘要。Summary 是最近一次报告的正文。Lines 是这一轮里给人看的报告。
 type AssignmentRow struct {
-	ID      string `json:"id"`
-	State   string `json:"state"`
-	Report  string `json:"report,omitempty"`
-	Summary string `json:"summary,omitempty"`
+	ID      string       `json:"id"`
+	State   string       `json:"state"`
+	Report  string       `json:"report,omitempty"`
+	Summary string       `json:"summary,omitempty"`
+	Lines   []ReportLine `json:"lines,omitempty"`
+}
+
+// ReportLine 是派工上的一条报告。进度和空正文不放进来。
+type ReportLine struct {
+	State    string `json:"state"`
+	Summary  string `json:"summary,omitempty"`
+	Question string `json:"question,omitempty"`
 }
 
 // ProblemRow 是总览上要人看的一条故障。Kind 取 source、unavailable、outgoing、overdue。
@@ -372,7 +381,8 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 	row := TicketRow{
 		ID: ticket.ID, Stage: stage.Name, Action: stage.Action, Person: stage.Person, Origin: ticket.Origin,
 		Strength: ticket.Mandate.Strength, Sender: ticket.Mandate.Sender, Attention: ticket.Attention,
-		DeliveryError: ticket.DeliveryErr, Inputs: []InputRow{}, Follows: []FollowRow{}, Assignments: []AssignmentRow{},
+		DeliveryError: ticket.DeliveryErr, Directory: ticket.Directory,
+		Inputs: []InputRow{}, Follows: []FollowRow{}, Assignments: []AssignmentRow{},
 	}
 	if ticket.Ended != nil {
 		row.Outcome = ticket.Ended.Outcome
@@ -388,7 +398,7 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 		row.Title = ticket.ID
 	}
 	for _, in := range ticket.Inputs {
-		row.Inputs = append(row.Inputs, InputRow{ID: in.ID, Text: clip(in.Text, 240), Human: in.Human, Delivered: !undelivered[in.ID]})
+		row.Inputs = append(row.Inputs, InputRow{ID: in.ID, Text: clipRunes(in.Text, 4000), Human: in.Human, Delivered: !undelivered[in.ID]})
 	}
 	for _, f := range ticket.Follows {
 		item := FollowRow{Thread: f.Thread, Own: f.Own}
@@ -399,10 +409,21 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 	}
 	for _, asg := range ticket.Assignments {
 		item := AssignmentRow{ID: asg.ID, State: asg.State}
+		for _, rep := range asg.Reports {
+			if strings.TrimSpace(rep.Summary) == "" && strings.TrimSpace(rep.Question) == "" {
+				continue
+			}
+			if rep.State == "progress" {
+				continue
+			}
+			item.Lines = append(item.Lines, ReportLine{
+				State: rep.State, Summary: clipRunes(rep.Summary, 4000), Question: clipRunes(rep.Question, 2000),
+			})
+		}
 		if len(asg.Reports) > 0 {
 			last := asg.Reports[len(asg.Reports)-1]
 			item.Report = last.State
-			item.Summary = clip(last.Summary, 240)
+			item.Summary = clipRunes(last.Summary, 4000)
 		}
 		row.Assignments = append(row.Assignments, item)
 	}

@@ -165,6 +165,45 @@ func (e *Engine) Report(ticketID string, report Report) error {
 	return nil
 }
 
+// StagedProgress 把 ticketID 上给人看的阶段性进展收成一段。空等待和重复的句子去掉。
+func (e *Engine) StagedProgress(ticketID string) string {
+	if e == nil {
+		return ""
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return ""
+	}
+	var lines []string
+	seen := map[string]bool{}
+	for _, asg := range t.Assignments {
+		for _, report := range asg.Reports {
+			if report.State != "progress" {
+				continue
+			}
+			text := strings.TrimSpace(report.Summary)
+			if q := strings.TrimSpace(report.Question); q != "" {
+				if text != "" {
+					text += "\n"
+				}
+				text += q
+			}
+			text = clipRunes(text, 180)
+			if text == "" || seen[text] {
+				continue
+			}
+			seen[text] = true
+			lines = append(lines, text)
+		}
+	}
+	if len(lines) > 6 {
+		lines = lines[len(lines)-6:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // FailStart 在准备目录失败时结束 ticketID。outcome 是 failed。已经结束时返回 ticketEnded。
 func (e *Engine) FailStart(ticketID, reason string) error {
 	e.mu.Lock()
@@ -692,6 +731,7 @@ func (e *Engine) Outbox() []Outbound {
 }
 
 // receive 收下 in。status 为 stored、duplicate 或 filtered。launches 是恢复后要启动的工单。inputs 是还开着、要投递正文的工单。
+// desk: 开头的线程盖住整段主会话。下一句是不是同一件事由路由判断，这里不自动送进工人。
 func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) {
 	if in.ID != "" {
 		if _, ok := e.triggers[in.ID]; ok {
@@ -725,6 +765,9 @@ func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) 
 		th := e.ensureThread(key)
 		if !contains(th.Context, tr.ID) {
 			th.Context = append(th.Context, tr.ID)
+		}
+		if strings.HasPrefix(key, "desk:") {
+			continue
 		}
 		for _, tid := range append([]string(nil), th.Subs...) {
 			ticket := e.tickets[tid]

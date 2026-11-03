@@ -6,35 +6,44 @@ package superagent
 import "strings"
 
 // Attach 把 triggerID 挂到 ticketID。note 非空时再记一条备注输入。
-// 人停下的工单、授权失效，或这条触发已经被这个工单交还过，都会拒绝。
+// 授权失效，或这条触发已经被这个工单交还过，会拒绝。已经停下的工单沿用原目录再打开。
 func (e *Engine) Attach(ticketID, triggerID, note string) error {
 	e.mu.Lock()
-	launch, err := e.attach(ticketID, triggerID, note)
+	launch, wake, err := e.attach(ticketID, triggerID, note)
 	e.mu.Unlock()
-	if err == nil && launch && e.OnLaunch != nil {
-		e.OnLaunch(ticketID)
+	if err != nil {
+		return err
 	}
-	return err
+	if launch && e.OnLaunch != nil {
+		e.OnLaunch(ticketID)
+		return nil
+	}
+	if wake && e.OnInput != nil {
+		wakeText := strings.TrimSpace(note)
+		if wakeText == "" {
+			wakeText = triggerID
+		}
+		e.OnInput(ticketID, wakeText)
+	}
+	return nil
 }
 
 // attach 在锁内挂接触发。launch 为真表示工单被重新打开，调用方应在解锁后启动它。
-func (e *Engine) attach(ticketID, triggerID, note string) (bool, error) {
+// wake 为真表示工单还开着，调用方要把新输入送给工人。
+func (e *Engine) attach(ticketID, triggerID, note string) (bool, bool, error) {
 	t := e.tickets[ticketID]
 	if t == nil {
-		return false, errCode("unknownTicket")
-	}
-	if t.Ended != nil && t.Ended.By == "human" {
-		return false, errCode("stopped")
+		return false, false, errCode("unknownTicket")
 	}
 	if !e.policy.Revalidate(t.Mandate) {
-		return false, errCode("mandate")
+		return false, false, errCode("mandate")
 	}
 	tr := e.triggers[triggerID]
 	if tr == nil {
-		return false, errCode("unknownTrigger")
+		return false, false, errCode("unknownTrigger")
 	}
 	if contains(tr.Handbacks, ticketID) {
-		return false, errCode("handedBackHere")
+		return false, false, errCode("handedBackHere")
 	}
 	e.unqueue(tr)
 	if !reachedTrigger(t, tr.ID) {
@@ -51,9 +60,12 @@ func (e *Engine) attach(ticketID, triggerID, note string) (bool, error) {
 		e.follow(t, key, false)
 	}
 	if t.Ended == nil {
-		return false, nil
+		return false, true, nil
 	}
-	return e.resume(t), nil
+	if !e.resume(t) {
+		return false, false, errCode("ticketEnded")
+	}
+	return true, false, nil
 }
 
 // Reply 按 purpose 把 text 放进发件箱。purpose 取 acknowledgement、answer、result 或 attention。
@@ -153,6 +165,39 @@ func (e *Engine) Handback(ticketID, triggerID, reason string) (bool, error) {
 	tr.Requeued = true
 	e.queue(tr)
 	return true, nil
+}
+
+// Say 把人的下一句交给工单，并叫醒工人。做完或被人打断的工单都沿用原目录再开一轮。
+// 空正文返回 empty。重新开工时不再单独投递，派工正文里已经带上这一句。
+func (e *Engine) Say(ticketID, text string) error {
+	text = strings.TrimSpace(text)
+	if e == nil || text == "" {
+		return errCode("empty")
+	}
+	e.mu.Lock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		e.mu.Unlock()
+		return errCode("unknownTicket")
+	}
+	launch := false
+	if t.Ended != nil {
+		if !e.resume(t) {
+			e.mu.Unlock()
+			return errCode("ticketEnded")
+		}
+		launch = true
+	}
+	e.addNote(t, text, true)
+	e.mu.Unlock()
+	if launch && e.OnLaunch != nil {
+		e.OnLaunch(ticketID)
+		return nil
+	}
+	if e.OnInput != nil {
+		e.OnInput(ticketID, text)
+	}
+	return nil
 }
 
 // Note 给还开着的 ticketID 记一条事实。text 原样成为输入。工单已结束时返回 ticketEnded。

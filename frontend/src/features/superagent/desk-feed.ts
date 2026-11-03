@@ -3,9 +3,9 @@
  * 不拥有：简报卡片怎么画。那在 WorkPane 和简报弹层。
  */
 
-import { deskFeedback, deskPush, memoryList, orchestratorView, poiAck, poiRefresh, type Initiative } from "../../lib/client";
+import { composeToday, deskFeedback, deskPush, memoryList, orchestratorView, poiAck, poiRefresh, type Initiative } from "../../lib/client";
 import { copy } from "../../lib/i18n";
-import { applySenses, auditBrief, briefDay, briefStorageKey, mergeSenseCards, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, shouldPush, slotDue, BRIEF_PREFS_KEY, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
+import { applySenses, auditBrief, briefDay, briefStorageKey, mergeSenseCards, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, shouldPush, visibleSlot, BRIEF_PREFS_KEY, type BriefCard, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
 const WELCOME_KEY = "yoyo.brief-welcomed";
@@ -44,7 +44,7 @@ export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Pro
   const prefs = readPrefs();
   await orchestratorView().catch(() => null);
   const scan = await refreshPoi();
-  const slots: BriefSlot[] = force ? [force] : (["morning", "evening"] as const).filter((slot) => slotDue(prefs, slot));
+  const slots: BriefSlot[] = force ? [force] : [visibleSlot(prefs)];
   for (const slot of slots) {
     await ensureBrief(slot, phrases, scan);
   }
@@ -57,6 +57,7 @@ async function refreshPoi(): Promise<{ points: { name: string; kind: string }[];
   const census = snap.census ? {
     ...snap.census,
     apps: points.filter((point) => point.kind === "app").length,
+    appNames: points.filter((point) => point.kind === "app").map((point) => point.name).slice(0, 6),
     traces: points.filter((point) => point.kind === "trace" || point.kind === "desk").length,
   } : undefined;
   latest = snap.initiative;
@@ -114,16 +115,16 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { point
   }, phrases);
   const signals = (scan.initiative?.signals || []) as SenseSignal[];
   if (signals.length) fresh = applySenses(fresh, signals, senseLabels());
-  let brief = readStored(key, day);
-  if (!brief) brief = fresh;
-  else if (signals.length) brief = mergeSenseCards(brief, fresh);
-  try {
-    localStorage.setItem(key, serializeStoredBrief(day, brief));
-    if (welcome) localStorage.setItem(WELCOME_KEY, "1");
-  } catch {
-    /* 写不进去时，这一次推进仍然带着这份简报。欢迎标记留到真正写下之后。 */
+  const stored = readStored(key, day);
+  let brief = stored ?? fresh;
+  if (stored && signals.length) brief = { ...mergeSenseCards(stored, fresh), woven: stored.woven };
+  if (!stored || signals.length) writeBrief(key, day, brief, welcome);
+  const woven = await wovenBrief();
+  if (woven === "pending") return;
+  if (woven) {
+    brief = { ...woven, picked: brief.picked, woven: true };
+    writeBrief(key, day, brief, welcome);
   }
-  window.dispatchEvent(new Event(BRIEF_EVENT));
   if (!sessionId || !shouldPush(scan.initiative, welcome)) return;
   const work = copy.work;
   const chipDay = new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -208,6 +209,38 @@ function senseLabels(): SenseLabels {
       match: work.whyMatch,
     },
   };
+}
+
+function writeBrief(key: string, day: string, brief: MorningBrief, welcome: boolean) {
+  try {
+    localStorage.setItem(key, serializeStoredBrief(day, brief));
+    if (welcome) localStorage.setItem(WELCOME_KEY, "1");
+  } catch {
+    /* 写不进去时，这一次推进仍然带着这份简报。欢迎标记留到真正写下之后。 */
+  }
+  window.dispatchEvent(new Event(BRIEF_EVENT));
+}
+
+/** wovenBrief 是按画像、记忆和最近对话写成的简报。材料不够或模型没写出卡片时为空。上一次还在写时返回 pending。 */
+async function wovenBrief(): Promise<MorningBrief | "pending" | null> {
+  const raw = await composeToday().catch(() => null);
+  if (raw?.pending) return "pending";
+  if (!raw?.woven || !raw.cards?.length) return null;
+  const cards = raw.cards.filter((card) => card.id && card.title).map((card): BriefCard => ({
+    id: card.id,
+    kicker: card.kicker || "",
+    title: card.title,
+    lede: card.lede || "",
+    layout: card.layout === "rows" || card.layout === "checks" || card.layout === "compare" || card.layout === "chips" || card.layout === "plain" || card.layout === "evidence" ? card.layout : "evidence",
+    items: (card.items || []).map((item) => ({ title: item.title, detail: item.detail || "" })),
+    choices: (card.choices || []).map((item, index) => ({ id: item.id || String(index), title: item.title, detail: item.detail || "" })),
+    primary: card.primary || "",
+    secondary: card.secondary || "",
+    task: card.task,
+    alt: card.alt,
+  }));
+  if (!cards.length) return null;
+  return { cards, picked: {} };
 }
 
 function readPrefs() {

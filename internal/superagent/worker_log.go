@@ -105,6 +105,68 @@ func decodeEventData(typ string, raw json.RawMessage) (any, bool) {
 	}
 }
 
+// TranscriptLine 是工单会话里给人看的一行。Role 取 user、assistant、tool_call、tool_result。
+type TranscriptLine struct {
+	ID   string `json:"id"`
+	Role string `json:"role"`
+	Text string `json:"text"`
+	Name string `json:"name,omitempty"`
+}
+
+// TranscriptLines 把工人日志收成会话行。派工包装、重试和后台完成不进对话。
+func TranscriptLines(events []dsh.Event) []TranscriptLine {
+	var out []TranscriptLine
+	for i, ev := range events {
+		switch ev.Type {
+		case dsh.EventUser:
+			msg, ok := ev.Data.(dsh.UserMessage)
+			if !ok {
+				continue
+			}
+			if msg.Source == "assignment" || msg.Source == "retry" || msg.Source == "job" {
+				continue
+			}
+			text := strings.TrimSpace(msg.Text)
+			if text == "" {
+				continue
+			}
+			out = append(out, TranscriptLine{ID: lineID(i, "user"), Role: "user", Text: clipRunes(text, 4000)})
+		case dsh.EventAssistant:
+			msg, ok := ev.Data.(dsh.Assistant)
+			if !ok {
+				continue
+			}
+			if text := strings.TrimSpace(msg.Text); text != "" {
+				out = append(out, TranscriptLine{ID: lineID(i, "assistant"), Role: "assistant", Text: clipRunes(text, 4000)})
+			}
+			for j, call := range msg.ToolCalls {
+				name := strings.TrimSpace(call.Name)
+				if name == "" {
+					continue
+				}
+				out = append(out, TranscriptLine{
+					ID: lineID(i, "call") + "-" + itoa(j), Role: "tool_call", Name: name, Text: clipRunes(call.Arguments, 500),
+				})
+			}
+		case dsh.EventToolResult:
+			msg, ok := ev.Data.(dsh.ToolResultEvent)
+			if !ok {
+				continue
+			}
+			text := strings.TrimSpace(msg.Text)
+			if text == "" {
+				continue
+			}
+			out = append(out, TranscriptLine{ID: lineID(i, "result"), Role: "tool_result", Name: msg.Name, Text: clipRunes(text, 1200)})
+		}
+	}
+	return out
+}
+
+func lineID(i int, role string) string {
+	return role + "-" + itoa(i+1)
+}
+
 // restoreAgent 把 ticketID 已存的日志灌进 agent，并把回合号接到上次的后面。
 func (e *Executor) restoreAgent(agent *dsh.Agent, ticketID string) {
 	if e == nil || agent == nil || e.LogLoad == nil {

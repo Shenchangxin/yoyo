@@ -363,7 +363,7 @@ func (a *App) runScheduledJob(j schedule.Job) {
 	a.runIsolatedJob(j)
 }
 
-// ConnectorMention 把文本发给第一场未归档的代理会话，没有则 NewSession。暂停返回 paused，空文本返回 empty mention。
+// ConnectorMention 把文本发给主循环会话。还没有主会话时新建一条。暂停返回 paused，空文本返回 empty mention。
 // account 去掉首尾空白后非空时写进发给会话的前缀。
 // text 先 TrimSpace，空串则返回错误，否则接在前缀后传给 StartSendOpts。
 func (a *App) ConnectorMention(account, text string) error {
@@ -374,21 +374,11 @@ func (a *App) ConnectorMention(account, text string) error {
 	if a.IsPaused() {
 		return fmt.Errorf("paused")
 	}
-	id := ""
-	list, _ := a.ListSessions()
-	for _, m := range list {
-		if session.NormalizeChannel(m.Channel) == session.ChannelAgent && !m.Archived {
-			id = m.ID
-			break
-		}
+	meta, err := a.MainSession()
+	if err != nil {
+		return err
 	}
-	if id == "" {
-		meta, err := a.NewSession("")
-		if err != nil {
-			return err
-		}
-		id = meta.ID
-	}
+	id := meta.ID
 	prefix := "[from connector"
 	if strings.TrimSpace(account) != "" {
 		prefix += " " + account

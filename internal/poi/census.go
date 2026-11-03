@@ -37,6 +37,8 @@ type CensusLine struct {
 	State    string `json:"state"`
 	Evidence string `json:"evidence,omitempty"`
 	When     string `json:"when,omitempty"`
+	// ID 是这条工程线在记忆里的稳定编号。清点本身不写记忆，由调用方填上。
+	ID string `json:"id,omitempty"`
 }
 
 // CensusItem 是桌面或下载里的一个文件名。Kind 是 empty、installer、deliverable、match。

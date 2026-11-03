@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Thread, ThreadChannel } from "./protocol.ts";
 import { channelForSurface, threadChannel } from "./protocol.ts";
-import { pickChannelThread, selectSurfaceThread } from "./pick-channel.ts";
+import { pickBootThread, pickChannelThread, selectSurfaceThread } from "./pick-channel.ts";
 
 /**
  * 拥有：换模块时不能把别的模块的对话带过来。
@@ -62,6 +62,24 @@ describe("selectSurfaceThread", () => {
     const path = thread("learn-path", "learn");
     const picked = selectSurfaceThread([agent, today, path], "learn", "learn-today", agent, "learn-path");
     assert.equal(picked?.id, "learn-path");
+  });
+
+  /** 主循环启动时不回到上次的旧对话。主会话还没到列表里时，也不拿旧的来顶。 */
+  it("opens the main session instead of the remembered agent thread", () => {
+    const oldChat = thread("old-chat", "agent");
+    const main = thread("main-chat", "agent");
+    const picked = pickBootThread([oldChat, main], "agent", "old-chat", oldChat, "", "main-chat", false);
+    assert.equal(picked?.id, "main-chat");
+    const waiting = pickBootThread([oldChat], "agent", "old-chat", null, "", "", false);
+    assert.equal(waiting, null);
+  });
+
+  /** 人点开一条历史对话之后，刷新留在那一条。 */
+  it("keeps an agent thread the operator opened", () => {
+    const oldChat = thread("old-chat", "agent");
+    const main = thread("main-chat", "agent");
+    const picked = pickBootThread([oldChat, main], "agent", "main-chat", oldChat, "", "main-chat", true);
+    assert.equal(picked?.id, "old-chat");
   });
 
   /** 钉住的会话还没写进列表时，不能把它丢掉。 */
