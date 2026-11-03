@@ -4,7 +4,7 @@
 
 对应前沿排序与 owner 下一步见 [FRONTIER.md](FRONTIER.md)。扫读：[report.html](report.html)。卡片与原文见 [corpus/](corpus/) 和 [originals/](originals/)。
 
-审阅日期：2026-10-19（针对补入 Harness²；其余条目仍按 2026-09-20）。
+审阅日期：2026-11-03（针对补入主动开口谱系；其余条目仍按 2026-10-19 / 2026-09-20）。
 
 ---
 
@@ -189,3 +189,16 @@ Weakness mining ──► bounded L1 proposal ──► Harbor regression ──
 | 按领域经验库 / NO_ENTRY | Harness² | `archive/nodes.json` 仍是 DGM 节点列表 | candidate |
 
 Git 式 CAS/refs 没有 2026 年论文可引，它是工程类比（Git objects / refs）。学术上对应的是「harness 必须是声明的、可差分的状态」，Self-Harness 与 Barbaste 都把 harness 定义成这份状态。
+
+---
+
+## 6. 主动开口（谱系）
+
+2026 年的三篇和产品卡在 [FRONTIER.md](FRONTIER.md) 第 E 节。构建方案在 [../proactive.md](../proactive.md)。下面只放首发早于 2026 的肩膀。
+
+| 材料 | 留下什么 | 代码 | 状态 |
+| --- | --- | --- | --- |
+| [Proactive Agent](corpus/2410.12361-proactive-agent.md)（Lu 等，2024-10，ICLR 2025） | 接受 / 拒绝是开口之后的标签 | 尚未接本地计数 | lineage |
+| [ContextAgent](corpus/2505.14668-contextagent.md)（Yang 等，2025-05，NeurIPS 2025） | 先判断该不该帮忙，再谈工具 | 门在 `policy.go`；感知不接 | lineage |
+| [Pulse](products/openai-pulse.md)（2025-09 发布，2026-06 收掉） | 一天一份更新应收进同一段对话 | 晨间信已在主会话；不要第二条流 | lineage |
+| Horvitz，CHI 1999，[10.1145/302979.303030](https://doi.org/10.1145/302979.303030) | 开口要算打断的代价 | 原型哲学；价值规则未接上推送 | lineage |

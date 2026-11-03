@@ -332,6 +332,13 @@ func (a *App) runScheduledJob(j schedule.Job) {
 		}
 		return
 	}
+	if !a.scheduleAllowed() {
+		if a.Schedule != nil {
+			a.Schedule.Interrupt(j.ID, "mode_off")
+		}
+		return
+	}
+	a.noteSchedule(j.ID, j.Prompt)
 	if j.Kind == schedule.KindFollow && strings.TrimSpace(j.SessionID) != "" {
 		prompt := "[scheduled follow] Continue this conversation. Do not send_as_you without a new approval.\n\n" + j.Prompt
 		if a.Inbox != nil {

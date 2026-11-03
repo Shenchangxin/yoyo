@@ -9,7 +9,7 @@ import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorV
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import type { DeskView, Rule, Ticket, Trigger } from "./desk-model";
-import { BRIEF_EVENT, runDeskFeed } from "./desk-feed";
+import { BRIEF_EVENT, latestInitiative, noteFeedback, runDeskFeed } from "./desk-feed";
 import { TaskRead } from "./TaskPage";
 import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, nowTickets, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, taskGroups, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
 
@@ -32,6 +32,12 @@ export function WorkPane(props: {
   const [view, setView] = useState<DeskView | null>(null);
   const [err, setErr] = useState("");
   const [memory, setMemory] = useState<MemoryRow[]>([]);
+  const [desk, setDesk] = useState(latestInitiative);
+  useEffect(() => {
+    const pull = () => setDesk(latestInitiative());
+    window.addEventListener(BRIEF_EVENT, pull);
+    return () => window.removeEventListener(BRIEF_EVENT, pull);
+  }, []);
   const load = useCallback(async () => {
     try {
       await orchestratorDeliver().catch(() => undefined);
@@ -142,6 +148,8 @@ export function WorkPane(props: {
               selected={props.openTaskId}
               onSelect={(id) => props.onOpenTask(id)}
               onNewTask={props.onNewTask}
+              held={(desk?.signals || []).filter((signal) => signal.held)}
+              notes={(desk?.open || []).filter((item) => item.class === "schedule")}
               rules={view.rules ?? []}
               onRules={async (rules) => { await orchestratorAct("rules", "", "", JSON.stringify(rules)); await load(); }}
             />
@@ -230,7 +238,10 @@ function Now(props: {
   function useCard(card: BriefCard, which: "primary" | "secondary") {
     const text = briefPrompt(card, which);
     choose(card.id, which);
-    if (text.trim()) props.onDraft(text.trim());
+    if (text.trim()) {
+      props.onDraft(text.trim());
+      void noteFeedback("used");
+    }
   }
   return (
     <div className="relative min-w-0 px-3 pb-8 pt-3">
@@ -255,6 +266,7 @@ function Now(props: {
       ) : null}
       {waiting ? <p className="py-10 text-center text-[14px] text-accent">{copy.work.briefRunning}</p> : null}
       {card ? <BriefStack brief={card} onUse={useCard} filledLabel={copy.work.briefFilled} /> : null}
+      {card ? <BriefFeedback /> : null}
       {props.incoming.length > 0 ? (
         <ul className="mt-4 rounded-[24px] bg-card px-4 py-2 shadow-[var(--shadow-card)]">
           {props.incoming.slice(0, 3).map((row) => (
@@ -629,12 +641,41 @@ export function briefPhrases(work: ReturnType<typeof useCopy>["work"]): BriefPhr
   };
 }
 
+function BriefFeedback() {
+  const copy = useCopy();
+  const [noted, setNoted] = useState("");
+  async function send(kind: "used" | "ignore" | "later" | "wrong") {
+    await noteFeedback(kind);
+    setNoted(copy.work.feedbackNoted);
+  }
+  const items = [
+    ["used", copy.work.feedbackUsed],
+    ["ignore", copy.work.feedbackIgnore],
+    ["wrong", copy.work.feedbackWrong],
+    ["later", copy.work.feedbackLater],
+  ] as const;
+  return (
+    <div className="mt-3 px-1">
+      <div className="flex flex-wrap gap-2">
+        {items.map(([kind, label]) => (
+          <button key={kind} type="button" className="h-8 rounded-full bg-card px-3 text-[12px] text-muted shadow-[var(--shadow-card)] hover:text-foreground" onClick={() => { void send(kind); }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {noted ? <p className="mt-2 text-[12px] text-muted">{noted}</p> : null}
+    </div>
+  );
+}
+
 function Tasks(props: {
   open: Ticket[];
   ended: Ticket[];
   selected: string;
   onSelect: (id: string) => void;
   onNewTask: (text?: string) => void;
+  held: { id: string; name: string; detail?: string }[];
+  notes: { id: string; title: string }[];
   rules: Rule[];
   onRules: (rules: Rule[]) => Promise<void>;
 }) {
@@ -689,6 +730,19 @@ function Tasks(props: {
   }
   return (
     <div className="px-3 pb-8 pt-2">
+      {props.held.length || props.notes.length ? (
+        <section className="mb-4 rounded-[28px] bg-card px-4 py-4 shadow-[var(--shadow-card)]">
+          <h2 className="text-[13px] font-medium">{copy.work.heldTitle}</h2>
+          <div className="mt-3 space-y-2">
+            {props.held.map((signal) => (
+              <p key={signal.id} className="text-[13px] leading-5">{signal.name}{signal.detail ? <span className="text-muted"> · {signal.detail}</span> : null}</p>
+            ))}
+            {props.notes.map((note) => (
+              <p key={note.id} className="text-[13px] leading-5">{note.title}</p>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[17px] font-semibold tracking-[-0.03em]">{copy.work.tasks}</h1>
         <button

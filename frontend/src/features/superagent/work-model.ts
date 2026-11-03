@@ -958,3 +958,135 @@ function dayDelta(value: string, now: Date): number | null {
   const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((due - today) / 86400000);
 }
+
+export type SenseSignal = {
+  id: string;
+  code: string;
+  class: string;
+  name: string;
+  detail: string;
+  state: string;
+  why: string;
+  speak: boolean;
+  held: boolean;
+  memoryId?: string;
+};
+
+export type Initiative = {
+  day?: string;
+  speak?: boolean;
+  signals?: SenseSignal[];
+  open?: { id: string; class: string; title: string; why?: string }[];
+};
+
+export type SenseLabels = {
+  unchecked: string;
+  linked: string;
+  senseTitle: string;
+  senseLede: string;
+  listening: string;
+  battery: string;
+  charging: string;
+  online: string;
+  offline: string;
+  idle: string;
+  focus: string;
+  power: string;
+  net: string;
+  git: string;
+  mail: string;
+  calendar: string;
+  poi: string;
+  speakKicker: string;
+  speakTitle: string;
+  speakLede: string;
+  speakPrimary: string;
+  speakTask: string;
+  why: Record<string, string>;
+};
+
+/** shouldPush 在没有判断结果时保持原来的到点推进。有判断时，只有第一封信或这一轮值得开口才推进。 */
+export function shouldPush(initiative: Initiative | undefined, welcome: boolean): boolean {
+  if (!initiative) return true;
+  return welcome || !!initiative.speak;
+}
+
+/** applySenses 把感知写进信和一张现状卡。开口的原因单独成卡，按钮仍只填进输入框。 */
+export function applySenses(brief: MorningBrief, signals: SenseSignal[], labels: SenseLabels): MorningBrief {
+  const cards = brief.cards.map((card) => card.id === "letter" ? letterWithSenses(card, signals, labels) : card);
+  const sensed = signals.filter((signal) => !signal.speak && senseVisible(signal.code));
+  if (sensed.length) {
+    cards.push({
+      id: "sense",
+      layout: "rows",
+      kicker: labels.senseTitle,
+      title: labels.senseTitle,
+      lede: labels.senseLede,
+      items: sensed.slice(0, 8).map((signal) => senseItem(signal, labels)),
+      choices: [],
+      primary: "",
+      secondary: "",
+    });
+  }
+  const speaks = signals.filter((signal) => signal.speak && signal.code !== "welcome");
+  if (speaks.length) {
+    const items = speaks.map((signal) => ({
+      title: signal.name,
+      detail: [labels.why[signal.why] || signal.why, signal.detail].filter(Boolean).join(" · "),
+    }));
+    const at = cards.findIndex((card) => card.id === "letter");
+    cards.splice(at + 1, 0, {
+      id: "speak",
+      layout: "rows",
+      kicker: labels.speakKicker,
+      title: labels.speakTitle,
+      lede: labels.speakLede,
+      items,
+      choices: [],
+      primary: labels.speakPrimary,
+      secondary: "",
+      task: fill(labels.speakTask, { items: itemLines(items) }),
+    });
+  }
+  return { ...brief, cards };
+}
+
+/** mergeSenseCards 用新的信、感知和开口原因换掉旧的那几张，保留已经点过的选择。 */
+export function mergeSenseCards(stored: MorningBrief, fresh: MorningBrief): MorningBrief {
+  const lead = new Set(["letter", "sense", "speak"]);
+  return {
+    ...stored,
+    cards: [...fresh.cards.filter((card) => lead.has(card.id)), ...stored.cards.filter((card) => !lead.has(card.id))],
+  };
+}
+
+function letterWithSenses(card: BriefCard, signals: SenseSignal[], labels: SenseLabels): BriefCard {
+  const mail = signals.find((signal) => signal.code === "mail" && (signal.state === "unchecked" || signal.state === "linked"));
+  const calendar = signals.find((signal) => signal.code === "calendar" && (signal.state === "unchecked" || signal.state === "linked"));
+  if (!mail && !calendar) return card;
+  const choices = card.choices.filter((choice) => choice.id !== "mail");
+  const lines = [mail, calendar].filter((signal): signal is SenseSignal => !!signal).map((signal) => {
+    const title = signal.code === "mail" ? labels.mail : labels.calendar;
+    const detail = signal.state === "linked" ? labels.linked : labels.unchecked;
+    return `${title} · ${detail}`;
+  });
+  choices.unshift({ id: "mail", title: labels.mail, detail: lines.join("\n") });
+  return { ...card, choices };
+}
+
+function senseVisible(code: string): boolean {
+  return code === "power" || code === "net" || code === "focus" || code === "git" || code === "idle" || code === "channel" || code === "poi";
+}
+
+function senseItem(signal: SenseSignal, labels: SenseLabels): BriefItem {
+  if (signal.code === "power") {
+    return { title: labels.power, detail: `${signal.name}% · ${signal.detail === "charging" ? labels.charging : labels.battery}` };
+  }
+  if (signal.code === "net") return { title: labels.net, detail: signal.state === "offline" ? labels.offline : labels.online };
+  if (signal.code === "idle") return { title: labels.idle, detail: signal.detail };
+  if (signal.code === "focus") return { title: labels.focus, detail: signal.name };
+  if (signal.code === "git") return { title: signal.name, detail: [signal.detail, signal.state].filter(Boolean).join(" · ") };
+  if (signal.code === "channel") return { title: signal.name, detail: signal.state === "error" ? (signal.detail || labels.why.error || signal.state) : labels.listening };
+  if (signal.code === "poi") return { title: labels.poi, detail: signal.name };
+  return { title: signal.name, detail: signal.detail };
+}

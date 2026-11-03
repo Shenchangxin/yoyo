@@ -12,3 +12,8 @@
 | [google-harness-engineering.md](google-harness-engineering.md) | candidate |
 | [xai-grok-build.md](xai-grok-build.md) | watch |
 | [iclr2026-rsi-workshop.md](iclr2026-rsi-workshop.md) | watch |
+| [meta-muse.md](meta-muse.md) | watch |
+| [manus-cue.md](manus-cue.md) | watch |
+| [xai-grok-bot.md](xai-grok-bot.md) | watch |
+| [openai-dots.md](openai-dots.md) | watch |
+| [openai-pulse.md](openai-pulse.md) | lineage |

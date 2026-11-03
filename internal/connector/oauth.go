@@ -10,30 +10,16 @@ import (
 	"strings"
 )
 
-// CatalogEntry 是目录里的一个供应商，含种类、显示名和可选的授权地址。
+// CatalogEntry 是目录里的一个连接。Platform 为空表示每台桌面都列出。
+// Access 取 local、oauth、source、mcp。local 只认这台机器上的名字和时间。
 type CatalogEntry struct {
 	Provider string `json:"provider"`
 	Kind     Kind   `json:"kind"`
 	Label    string `json:"label"`
+	Platform string `json:"platform,omitempty"`
+	Access   string `json:"access,omitempty"`
 	AuthURL  string `json:"auth_url,omitempty"`
 	MCPPack  bool   `json:"mcp_pack,omitempty"`
-}
-
-// Catalog 返回内置供应商列表。wecom 和 wechat 没有 AuthURL，MCPPack 为真。
-func Catalog() []CatalogEntry {
-	return []CatalogEntry{
-		{Provider: "gmail", Kind: KindMail, Label: "Gmail", AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
-		{Provider: "outlook", Kind: KindMail, Label: "Outlook", AuthURL: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"},
-		{Provider: "gcal", Kind: KindCalendar, Label: "Google Calendar", AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
-		{Provider: "feishu", Kind: KindIM, Label: "Feishu / 飞书", AuthURL: "https://open.feishu.cn/open-apis/authen/v1/index", MCPPack: true},
-		{Provider: "dingtalk", Kind: KindIM, Label: "DingTalk / 钉钉", AuthURL: "https://login.dingtalk.com/oauth2/auth", MCPPack: true},
-		{Provider: "wecom", Kind: KindIM, Label: "WeCom / 企业微信", MCPPack: true},
-		{Provider: "wechat", Kind: KindIM, Label: "WeChat assistant (MCP-pack)", MCPPack: true},
-		{Provider: "slack", Kind: KindIM, Label: "Slack", AuthURL: "https://slack.com/oauth/v2/authorize"},
-		{Provider: "notion", Kind: KindDrive, Label: "Notion", AuthURL: "https://api.notion.com/v1/oauth/authorize", MCPPack: true},
-		{Provider: "github", Kind: KindDrive, Label: "GitHub", AuthURL: "https://github.com/login/oauth/authorize", MCPPack: true},
-		{Provider: "local", Kind: KindMail, Label: "Local mailbox (IMAP/MCP)"},
-	}
 }
 
 // AuthURL 为 gmail、gcal、outlook、slack 拼出授权地址，并返回随机 state。其他供应商返回错误，说明只走 MCP 包。

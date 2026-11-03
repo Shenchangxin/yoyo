@@ -1337,7 +1337,7 @@ const ItemRow = memo(function ItemRow({
         <div className={cn(streaming && "assistant-live")}>
           <Markdown text={shown.text} streaming={streaming} rich={!!rich && !streaming} />
         </div>
-        {briefKind === "brief" && shown.payload?.chip ? (
+        {(briefKind === "brief" || briefKind === "speak") && shown.payload?.chip ? (
           <button
             type="button"
             className="mt-3 inline-flex h-9 items-center rounded-full bg-card px-3.5 text-[13px] font-medium shadow-[var(--shadow-card)] hover:bg-lift"
