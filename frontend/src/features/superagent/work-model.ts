@@ -138,7 +138,7 @@ export function unseenSuggestions(ids: string[]): string[] {
   return suggestedRuleIds.filter((id) => !have.has(id));
 }
 
-export type BriefItem = { title: string; detail: string };
+export type BriefItem = { title: string; detail: string; tone?: string };
 
 /** ParsedNote 是从一段文字里认出的条目。晨间简报本身不走这条。 */
 export type ParsedNote = {
@@ -153,8 +153,8 @@ export type BriefChoice = { id: string; title: string; detail: string };
 
 export type BriefStat = { label: string; value: string };
 
-/** BriefLayout 决定一张卡怎么排。checks 是编号清单，compare 是两列取舍，evidence 是可核对的原文，chips 是名字。 */
-export type BriefLayout = "checks" | "compare" | "evidence" | "chips" | "plain";
+/** BriefLayout 决定一张卡怎么排。letter 是手上有的和还没有的，rows 是几条线，stats 是数得出来的数量。 */
+export type BriefLayout = "checks" | "compare" | "evidence" | "chips" | "plain" | "letter" | "rows" | "stats";
 
 /** BriefCard 是简报里的一张决定。task 和 alt 是点按钮后放进输入框的任务，不直接发出。 */
 export type BriefCard = {
@@ -170,6 +170,9 @@ export type BriefCard = {
   alt?: string;
   layout?: BriefLayout;
   mark?: string;
+  leftLabel?: string;
+  rightLabel?: string;
+  note?: string;
   stats?: BriefStat[];
 };
 
@@ -177,10 +180,11 @@ export type BriefCard = {
 export type MorningBrief = {
   cards: BriefCard[];
   picked: Record<string, string>;
+  welcome?: boolean;
 };
 
 /** BRIEF_VERSION 变了，当天旧的流水账就作废，下一轮按新的卡片重写。 */
-export const BRIEF_VERSION = 2;
+export const BRIEF_VERSION = 3;
 
 /** BriefPrefs 是晨间和晚间简报的开关和时间。范围不在这里选。 */
 export type BriefPrefs = {
@@ -390,6 +394,79 @@ export type BriefPhrases = {
   quietPrimary: string;
   quietTask: string;
   countLabel: string;
+  letterKicker: string;
+  letterKickerToday: string;
+  letterHello: string;
+  letterHelloBare: string;
+  letterLede: string;
+  letterLedeToday: string;
+  letterKnown: string;
+  letterMissing: string;
+  letterLines: string;
+  letterIdentity: string;
+  letterHours: string;
+  letterNoMail: string;
+  letterNoMailDetail: string;
+  letterNoPlan: string;
+  letterNoPlanDetail: string;
+  linesKicker: string;
+  linesTitle: string;
+  linesLede: string;
+  lineMoving: string;
+  lineStalled: string;
+  lineQuiet: string;
+  linesPrimary: string;
+  linesTask: string;
+  doneKicker: string;
+  doneTitle: string;
+  doneLede: string;
+  doneMark: string;
+  doneFinished: string;
+  doneEmpty: string;
+  donePrimary: string;
+  doneAlt: string;
+  doneTask: string;
+  placeKicker: string;
+  placeTitle: string;
+  placeLede: string;
+  placeLeft: string;
+  placeRight: string;
+  placeNone: string;
+  placePrimary: string;
+  placeTask: string;
+  toolKicker: string;
+  toolTitle: string;
+  toolLede: string;
+  toolProjects: string;
+  toolApps: string;
+  toolDownloads: string;
+  toolTraces: string;
+  toolPrimary: string;
+  toolTask: string;
+  pauseKicker: string;
+  pauseTitle: string;
+  pauseLede: string;
+  pauseGo: string;
+  pauseGoDetail: string;
+  pauseStop: string;
+  pauseStopDetail: string;
+  pauseNote: string;
+};
+
+/** DeskCensus 是本机清点。只有名字、状态和数量，没有文件正文。 */
+export type DeskCensus = {
+  user?: string;
+  hours?: string;
+  weekday?: boolean;
+  lines?: { name: string; state?: string; evidence?: string; when?: string }[];
+  finished?: { name: string; line?: string; kind?: string }[];
+  empty?: { name: string; line?: string; kind?: string }[];
+  place?: { name: string; line?: string; kind?: string }[];
+  archive?: { name: string; line?: string; kind?: string }[];
+  projects?: number;
+  downloads?: number;
+  apps?: number;
+  traces?: number;
 };
 
 export const MORNING_BRIEF_KEY = "yoyo.morning-brief";
@@ -408,7 +485,7 @@ export function parseStoredBrief(raw: string | null, day: string): MorningBrief 
     const body = JSON.parse(raw) as { v?: unknown; day?: unknown; brief?: MorningBrief };
     if (body.v !== BRIEF_VERSION || body.day !== day || !body.brief || !Array.isArray(body.brief.cards) || body.brief.cards.length < 1) return null;
     const picked = body.brief.picked && typeof body.brief.picked === "object" ? body.brief.picked : {};
-    return { cards: body.brief.cards, picked };
+    return { cards: body.brief.cards, picked, welcome: body.brief.welcome === true };
   } catch {
     return null;
   }
@@ -439,6 +516,8 @@ export function auditBrief(input: {
   memory?: BriefMemory[];
   sources?: BriefSource[];
   points?: BriefPoint[];
+  census?: DeskCensus;
+  welcome?: boolean;
   now?: Date;
 }, phrases: BriefPhrases): MorningBrief {
   const now = input.now ?? new Date();
@@ -488,6 +567,9 @@ export function auditBrief(input: {
   }).slice(0, 6);
   const items = shown.map((item) => ({ title: item.title, detail: item.detail }));
   const cards: BriefCard[] = [];
+  const desk = deskCards(input.census, !!input.welcome, shown.some((item) => item.bucket === "due"), items.length > 0, phrases, input.memory);
+  const letter = desk.find((card) => card.id === "letter");
+  if (letter) cards.push(letter);
   if (items.length > 0) {
     const listed = itemLines(items);
     cards.push({
@@ -504,6 +586,9 @@ export function auditBrief(input: {
       alt: fill(phrases.gateOne, { title: items[0].title, detail: items[0].detail }),
       mark: fill(phrases.countLabel, { n: String(items.length) }),
     });
+  }
+  for (const card of desk) {
+    if (card.id !== "letter" && card.id !== "pause") cards.push(card);
   }
   const openTickets = (input.tickets ?? []).filter((ticket) => ticket.stage !== "ended" && !needsPerson(ticket) && ticket.action !== "blocked" && ticket.action !== "failed");
   const named = new Set(items.map((item) => item.title));
@@ -560,8 +645,10 @@ export function auditBrief(input: {
       alt: fill(phrases.memoryOne, { title: memoryItems[0].title, detail: memoryItems[0].detail }),
     });
   }
-  const around = aroundCard(input.points ?? [], phrases);
+  const around = input.census?.lines?.length ? null : aroundCard(input.points ?? [], phrases);
   if (around) cards.push(around);
+  const pause = desk.find((card) => card.id === "pause");
+  if (pause && items.length === 0) cards.push(pause);
   if (cards.length === 0) {
     cards.push({
       id: "quiet",
@@ -576,7 +663,161 @@ export function auditBrief(input: {
       task: phrases.quietTask,
     });
   }
-  return { cards, picked: {} };
+  return { cards, picked: {}, welcome: !!input.welcome && !!letter };
+}
+
+/** deskCards 把本机清点收成信、工程线、成品、归位和工具链。没有清点、也不是第一封时什么都不加。不编健康读数，不读正文。 */
+function deskCards(census: DeskCensus | undefined, welcome: boolean, hasPlan: boolean, hasFindings: boolean, phrases: BriefPhrases, memory?: BriefMemory[]): BriefCard[] {
+  if (!welcome && !censusUseful(census)) return [];
+  const cards: BriefCard[] = [];
+  const name = greetName(memory, census?.user || "");
+  const known: BriefItem[] = [];
+  const lines = census?.lines ?? [];
+  if (lines.length) known.push({ title: fill(phrases.letterLines, { n: String(lines.length) }), detail: lines.map((line) => line.name).join(" · ") });
+  if (census?.user) known.push({ title: phrases.letterIdentity, detail: census.user });
+  if (census?.hours) known.push({ title: phrases.letterHours, detail: census.hours });
+  const missing: BriefChoice[] = hasPlan ? [] : [
+    { id: "mail", title: phrases.letterNoMail, detail: phrases.letterNoMailDetail },
+    { id: "plan", title: phrases.letterNoPlan, detail: phrases.letterNoPlanDetail },
+  ];
+  cards.push({
+    id: "letter",
+    layout: "letter",
+    kicker: welcome ? phrases.letterKicker : phrases.letterKickerToday,
+    title: name ? fill(phrases.letterHello, { name }) : phrases.letterHelloBare,
+    lede: welcome ? phrases.letterLede : phrases.letterLedeToday,
+    items: known,
+    choices: missing,
+    primary: "",
+    secondary: "",
+    leftLabel: phrases.letterKnown,
+    rightLabel: phrases.letterMissing,
+  });
+  if (lines.length) {
+    const rows = lines.map((line) => ({ title: line.name, detail: lineDetail(line, phrases), tone: line.state || "quiet" }));
+    const first = lines[0];
+    cards.push({
+      id: "lines",
+      layout: "rows",
+      kicker: phrases.linesKicker,
+      title: phrases.linesTitle,
+      lede: phrases.linesLede,
+      items: rows,
+      choices: [],
+      primary: fill(phrases.linesPrimary, { name: first.name }),
+      secondary: "",
+      task: fill(phrases.linesTask, { name: first.name, items: itemLines(rows) }),
+    });
+  }
+  const finished = census?.finished ?? [];
+  const empty = census?.empty ?? [];
+  if (finished.length || empty.length) {
+    const doneItems = [
+      ...finished.map((item) => ({ title: item.name, detail: item.line ? `${phrases.doneFinished} · ${item.line}` : phrases.doneFinished, tone: "moving" })),
+      ...empty.map((item) => ({ title: item.name, detail: item.line ? `${phrases.doneEmpty} · ${item.line}` : phrases.doneEmpty, tone: "stalled" })),
+    ];
+    cards.push({
+      id: "done",
+      layout: "rows",
+      kicker: phrases.doneKicker,
+      title: phrases.doneTitle,
+      lede: phrases.doneLede,
+      items: doneItems,
+      choices: [],
+      primary: empty.length ? phrases.donePrimary : phrases.doneAlt,
+      secondary: "",
+      task: fill(phrases.doneTask, { items: itemLines(doneItems) }),
+      mark: fill(phrases.doneMark, { done: String(finished.length), left: String(empty.length) }),
+    });
+  }
+  const place = census?.place ?? [];
+  const archive = census?.archive ?? [];
+  if (place.length || archive.length) {
+    const placeText = namedLines(place) || phrases.placeNone;
+    const archiveText = namedLines(archive) || phrases.placeNone;
+    cards.push({
+      id: "place",
+      layout: "compare",
+      kicker: phrases.placeKicker,
+      title: phrases.placeTitle,
+      lede: phrases.placeLede,
+      items: [],
+      choices: [
+        { id: "place", title: phrases.placeLeft, detail: placeText },
+        { id: "archive", title: phrases.placeRight, detail: archiveText },
+      ],
+      primary: phrases.placePrimary,
+      secondary: "",
+      leftLabel: phrases.placeLeft,
+      rightLabel: phrases.placeRight,
+      task: fill(phrases.placeTask, { place: placeText, archive: archiveText }),
+    });
+  }
+  const stats = [
+    census?.projects ? { label: phrases.toolProjects, value: String(census.projects) } : null,
+    census?.apps ? { label: phrases.toolApps, value: String(census.apps) } : null,
+    census?.downloads ? { label: phrases.toolDownloads, value: String(census.downloads) } : null,
+    census?.traces ? { label: phrases.toolTraces, value: String(census.traces) } : null,
+  ].filter((stat): stat is BriefStat => !!stat);
+  if (stats.length > 0) {
+    const listed = [
+      ...lines.map((line) => line.name),
+      ...place.map((item) => item.name),
+      ...archive.map((item) => item.name),
+    ].join("\n");
+    cards.push({
+      id: "tools",
+      layout: "stats",
+      kicker: phrases.toolKicker,
+      title: phrases.toolTitle,
+      lede: phrases.toolLede,
+      items: [],
+      choices: [],
+      stats,
+      primary: phrases.toolPrimary,
+      secondary: "",
+      task: fill(phrases.toolTask, { items: listed }),
+    });
+  }
+  if (census?.weekday && !hasFindings) {
+    cards.push({
+      id: "pause",
+      layout: "compare",
+      kicker: phrases.pauseKicker,
+      title: phrases.pauseTitle,
+      lede: phrases.pauseLede,
+      items: [],
+      choices: [
+        { id: "go", title: phrases.pauseGo, detail: phrases.pauseGoDetail },
+        { id: "stop", title: phrases.pauseStop, detail: phrases.pauseStopDetail },
+      ],
+      primary: "",
+      secondary: "",
+      note: phrases.pauseNote,
+    });
+  }
+  return cards;
+}
+
+function censusUseful(census?: DeskCensus): boolean {
+  if (!census) return false;
+  return Boolean(census.lines?.length || census.finished?.length || census.empty?.length || census.place?.length || census.archive?.length || census.hours || census.projects || census.downloads);
+}
+
+function greetName(memory: BriefMemory[] | undefined, fallback: string): string {
+  const profile = (memory ?? []).find((row) => !row.staging && row.kind === "profile" && row.text.trim());
+  const text = profile?.text.trim() ?? "";
+  if (text && [...text].length <= 16 && !/[\s\n。！？!?]/.test(text)) return text;
+  return fallback;
+}
+
+function lineDetail(line: { state?: string; evidence?: string; when?: string }, phrases: BriefPhrases): string {
+  const state = line.state === "stalled" ? phrases.lineStalled : line.state === "quiet" ? phrases.lineQuiet : phrases.lineMoving;
+  return [state, line.evidence, line.when].filter(Boolean).join(" · ");
+}
+
+function namedLines(items: { name: string; line?: string }[]): string {
+  return items.map((item) => item.line ? `${item.name} → ${item.line}` : item.name).join("\n");
 }
 
 function workChoice(ticket: Ticket, phrases: BriefPhrases): BriefChoice {
@@ -631,6 +872,82 @@ function clip(text: string, max: number): string {
   const clean = text.replace(/\s+/g, " ").trim();
   if (clean.length <= max) return clean;
   return `${clean.slice(0, max - 1)}…`;
+}
+
+export type MemoryRow = {
+  id: string;
+  kind: string;
+  text: string;
+  staging?: boolean;
+  project?: string;
+  source?: string;
+  state?: string;
+  evidence?: string;
+  when?: string;
+  created_at?: string;
+};
+
+export type MemoryPortrait = {
+  name: string;
+  updated: string;
+  device: string;
+  host: string;
+  os: string;
+  zone: string;
+  git: string;
+  hours: string;
+  lines: { name: string; state: string; evidence: string; when: string }[];
+  said: string[];
+  noted: string[];
+  preferences: string[];
+};
+
+/** memoryPortrait 把已经留下的条目分成设备、工作时间、工程线，以及当事人说过的话。本机事实不算当事人讲过。 */
+export function memoryPortrait(rows: MemoryRow[]): MemoryPortrait {
+  const out: MemoryPortrait = { name: "", updated: "", device: "", host: "", os: "", zone: "", git: "", hours: "", lines: [], said: [], noted: [], preferences: [] };
+  for (const row of rows) {
+    const text = row.text.trim();
+    if (!text) continue;
+    if (row.id === "machine:device") out.device = text;
+    else if (row.id === "machine:host") out.host = text;
+    else if (row.id === "machine:os") out.os = text;
+    else if (row.id === "machine:zone") out.zone = text;
+    else if (row.id === "machine:git") out.git = text;
+    else if (row.id === "machine:hours" || (row.source === "machine" && row.project === "work")) out.hours = text;
+    else if (row.kind === "project") out.lines.push({ name: text, state: row.state || "", evidence: row.evidence || "", when: row.when || "" });
+    else if (row.kind === "profile" && operatorMemory(row.source)) out.said.push(text);
+    else if (row.kind === "profile") out.noted.push(text);
+    else if (row.kind === "semantic") out.preferences.push(text);
+    else continue;
+    if (row.created_at && row.created_at > out.updated) out.updated = row.created_at;
+  }
+  out.name = out.said.find((text) => memoryName(text)) || "";
+  return out;
+}
+
+export type MemoryFolder = "device" | "work" | "project" | "preference" | "about" | "notes";
+
+/** memoryFolderRows 按夹取出条目。关于夹收档案，不收本机账号和工作时间。 */
+export function memoryFolderRows(rows: MemoryRow[], folder: MemoryFolder): MemoryRow[] {
+  return rows.filter((row) => row.text.trim() && inMemoryFolder(row, folder));
+}
+
+function inMemoryFolder(row: MemoryRow, folder: MemoryFolder): boolean {
+  if (folder === "device") return row.source === "machine" && row.project === "device";
+  if (folder === "work") return row.source === "machine" && (row.id === "machine:hours" || row.project === "work");
+  if (folder === "project") return row.kind === "project";
+  if (folder === "preference") return row.kind === "semantic";
+  if (folder === "about") return row.kind === "profile" && row.source !== "machine";
+  return row.kind === "episodic" && row.source !== "machine" && !row.id.startsWith("machine:");
+}
+
+function operatorMemory(source?: string): boolean {
+  const value = (source || "").trim();
+  return value === "" || value === "user" || value === "User confirmed in chat";
+}
+
+function memoryName(text: string): boolean {
+  return [...text].length <= 16 && !/[\s\n。！？!?]/.test(text);
 }
 
 function dayDelta(value: string, now: Date): number | null {

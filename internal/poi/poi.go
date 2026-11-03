@@ -37,6 +37,7 @@ type Snapshot struct {
 	Dropped []string `json:"dropped"`
 	Sig     string   `json:"sig"`
 	Pending bool     `json:"pending"`
+	Census  Census   `json:"census,omitempty"`
 }
 
 // Store 把兴趣库写在 dir/poi.json。

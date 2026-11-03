@@ -94,7 +94,11 @@ func (a *App) PoiRefresh() poi.Snapshot {
 		return poi.Snapshot{}
 	}
 	obs, blobs := a.poiObservations()
-	return a.Poi.Refresh(obs, blobs, time.Now())
+	now := time.Now()
+	snap := a.Poi.Refresh(obs, blobs, now)
+	snap.Census = poi.ScanCensus(poi.DefaultRoots(), now)
+	a.fileCensus(snap.Census)
+	return snap
 }
 
 // PoiAck 记下这一版兴趣库已经推进过。
@@ -118,7 +122,7 @@ func (a *App) poiObservations() ([]poi.Observation, []string) {
 	var blobs []string
 	if a.Memory != nil {
 		for _, it := range a.Memory.All() {
-			if it.Staging || strings.TrimSpace(it.Text) == "" {
+			if it.Staging || it.Source == "machine" || strings.TrimSpace(it.Text) == "" {
 				continue
 			}
 			obs = append(obs, poi.Observation{Name: it.Text, Kind: memoryKind(it.Kind), Evidence: "memory"})
@@ -129,6 +133,51 @@ func (a *App) poiObservations() ([]poi.Observation, []string) {
 	obs = append(obs, poi.ScanRoots(poi.DefaultRoots(), now)...)
 	obs = append(obs, poi.ScanAppRoots(poi.DefaultAppRoots(), now)...)
 	return obs, blobs
+}
+
+// fileCensus 把这一轮清点收成记忆。同一条线用稳定 id，没有变化就不改更新时间。
+func (a *App) fileCensus(c poi.Census) {
+	if a == nil || a.Memory == nil {
+		return
+	}
+	var facts []memory.MachineFact
+	if user := strings.TrimSpace(c.User); user != "" {
+		facts = append(facts, memory.MachineFact{ID: "machine:device", Kind: string(memory.KindProfile), Project: "device", Text: user})
+	}
+	for _, fact := range []memory.MachineFact{
+		{ID: "machine:host", Text: c.Host},
+		{ID: "machine:os", Text: c.OS},
+		{ID: "machine:zone", Text: c.Zone},
+		{ID: "machine:git", Text: c.Git},
+	} {
+		if strings.TrimSpace(fact.Text) == "" {
+			continue
+		}
+		fact.Kind = string(memory.KindProfile)
+		fact.Project = "device"
+		facts = append(facts, fact)
+	}
+	if strings.TrimSpace(c.Hours) != "" {
+		facts = append(facts, memory.MachineFact{ID: "machine:hours", Kind: string(memory.KindProfile), Project: "work", Text: c.Hours})
+	}
+	for _, line := range c.Lines {
+		name := strings.TrimSpace(line.Name)
+		if name == "" {
+			continue
+		}
+		facts = append(facts, memory.MachineFact{
+			ID:       memory.MachineID("project", name),
+			Kind:     string(memory.KindProject),
+			Project:  name,
+			Text:     name,
+			State:    line.State,
+			Evidence: line.Evidence,
+			When:     line.When,
+		})
+	}
+	if a.Memory.FileMachine(facts) {
+		a.touchPoi()
+	}
 }
 
 func memoryKind(kind memory.Kind) string {

@@ -157,7 +157,7 @@ func (t *WorkspaceTools) memorySearch(q, kind string) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
-// memoryWrite 以 MemoryWrite、动作 memory_write 审批。写入后说明仍由 checkout 决定提升，本函数不提升。
+// memoryWrite 以 MemoryWrite、动作 memory_write 审批。写进去就留下，不再等晋升。空文本和像密钥的文本不留。
 // kind 放进写入项的 Kind。
 // text 放进能力检查的命令文本，并作为写入项的 Text。
 // project 放进写入项的 Project。
@@ -168,8 +168,11 @@ func (t *WorkspaceTools) memoryWrite(kind, text, project string) ToolResult {
 	if t.Memory == nil {
 		return ToolResult{Err: fmt.Errorf("no memory store")}
 	}
-	it := t.Memory.Write(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project})
-	return ToolResult{Content: fmt.Sprintf("staged memory %s (kind=%s). checkout still owns promotion.", it.ID, it.Kind)}
+	it := t.Memory.Write(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project, Source: "model"})
+	if it.ID == "" {
+		return ToolResult{Content: "not kept"}
+	}
+	return ToolResult{Content: fmt.Sprintf("kept memory %s (kind=%s).", it.ID, it.Kind)}
 }
 
 // memoryForget 以 MemoryWrite、动作 memory_forget 审批。未知 ID 返回错误。
