@@ -67,8 +67,8 @@ func (a *App) DeskPush(note DeskNote) bool {
 func deskNoteID(note DeskNote) string {
 	kind := strings.TrimSpace(note.Kind)
 	day := strings.TrimSpace(note.Day)
-	if kind == "brief" {
-		return "brief:" + strings.TrimSpace(note.Slot) + ":" + day
+	if kind == "brief" || kind == "speak" {
+		return kind + ":" + strings.TrimSpace(note.Slot) + ":" + day
 	}
 	sum := sha256.Sum256([]byte(strings.TrimSpace(note.Text)))
 	return kind + ":" + day + ":" + hex.EncodeToString(sum[:6])
@@ -98,6 +98,9 @@ func (a *App) PoiRefresh() poi.Snapshot {
 	snap := a.Poi.Refresh(obs, blobs, now)
 	snap.Census = poi.ScanCensus(poi.DefaultRoots(), now)
 	a.fileCensus(snap.Census)
+	if briefing, ok := a.assessDesk(snap); ok {
+		snap.Initiative = &briefing
+	}
 	return snap
 }
 

@@ -221,7 +221,7 @@ button:focus-visible, input:focus-visible {
 
 <main>
 <section class="sec" id="brief">
-  <p class="date">2026年10月19日补入 Harness² · 其余条目仍按 9 月 20 日全量审阅 · 只看当年</p>
+  <p class="date">2026年11月3日补入主动开口 · 10月19日的 Harness² 仍在 · 全量审阅仍是 9 月 20 日</p>
   <h1>固定模型，进化 harness。</h1>
   <p class="lede">下一跃迁仍是模块化、评测不相交、预算诚实。再下一刀是无标签的任务层 overlay。不是更宽的搜索，也不是第二套 runtime。</p>
   <div class="prose">
@@ -242,6 +242,10 @@ button:focus-visible, input:focus-visible {
   <div class="cluster">
     <h2>技能先不动</h2>
     <p>可执行 skill 和执行状态外置都还早。那是改 runtime，不是改证据格式。</p>
+  </div>
+  <div class="cluster">
+    <h2>开口先要有门</h2>
+    <p>主动式补的是推送，不是再做一个会聊天的壳。Ke Yang 等人的 6A 把主动性和授权分开，并指出预判与判断介入才是主动式特有的两段。ProAgentBench 把协助拆成先判时机、再写内容。Liu 等人说明常开路径不该跑大模型。Tang 等人把沉默写成合法动作。晨间信和兴趣库变化现在到点就推，定时任务另开一段会话。下一刀仍是价值规则：没有到期、没有卡住、没有状态变化，就不推送。方案在 <a href="../proactive.md">proactive.md</a>。</p>
   </div>
 </section>
 
@@ -911,6 +915,149 @@ button:focus-visible, input:focus-visible {
     <li class="deny">拒：用偏好模型替换 Harbor。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2511.07919">arXiv</a><a href="corpus/2511.07919-feedback-descent.md">卡片</a><a href="originals/2511.07919.pdf">PDF</a></p>
+</article>
+
+<article id="a-proactive-6a" data-track="prod" data-pri="P1" data-star data-q="6a proactive superintelligent yang google uiuc">
+  <p class="kicker">生产上 · 候选 · 2026 · 无 arXiv 号</p>
+  <h2>Proactive AI for Superintelligent Agents</h2>
+  <p class="dek">没有这一次的明确指令，自己发起朝向目标的行动。授权仍然另算。</p>
+  <p>UIUC、Google、Stanford、Berkeley、CMU 的综述。六种能力：掌握情况、预判、议程、判断介入、行动、适应。预判和判断介入是主动式特有的两段。评估要看结果、机制和人的负担。</p>
+  <p>Yoyo 的门盖住人的消息和写成的规则。晨间信、兴趣库变化和定时任务还在门外。</p>
+  <ul class="take">
+    <li class="steal">偷：主动性与授权分开；忽略不等于再劝一次。</li>
+    <li class="deny">拒：常开截屏，以及用接受率训练一个更会劝的模型。</li>
+  </ul>
+  <p class="links"><a href="https://research.google/pubs/proactive-ai-for-superintelligent-agents/">Google</a><a href="corpus/yang-2026-proactive-6a.md">卡片</a><a href="../proactive.md">方案</a></p>
+</article>
+
+<article id="a-proagentbench" data-track="prod" data-pri="P1" data-q="proagentbench 主动 时机 proactive">
+  <p class="kicker">生产上 · 候选 · 2026年2月4日</p>
+  <h2>ProAgentBench</h2>
+  <p class="dek">先判时机，再写协助。假阳性是打断。</p>
+  <p>摘要把主动协助拆成时机预测和内容生成，数据来自真实会话。时机错了，要么打断，要么错过。</p>
+  <p>晨间信现在到点就写。价值规则要先问有没有到期、卡住或状态变化。</p>
+  <ul class="take">
+    <li class="steal">偷：先判定，再生成。</li>
+    <li class="deny">拒：把他们的题集引进桌面 CI。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2602.04482">arXiv</a><a href="corpus/2602.04482-proagentbench.md">卡片</a></p>
+</article>
+
+<article id="a-when-to-act" data-track="prod" data-pri="P1" data-q="when to act tgl 触发 proactive llm">
+  <p class="kicker">生产上 · 候选 · 2026年5月28日</p>
+  <h2>触发不必用大模型</h2>
+  <p class="dek">常开路径要便宜。语言模型只处理已经触发的那一次。</p>
+  <p>Liu 等人用一个小的时序图模型给出触发和该锚定的实体。文中报告约 11 毫秒、常驻约 220 MiB，并在 14 个骨架上平均提高 F1 约 16.7。</p>
+  <p>Yoyo 拆的是职责。日历、清点签名、已写规则已经是便宜的门。不嵌他们的图模型。</p>
+  <ul class="take">
+    <li class="steal">偷：每 30 秒的刷新不跑模型。</li>
+    <li class="deny">拒：为了时延数字去训练一个控制器。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2605.30152">arXiv</a><a href="corpus/2605.30152-when-to-act.md">卡片</a></p>
+</article>
+
+<article id="a-proactive-service" data-track="prod" data-pri="P1" data-q="proactive service 沉默 授权 tang">
+  <p class="kicker">生产上 · 候选 · 2026年9月3日</p>
+  <h2>Proactive Service Agents</h2>
+  <p class="dek">沉默是合法动作。长期记忆不是主动的定义。</p>
+  <p>一次决策在沉默、询问、协助、行动里选，并计入打断、误解、越权和隐私。等待有价值。授权不够就没有行动。</p>
+  <p>画像继续当上下文。只有清点签名变了，才成为一条来源事件。</p>
+  <ul class="take">
+    <li class="steal">偷：默认沉默；无人值守只读。</li>
+    <li class="deny">拒：把记忆做长当成主动式做完了。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.03727">arXiv</a><a href="corpus/2609.03727-proactive-service.md">卡片</a></p>
+</article>
+
+<article id="a-proactive-agent" data-track="lineage" data-pri="L" data-q="proactive agent lu iclr 2025">
+  <p class="kicker">谱系 · ICLR 2025 · 首发 2024年10月16日</p>
+  <h2>Proactive Agent</h2>
+  <p class="dek">接受或拒绝是标签。不为此微调。</p>
+  <p>从活动里预测一件事，由人标接受或拒绝，再训奖励模型。ProactiveBench 6790 条事件。摘要里的 F1 是 66.47%。</p>
+  <p>Yoyo 只留标签：连续三次没用，就停掉那一类推送。</p>
+  <ul class="take">
+    <li class="steal">偷：开口之后的接受 / 拒绝。</li>
+    <li class="deny">拒：微调一个主动式奖励模型。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2410.12361">arXiv</a><a href="corpus/2410.12361-proactive-agent.md">卡片</a></p>
+</article>
+
+<article id="a-contextagent" data-track="lineage" data-pri="L" data-q="contextagent neurips 可穿戴">
+  <p class="kicker">谱系 · NeurIPS 2025 · 首发 2025年5月20日</p>
+  <h2>ContextAgent</h2>
+  <p class="dek">先判断该不该帮忙，再调工具。感知不搬。</p>
+  <p>可穿戴上的感官上下文加人格。ContextAgentBench 约 1000 条。摘要称主动预测与工具调用最高大约高 8.5% 和 6.0%。</p>
+  <p>两步留下。眼镜、麦克风、健康读数不接。</p>
+  <ul class="take">
+    <li class="steal">偷：该不该帮忙，和用哪个工具，分开。</li>
+    <li class="deny">拒：常开摄像头和可穿戴感知。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2505.14668">arXiv</a><a href="corpus/2505.14668-contextagent.md">卡片</a></p>
+</article>
+
+<article id="a-muse" data-track="prod" data-pri="P2" data-q="muse meta sentinel 管家">
+  <p class="kicker">生产上 · 观望 · 2026年9月8日</p>
+  <h2>Muse</h2>
+  <p class="dek">一个人一个管家。离开这台机器要经过另一个进程。</p>
+  <p>目标变成计划后自己往前走。发信和付款先问人。Sentinel 批准出站。人可以说忘掉。</p>
+  <p>主会话仍是管家，工单仍是计划的一步。不搬云端虚拟机和眼镜。</p>
+  <ul class="take">
+    <li class="steal">偷：出站与执行分开。</li>
+    <li class="deny">拒：他们的模型、云电脑、把交互用于训练。</li>
+  </ul>
+  <p class="links"><a href="https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/">公告</a><a href="products/meta-muse.md">卡片</a></p>
+</article>
+
+<article id="a-cue" data-track="prod" data-pri="P2" data-q="cue manus 交接 钱包">
+  <p class="kicker">生产上 · 观望 · 2026年9月28日</p>
+  <h2>Cue</h2>
+  <p class="dek">多个代理人可以交接。最后一拍留给人。</p>
+  <p>Manus 2.0 的公告里，Cue 给每个代理人邮箱、电话、钱包和电脑，花钱有预算。只采用这篇官方博文，不采用博客里的价格。</p>
+  <p>交接已经是主会话路由、工人执行。不发电话号码和钱包。</p>
+  <ul class="take">
+    <li class="steal">偷：交接之后人做决定。</li>
+    <li class="deny">拒：每个工人一套身份和支付。</li>
+  </ul>
+  <p class="links"><a href="https://manus.im/blog/introducing-manus-2-0">公告</a><a href="products/manus-cue.md">卡片</a></p>
+</article>
+
+<article id="a-grok-bot" data-track="prod" data-pri="P2" data-q="grok bot routine 例行 xai">
+  <p class="kicker">生产上 · 观望 · 2026</p>
+  <h2>Grok Bot</h2>
+  <p class="dek">技能规定怎么做，例行规定什么时候。不是 Grok Build。</p>
+  <p>先跟人做一遍，再自动化。文档要求监听窄，来源缺失就失败。先试跑。限额以官方文档为准。</p>
+  <p>Yoyo 的定时规则还是模板。启用 auto 之前先在 observe 里看它会接什么。</p>
+  <ul class="take">
+    <li class="steal">偷：窄触发、先试跑、失败不用旧数据顶上。</li>
+    <li class="deny">拒：云电脑和一串 Bot 共用登录。</li>
+  </ul>
+  <p class="links"><a href="https://x.ai/news/introducing-grok-bot">公告</a><a href="products/xai-grok-bot.md">卡片</a></p>
+</article>
+
+<article id="a-dots" data-track="prod" data-pri="P2" data-q="dots openai 只读 proactive">
+  <p class="kicker">生产上 · 观望 · 2026</p>
+  <h2>Dots</h2>
+  <p class="dek">人离开时的研究是只读的。</p>
+  <p>公告写明主动研究不能发信、不能改应用、不能控电脑。要人决定的事回到同一段对话。</p>
+  <p>信上的按钮继续只填进输入框。无人值守不拿写工具。</p>
+  <ul class="take">
+    <li class="steal">偷：离开时只读。</li>
+    <li class="deny">拒：云电脑。</li>
+  </ul>
+  <p class="links"><a href="https://openai.com/index/introducing-dots/">公告</a><a href="products/openai-dots.md">卡片</a></p>
+</article>
+
+<article id="a-pulse" data-track="lineage" data-pri="L" data-q="pulse chatgpt 每日 定时">
+  <p class="kicker">谱系 · 2025年9月25日发布 · 2026年6月17日收掉</p>
+  <h2>Pulse</h2>
+  <p class="dek">一天一份更新。后来收进定时任务。</p>
+  <p>夜里根据记忆和反馈做研究，邮箱默认关闭。官方后来让主动更新改由定时任务承担，不再维持一条单独的每日流。</p>
+  <p>晨间信留在主会话。不再做第二条信息流。</p>
+  <ul class="take">
+    <li class="steal">偷：反馈改变下一次开口。</li>
+    <li class="deny">拒：一条要人一直刷的每日流。</li>
+  </ul>
+  <p class="links"><a href="https://openai.com/index/introducing-chatgpt-pulse/">公告</a><a href="products/openai-pulse.md">卡片</a></p>
 </article>
 </template>
 <script>

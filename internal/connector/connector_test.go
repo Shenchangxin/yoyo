@@ -21,10 +21,28 @@ func TestNoExfilSend(t *testing.T) {
 	}
 }
 
-// TestCatalogHasFirstParty 确认目录里同时有 gmail 和 feishu。
+// TestCatalogHasFirstParty 确认目录同时有本机、工作来源，以及不在 Windows 上读取的设备项。
 func TestCatalogHasFirstParty(t *testing.T) {
-	if len(Catalog()) < 6 {
-		t.Fatal("catalog")
+	by := map[string]CatalogEntry{}
+	for _, entry := range Catalog() {
+		if _, ok := by[entry.Provider]; ok {
+			t.Fatalf("duplicate %s", entry.Provider)
+		}
+		by[entry.Provider] = entry
+	}
+	for _, id := range []string{"gmail", "feishu", "github", "win-desktop", "ios-health"} {
+		if _, ok := by[id]; !ok {
+			t.Fatal(id)
+		}
+	}
+	if by["win-desktop"].Access != "local" || by["win-desktop"].Platform != "windows" {
+		t.Fatalf("desktop %#v", by["win-desktop"])
+	}
+	if by["ios-health"].Access == "local" || by["ios-health"].Platform != "ios" {
+		t.Fatalf("health %#v", by["ios-health"])
+	}
+	if by["android-sms"].Platform != "android" {
+		t.Fatal("sms")
 	}
 }
 

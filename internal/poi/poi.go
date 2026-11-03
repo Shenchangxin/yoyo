@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Shenchangxin/yoyo/internal/initiative"
 )
 
 // Point 是兴趣库里的一个点。Links 记下同一段记忆里一起出现的其他点。
@@ -32,12 +34,13 @@ type Observation struct {
 
 // Snapshot 是刷新后的库，以及相对上次已宣布的名字集合多了什么、少了什么。
 type Snapshot struct {
-	Points  []Point  `json:"points"`
-	Added   []string `json:"added"`
-	Dropped []string `json:"dropped"`
-	Sig     string   `json:"sig"`
-	Pending bool     `json:"pending"`
-	Census  Census   `json:"census,omitempty"`
+	Points     []Point              `json:"points"`
+	Added      []string             `json:"added"`
+	Dropped    []string             `json:"dropped"`
+	Sig        string               `json:"sig"`
+	Pending    bool                 `json:"pending"`
+	Census     Census               `json:"census,omitempty"`
+	Initiative *initiative.Briefing `json:"initiative,omitempty"`
 }
 
 // Store 把兴趣库写在 dir/poi.json。

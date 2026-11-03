@@ -2161,7 +2161,25 @@ export type PoiCensus = {
   projects?: number;
   downloads?: number;
 };
-export type PoiSnapshot = { points: PoiPoint[]; added: string[]; dropped: string[]; sig: string; pending: boolean; census?: PoiCensus };
+export type SenseSignal = {
+  id: string;
+  code: string;
+  class: string;
+  name: string;
+  detail: string;
+  state: string;
+  why: string;
+  speak: boolean;
+  held: boolean;
+  memoryId?: string;
+};
+export type Initiative = {
+  day?: string;
+  speak?: boolean;
+  signals?: SenseSignal[];
+  open?: { id: string; class: string; title: string; why?: string }[];
+};
+export type PoiSnapshot = { points: PoiPoint[]; added: string[]; dropped: string[]; sig: string; pending: boolean; census?: PoiCensus; initiative?: Initiative };
 
 /** deskPush 把简报或兴趣变化写进主会话。同一天同一档只写一次。 */
 export async function deskPush(note: DeskNote): Promise<boolean> {
@@ -2177,6 +2195,15 @@ export async function poiRefresh(): Promise<PoiSnapshot> {
   const s = await wailsService();
   const raw = s?.PoiRefresh ? await s.PoiRefresh() : s ? null : await http<any>("/api/poi");
   return normalizePoi(raw);
+}
+
+/** deskFeedback 记下对某一类开口的反应。kind 取 used、ignore、later、wrong。 */
+export async function deskFeedback(className: string, kind: string, memoryId = ""): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.DeskFeedback) return asBool(await s.DeskFeedback(className, kind, memoryId));
+  if (s) return false;
+  const r = await http<any>("/api/desk/feedback", { method: "POST", body: JSON.stringify({ className, kind, memoryId }) });
+  return asBool(pick(r, "ok", "Ok"));
 }
 
 /** poiAck 记下这一版兴趣库已经推进过。 */
@@ -2202,6 +2229,34 @@ function normalizePoi(raw: any): PoiSnapshot {
     sig: str(pick(raw, "sig", "Sig")),
     pending: asBool(pick(raw, "pending", "Pending")),
     census: normalizeCensus(pick(raw, "census", "Census")),
+    initiative: normalizeInitiative(pick(raw, "initiative", "Initiative")),
+  };
+}
+
+function normalizeInitiative(raw: unknown): Initiative | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const signals = asArray(pick(raw, "signals", "Signals")).map((row) => ({
+    id: str(pick(row, "id", "ID")),
+    code: str(pick(row, "code", "Code")),
+    class: str(pick(row, "class", "Class")),
+    name: str(pick(row, "name", "Name")),
+    detail: str(pick(row, "detail", "Detail")),
+    state: str(pick(row, "state", "State")),
+    why: str(pick(row, "why", "Why")),
+    speak: asBool(pick(row, "speak", "Speak")),
+    held: asBool(pick(row, "held", "Held")),
+    memoryId: str(pick(row, "memoryId", "MemoryID")),
+  })).filter((row) => row.id || row.name);
+  return {
+    day: str(pick(raw, "day", "Day")),
+    speak: asBool(pick(raw, "speak", "Speak")),
+    signals,
+    open: asArray(pick(raw, "open", "Open")).map((row) => ({
+      id: str(pick(row, "id", "ID")),
+      class: str(pick(row, "class", "Class")),
+      title: str(pick(row, "title", "Title")),
+      why: str(pick(row, "why", "Why")),
+    })).filter((row) => row.title),
   };
 }
 

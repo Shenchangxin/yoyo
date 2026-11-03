@@ -25,6 +25,10 @@ const (
 	KindDrive Kind = "drive"
 	// KindIM 是即时消息，值为 im。
 	KindIM Kind = "im"
+	// KindLocal 是这台机器上的文件夹或命令行，值为 local。
+	KindLocal Kind = "local"
+	// KindTask 是待办或项目板，值为 task。
+	KindTask Kind = "task"
 )
 
 // Account 是一个已连接账号。VaultKey 是钥匙名字，不是令牌原文。

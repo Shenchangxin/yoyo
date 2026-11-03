@@ -10,7 +10,6 @@ import * as api from "../../lib/client";
 import { asArray, str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { ConfirmDialog } from "../ConfirmDialog";
 import {
   SettingActionRow,
@@ -20,6 +19,9 @@ import {
 } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 import { WorkSources } from "../superagent/SourceSettings";
+import { catalogRows, ConnectorDirectory, hostPlatform, type CatalogRow } from "./ConnectorDirectory";
+import { connectorName, resolvedAccess } from "./connector-directory";
+import { getLocale } from "../../lib/i18n";
 
 /** 画一行输入。label 用作标签，作为子节点渲染。value 写到 Input 的 value。onChange 被调用，并传入 e.target.value。 */
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -225,7 +227,7 @@ function FiberSection({ host }: { host: SettingsHost }) {
 function ConnectorSection() {
   const copy = useCopy();
   const [data, setData] = useState<{ accounts?: any[]; catalog?: any[] }>({});
-  const [provider, setProvider] = useState("gmail");
+  const [picked, setPicked] = useState<CatalogRow | null>(null);
   const [clientId, setClientId] = useState("");
   const [code, setCode] = useState("");
   /** 重新拉取连接器。 */
@@ -235,13 +237,39 @@ function ConnectorSection() {
   useEffect(() => {
     refresh();
   }, []);
-  const catalog = asArray(data.catalog);
+  useEffect(() => {
+    if (picked?.access === "oauth") document.getElementById("connector-oauth")?.scrollIntoView({ block: "nearest" });
+  }, [picked]);
+  const catalog = catalogRows(asArray(data.catalog));
   const accounts = asArray(data.accounts);
-  const options = catalog.length ? catalog : [{ provider: "gmail" }, { provider: "outlook" }, { provider: "feishu" }, { provider: "local" }];
+  const connected = accounts.map((a: any) => str(a.provider || a.Provider));
+  /** 点一张卡：本机只说明，工作来源滚到下面，账户才打开授权表单。 */
+  const pick = (row: CatalogRow) => {
+    const access = resolvedAccess(row.provider, row.access);
+    if (access === "local") {
+      toast(row.platform === hostPlatform() ? copy.settings.appsLocalHint : copy.settings.appsOtherDevice);
+      return;
+    }
+    if (access === "source") {
+      document.getElementById("extensions-work")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (access === "oauth") {
+      setPicked({ ...row, access });
+      setCode("");
+      return;
+    }
+    if (row.platform === "ios" || row.platform === "android" || row.provider.endsWith("-operate")) {
+      toast(copy.settings.appsDeviceHint);
+      return;
+    }
+    document.getElementById("extensions-mcp")?.scrollIntoView({ block: "start" });
+    toast(copy.settings.appsMcpHint);
+  };
   return (
     <SettingSection
       id="extensions-connectors"
-      title={copy.settings.sections.extensionsConnectors}
+      title={copy.settings.appsTitle}
       footnote={copy.settings.connectorsHint}
     >
       {accounts.length === 0 ? (
@@ -267,63 +295,52 @@ function ConnectorSection() {
           </SettingRow>
         ))
       )}
-      <SettingRow title={copy.settings.provider} stack border={false}>
-        <div className="flex w-full flex-col gap-[var(--space-group)]">
-          <Select value={provider} onValueChange={setProvider}>
-            <SelectTrigger className="h-8 w-full" aria-label={copy.settings.provider}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((c: any) => (
-                <SelectItem key={str(c.provider)} value={str(c.provider)}>
-                  {str(c.label || c.provider)}{c.mcp_pack || c.MCPPack ? " · MCP" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Field label={copy.settings.oauthClientId} value={clientId} onChange={setClientId} />
-          <Field label={copy.settings.oauthCode} value={code} onChange={setCode} />
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                const r = await api.connectorAuthURL(provider, clientId, "http://127.0.0.1:3080/oauth");
-                const url = str(r?.url || r?.URL);
-                if (url) window.open(url, "_blank", "noopener");
-              }}
-            >
-              <ExternalLink aria-hidden />
-              {copy.settings.oauth}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!code.trim()}
-              onClick={async () => {
-                await api.connectorComplete(provider, code.trim(), clientId);
-                setCode("");
-                refresh();
-              }}
-            >
-              {copy.settings.completeOAuth}
-            </Button>
-            <Button
-              size="sm"
-              onClick={async () => {
-                await api.connectorConnect({
-                  provider,
-                  kind: str(catalog.find((c: any) => str(c.provider) === provider)?.kind || catalog.find((c: any) => str(c.provider) === provider)?.Kind || "mail"),
-                  label: provider,
-                });
-                refresh();
-              }}
-            >
-              {copy.settings.connect}
-            </Button>
+      <ConnectorDirectory catalog={catalog} connected={connected} onPick={pick} />
+      {picked?.access === "oauth" ? (
+        <div id="connector-oauth">
+        <SettingRow title={connectorName(picked.provider, picked.label, getLocale())} stack border={false}>
+          <div className="flex w-full flex-col gap-[var(--space-group)]">
+            <Field label={copy.settings.oauthClientId} value={clientId} onChange={setClientId} />
+            <Field label={copy.settings.oauthCode} value={code} onChange={setCode} />
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  const r = await api.connectorAuthURL(picked.provider, clientId, "http://127.0.0.1:3080/oauth");
+                  const url = str(r?.url || r?.URL);
+                  if (url) window.open(url, "_blank", "noopener");
+                }}
+              >
+                <ExternalLink aria-hidden />
+                {copy.settings.oauth}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!code.trim()}
+                onClick={async () => {
+                  await api.connectorComplete(picked.provider, code.trim(), clientId);
+                  setCode("");
+                  refresh();
+                }}
+              >
+                {copy.settings.completeOAuth}
+              </Button>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.connectorConnect({ provider: picked.provider, kind: picked.kind || "mail", label: picked.label });
+                  refresh();
+                }}
+              >
+                {copy.settings.connect}
+              </Button>
+            </div>
           </div>
+        </SettingRow>
         </div>
-      </SettingRow>
+      ) : null}
     </SettingSection>
   );
 }

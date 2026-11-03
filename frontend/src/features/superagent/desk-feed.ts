@@ -3,14 +3,31 @@
  * 不拥有：简报卡片怎么画。那在 WorkPane 和简报弹层。
  */
 
-import { deskPush, memoryList, orchestratorView, poiAck, poiRefresh } from "../../lib/client";
+import { deskFeedback, deskPush, memoryList, orchestratorView, poiAck, poiRefresh, type Initiative } from "../../lib/client";
 import { copy } from "../../lib/i18n";
-import { auditBrief, briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, BRIEF_PREFS_KEY, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief } from "./work-model";
+import { applySenses, auditBrief, briefDay, briefStorageKey, mergeSenseCards, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, shouldPush, slotDue, BRIEF_PREFS_KEY, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
 const WELCOME_KEY = "yoyo.brief-welcomed";
 
 let sessionId = "";
+let latest: Initiative | undefined;
+
+/** latestInitiative 是最近一轮感知。任务栏用它显示会说但没说的事。 */
+export function latestInitiative(): Initiative | undefined {
+  return latest;
+}
+
+/** noteFeedback 把反应记到这一轮开口的每一类上。 */
+export async function noteFeedback(kind: "used" | "ignore" | "later" | "wrong"): Promise<void> {
+  const signals = (latest?.signals || []).filter((signal) => signal.speak || signal.held);
+  const classes = [...new Set(signals.map((signal) => signal.class).filter(Boolean))];
+  if (!classes.length) classes.push("brief");
+  for (const className of classes) {
+    const memoryId = signals.find((signal) => signal.class === className)?.memoryId || "";
+    await deskFeedback(className, kind, memoryId).catch(() => false);
+  }
+}
 
 /** setDeskSession 记下当前主会话。定时推进写到这里。 */
 export function setDeskSession(id: string) {
@@ -25,6 +42,7 @@ export function deskSession(): string {
 /** runDeskFeed 刷新兴趣库，并在到点时生成还没有的那一档简报。force 时立刻生成这一档。 */
 export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Promise<void> {
   const prefs = readPrefs();
+  await orchestratorView().catch(() => null);
   const scan = await refreshPoi();
   const slots: BriefSlot[] = force ? [force] : (["morning", "evening"] as const).filter((slot) => slotDue(prefs, slot));
   for (const slot of slots) {
@@ -32,7 +50,7 @@ export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Pro
   }
 }
 
-async function refreshPoi(): Promise<{ points: { name: string; kind: string }[]; census?: DeskCensus }> {
+async function refreshPoi(): Promise<{ points: { name: string; kind: string }[]; census?: DeskCensus; initiative?: Initiative }> {
   const snap = await poiRefresh().catch(() => null);
   if (!snap) return { points: [] };
   const points = (snap.points || []).map((point) => ({ name: point.name, kind: point.kind })).filter((point) => point.name);
@@ -41,22 +59,27 @@ async function refreshPoi(): Promise<{ points: { name: string; kind: string }[];
     apps: points.filter((point) => point.kind === "app").length,
     traces: points.filter((point) => point.kind === "trace" || point.kind === "desk").length,
   } : undefined;
+  latest = snap.initiative;
   if (snap.pending && sessionId) {
-    const text = poiText(snap.added || [], snap.dropped || []);
-    if (text) {
-      const pushed = await deskPush({
-        sessionId,
-        kind: "poi",
-        slot: "poi",
-        day: briefDay(),
-        text,
-        chip: "",
-        brief: "",
-      }).catch(() => false);
-      if (pushed) await poiAck(snap.sig).catch(() => false);
+    if (snap.initiative) {
+      await poiAck(snap.sig).catch(() => false);
+    } else {
+      const text = poiText(snap.added || [], snap.dropped || []);
+      if (text) {
+        const pushed = await deskPush({
+          sessionId,
+          kind: "poi",
+          slot: "poi",
+          day: briefDay(),
+          text,
+          chip: "",
+          brief: "",
+        }).catch(() => false);
+        if (pushed) await poiAck(snap.sig).catch(() => false);
+      }
     }
   }
-  return { points, census };
+  return { points, census, initiative: snap.initiative };
 }
 
 function poiText(added: string[], dropped: string[]): string {
@@ -70,37 +93,55 @@ function poiText(added: string[], dropped: string[]): string {
   return lines.join("\n");
 }
 
-async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { points: { name: string; kind: string }[]; census?: DeskCensus }): Promise<void> {
+async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { points: { name: string; kind: string }[]; census?: DeskCensus; initiative?: Initiative }): Promise<void> {
   const day = briefDay();
   const key = briefStorageKey(slot);
+  const welcome = !welcomed();
+  const view = await orchestratorView().catch(() => null);
+  const memory = await memoryList().catch(() => []) as { kind: string; text: string; staging?: boolean }[];
+  let fresh = auditBrief({
+    tickets: view?.tickets,
+    queued: view?.queued,
+    decisions: view?.decisions,
+    rules: view?.rules,
+    sources: view?.sources,
+    memory,
+    points: scan.points,
+    census: scan.census,
+    welcome,
+    now: new Date(),
+  }, phrases);
+  const signals = (scan.initiative?.signals || []) as SenseSignal[];
+  if (signals.length) fresh = applySenses(fresh, signals, senseLabels());
   let brief = readStored(key, day);
-  if (!brief) {
-    const welcome = !welcomed();
-    const view = await orchestratorView().catch(() => null);
-    const memory = await memoryList().catch(() => []) as { kind: string; text: string; staging?: boolean }[];
-    brief = auditBrief({
-      tickets: view?.tickets,
-      queued: view?.queued,
-      decisions: view?.decisions,
-      rules: view?.rules,
-      sources: view?.sources,
-      memory,
-      points: scan.points,
-      census: scan.census,
-      welcome,
-      now: new Date(),
-    }, phrases);
-    try {
-      localStorage.setItem(key, serializeStoredBrief(day, brief));
-      if (brief.welcome) localStorage.setItem(WELCOME_KEY, "1");
-    } catch {
-      /* 写不进去时，这一次推进仍然带着这份简报。欢迎标记留到真正写下之后。 */
-    }
-    window.dispatchEvent(new Event(BRIEF_EVENT));
+  if (!brief) brief = fresh;
+  else if (signals.length) brief = mergeSenseCards(brief, fresh);
+  try {
+    localStorage.setItem(key, serializeStoredBrief(day, brief));
+    if (welcome) localStorage.setItem(WELCOME_KEY, "1");
+  } catch {
+    /* 写不进去时，这一次推进仍然带着这份简报。欢迎标记留到真正写下之后。 */
   }
-  if (!sessionId) return;
+  window.dispatchEvent(new Event(BRIEF_EVENT));
+  if (!sessionId || !shouldPush(scan.initiative, welcome)) return;
   const work = copy.work;
   const chipDay = new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const speaks = signals.filter((signal) => signal.speak && signal.code !== "welcome");
+  if (speaks.length) {
+    for (const signal of speaks) {
+      const text = [signal.name, signal.detail].filter(Boolean).join("\n");
+      await deskPush({
+        sessionId,
+        kind: "speak",
+        slot: signal.class || signal.id,
+        day,
+        text,
+        chip: signal.name,
+        brief: JSON.stringify(brief),
+      }).catch(() => false);
+    }
+    return;
+  }
   const chip = (slot === "evening" ? work.briefChipEvening : work.briefChipMorning).replace("{day}", chipDay);
   const text = slot === "evening" ? work.briefPushEvening : work.briefPushMorning;
   await deskPush({
@@ -112,6 +153,46 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { point
     chip,
     brief: JSON.stringify(brief),
   }).catch(() => false);
+}
+
+function senseLabels(): SenseLabels {
+  const work = copy.work;
+  return {
+    unchecked: work.senseUnchecked,
+    linked: work.senseLinked,
+    senseTitle: work.senseTitle,
+    senseLede: work.senseLede,
+    listening: work.senseListening,
+    battery: work.senseBattery,
+    charging: work.senseCharging,
+    online: work.senseOnline,
+    offline: work.senseOffline,
+    idle: work.senseIdle,
+    focus: work.senseFocus,
+    power: work.sensePower,
+    net: work.senseNet,
+    git: work.senseGit,
+    mail: work.senseMail,
+    calendar: work.senseCalendar,
+    poi: work.sensePoi,
+    speakKicker: work.speakKicker,
+    speakTitle: work.speakTitle,
+    speakLede: work.speakLede,
+    speakPrimary: work.speakPrimary,
+    speakTask: work.speakTask,
+    why: {
+      changed: work.whyChanged,
+      overdue: work.whyOverdue,
+      due: work.whyDue,
+      waiting: work.whyWaiting,
+      blocked: work.whyBlocked,
+      failed: work.whyFailed,
+      error: work.whyError,
+      low: work.whyLow,
+      offline: work.whyOffline,
+      welcome: work.whyWelcome,
+    },
+  };
 }
 
 function readPrefs() {

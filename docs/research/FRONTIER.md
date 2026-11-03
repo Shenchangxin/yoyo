@@ -4,7 +4,7 @@
 
 **年份门**：本文件只讨论 2026 年首次出现的工作。ACE、DGM 已在 [REFERENCES.md](REFERENCES.md)。2025 年的 Reflexion / GEPA / STOP 视为过时基线，不再展开。
 
-检索窗口：2026-01-01 → 2026-09-20（全量审阅）。**2026-10-19 针对补入** [Harness²](corpus/2610.14224-harness2.md)（arXiv 2610.14224，10-08 首发）；不是全渠道复扫。渠道见 [SOURCES.md](SOURCES.md)。
+检索窗口：2026-01-01 → 2026-09-20（全量审阅）。**2026-10-19 针对补入** [Harness²](corpus/2610.14224-harness2.md)。**2026-11-03 针对补入**主动开口（第 E 节），方案在 [../proactive.md](../proactive.md)。都不是全渠道复扫。渠道见 [SOURCES.md](SOURCES.md)。
 
 ---
 
@@ -89,6 +89,21 @@
 | P1 | [SoK: Agentic Skills](corpus/2602.20867-sok-skills.md) | 2026-02-24 | 技能生命周期 + ClawHavoc 供应链（~1200 恶意技能） | partial |
 | P1 | [SkillReducer](corpus/2603.29919-skill-reducer.md) | 2026-03-31 | 公开技能 26% 没有 routing 描述；压缩后质量反而升 | candidate |
 | P2 | [SKILL.state](corpus/2608.26263-skill-state.md) | 2026-08-26 | 丢掉 append-only 对话，改用可变执行状态。长程 skill 的下一代形状 | candidate |
+
+### E. 主动开口（产品轨，不改 RSI 主线）
+
+完整方案在 [../proactive.md](../proactive.md)。这里只列 2026 年首次出现的材料。2024–2025 的 Proactive Agent 与 ContextAgent 在 REFERENCES 的谱系里。
+
+| 优先级 | 工作 | 日期 | 为什么现在读 | Yoyo 状态 |
+| --- | --- | --- | --- | --- |
+| ★ P1 | [6A 综述](corpus/yang-2026-proactive-6a.md) | 2026 | 主动性与授权分开。预判和判断介入是缺的两段 | candidate |
+| P1 | [ProAgentBench](corpus/2602.04482-proagentbench.md) | 2026-02-04 | 先判时机，再写协助。假阳性是打断 | candidate |
+| P1 | [触发不必用 LLM](corpus/2605.30152-when-to-act.md) | 2026-05-28 | 常开路径要便宜。不嵌他们的图模型 | candidate |
+| P1 | [Proactive Service Agents](corpus/2609.03727-proactive-service.md) | 2026-09-03 | 沉默合法；记忆不是主动的定义 | candidate |
+| P2 | [Muse](products/meta-muse.md) | 2026-09-08 | 出站哨兵、敏感动作先问 | watch |
+| P2 | [Cue](products/manus-cue.md) | 2026-09-28 | 交接留给人；不发钱包 | watch |
+| P2 | [Grok Bot](products/xai-grok-bot.md) | 2026 | 窄例行、先试跑。不是 Grok Build | watch |
+| P2 | [Dots](products/openai-dots.md) | 2026 | 人离开时只读 | watch |
 
 ---
 

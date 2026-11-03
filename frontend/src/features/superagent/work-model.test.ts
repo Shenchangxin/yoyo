@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Decision, Ticket, Trigger } from "./desk-model.ts";
-import { auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, slotDue, stageKey, taskGroups, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases } from "./work-model.ts";
+import { applySenses, auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, shouldPush, slotDue, stageKey, taskGroups, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
 
 function ticket(partial: Partial<Ticket> & Pick<Ticket, "id" | "stage">): Ticket {
   return {
@@ -424,3 +424,54 @@ const phrases: BriefPhrases = {
   pauseStopDetail: "nothing due",
   pauseNote: "no button",
 };
+
+const senseLabels: SenseLabels = {
+  unchecked: "unchecked",
+  linked: "linked",
+  senseTitle: "seen",
+  senseLede: "names only",
+  listening: "listening",
+  battery: "battery",
+  charging: "charging",
+  online: "online",
+  offline: "offline",
+  idle: "away",
+  focus: "front",
+  power: "power",
+  net: "net",
+  git: "git",
+  mail: "mail",
+  calendar: "calendar",
+  poi: "names",
+  speakKicker: "worth",
+  speakTitle: "why",
+  speakLede: "quiet would leave it",
+  speakPrimary: "look",
+  speakTask: "no metrics\n{items}",
+  why: { changed: "changed", overdue: "overdue", error: "error" },
+};
+
+describe("initiative", () => {
+  it("stays quiet unless the gate or the first letter says to speak", () => {
+    assert.equal(shouldPush(undefined, false), true);
+    assert.equal(shouldPush({ speak: false, signals: [] }, false), false);
+    assert.equal(shouldPush({ speak: false, signals: [] }, true), true);
+    assert.equal(shouldPush({ speak: true, signals: [] }, false), true);
+  });
+
+  it("writes unchecked mail into the letter and a speak card from evidence", () => {
+    const brief = auditBrief({ welcome: true, census: { user: "scx", lines: [{ name: "yoyo", state: "moving" }] } }, phrases);
+    const next = applySenses(brief, [
+      { id: "mail", code: "mail", class: "mail", name: "mail", detail: "", state: "unchecked", why: "", speak: false, held: false },
+      { id: "line:yoyo", code: "line", class: "line", name: "yoyo", detail: "blank.txt", state: "stalled", why: "changed", speak: true, held: false },
+      { id: "power", code: "power", class: "power", name: "17", detail: "battery", state: "ok", why: "", speak: false, held: false },
+    ], senseLabels);
+    const letter = next.cards.find((card) => card.id === "letter");
+    assert.equal(letter?.choices.some((choice) => choice.detail.includes("unchecked")), true);
+    const speak = next.cards.find((card) => card.id === "speak");
+    assert.equal(speak?.items[0]?.title, "yoyo");
+    assert.equal(speak?.items[0]?.detail.includes("blank.txt"), true);
+    assert.equal(next.cards.some((card) => card.id === "sense"), true);
+    assert.equal(JSON.stringify(next).includes("sk-"), false);
+  });
+});

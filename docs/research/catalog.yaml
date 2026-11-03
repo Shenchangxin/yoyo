@@ -1,9 +1,9 @@
 # Yoyo research catalog. Source of truth for ids / dates / status.
-# last_reviewed: 2026-10-19 (targeted ingest of 2610.14224; full channel sweep remains 2026-09-20)
+# last_reviewed: 2026-11-03 (targeted ingest of proactive agents; full channel sweep remains 2026-09-20)
 # policy: frontier entries must have year_first: 2026
 
 cutoff: 2026-01-01
-last_reviewed: 2026-10-19
+last_reviewed: 2026-11-03
 sources_doc: SOURCES.md
 
 entries:
@@ -623,6 +623,100 @@ entries:
     yoyo: "keep Harbor as the gate; steal pairwise textual reasons into proposer evidence, not as a promotion score."
     card: corpus/2511.07919-feedback-descent.md
 
+  - id: "2410.12361"
+    slug: proactive-agent
+    title: "Proactive Agent: Shifting LLM Agents from Reactive Responses to Active Assistance"
+    year_first: 2024
+    published: 2024-10-16
+    note: "ICLR 2025 poster. Lineage only."
+    authors: [Yaxi Lu, Shenzhi Yang, Cheng Qian, Guirong Chen, Qinyu Luo, Yesai Wu, Huadong Wang, Xin Cong, Zhong Zhang, Yankai Lin, Weiwen Liu, Yasheng Wang, Zhiyuan Liu, Fangming Liu, Maosong Sun]
+    venue: ICLR 2025
+    url: https://arxiv.org/abs/2410.12361
+    pdf: https://arxiv.org/pdf/2410.12361.pdf
+    extra:
+      openreview: https://openreview.net/forum?id=sRIU6k2TcU
+      code: https://github.com/thunlp/ProactiveAgent
+    layer: lineage
+    status: lineage
+    yoyo: "local ignore-count on a notice class; do not fine-tune. See docs/proactive.md."
+    card: corpus/2410.12361-proactive-agent.md
+
+  - id: "2505.14668"
+    slug: contextagent
+    title: "ContextAgent: Context-Aware Proactive LLM Agents with Open-World Sensory Perceptions"
+    year_first: 2025
+    published: 2025-05-20
+    version: v2
+    note: "NeurIPS 2025. Lineage only. v2 2025-10-27."
+    authors: [Bufang Yang, Lilin Xu, Liekang Zeng, Kaiwei Liu, Siyang Jiang, Wenrui Lu, Hongkai Chen, Xiaofan Jiang, Guoliang Xing, Zhenyu Yan]
+    venue: NeurIPS 2025
+    url: https://arxiv.org/abs/2505.14668
+    pdf: https://arxiv.org/pdf/2505.14668.pdf
+    layer: lineage
+    status: lineage
+    yoyo: "keep whether-to-help separate from which tool. No wearables. See docs/proactive.md."
+    card: corpus/2505.14668-contextagent.md
+
+  - id: "2602.04482"
+    slug: proagentbench
+    title: "ProAgentBench: Evaluating LLM Agents for Proactive Assistance with Real-World Data"
+    year_first: 2026
+    published: 2026-02-04
+    authors: [Yuanbo Tang, Huaze Tang, Tingyu Cao, Lam Nguyen, Anping Zhang, Xinwen Cao, Chunkang Liu, Wenbo Ding, Yang Li]
+    venue: arXiv
+    url: https://arxiv.org/abs/2602.04482
+    pdf: https://arxiv.org/pdf/2602.04482.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "desk push must pass a when-to-speak gate before a sentence. See docs/proactive.md."
+    card: corpus/2602.04482-proagentbench.md
+
+  - id: "2605.30152"
+    slug: when-to-act
+    title: "Do Proactive Agents Need an LLM to Decide When to Act?"
+    year_first: 2026
+    published: 2026-05-28
+    version: v2
+    note: "v2 title. Earlier title was longer."
+    authors: [Xiaoze Liu, Ruowang Zhang, Amir H. Abdi, Michel Galley, Zhikai Chen, Siheng Xiong, Xiaoqian Wang, Jing Gao]
+    venue: arXiv
+    url: https://arxiv.org/abs/2605.30152
+    pdf: https://arxiv.org/pdf/2605.30152.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "deterministic desk/calendar/rule gate; LLM only after accept. Do not embed their TGL model."
+    card: corpus/2605.30152-when-to-act.md
+
+  - id: "2609.03727"
+    slug: proactive-service
+    title: "Proactive Service Agents: A Unified Decision Framework, Methods, and Evaluation"
+    year_first: 2026
+    published: 2026-09-03
+    authors: [Yan Tang, Tingyu Cao, Yuanbo Tang, Huaze Tang, Keer Hu]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.03727
+    pdf: https://arxiv.org/pdf/2609.03727.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "silence is a legal disposition; memory is context, not the definition of initiative. See docs/proactive.md."
+    card: corpus/2609.03727-proactive-service.md
+
+  - id: yang-2026-proactive-6a
+    slug: proactive-6a
+    title: "Proactive AI for Superintelligent Agents"
+    year_first: 2026
+    note: "No arXiv id found on 2026-11-03. Google Research lists the year only."
+    authors: [Ke Yang, Jiateng Liu, Jize Jiang, Chun Zhao, Yufan Cao, Shanshan Zhong, Yiyang Du, Ruixuan Liu, Xuying Ning, Dean Alvarez, Yuji Zhang, Duo Zhou, Miri Liu, Yuhao Cheng, Hanyang Chen, Rui Yang, Zifeng Wang, Hanghang Tong, Jingrui He, Chenyan Xiong, Chen-Yu Lee, Jiawei Han, ChengXiang Zhai]
+    venue: Google Research / project page
+    url: https://research.google/pubs/proactive-ai-for-superintelligent-agents/
+    extra:
+      project: https://empathyang.github.io/Proactive-AI-for-Superintelligent-Agents/
+      pdf: https://empathyang.github.io/Proactive-AI-for-Superintelligent-Agents/Proactive-AI-for-Superintelligent-Agents.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "desk push and schedule jobs bypass arbitration; see docs/proactive.md section on the six capacities."
+    card: corpus/yang-2026-proactive-6a.md
+
 products:
   - id: openai-codex-loop
     title: "Unrolling the Codex agent loop"
@@ -682,3 +776,36 @@ products:
       openreview: https://openreview.net/submissions?venue=ICLR.cc/2026/Workshop/RSI
     status: watch
     card: products/iclr2026-rsi-workshop.md
+  - id: meta-muse
+    title: "Introducing Muse, a personal AI agent from Meta"
+    year: 2026
+    url: https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/
+    status: watch
+    card: products/meta-muse.md
+  - id: manus-cue
+    title: "Cue, from the Manus 2.0 announcement"
+    year: 2026
+    url: https://manus.im/blog/introducing-manus-2-0
+    status: watch
+    card: products/manus-cue.md
+  - id: xai-grok-bot
+    title: "Grok Bot"
+    year: 2026
+    url: https://x.ai/news/introducing-grok-bot
+    extra:
+      design: https://x.ai/news/designing-grok-bot
+      docs: https://docs.x.ai/grok-bot/skills-routines-and-automations
+    status: watch
+    card: products/xai-grok-bot.md
+  - id: openai-dots
+    title: "Introducing Dots"
+    year: 2026
+    url: https://openai.com/index/introducing-dots/
+    status: watch
+    card: products/openai-dots.md
+  - id: openai-pulse
+    title: "Introducing ChatGPT Pulse"
+    year: 2025
+    url: https://openai.com/index/introducing-chatgpt-pulse/
+    status: lineage
+    card: products/openai-pulse.md
