@@ -8,10 +8,9 @@ import { railBody } from "./rail-body.ts";
  */
 
 describe("railBody", () => {
-  /** 会话表面把列表收进历史。编排页仍留着这份列表。视频和设置沿用各自的导航。 */
+  /** 会话表面把列表收进历史。视频和设置沿用各自的导航。 */
   it("keeps history collapsed on the agent surface", () => {
     assert.equal(railBody("agent"), "home");
-    assert.equal(railBody("orchestrator"), "sessions");
     assert.equal(railBody("video"), "video");
     assert.equal(railBody("settings"), "settings");
   });

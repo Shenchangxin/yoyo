@@ -7,14 +7,12 @@ import { useCallback, useEffect, useState } from "react";
 import { orchestratorAct, orchestratorMode, orchestratorView } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
-import { useUI } from "../../lib/store";
 import { SettingSection } from "../settings/SettingChrome";
 import type { DeskView, Source } from "./desk-model";
 
 /** WorkSources 把工作来源放进设置。打开时读一次编排台，保存后再读。 */
 export function WorkSources() {
   const copy = useCopy();
-  const openOrchestrator = useUI((s) => s.openOrchestrator);
   const [view, setView] = useState<DeskView | null>(null);
   const load = useCallback(async () => {
     try {
@@ -77,9 +75,6 @@ export function WorkSources() {
         }}
       />
       <Allowed initial={(view.allowed ?? []).join(", ")} onSave={async (text) => { await orchestratorAct("allowed", "", "", text); await load(); }} />
-      <button type="button" className="mt-4 text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline" onClick={() => openOrchestrator()}>
-        {copy.work.openDesk}
-      </button>
     </SettingSection>
   );
 }

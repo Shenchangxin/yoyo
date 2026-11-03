@@ -473,6 +473,14 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return a.DiffDetail(p.A, p.B)
 	case "thread.list":
 		return a.ListSessions()
+	case "thread.main":
+		return a.MainSession()
+	case "thread.main.adopt":
+		var adopt struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &adopt)
+		return map[string]any{"ok": true}, a.AdoptMainSession(adopt.Session)
 	case "thread.resume":
 		var p struct {
 			Session string `json:"session"`
@@ -1716,6 +1724,22 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, fmt.Errorf("app is not running")
 		}
 		return map[string]any{"ok": true}, a.OrchestratorAct(act.Kind, act.TicketID, act.TriggerID, act.Text, act.Reason)
+	case "orchestrator.transcript":
+		var transcript struct {
+			TicketID string `json:"ticketId"`
+		}
+		if err := json.Unmarshal(params, &transcript); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.WorkerTranscript(transcript.TicketID), nil
+	case "today.compose":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.ComposeToday(), nil
 	case "orchestrator.mode":
 		var mode struct {
 			Mode string `json:"mode"`

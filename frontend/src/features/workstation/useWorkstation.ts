@@ -32,7 +32,7 @@ import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind
 import { channelForSurface, isSubagentThread, threadChannel } from "../../lib/protocol";
 import type { LearnScopeSpec } from "../../lib/learn-scope";
 import { learnBindingMatches, matchLearnThread, readLearnScopeMap } from "../../lib/learn-scope";
-import { selectSurfaceThread } from "../../lib/pick-channel";
+import { pickBootThread } from "../../lib/pick-channel";
 import { bindVideoThread } from "../video/bind";
 import { cutPrompt, ingestClipUrl, installSendToCut, resourceIdFromSend, type SendToCutRequest } from "../video/open-cut";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
@@ -245,8 +245,6 @@ export function useWorkstation() {
   const closePages = useUI((s) => s.closePages);
   const openIdol = useUI((s) => s.openIdol);
   const closeIdol = useUI((s) => s.closeIdol);
-  const openOrchestrator = useUI((s) => s.openOrchestrator);
-  const closeOrchestrator = useUI((s) => s.closeOrchestrator);
   const openVideo = useUI((s) => s.openVideo);
   const closeVideo = useUI((s) => s.closeVideo);
   const showConversation = useUI((s) => s.showConversation);
@@ -364,6 +362,10 @@ export function useWorkstation() {
   const [diffOut, setDiffOut] = useState<any>(null);
   const [booted, setBooted] = useState(false);
   const bootedRef = useRef(false);
+  /** 主循环那一条的 id。启动时右侧只打开它。 */
+  const mainIdRef = useRef("");
+  /** 人点开或新建一条代理对话之后才为真。在此之前刷新不能回到旧聊天记录。 */
+  const agentChosen = useRef(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutInfo, setAboutInfo] = useState<Record<string, any>>({});
   const [pendingDelete, setPendingDelete] = useState<Thread | null>(null);
@@ -539,13 +541,17 @@ export function useWorkstation() {
   const refresh = useCallback(async () => {
     const first = !bootedRef.current;
     try {
-      const [h, c, list, hs, pl] = await withTimeout(Promise.all([
+      const popNow = readPopoutId();
+      const main = popNow ? null : await withTimeout(api.mainSession(), first ? 8000 : 20000, "main").catch(() => null);
+      const [h, c, listed, hs, pl] = await withTimeout(Promise.all([
         api.health().catch(() => null),
         api.getConfig().catch(() => null),
         api.listSessions(),
         api.harness().catch(() => ({})),
         api.plugins().catch(() => ({})),
       ]), first ? 8000 : 20000, first ? "boot" : "refresh");
+      const list = main?.id && !listed.some((t) => t.id === main.id) ? [main, ...listed] : listed;
+      if (main?.id) mainIdRef.current = main.id;
       if (h) setHealth(h);
       if (c) setSavedCfg(c);
       setThreads(list);
@@ -555,7 +561,7 @@ export function useWorkstation() {
         const pop = readPopoutId();
         if (pop) return list.find((t) => t.id === pop) || cur || list[0] || null;
         const ch = channelForSurface(useUI.getState().surface);
-        return selectSurfaceThread(list, ch, useUI.getState().lastThreadId(ch), cur, learnHold.current);
+        return pickBootThread(list, ch, useUI.getState().lastThreadId(ch), cur, learnHold.current, mainIdRef.current, agentChosen.current);
       });
       setBooted(true);
       try { setPlaybook(await api.playbook()); } catch { /* 可选，失败就跳过 */ }
@@ -631,7 +637,7 @@ export function useWorkstation() {
   useEffect(() => {
     const ch = channelForSurface(surface);
     const preferred = useUI.getState().lastThreadId(ch);
-    setActive((cur) => selectSurfaceThread(threadsRef.current, ch, preferred, cur, learnHold.current));
+    setActive((cur) => pickBootThread(threadsRef.current, ch, preferred, cur, learnHold.current, mainIdRef.current, agentChosen.current));
   }, [surface]);
   /** 失败时提示，并返回当前已经有的列表。 */
   const loadVideoHistory = useCallback(async () => {
@@ -1452,10 +1458,19 @@ export function useWorkstation() {
     openThread(t, { keepPane: true });
   }
 
-  /** 当前会话已经是这个通道就直接用。否则新建并套用待定权限。 */
+  /** 当前会话已经是这个通道就直接用。代理车道用主会话，其余车道新建并套用待定权限。 */
   async function ensureThread(): Promise<Thread> {
     const ch = await currentChannel();
     if (active && threadChannel(active) === ch) return active;
+    if (ch === "agent") {
+      const created = await api.mainSession();
+      const t = created.channel ? created : { ...created, channel: ch };
+      if (t.id) mainIdRef.current = t.id;
+      setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
+      setActive(t);
+      useUI.getState().rememberThread(t);
+      return t;
+    }
     const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace(ch), ch));
     const t = created.channel ? created : { ...created, channel: ch };
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
@@ -1899,6 +1914,10 @@ export function useWorkstation() {
     const ch = channelForSurface(useUI.getState().surface);
     const created = await adoptPendingAuthMode(await api.createSession(workspace || channelWorkspace(ch), ch));
     const t = created.channel ? created : { ...created, channel: ch };
+    if (ch === "agent" && t.id) {
+      const adopted = await api.adoptMainSession(t.id).then(() => true).catch(() => false);
+      if (adopted) mainIdRef.current = t.id;
+    }
     setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
     itemsAcc.current = [];
     setItems([]);
@@ -1920,6 +1939,7 @@ export function useWorkstation() {
   /** 记住这条会话并清掉待定权限。视频会话在 keepPane 时不改窗格。否则按通道打开工作室、短剧、画布或创作。其他通道回到对话。t 读取 id，传给 ui.rememberThread，传给 threadChannel，传给 setActive。opts 读取 keepPane，为空时不读。 */
   function openThread(t: Thread, opts?: { keepPane?: boolean }) {
     const ui = useUI.getState();
+    if (threadChannel(t) === "agent") agentChosen.current = true;
     ui.rememberThread(t);
     /** 打开一段对话就读掉它的通知。待定的权限属于还没创建的新对话，不属于这一段。 */
     ui.dismissNoticesFor(t.id);
@@ -2237,7 +2257,7 @@ export function useWorkstation() {
           }
           return;
         }
-        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol" || useUI.getState().surface === "orchestrator") {
+        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol") {
           showConversation();
           return;
         }
@@ -2524,7 +2544,7 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openIdol, closeIdol, openOrchestrator, closeOrchestrator, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openIdol, closeIdol, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,

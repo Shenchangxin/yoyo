@@ -192,6 +192,31 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, list)
 	})
+	mux.HandleFunc("/api/session/main", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			ID    string `json:"id"`
+			Adopt bool   `json:"adopt"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Adopt {
+			if err := a.AdoptMainSession(body.ID); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
+		m, err := a.MainSession()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, m)
+	})
 	mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
 		parts := strings.Split(rest, "/")

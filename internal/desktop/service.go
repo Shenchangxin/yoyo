@@ -222,6 +222,23 @@ func (s *Service) ListSessions() ([]app.SessionMeta, error) {
 	return s.App.ListSessions()
 }
 
+// MainSession 在 RPC 非空时调用 thread.main，否则 App.MainSession。
+func (s *Service) MainSession() (app.SessionMeta, error) {
+	if s.RPC != nil {
+		return decode[app.SessionMeta](s.call("thread.main", nil))
+	}
+	return s.App.MainSession()
+}
+
+// AdoptMainSession 在 RPC 非空时调用 thread.main.adopt，否则 App.AdoptMainSession。
+func (s *Service) AdoptMainSession(id string) error {
+	if s.RPC != nil {
+		_, err := s.call("thread.main.adopt", map[string]any{"session": id})
+		return err
+	}
+	return s.App.AdoptMainSession(id)
+}
+
 // ForkSession 调用 ForkSessionFrom，起点为空。
 // id 和空字符串传给 ForkSessionFrom。
 func (s *Service) ForkSession(id string) (app.SessionMeta, error) {

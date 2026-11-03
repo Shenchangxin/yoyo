@@ -97,6 +97,9 @@ func (a *App) PoiRefresh() poi.Snapshot {
 	now := time.Now()
 	snap := a.Poi.Refresh(obs, blobs, now)
 	snap.Census = poi.ScanCensus(poi.DefaultRoots(), now)
+	for i := range snap.Census.Lines {
+		snap.Census.Lines[i].ID = memory.MachineID("project", snap.Census.Lines[i].Name)
+	}
 	a.fileCensus(snap.Census)
 	if briefing, ok := a.assessDesk(snap); ok {
 		snap.Initiative = &briefing

@@ -160,6 +160,11 @@ type App struct {
 	desk   *dshdesk.Host
 	orch   *superagent.Runtime
 
+	briefMu     sync.Mutex
+	briefSig    string
+	briefCached TodayBrief
+	briefBusy   bool
+
 	reachMu sync.Mutex
 
 	shapeMu   sync.Mutex

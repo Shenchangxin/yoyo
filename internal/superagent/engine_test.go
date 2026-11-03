@@ -441,3 +441,139 @@ func TestReceiveStampsArrival(t *testing.T) {
 		}
 	}
 }
+
+// TestSayWakesTheOpenTicket 锁住还开着的工单收到下一句时交给工人，不另开一轮。
+func TestSayWakesTheOpenTicket(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	eng.Receive(human("m1", "fix the label"))
+	d, err := eng.Decide("m1", "accept", "ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	eng.OnInput = func(id, text string) { got = append(got, id+"|"+text) }
+	if err := eng.Say(d.TicketID, "再看上海"); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != d.TicketID+"|再看上海" {
+		t.Fatalf("input %v", got)
+	}
+	ticket, ok := eng.Ticket(d.TicketID)
+	if !ok || ticket.Ended != nil || len(ticket.Inputs) < 2 || !ticket.Inputs[len(ticket.Inputs)-1].Human {
+		t.Fatalf("ticket %+v", ticket)
+	}
+	if err := eng.Say(d.TicketID, "  "); err == nil {
+		t.Fatal("empty")
+	}
+}
+
+// TestSayReopensFinishedWork 锁住做完或被人打断的工单都沿用原单再开。
+func TestSayReopensFinishedWork(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	eng.Receive(human("m1", "fix the label"))
+	d, err := eng.Decide("m1", "accept", "ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Report(d.TicketID, Report{State: "ready", Summary: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	var launched []string
+	var woke []string
+	eng.OnLaunch = func(id string) { launched = append(launched, id) }
+	eng.OnInput = func(id, text string) { woke = append(woke, text) }
+	if err := eng.Say(d.TicketID, "再看上海"); err != nil {
+		t.Fatal(err)
+	}
+	if len(launched) != 1 || launched[0] != d.TicketID || len(woke) != 0 {
+		t.Fatalf("launch %v wake %v", launched, woke)
+	}
+	ticket, _ := eng.Ticket(d.TicketID)
+	if ticket.Ended != nil || len(ticket.Assignments) != 2 || ticket.Assignments[1].State != "pending" {
+		t.Fatalf("reopened %+v", ticket.Assignments)
+	}
+	if err := eng.Stop(d.TicketID, "no"); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Say(d.TicketID, "继续"); err != nil {
+		t.Fatal(err)
+	}
+	ticket, _ = eng.Ticket(d.TicketID)
+	if ticket.Ended != nil {
+		t.Fatalf("stopped reopen %+v", ticket.Ended)
+	}
+	if len(launched) != 2 {
+		t.Fatalf("launch %v", launched)
+	}
+}
+
+// TestDeskThreadDoesNotStealRelatedWork 锁住主会话的下一句不自动并进旧工单。打断之后仍可挂回原单。
+func TestDeskThreadDoesNotStealRelatedWork(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	msg := Trigger{
+		ID: "m1", Source: "desk", Threads: []string{"desk:s"}, Primary: "desk:s",
+		Human: true, Addressed: true, Sender: "ada", Text: "筛选简历",
+	}
+	if eng.Receive(msg) != "stored" {
+		t.Fatal("stored")
+	}
+	d, err := eng.Decide("m1", "accept", "筛选简历")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.SetDirectory(d.TicketID, "/tmp/tickets/"+d.TicketID, d.TicketID)
+	if err := eng.Report(d.TicketID, Report{State: "progress", Summary: "已看三家"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Stop(d.TicketID, "先停"); err != nil {
+		t.Fatal(err)
+	}
+	if got := eng.StagedProgress(d.TicketID); got != "已看三家" {
+		t.Fatalf("progress %q", got)
+	}
+	next := Trigger{
+		ID: "m2", Source: "desk", Threads: []string{"desk:s"}, Primary: "desk:s",
+		Human: true, Addressed: true, Sender: "ada", Text: "再看上海的岗位",
+	}
+	if eng.Receive(next) != "stored" {
+		t.Fatal("stored")
+	}
+	tr, _ := eng.Trigger("m2")
+	if !tr.Queued || len(tr.Reached) != 0 {
+		t.Fatalf("queued %+v", tr)
+	}
+	var launched []string
+	eng.OnLaunch = func(id string) { launched = append(launched, id) }
+	if err := eng.Attach(d.TicketID, "m2", ""); err != nil {
+		t.Fatal(err)
+	}
+	ticket, _ := eng.Ticket(d.TicketID)
+	if ticket.Ended != nil || ticket.Directory != "/tmp/tickets/"+d.TicketID {
+		t.Fatalf("continued %+v dir %s", ticket.Ended, ticket.Directory)
+	}
+	if len(launched) != 1 || launched[0] != d.TicketID {
+		t.Fatalf("launch %v", launched)
+	}
+	found := false
+	for _, in := range ticket.Inputs {
+		if in.Text == "再看上海的岗位" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("inputs %+v", ticket.Inputs)
+	}
+}
+
+// TestTerminalReportSkipsProgress 锁住普通进度和等人的等待不回到主会话，提问和结束会回去。
+func TestTerminalReportSkipsProgress(t *testing.T) {
+	if terminalReport("progress", "") || terminalReport("waiting", "") {
+		t.Fatal("quiet")
+	}
+	if !terminalReport("ready", "") || !terminalReport("failed", "") || !terminalReport("dropped", "") || !terminalReport("blocked", "") {
+		t.Fatal("terminal")
+	}
+	if !terminalReport("progress", "which city") {
+		t.Fatal("question")
+	}
+}

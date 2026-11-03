@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Decision, Ticket, Trigger } from "./desk-model.ts";
-import { applySenses, auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, shouldPush, slotDue, stageKey, taskGroups, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
+import { applySenses, auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, shouldPush, slotDue, visibleSlot, stageKey, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
 
 function ticket(partial: Partial<Ticket> & Pick<Ticket, "id" | "stage">): Ticket {
   return {
@@ -30,6 +30,8 @@ describe("work pane grouping", () => {
     assert.equal(stageKey(rows[1]), "queued");
     assert.equal(stageKey(rows[2]), "ended");
     assert.equal(stageKey(rows[3]), "idle");
+    assert.equal(todayBadge(rows, [], []), 1);
+    assert.equal(todayBadge([rows[1]], [{ id: "in", source: "desk", sender: "ada", text: "fix", addressed: true, queued: true }], []), 1);
   });
 
   /** 搜索只留标题对上的。定时这一档不列工单。文件名从正文里收，不收路径。 */
@@ -188,6 +190,8 @@ describe("work pane grouping", () => {
     assert.equal(briefDue({ ...prefs, morningOn: false }, new Date(2026, 10, 2, 9, 0)), false);
     assert.equal(slotDue(prefs, "evening", new Date(2026, 10, 2, 21, 30)), true);
     assert.equal(slotDue(prefs, "evening", new Date(2026, 10, 2, 21, 29)), false);
+    assert.equal(visibleSlot(prefs, new Date(2026, 10, 2, 8, 0)), "morning");
+    assert.equal(visibleSlot(prefs, new Date(2026, 10, 2, 22, 0)), "evening");
   });
 
   /** 第一封信只用本机名字和修改时间。有日程时不再说今天无法确认，周末也不替用户选继续还是停下。 */
@@ -376,6 +380,10 @@ const phrases: BriefPhrases = {
   letterMissing: "missing",
   letterLines: "{n} lines",
   letterIdentity: "identity",
+  letterHost: "computer",
+  letterOs: "system",
+  letterGit: "git",
+  letterApps: "apps",
   letterHours: "hours",
   letterNoMail: "mail",
   letterNoMailDetail: "no signal",
@@ -471,7 +479,41 @@ describe("initiative", () => {
     const speak = next.cards.find((card) => card.id === "speak");
     assert.equal(speak?.items[0]?.title, "yoyo");
     assert.equal(speak?.items[0]?.detail.includes("blank.txt"), true);
-    assert.equal(next.cards.some((card) => card.id === "sense"), true);
+    assert.equal(next.cards.some((card) => card.id === "sense"), false);
     assert.equal(JSON.stringify(next).includes("sk-"), false);
+  });
+
+  /** 画像写进信，事实不再让人标对错。电量、前台和桌面文件名不进简报。断网才单独一行。 */
+  it("writes a portrait and leaves routine telemetry off the brief", () => {
+    const brief = auditBrief({
+      welcome: true,
+      census: {
+        user: "scx",
+        host: "DESK",
+        os: "Windows",
+        git: "Ada",
+        hours: "19:30–21:58",
+        appNames: ["Cursor", "Chrome"],
+        lines: [{ id: "machine:project:yoyo", name: "yoyo", state: "quiet" }],
+      },
+    }, phrases);
+    const letter = brief.cards.find((card) => card.id === "letter");
+    const git = letter?.items.find((item) => item.title === "git");
+    assert.equal(git?.detail, "Ada");
+    assert.equal(letter?.items.some((item) => item.title === "apps" && item.detail.includes("Cursor")), true);
+    const lines = brief.cards.find((card) => card.id === "lines");
+    assert.equal(lines?.primary, "explain yoyo");
+    assert.equal(letter?.title, "hello Ada");
+    const next = applySenses(brief, [
+      { id: "power", code: "power", class: "power", name: "80", detail: "battery", state: "ok", why: "", speak: false, held: false },
+      { id: "focus", code: "focus", class: "focus", name: "Cursor.exe", detail: "", state: "foreground", why: "", speak: false, held: false },
+      { id: "poi:adobe", code: "poi", class: "poi", name: "Adobe", detail: "", state: "changed", why: "", speak: false, held: false },
+      { id: "net", code: "net", class: "net", name: "network", detail: "", state: "offline", why: "offline", speak: false, held: false },
+    ], senseLabels);
+    const sense = next.cards.find((card) => card.id === "sense");
+    assert.equal(sense?.items.length, 1);
+    assert.equal(sense?.items[0]?.title, "net");
+    assert.equal(JSON.stringify(next).includes("Cursor.exe"), false);
+    assert.equal(JSON.stringify(next).includes("Adobe"), false);
   });
 });

@@ -189,6 +189,40 @@ func (rt *Runtime) Receive(in Trigger) (string, []string) {
 	return status, append([]string(nil), got.Reached...)
 }
 
+// StagedProgress 是这张工单已经报过的阶段性进展。还没有时为空。
+func (rt *Runtime) StagedProgress(ticketID string) string {
+	if rt == nil || rt.eng == nil {
+		return ""
+	}
+	return rt.eng.StagedProgress(ticketID)
+}
+
+// TicketLabel 是工单给人看的短名。先用第一句输入，没有时用目录短名。
+func (rt *Runtime) TicketLabel(id string) string {
+	if rt == nil || rt.eng == nil {
+		return ""
+	}
+	t, ok := rt.eng.Ticket(id)
+	if !ok {
+		return ""
+	}
+	if len(t.Inputs) > 0 {
+		if line := oneLine(t.Inputs[0].Text); line != "" {
+			return line
+		}
+	}
+	return strings.TrimSpace(t.Name)
+}
+
+// WorkerTranscript 返回这张工单已经落下的会话。还没有日志时为空。
+func (rt *Runtime) WorkerTranscript(ticketID string) []TranscriptLine {
+	if rt == nil || strings.TrimSpace(ticketID) == "" {
+		return nil
+	}
+	events, _ := decodeLog(rt.loadWorkerLog(ticketID))
+	return TranscriptLines(events)
+}
+
 // DeskSession 返回开工这张工单的桌面会话。来源不是桌面时返回空串。
 func (rt *Runtime) DeskSession(ticketID string) string {
 	if rt == nil || rt.eng == nil {
@@ -491,7 +525,7 @@ func (rt *Runtime) Deliver() int {
 	return n
 }
 
-// Act 执行编排台动作。kind 取 attach、reply、note、handback、reevaluate、dismiss、unsubscribe、stop、retry、requestStatus、markUnrelated、follow 或 timeout。
+// Act 执行编排台动作。kind 取 attach、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、requestStatus、markUnrelated、follow 或 timeout。
 // ticketID、triggerID、text 和 reason 按动作使用。成功后立刻泵一次派工并落盘。
 func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	if rt == nil || rt.eng == nil {
@@ -499,6 +533,7 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	}
 	rt.mu.Lock()
 	var err error
+	relayStop := ""
 	switch kind {
 	case "attach":
 		err = rt.eng.Attach(ticketID, triggerID, text)
@@ -506,6 +541,8 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		_, err = rt.eng.Reply(ticketID, reason, triggerID, text)
 	case "note":
 		err = rt.eng.Note(ticketID, text)
+	case "say":
+		err = rt.eng.Say(ticketID, text)
 	case "handback":
 		_, err = rt.eng.Handback(ticketID, triggerID, reason)
 	case "reevaluate":
@@ -516,6 +553,15 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		rt.eng.Unsubscribe(text)
 	case "stop":
 		err = rt.eng.Stop(ticketID, reason)
+		if err == nil {
+			relayStop = strings.TrimSpace(reason)
+			if relayStop == "" {
+				relayStop = "已停下"
+			}
+			if rt.exec != nil {
+				rt.exec.Interrupt(ticketID)
+			}
+		}
 	case "retry":
 		err = rt.eng.Retry(ticketID)
 	case "requestStatus":
@@ -556,6 +602,9 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	rt.saveLocked()
 	effects := rt.effects
 	rt.mu.Unlock()
+	if relayStop != "" {
+		rt.queueReport(ticketID, "stopped", relayStop, "")
+	}
 	if effects != nil {
 		effects.Pump(time.Now())
 	}

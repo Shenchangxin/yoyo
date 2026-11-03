@@ -147,6 +147,20 @@ func NewExecutor(engine *Engine, slots *Slots, model dsh.Completer) *Executor {
 	}
 }
 
+// Interrupt 打断 ticketID 正在跑的这一轮。工单和目录都留着，人还可以继续说。
+func (e *Executor) Interrupt(ticketID string) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	agent := e.agents[ticketID]
+	e.mu.Unlock()
+	if agent == nil {
+		return
+	}
+	agent.Cancel(dsh.CancelCause{Kind: "steer", Reason: "interrupted"}, true)
+}
+
 // Launch 启动 ticketID 上待运行的派工。没有空槽时返回 ErrBusy。派工不是 pending 时释放刚占的槽并返回 not_pending。
 func (e *Executor) Launch(ticketID string) error {
 	fresh, err := e.Slots.Reserve(ticketID, "launch")
@@ -186,6 +200,9 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	dir, err := e.ensureWorkDir(ticketID)
 	if err != nil {
 		_ = e.Engine.FailStart(ticketID, err.Error())
+		if e.OnReport != nil {
+			e.OnReport(ticketID, "failed", err.Error(), "")
+		}
 		return
 	}
 	if err := e.Engine.AssignmentStarted(ticketID, asgID); err != nil {
@@ -368,9 +385,26 @@ func (e *Executor) afterTurn(agent *dsh.Agent, ticketID string, tries *int) (sto
 		if summary == "" {
 			summary = "这一回合失败了"
 		}
-		_ = e.Engine.Report(ticketID, Report{State: "failed", Summary: clip(summary, 200)})
+		summary = clip(summary, 200)
+		_ = e.Engine.Report(ticketID, Report{State: "failed", Summary: summary})
+		if e.OnReport != nil {
+			e.OnReport(ticketID, "failed", summary, "")
+		}
 	}
 	return true, false
+}
+
+// terminalReport 在这份报告该回到主会话时为真。普通进度和等人的等待不回去。
+func terminalReport(state, question string) bool {
+	if strings.TrimSpace(question) != "" {
+		return true
+	}
+	switch state {
+	case "ready", "blocked", "failed", "dropped":
+		return true
+	default:
+		return false
+	}
 }
 
 // HasAgent 在 ticketID 的代理已经创建时为真。
@@ -462,7 +496,7 @@ func (e *Executor) reportTool(ticketID string) dsh.Tool {
 			if err != nil {
 				return dsh.Result{Text: err.Error(), IsError: true}, nil
 			}
-			if e.OnReport != nil && (body.Question != "" || body.State == "ready" || body.State == "blocked" || body.State == "failed") {
+			if e.OnReport != nil && terminalReport(body.State, body.Question) {
 				e.OnReport(ticketID, body.State, body.Summary, body.Question)
 			}
 			return dsh.Result{Text: "recorded " + body.State, Concludes: body.State != "progress"}, nil

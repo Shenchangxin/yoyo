@@ -5,6 +5,7 @@ package desktop
 import (
 	"fmt"
 
+	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
 
@@ -66,6 +67,28 @@ func (s *Service) OrchestratorDeliver() error {
 	}
 	s.App.OrchestratorDeliver()
 	return nil
+}
+
+// OrchestratorTranscript 返回工单会话。ticketID 是工单编号。
+func (s *Service) OrchestratorTranscript(ticketID string) ([]superagent.TranscriptLine, error) {
+	if s.RPC != nil {
+		return decode[[]superagent.TranscriptLine](s.call("orchestrator.transcript", map[string]any{"ticketId": ticketID}))
+	}
+	if s.App == nil {
+		return nil, fmt.Errorf("app is not running")
+	}
+	return s.App.WorkerTranscript(ticketID), nil
+}
+
+// ComposeToday 按画像、记忆和最近对话写今天的简报。
+func (s *Service) ComposeToday() (app.TodayBrief, error) {
+	if s.RPC != nil {
+		return decode[app.TodayBrief](s.call("today.compose", nil))
+	}
+	if s.App == nil {
+		return app.TodayBrief{}, fmt.Errorf("app is not running")
+	}
+	return s.App.ComposeToday(), nil
 }
 
 // OrchestratorAct 执行编排台动作。kind、ticketID、triggerID、text 和 reason 原样交给应用。
