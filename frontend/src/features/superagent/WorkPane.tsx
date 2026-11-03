@@ -4,17 +4,16 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Calendar, ChevronLeft, ChevronRight, Clock, ListChecks, Mail, MessageCircle, Plus, Search, SlidersHorizontal, Sun, type LucideIcon } from "lucide-react";
-import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, memoryForget, memoryList, memoryPromote } from "../../lib/client";
+import { Calendar, ChevronLeft, ChevronRight, Clock, Folder, ListChecks, Mail, MessageCircle, Monitor, Plus, Search, SlidersHorizontal, Sun, type LucideIcon } from "lucide-react";
+import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, memoryList, memoryWrite, poiRefresh } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import type { DeskView, Rule, Ticket, Trigger } from "./desk-model";
 import { BRIEF_EVENT, runDeskFeed } from "./desk-feed";
 import { TaskRead } from "./TaskPage";
-import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, nowTickets, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, taskGroups, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MorningBrief } from "./work-model";
+import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, nowTickets, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, taskGroups, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
 
 type Tab = "now" | "tasks" | "memory";
-type MemoryItem = { id: string; kind: string; text: string; staging?: boolean; project?: string };
 
 /** WorkPane 在会话桌面上常驻。reviewPulse 增加时切到审查。review 是检查器。 */
 export function WorkPane(props: {
@@ -32,7 +31,7 @@ export function WorkPane(props: {
   const [tab, setTab] = useState<Tab>("now");
   const [view, setView] = useState<DeskView | null>(null);
   const [err, setErr] = useState("");
-  const [memory, setMemory] = useState<MemoryItem[]>([]);
+  const [memory, setMemory] = useState<MemoryRow[]>([]);
   const load = useCallback(async () => {
     try {
       await orchestratorDeliver().catch(() => undefined);
@@ -53,9 +52,9 @@ export function WorkPane(props: {
     if (tab !== "memory") return;
     let stop = false;
     const run = () => {
-      memoryList().then((rows) => { if (!stop) setMemory(rows as MemoryItem[]); }).catch(() => {});
+      memoryList().then((rows) => { if (!stop) setMemory(rows as MemoryRow[]); }).catch(() => {});
     };
-    run();
+    poiRefresh().catch(() => null).finally(run);
     const timer = window.setInterval(run, 4000);
     return () => { stop = true; window.clearInterval(timer); };
   }, [tab]);
@@ -149,10 +148,9 @@ export function WorkPane(props: {
           ) : null}
           {tab === "memory" ? (
             <>
-              <Memory rows={memory} onChange={async (op, id) => {
-                if (op === "forget") await memoryForget(id);
-                else await memoryPromote(id);
-                setMemory(await memoryList() as MemoryItem[]);
+              <Memory rows={memory} onAdd={async (text) => {
+                await memoryWrite("profile", text);
+                setMemory(await memoryList() as MemoryRow[]);
               }} />
               <p className="px-1 pb-4 text-[12px] leading-5 text-muted">
                 {copy.work.connectionsInSettings}{" "}
@@ -179,8 +177,9 @@ function Now(props: {
   const busy = useRef(false);
   const card = shown.brief;
   const nextSlot: BriefSlot = slotDue(prefs, "evening") ? "evening" : "morning";
-  const heading = (card ? shown.slot : nextSlot) === "evening" ? copy.work.briefEvening : copy.work.briefMorning;
+  const heading = card?.welcome ? copy.work.briefWelcome : (card ? shown.slot : nextSlot) === "evening" ? copy.work.briefEvening : copy.work.briefMorning;
   const clock = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const today = new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", weekday: "long" });
   useEffect(() => {
     const reload = () => setShown(readShown(prefs));
     window.addEventListener(BRIEF_EVENT, reload);
@@ -244,6 +243,7 @@ function Now(props: {
         <SlidersHorizontal className="size-4" />
       </button>
       <p className="text-center text-[12px] tabular-nums text-muted">{clock}</p>
+      <p className="mt-0.5 text-center text-[12px] text-muted">{today}</p>
       <p className="mt-0.5 text-center text-[15px] font-medium">{heading}</p>
       {!card && !waiting ? (
         <div className="mt-8 flex flex-col items-center gap-3">
@@ -268,7 +268,7 @@ function Now(props: {
           ))}
         </ul>
       ) : null}
-      <p className="mt-3 text-center text-[12px] leading-5 text-muted">{copy.work.briefFoot}</p>
+      <p className="mt-3 text-center text-[12px] leading-5 text-muted">{card?.welcome ? copy.work.briefWelcomeFoot : copy.work.briefFoot}</p>
     </div>
   );
 }
@@ -319,12 +319,65 @@ export function BriefStack(props: {
                 </div>
               </>
             ) : null}
+            {layout === "letter" ? (
+              <div className={cn("mt-4 grid gap-2", card.items.length > 0 && card.choices.length > 0 ? "grid-cols-2" : "grid-cols-1")}>
+                {card.items.length > 0 || card.choices.length === 0 ? (
+                  <div className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
+                    <p className="text-[12px] font-medium text-muted">{card.leftLabel}</p>
+                    <div className="mt-3 space-y-3">
+                      {card.items.length === 0 ? <p className="text-[13px] text-muted">—</p> : card.items.map((item, index) => (
+                        <div key={`${item.title}-${index}`}>
+                          <p className="text-[12px] text-muted">{item.title}</p>
+                          {item.detail ? <p className="mt-0.5 text-[13px] font-medium leading-5">{item.detail}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {card.choices.length > 0 ? (
+                  <div className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
+                    <p className="text-[12px] font-medium text-muted">{card.rightLabel}</p>
+                    <div className="mt-3 space-y-3">
+                      {card.choices.map((choice) => (
+                        <div key={choice.id}>
+                          <p className="text-[12px] text-muted">{choice.title}</p>
+                          {choice.detail ? <p className="mt-0.5 text-[13px] font-medium leading-5">{choice.detail}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {layout === "rows" && card.items.length > 0 ? (
+              <>
+                {card.mark ? <p className="mt-4 text-[12px] text-muted">{card.mark}</p> : null}
+                <div className="mt-3 space-y-2">
+                  {card.items.map((item, index) => (
+                    <div key={`${item.title}-${index}`} className={cn("border-l-2 py-1 pl-3", item.tone === "stalled" ? "border-warning" : item.tone === "moving" ? "border-accent" : "border-border")}>
+                      <p className="text-[13px] font-medium">{item.title}</p>
+                      {item.detail ? <p className="mt-0.5 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+            {layout === "stats" && card.stats && card.stats.length > 0 ? (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {card.stats.map((stat) => (
+                  <div key={stat.label} className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
+                    <p className="text-[22px] font-semibold tabular-nums tracking-[-0.03em]">{stat.value}</p>
+                    <p className="mt-1 text-[12px] text-muted">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {layout === "compare" && card.choices.length > 0 ? (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 {card.choices.slice(0, 2).map((choice) => (
                   <div key={choice.id} className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
                     <p className="text-[13px] font-semibold leading-5">{choice.title}</p>
-                    {choice.detail ? <p className="mt-2 text-[12px] leading-5 text-muted">{choice.detail}</p> : null}
+                    {choice.detail ? <p className="mt-2 whitespace-pre-line text-[12px] leading-5 text-muted">{choice.detail}</p> : null}
                   </div>
                 ))}
               </div>
@@ -346,19 +399,22 @@ export function BriefStack(props: {
                 ))}
               </div>
             ) : null}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {card.primary ? (
-                <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-lift text-foreground" : "bg-accent text-white")} onClick={() => props.onUse(card, "primary")}>
-                  {card.primary}
-                </button>
-              ) : null}
-              {card.secondary ? (
-                <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-foreground text-background" : "bg-lift text-foreground")} onClick={() => props.onUse(card, "secondary")}>
-                  {card.secondary}
-                </button>
-              ) : null}
-            </div>
-            {picked ? <p className="mt-2 text-[12px] text-muted">{props.filledLabel}</p> : null}
+            {card.note ? <p className="mt-4 rounded-2xl bg-lift/50 px-3 py-3 text-[12px] leading-5 text-muted">{card.note}</p> : null}
+            {card.primary || card.secondary ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {card.primary ? (
+                  <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-lift text-foreground" : "bg-accent text-white")} onClick={() => props.onUse(card, "primary")}>
+                    {card.primary}
+                  </button>
+                ) : null}
+                {card.secondary ? (
+                  <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-foreground text-background" : "bg-lift text-foreground")} onClick={() => props.onUse(card, "secondary")}>
+                    {card.secondary}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {picked && (card.primary || card.secondary) ? <p className="mt-2 text-[12px] text-muted">{props.filledLabel}</p> : null}
           </article>
         );
       })}
@@ -513,6 +569,63 @@ export function briefPhrases(work: ReturnType<typeof useCopy>["work"]): BriefPhr
     quietPrimary: work.quietPrimary,
     quietTask: work.quietTask,
     countLabel: work.countLabel,
+    letterKicker: work.letterKicker,
+    letterKickerToday: work.letterKickerToday,
+    letterHello: work.letterHello,
+    letterHelloBare: work.letterHelloBare,
+    letterLede: work.letterLede,
+    letterLedeToday: work.letterLedeToday,
+    letterKnown: work.letterKnown,
+    letterMissing: work.letterMissing,
+    letterLines: work.letterLines,
+    letterIdentity: work.letterIdentity,
+    letterHours: work.letterHours,
+    letterNoMail: work.letterNoMail,
+    letterNoMailDetail: work.letterNoMailDetail,
+    letterNoPlan: work.letterNoPlan,
+    letterNoPlanDetail: work.letterNoPlanDetail,
+    linesKicker: work.linesKicker,
+    linesTitle: work.linesTitle,
+    linesLede: work.linesLede,
+    lineMoving: work.lineMoving,
+    lineStalled: work.lineStalled,
+    lineQuiet: work.lineQuiet,
+    linesPrimary: work.linesPrimary,
+    linesTask: work.linesTask,
+    doneKicker: work.doneKicker,
+    doneTitle: work.doneTitle,
+    doneLede: work.doneLede,
+    doneMark: work.doneMark,
+    doneFinished: work.doneFinished,
+    doneEmpty: work.doneEmpty,
+    donePrimary: work.donePrimary,
+    doneAlt: work.doneAlt,
+    doneTask: work.doneTask,
+    placeKicker: work.placeKicker,
+    placeTitle: work.placeTitle,
+    placeLede: work.placeLede,
+    placeLeft: work.placeLeft,
+    placeRight: work.placeRight,
+    placeNone: work.placeNone,
+    placePrimary: work.placePrimary,
+    placeTask: work.placeTask,
+    toolKicker: work.toolKicker,
+    toolTitle: work.toolTitle,
+    toolLede: work.toolLede,
+    toolProjects: work.toolProjects,
+    toolApps: work.toolApps,
+    toolDownloads: work.toolDownloads,
+    toolTraces: work.toolTraces,
+    toolPrimary: work.toolPrimary,
+    toolTask: work.toolTask,
+    pauseKicker: work.pauseKicker,
+    pauseTitle: work.pauseTitle,
+    pauseLede: work.pauseLede,
+    pauseGo: work.pauseGo,
+    pauseGoDetail: work.pauseGoDetail,
+    pauseStop: work.pauseStop,
+    pauseStopDetail: work.pauseStopDetail,
+    pauseNote: work.pauseNote,
   };
 }
 
@@ -772,32 +885,82 @@ function TaskPill(props: { label: string; muted?: boolean; onClick: () => void }
   );
 }
 
-function Memory(props: { rows: MemoryItem[]; onChange: (op: "forget" | "keep", id: string) => Promise<void> }) {
+function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<void> }) {
   const copy = useCopy();
-  const [folder, setFolder] = useState("");
-  const folders = [
-    { id: "profile", label: copy.work.folderProfile },
-    { id: "project", label: copy.work.folderProject },
-    { id: "episodic", label: copy.work.folderEpisodic },
-    { id: "semantic", label: copy.work.folderSemantic },
+  const [folder, setFolder] = useState<MemoryFolder | "">("");
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const portrait = memoryPortrait(props.rows);
+  const sep = /[\u4e00-\u9fff]/.test(copy.work.memoryProjectsLine) ? "、" : ", ";
+  const said = portrait.said.filter((text) => text !== portrait.name);
+  const lead = portrait.device || portrait.host || portrait.os || portrait.zone || portrait.git || portrait.hours || portrait.lines.length
+    ? copy.work.memoryLeadMachine
+    : said[0] || portrait.noted[0] || copy.work.memoryLeadEmpty;
+  const title = portrait.name ? copy.work.memoryAbout.replace("{name}", portrait.name) : copy.work.memoryAboutYou;
+  const when = portrait.updated ? memoryAgo(portrait.updated, copy.work) : copy.work.memoryNotYet;
+  const folders: { id: MemoryFolder; label: string; icon: LucideIcon }[] = [
+    { id: "device", label: copy.work.folderDevices, icon: Monitor },
+    { id: "work", label: copy.work.folderWork, icon: Clock },
+    { id: "project", label: copy.work.folderProject, icon: Folder },
+    { id: "preference", label: copy.work.folderSemantic, icon: SlidersHorizontal },
+    { id: "about", label: portrait.name ? copy.work.folderAbout.replace("{name}", portrait.name) : copy.work.folderAboutYou, icon: MessageCircle },
   ];
-  const summary = props.rows.find((row) => row.kind === "profile" && !row.staging) || props.rows[0];
-  const shown = folder ? props.rows.filter((row) => row.kind === folder) : props.rows;
+  const notes = memoryFolderRows(props.rows, "notes");
+  if (notes.length) folders.push({ id: "notes", label: copy.work.folderNotes, icon: Folder });
+  const shown = folder ? memoryFolderRows(props.rows, folder) : [];
+  async function add(event: { preventDefault: () => void }) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text || saving) return;
+    setSaving(true);
+    try {
+      await props.onAdd(text);
+      setDraft("");
+      setAdding(false);
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <div className="px-1 pb-2 pt-2">
-      <h1 className="text-[22px] font-semibold tracking-[-0.03em]">{copy.work.memory}</h1>
-      {summary ? (
-        <article className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
-          <p className="text-[16px] font-semibold">{copy.work.summaryTitle}</p>
-          <p className="mt-1 text-[12px] text-muted">{summary.kind}{summary.project ? ` · ${summary.project}` : ""}</p>
-          <p className="mt-4 line-clamp-6 whitespace-pre-wrap text-[14px] leading-7">{summary.text}</p>
-        </article>
-      ) : <Empty title={copy.work.memoryEmpty} hint={copy.work.memoryHint} />}
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-[22px] font-semibold tracking-[-0.03em]">{copy.work.memory}</h1>
+        <button type="button" className="grid size-8 place-items-center rounded-full bg-card text-foreground shadow-[var(--shadow-card)]" aria-label={copy.work.memoryAdd} onClick={() => setAdding((on) => !on)}>
+          <Plus className="size-4" />
+        </button>
+      </div>
+      {adding ? (
+        <form className="mt-4 rounded-[28px] bg-card px-5 py-4 shadow-[var(--shadow-card)]" onSubmit={(event) => { void add(event); }}>
+          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={copy.work.memoryAddHint} className="h-10 w-full bg-transparent text-[14px] outline-none" />
+          <div className="mt-2 flex justify-end">
+            <button type="submit" disabled={!draft.trim() || saving} className="h-8 rounded-full bg-foreground px-3 text-[12px] font-medium text-background disabled:opacity-40">{copy.work.save}</button>
+          </div>
+        </form>
+      ) : null}
+      <article className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
+        <h2 className="text-[18px] font-semibold leading-7 tracking-[-0.03em]">{title}</h2>
+        <p className="mt-1 text-[12px] text-muted">{portrait.updated ? copy.work.memoryUpdated.replace("{when}", when) : copy.work.memoryNotYet}</p>
+        <p className="mt-4 text-[12px] text-muted">{copy.work.memorySummary}</p>
+        <p className="mt-1 text-[14px] leading-7">{lead}</p>
+        {portrait.device ? <p className="mt-3 text-[14px] leading-7">{copy.work.memoryDeviceLine.replace("{name}", portrait.device)}</p> : null}
+        {portrait.host ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryHostLine.replace("{name}", portrait.host)}</p> : null}
+        {portrait.os ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryOsLine.replace("{name}", portrait.os)}</p> : null}
+        {portrait.zone ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryZoneLine.replace("{name}", portrait.zone)}</p> : null}
+        {portrait.git ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryGitLine.replace("{name}", portrait.git)}</p> : null}
+        {portrait.hours ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryHoursLine.replace("{hours}", portrait.hours)}</p> : null}
+        {portrait.lines.length ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryProjectsLine.replace("{names}", portrait.lines.map((line) => line.name).join(sep))}</p> : null}
+        {portrait.device || portrait.host || portrait.os || portrait.zone || portrait.git || portrait.hours || portrait.lines.length ? <p className="mt-3 text-[13px] leading-6 text-muted">{copy.work.memoryHardFact}</p> : null}
+        {said.length ? <MemoryLines label={copy.work.memorySaid} lines={said} /> : null}
+        {portrait.noted.length ? <MemoryLines label={copy.work.memoryNoted} lines={portrait.noted} /> : null}
+        {portrait.preferences.length ? <MemoryLines label={copy.work.memoryPrefs} lines={portrait.preferences} /> : null}
+      </article>
       <h2 className="mt-6 px-1 text-[15px] font-medium">{copy.work.folderAll}</h2>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {folders.map((item) => {
-          const count = props.rows.filter((row) => row.kind === item.id).length;
+          const count = memoryFolderRows(props.rows, item.id).length;
           const on = folder === item.id;
+          const Icon = item.icon;
           return (
             <button
               key={item.id}
@@ -805,28 +968,65 @@ function Memory(props: { rows: MemoryItem[]; onChange: (op: "forget" | "keep", i
               className={cn("rounded-2xl bg-card px-4 py-4 text-left shadow-[var(--shadow-card)]", on && "ring-1 ring-accent")}
               onClick={() => setFolder(on ? "" : item.id)}
             >
-              <p className="text-[14px] font-medium">{item.label}</p>
+              <Icon className="size-4 text-muted" />
+              <p className="mt-3 text-[14px] font-medium">{item.label}</p>
               <p className="mt-1 text-[12px] text-muted">{copy.work.itemCount.replace("{n}", String(count))}</p>
             </button>
           );
         })}
       </div>
       {folder ? (
-        <ul className="mt-4 space-y-2">
-          {shown.map((row) => (
-            <li key={row.id} className="rounded-2xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]">
-              <p className="text-[11px] text-muted">{row.kind}{row.staging ? ` · ${copy.work.staging}` : ""}{row.project ? ` · ${row.project}` : ""}</p>
-              <p className="mt-1 line-clamp-4 text-[14px] leading-6">{row.text}</p>
-              <div className="mt-2 flex gap-2">
-                {row.staging ? <TextButton onClick={() => { void props.onChange("keep", row.id); }}>{copy.work.promote}</TextButton> : null}
-                <TextButton quiet onClick={() => { void props.onChange("forget", row.id); }}>{copy.work.forget}</TextButton>
-              </div>
-            </li>
-          ))}
-        </ul>
+        shown.length === 0 ? <p className="mt-4 px-1 text-[13px] text-muted">{copy.work.memoryFolderEmpty}</p> : (
+          <ul className="mt-4 space-y-2">
+            {shown.map((row) => (
+              <li key={row.id} className="rounded-2xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]">
+                <p className="text-[14px] leading-6">{memoryRowTitle(row, copy.work)}</p>
+                {memoryRowDetail(row, copy.work) ? <p className="mt-1 text-[12px] leading-5 text-muted">{memoryRowDetail(row, copy.work)}</p> : null}
+              </li>
+            ))}
+          </ul>
+        )
       ) : null}
     </div>
   );
+}
+
+function MemoryLines(props: { label: string; lines: string[] }) {
+  return (
+    <div className="mt-4">
+      <p className="text-[12px] text-muted">{props.label}</p>
+      {props.lines.map((line) => <p key={line} className="mt-1 text-[14px] leading-7">{line}</p>)}
+    </div>
+  );
+}
+
+function memoryRowTitle(row: MemoryRow, work: ReturnType<typeof useCopy>["work"]): string {
+  if (row.id === "machine:device") return work.memoryDeviceLine.replace("{name}", row.text);
+  if (row.id === "machine:host") return work.memoryHostLine.replace("{name}", row.text);
+  if (row.id === "machine:os") return work.memoryOsLine.replace("{name}", row.text);
+  if (row.id === "machine:zone") return work.memoryZoneLine.replace("{name}", row.text);
+  if (row.id === "machine:git") return work.memoryGitLine.replace("{name}", row.text);
+  if (row.id === "machine:hours" || row.project === "work") return work.memoryHoursLine.replace("{hours}", row.text);
+  return row.text;
+}
+
+function memoryRowDetail(row: MemoryRow, work: ReturnType<typeof useCopy>["work"]): string {
+  if (row.kind !== "project") return "";
+  const state = row.state === "stalled" ? work.lineStalled : row.state === "quiet" ? work.lineQuiet : row.state === "moving" ? work.lineMoving : "";
+  return [state, row.evidence, row.when].filter(Boolean).join(" · ");
+}
+
+function memoryAgo(iso: string, work: ReturnType<typeof useCopy>["work"]): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return work.memoryNotYet;
+  const mins = Math.max(0, Math.round((Date.now() - at) / 60000));
+  if (mins < 1) return work.memoryJustNow;
+  if (mins < 60) return work.memoryMinutes.replace("{n}", String(mins));
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return work.memoryHoursAgo.replace("{n}", String(hours));
+  const days = Math.round(hours / 24);
+  if (days < 14) return work.memoryDaysAgo.replace("{n}", String(days));
+  return work.memoryWeeksAgo.replace("{n}", String(Math.round(days / 7)));
 }
 
 function Empty(props: { title: string; hint: string }) {

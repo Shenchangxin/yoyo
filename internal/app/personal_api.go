@@ -46,7 +46,7 @@ func (a *App) MemoryWrite(kind, text, project string) memory.Item {
 	if a.Memory == nil {
 		return memory.Item{}
 	}
-	it := a.Memory.Write(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project})
+	it := a.Memory.Write(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project, Source: "user"})
 	a.touchPoi()
 	return it
 }

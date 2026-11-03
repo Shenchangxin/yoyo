@@ -215,6 +215,9 @@ func (t *WorkspaceTools) rememberFact(text string) ToolResult {
 		return ToolResult{Err: fmt.Errorf("empty fact")}
 	}
 	it := t.Memory.Write(memory.Item{Kind: memory.KindProfile, Text: text, Source: "User confirmed in chat"})
+	if it.ID == "" {
+		return ToolResult{Err: fmt.Errorf("fact not kept")}
+	}
 	b, _ := json.Marshal(it)
 	return ToolResult{Content: "remembered " + string(b)}
 }

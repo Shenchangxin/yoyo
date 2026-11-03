@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Decision, Ticket, Trigger } from "./desk-model.ts";
-import { auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, nowTickets, parseStoredBrief, serializeStoredBrief, slotDue, stageKey, taskGroups, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases } from "./work-model.ts";
+import { auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, slotDue, stageKey, taskGroups, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases } from "./work-model.ts";
 
 function ticket(partial: Partial<Ticket> & Pick<Ticket, "id" | "stage">): Ticket {
   return {
@@ -189,6 +189,90 @@ describe("work pane grouping", () => {
     assert.equal(slotDue(prefs, "evening", new Date(2026, 10, 2, 21, 30)), true);
     assert.equal(slotDue(prefs, "evening", new Date(2026, 10, 2, 21, 29)), false);
   });
+
+  /** 第一封信只用本机名字和修改时间。有日程时不再说今天无法确认，周末也不替用户选继续还是停下。 */
+  it("writes a welcome letter from machine names and leaves the weekend choice open", () => {
+    const brief = auditBrief({
+      now: new Date(2026, 10, 7, 9, 0),
+      welcome: true,
+      memory: [{ kind: "profile", text: "caca" }],
+      census: {
+        user: "scx",
+        hours: "08:30–17:40",
+        weekday: true,
+        lines: [
+          { name: "yoyo", state: "moving", evidence: "main.go", when: "2026-11-07" },
+          { name: "allo", state: "stalled", evidence: "blank.txt", when: "2026-11-05" },
+        ],
+        finished: [{ name: "notes.html", kind: "deliverable" }],
+        empty: [{ name: "blank.txt", line: "allo", kind: "empty" }],
+        place: [{ name: "yoyo-notes.md", line: "yoyo", kind: "match" }],
+        archive: [{ name: "setup.exe", kind: "installer" }],
+        projects: 2,
+        downloads: 1,
+        apps: 3,
+        traces: 4,
+      },
+    }, phrases);
+    assert.equal(brief.welcome, true);
+    assert.equal(brief.cards[0]?.id, "letter");
+    assert.equal(brief.cards[0]?.title, "hello caca");
+    assert.equal(brief.cards[0]?.primary, "");
+    assert.equal(brief.cards.find((card) => card.id === "situation"), undefined);
+    const lines = brief.cards.find((card) => card.id === "lines");
+    assert.equal(lines?.layout, "rows");
+    assert.equal(lines?.primary, "explain yoyo");
+    assert.match(lines?.task || "", /Do not invent metrics/);
+    assert.equal(lines?.items[1]?.tone, "stalled");
+    assert.equal(brief.cards.find((card) => card.id === "done")?.mark, "1 finished, 1 unfinished");
+    assert.match(brief.cards.find((card) => card.id === "done")?.task || "", /Do not invent file contents/);
+    assert.match(brief.cards.find((card) => card.id === "place")?.task || "", /Do not delete/);
+    assert.equal(brief.cards.find((card) => card.id === "tools")?.stats?.map((stat) => stat.value).join(","), "2,3,1,4");
+    const pause = brief.cards.find((card) => card.id === "pause");
+    assert.equal(pause?.primary, "");
+    assert.equal(pause?.secondary, "");
+    assert.equal(pause?.note, "no button");
+    assert.equal(brief.cards.some((card) => card.id === "quiet" || card.id === "around"), false);
+    assert.equal(JSON.stringify(brief).includes("0.667"), false);
+    const dated = auditBrief({
+      now: new Date(2026, 10, 2, 8, 30),
+      queued: [{ id: "today", source: "calendar", sender: "", text: "今天下午的会", addressed: false, queued: true, due: "2026-11-02T15:00:00" }],
+      census: { user: "scx", lines: [{ name: "yoyo", state: "moving", evidence: "main.go", when: "2026-11-02" }] },
+    }, phrases);
+    assert.equal(dated.cards[0]?.id, "letter");
+    assert.equal(dated.cards[0]?.choices.length, 0);
+    assert.equal(dated.cards[1]?.id, "situation");
+    assert.equal(dated.welcome, false);
+  });
+
+  /** 画像只用本机事实和当事人说过的话。机器账号不算「你说过」。 */
+  it("splits machine facts from what the operator said", () => {
+    const rows = [
+      { id: "machine:device", kind: "profile", source: "machine", project: "device", text: "scx", created_at: "2026-10-01T00:00:00Z" },
+      { id: "machine:host", kind: "profile", source: "machine", project: "device", text: "desk", created_at: "2026-10-01T00:00:00Z" },
+      { id: "machine:git", kind: "profile", source: "machine", project: "device", text: "Ada", created_at: "2026-10-01T00:00:00Z" },
+      { id: "machine:hours", kind: "profile", source: "machine", project: "work", text: "08:30–17:40", created_at: "2026-10-10T00:00:00Z" },
+      { id: "machine:project:yoyo", kind: "project", source: "machine", project: "yoyo", text: "yoyo", state: "moving", evidence: "main.go", when: "2026-10-10", created_at: "2026-10-10T00:00:00Z" },
+      { id: "p1", kind: "profile", source: "user", text: "caca", created_at: "2026-10-02T00:00:00Z" },
+      { id: "p2", kind: "profile", source: "model", text: "喜欢早上处理代码", created_at: "2026-10-03T00:00:00Z" },
+      { id: "s1", kind: "semantic", source: "model", text: "回复要短", created_at: "2026-10-04T00:00:00Z" },
+    ];
+    const portrait = memoryPortrait(rows);
+    assert.equal(portrait.name, "caca");
+    assert.equal(portrait.device, "scx");
+    assert.equal(portrait.host, "desk");
+    assert.equal(portrait.git, "Ada");
+    assert.equal(portrait.said.includes("Ada"), false);
+    assert.equal(portrait.hours, "08:30–17:40");
+    assert.equal(portrait.lines[0]?.evidence, "main.go");
+    assert.deepEqual(portrait.said, ["caca"]);
+    assert.deepEqual(portrait.noted, ["喜欢早上处理代码"]);
+    assert.deepEqual(portrait.preferences, ["回复要短"]);
+    assert.equal(portrait.updated, "2026-10-10T00:00:00Z");
+    assert.equal(memoryFolderRows(rows, "about").length, 2);
+    assert.equal(memoryFolderRows(rows, "device").length, 3);
+    assert.equal(JSON.stringify(portrait).includes("0.667"), false);
+  });
 });
 
 const phrases: BriefPhrases = {
@@ -282,4 +366,61 @@ const phrases: BriefPhrases = {
   quietPrimary: "choose one",
   quietTask: "QUIET_TASK",
   countLabel: "{n} items",
+  letterKicker: "first letter",
+  letterKickerToday: "today",
+  letterHello: "hello {name}",
+  letterHelloBare: "hello",
+  letterLede: "starts from this machine",
+  letterLedeToday: "today from this machine",
+  letterKnown: "known",
+  letterMissing: "missing",
+  letterLines: "{n} lines",
+  letterIdentity: "identity",
+  letterHours: "hours",
+  letterNoMail: "mail",
+  letterNoMailDetail: "no signal",
+  letterNoPlan: "plan",
+  letterNoPlanDetail: "unconfirmed",
+  linesKicker: "lines",
+  linesTitle: "lines title",
+  linesLede: "names and times only",
+  lineMoving: "moving",
+  lineStalled: "stalled",
+  lineQuiet: "quiet",
+  linesPrimary: "explain {name}",
+  linesTask: "Do not invent metrics\n{name}\n{items}",
+  doneKicker: "done",
+  doneTitle: "small finishes",
+  doneLede: "size or empty",
+  doneMark: "{done} finished, {left} unfinished",
+  doneFinished: "has size",
+  doneEmpty: "empty",
+  donePrimary: "why empty",
+  doneAlt: "group finished",
+  doneTask: "Do not invent file contents\n{items}",
+  placeKicker: "place",
+  placeTitle: "group leftovers",
+  placeLede: "names only",
+  placeLeft: "on a line",
+  placeRight: "archive",
+  placeNone: "none",
+  placePrimary: "group files",
+  placeTask: "Do not delete\n{place}\n{archive}",
+  toolKicker: "tools",
+  toolTitle: "in use",
+  toolLede: "counts only",
+  toolProjects: "projects",
+  toolApps: "apps",
+  toolDownloads: "downloads",
+  toolTraces: "traces",
+  toolPrimary: "split used",
+  toolTask: "names and recency only\n{items}",
+  pauseKicker: "yours",
+  pauseTitle: "continue or stop",
+  pauseLede: "no calendar",
+  pauseGo: "continue",
+  pauseGoDetail: "lines remain",
+  pauseStop: "stop",
+  pauseStopDetail: "nothing due",
+  pauseNote: "no button",
 };

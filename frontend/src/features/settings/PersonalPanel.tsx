@@ -150,7 +150,7 @@ function MemorySection() {
             key={str(it.id || i)}
             list
             title={str(it.text).slice(0, 96)}
-            description={str(it.kind) + " · " + (it.staging ? copy.settings.memoryStaging : copy.settings.memoryPinned)}
+            description={str(it.kind) + " · " + copy.settings.memoryPinned}
           >
             <Button
               size="sm"
@@ -162,17 +162,6 @@ function MemorySection() {
             >
               {copy.settings.forget}
             </Button>
-            {it.staging ? (
-              <Button
-                size="sm"
-                onClick={async () => {
-                  await api.memoryPromote(it.id);
-                  refresh();
-                }}
-              >
-                {copy.settings.promote}
-              </Button>
-            ) : null}
           </SettingRow>
         ))
       )}

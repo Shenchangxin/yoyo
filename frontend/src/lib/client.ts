@@ -2147,7 +2147,21 @@ export type DeskNote = {
 };
 
 export type PoiPoint = { id?: string; name: string; kind: string; weight?: number };
-export type PoiSnapshot = { points: PoiPoint[]; added: string[]; dropped: string[]; sig: string; pending: boolean };
+export type PoiCensusItem = { name: string; line?: string; kind?: string };
+/** PoiCensus 是桌面清点。只有名字、大小和修改时间，没有正文。 */
+export type PoiCensus = {
+  user?: string;
+  hours?: string;
+  weekday?: boolean;
+  lines?: { name: string; state?: string; evidence?: string; when?: string }[];
+  finished?: PoiCensusItem[];
+  empty?: PoiCensusItem[];
+  place?: PoiCensusItem[];
+  archive?: PoiCensusItem[];
+  projects?: number;
+  downloads?: number;
+};
+export type PoiSnapshot = { points: PoiPoint[]; added: string[]; dropped: string[]; sig: string; pending: boolean; census?: PoiCensus };
 
 /** deskPush 把简报或兴趣变化写进主会话。同一天同一档只写一次。 */
 export async function deskPush(note: DeskNote): Promise<boolean> {
@@ -2187,6 +2201,34 @@ function normalizePoi(raw: any): PoiSnapshot {
     dropped: asArray(pick(raw, "dropped", "Dropped")).map((item) => str(item)).filter(Boolean),
     sig: str(pick(raw, "sig", "Sig")),
     pending: asBool(pick(raw, "pending", "Pending")),
+    census: normalizeCensus(pick(raw, "census", "Census")),
+  };
+}
+
+function normalizeCensus(raw: unknown): PoiCensus | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const item = (row: unknown): PoiCensusItem => ({
+    name: str(pick(row, "name", "Name")),
+    line: str(pick(row, "line", "Line")),
+    kind: str(pick(row, "kind", "Kind")),
+  });
+  const list = (key: string, alt: string) => asArray(pick(raw, key, alt)).map(item).filter((row) => row.name);
+  return {
+    user: str(pick(raw, "user", "User")),
+    hours: str(pick(raw, "hours", "Hours")),
+    weekday: asBool(pick(raw, "weekday", "Weekday")),
+    lines: asArray(pick(raw, "lines", "Lines")).map((line) => ({
+      name: str(pick(line, "name", "Name")),
+      state: str(pick(line, "state", "State")),
+      evidence: str(pick(line, "evidence", "Evidence")),
+      when: str(pick(line, "when", "When")),
+    })).filter((line) => line.name),
+    finished: list("finished", "Finished"),
+    empty: list("empty", "Empty"),
+    place: list("place", "Place"),
+    archive: list("archive", "Archive"),
+    projects: num(pick(raw, "projects", "Projects")),
+    downloads: num(pick(raw, "downloads", "Downloads")),
   };
 }
 

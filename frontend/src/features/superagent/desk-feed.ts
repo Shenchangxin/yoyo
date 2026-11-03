@@ -5,9 +5,10 @@
 
 import { deskPush, memoryList, orchestratorView, poiAck, poiRefresh } from "../../lib/client";
 import { copy } from "../../lib/i18n";
-import { auditBrief, briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, BRIEF_PREFS_KEY, type BriefPhrases, type BriefSlot, type MorningBrief } from "./work-model";
+import { auditBrief, briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, BRIEF_PREFS_KEY, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
+const WELCOME_KEY = "yoyo.brief-welcomed";
 
 let sessionId = "";
 
@@ -24,17 +25,22 @@ export function deskSession(): string {
 /** runDeskFeed 刷新兴趣库，并在到点时生成还没有的那一档简报。force 时立刻生成这一档。 */
 export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Promise<void> {
   const prefs = readPrefs();
-  const points = await refreshPoi();
+  const scan = await refreshPoi();
   const slots: BriefSlot[] = force ? [force] : (["morning", "evening"] as const).filter((slot) => slotDue(prefs, slot));
   for (const slot of slots) {
-    await ensureBrief(slot, phrases, points);
+    await ensureBrief(slot, phrases, scan);
   }
 }
 
-async function refreshPoi(): Promise<{ name: string; kind: string }[]> {
+async function refreshPoi(): Promise<{ points: { name: string; kind: string }[]; census?: DeskCensus }> {
   const snap = await poiRefresh().catch(() => null);
-  if (!snap) return [];
+  if (!snap) return { points: [] };
   const points = (snap.points || []).map((point) => ({ name: point.name, kind: point.kind })).filter((point) => point.name);
+  const census = snap.census ? {
+    ...snap.census,
+    apps: points.filter((point) => point.kind === "app").length,
+    traces: points.filter((point) => point.kind === "trace" || point.kind === "desk").length,
+  } : undefined;
   if (snap.pending && sessionId) {
     const text = poiText(snap.added || [], snap.dropped || []);
     if (text) {
@@ -50,7 +56,7 @@ async function refreshPoi(): Promise<{ name: string; kind: string }[]> {
       if (pushed) await poiAck(snap.sig).catch(() => false);
     }
   }
-  return points;
+  return { points, census };
 }
 
 function poiText(added: string[], dropped: string[]): string {
@@ -64,11 +70,12 @@ function poiText(added: string[], dropped: string[]): string {
   return lines.join("\n");
 }
 
-async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, points: { name: string; kind: string }[]): Promise<void> {
+async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { points: { name: string; kind: string }[]; census?: DeskCensus }): Promise<void> {
   const day = briefDay();
   const key = briefStorageKey(slot);
   let brief = readStored(key, day);
   if (!brief) {
+    const welcome = !welcomed();
     const view = await orchestratorView().catch(() => null);
     const memory = await memoryList().catch(() => []) as { kind: string; text: string; staging?: boolean }[];
     brief = auditBrief({
@@ -78,13 +85,16 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, points: { nam
       rules: view?.rules,
       sources: view?.sources,
       memory,
-      points,
+      points: scan.points,
+      census: scan.census,
+      welcome,
       now: new Date(),
     }, phrases);
     try {
       localStorage.setItem(key, serializeStoredBrief(day, brief));
+      if (brief.welcome) localStorage.setItem(WELCOME_KEY, "1");
     } catch {
-      /* 写不进去时，这一次推进仍然带着这份简报。 */
+      /* 写不进去时，这一次推进仍然带着这份简报。欢迎标记留到真正写下之后。 */
     }
     window.dispatchEvent(new Event(BRIEF_EVENT));
   }
@@ -109,6 +119,14 @@ function readPrefs() {
     return parseBriefPrefs(localStorage.getItem(BRIEF_PREFS_KEY));
   } catch {
     return parseBriefPrefs(null);
+  }
+}
+
+function welcomed(): boolean {
+  try {
+    return localStorage.getItem(WELCOME_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 
