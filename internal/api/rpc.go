@@ -1670,6 +1670,11 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, fmt.Errorf("app is not running")
 		}
 		return map[string]any{"ok": a.DeskPush(note)}, nil
+	case "brief.list":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BriefList(), nil
 	case "poi.refresh":
 		if a == nil {
 			return nil, fmt.Errorf("app is not running")

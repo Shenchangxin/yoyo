@@ -32,6 +32,17 @@ func (s *Service) DeskPush(note app.DeskNote) (bool, error) {
 	return s.App.DeskPush(note), nil
 }
 
+// BriefList 返回已经固定的晨间和晚间简报，新的在前。
+func (s *Service) BriefList() ([]app.BriefRecord, error) {
+	if s.RPC != nil {
+		return decode[[]app.BriefRecord](s.call("brief.list", nil))
+	}
+	if s.App == nil {
+		return nil, fmt.Errorf("app is not running")
+	}
+	return s.App.BriefList(), nil
+}
+
 // PoiRefresh 刷新兴趣库并返回这一版。
 func (s *Service) PoiRefresh() (poi.Snapshot, error) {
 	if s.RPC != nil {

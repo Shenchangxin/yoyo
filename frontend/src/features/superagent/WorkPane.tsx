@@ -10,9 +10,9 @@ import type { Attachment, FileHit, SkillInfo } from "../../lib/protocol";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import type { DeskView, Rule, Ticket, Trigger } from "./desk-model";
-import { BRIEF_EVENT, latestInitiative, noteFeedback, runDeskFeed } from "./desk-feed";
+import { BRIEF_EVENT, briefEditions, latestInitiative, noteFeedback, runDeskFeed, type BriefEdition } from "./desk-feed";
 import { TaskRead } from "./TaskPage";
-import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, runningCount, slotDue, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
+import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, parseBriefPrefs, serializeStoredBrief, runningCount, slotDue, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
 
 type Tab = "now" | "tasks" | "memory";
 
@@ -193,29 +193,36 @@ function Now(props: {
   onDraft: (text: string) => void;
 }) {
   const copy = useCopy();
-  const [shown, setShown] = useState<{ slot: BriefSlot; brief: MorningBrief | null }>(() => readShown(readPrefs()));
+  const [editions, setEditions] = useState<BriefEdition[]>([]);
   const [prefs, setPrefs] = useState<BriefPrefs>(() => readPrefs());
   const [waiting, setWaiting] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const busy = useRef(false);
-  const card = shown.brief;
-  const nextSlot: BriefSlot = slotDue(prefs, "evening") ? "evening" : "morning";
-  const heading = card?.welcome ? copy.work.briefWelcome : (card ? shown.slot : nextSlot) === "evening" ? copy.work.briefEvening : copy.work.briefMorning;
-  const clock = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   const today = new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", weekday: "long" });
+  const dueSlot: BriefSlot | null = slotDue(prefs, "evening") ? "evening" : slotDue(prefs, "morning") ? "morning" : null;
+  const dueMissing = !!dueSlot && !editions.some((row) => row.slot === dueSlot && row.day === briefDay());
+  const heading = dueSlot === "evening" ? copy.work.briefEvening : copy.work.briefMorning;
   useEffect(() => {
-    const reload = () => setShown(readShown(prefs));
+    let alive = true;
+    const reload = () => {
+      void briefEditions().then((rows) => {
+        if (alive) setEditions(rows);
+      });
+    };
+    reload();
     window.addEventListener(BRIEF_EVENT, reload);
-    return () => window.removeEventListener(BRIEF_EVENT, reload);
-  }, [prefs]);
+    return () => {
+      alive = false;
+      window.removeEventListener(BRIEF_EVENT, reload);
+    };
+  }, []);
   async function generate() {
-    if (card || busy.current) return;
+    if (!dueMissing || busy.current) return;
     busy.current = true;
     setWaiting(true);
     try {
-      const slot: BriefSlot = slotDue(prefs, "evening") ? "evening" : "morning";
-      await runDeskFeed(briefPhrases(copy.work), slot);
-      setShown(readShown(prefs));
+      await runDeskFeed(briefPhrases(copy.work), dueSlot || "morning");
+      setEditions(await briefEditions());
     } finally {
       busy.current = false;
       setWaiting(false);
@@ -229,17 +236,19 @@ function Now(props: {
       /* 偏好写不进去时，这次打开里仍然用。 */
     }
   }
-  function choose(id: string, value: string) {
-    setShown((prev) => {
-      if (!prev.brief) return prev;
-      const next = { ...prev.brief, picked: { ...prev.brief.picked, [id]: value } };
-      try {
-        localStorage.setItem(briefStorageKey(prev.slot), serializeStoredBrief(briefDay(), next));
-      } catch {
-        /* 点选写不进去时，这一屏上仍然留着。 */
+  function choose(edition: BriefEdition, id: string, value: string) {
+    setEditions((prev) => prev.map((row) => {
+      if (row.id !== edition.id) return row;
+      const next = { ...row.brief, picked: { ...row.brief.picked, [id]: value } };
+      if (row.day === briefDay()) {
+        try {
+          localStorage.setItem(briefStorageKey(row.slot), serializeStoredBrief(row.day, next));
+        } catch {
+          /* 点选写不进去时，这一屏上仍然留着。 */
+        }
       }
-      return { slot: prev.slot, brief: next };
-    });
+      return { ...row, brief: next };
+    }));
   }
   if (prefsOpen) {
     return (
@@ -250,16 +259,16 @@ function Now(props: {
       />
     );
   }
-  function useCard(card: BriefCard, which: "primary" | "secondary") {
+  function useCard(edition: BriefEdition, card: BriefCard, which: "primary" | "secondary") {
     const text = briefPrompt(card, which);
-    choose(card.id, which);
+    choose(edition, card.id, which);
     if (text.trim()) {
       props.onDraft(text.trim());
       void noteFeedback("used");
     }
   }
   return (
-    <div className="relative min-w-0 px-3 pb-8 pt-3">
+    <div className="relative min-w-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent)_9%,transparent),transparent_240px)] px-3 pb-8 pt-3">
       <button
         type="button"
         className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-card text-muted shadow-[var(--shadow-card)] hover:text-foreground"
@@ -268,19 +277,42 @@ function Now(props: {
       >
         <SlidersHorizontal className="size-4" />
       </button>
-      <p className="text-center text-[12px] tabular-nums text-muted">{clock}</p>
-      <p className="mt-0.5 text-center text-[12px] text-muted">{today}</p>
-      <p className="mt-0.5 text-center text-[15px] font-medium">{heading}</p>
-      {!card && !waiting ? (
+      <p className="text-center text-[12px] text-muted">{today}</p>
+      {editions.length === 0 && !waiting ? (
         <div className="mt-8 flex flex-col items-center gap-3">
-          <button type="button" className="h-10 rounded-full bg-foreground px-5 text-[13px] font-medium text-background" onClick={() => { void generate(); }}>
-            {heading}
-          </button>
-          <p className="max-w-64 text-center text-[12px] leading-5 text-muted">{copy.work.briefReady}</p>
+          {dueMissing ? (
+            <button type="button" className="h-10 rounded-full bg-foreground px-5 text-[13px] font-medium text-background" onClick={() => { void generate(); }}>
+              {heading}
+            </button>
+          ) : null}
+          <p className="max-w-64 text-center text-[12px] leading-5 text-muted">{dueMissing ? copy.work.briefReady : copy.work.briefStays}</p>
         </div>
       ) : null}
       {waiting ? <p className="py-10 text-center text-[14px] text-accent">{copy.work.briefRunning}</p> : null}
-      {card ? <BriefStack brief={card} onUse={useCard} filledLabel={copy.work.briefFilled} /> : null}
+      {editions.length > 0 ? (
+        <div className="mt-4 space-y-8">
+          {editions.map((edition) => {
+            const caption = editionCaption(edition, copy.work.briefMorning, copy.work.briefEvening, copy.work.briefYesterday);
+            return (
+              <section key={edition.id} data-testid="brief-edition">
+                <div className="text-center">
+                  {caption.clock ? <p className="text-[12px] tabular-nums text-muted">{caption.clock}</p> : null}
+                  <p className="mt-0.5 text-[15px] font-medium">{caption.title}</p>
+                  {caption.when ? <p className="mt-0.5 text-[12px] text-muted">{caption.when}</p> : null}
+                </div>
+                <BriefStack brief={edition.brief} onUse={(card, which) => useCard(edition, card, which)} filledLabel={copy.work.briefFilled} />
+              </section>
+            );
+          })}
+        </div>
+      ) : null}
+      {dueMissing && editions.length > 0 && !waiting ? (
+        <div className="mt-6 flex justify-center">
+          <button type="button" className="h-9 rounded-full bg-card px-4 text-[13px] font-medium shadow-[var(--shadow-card)]" onClick={() => { void generate(); }}>
+            {heading}
+          </button>
+        </div>
+      ) : null}
       {props.incoming.length > 0 ? (
         <ul className="mt-4 rounded-[24px] bg-card px-4 py-2 shadow-[var(--shadow-card)]">
           {props.incoming.slice(0, 3).map((row) => (
@@ -294,18 +326,23 @@ function Now(props: {
           ))}
         </ul>
       ) : null}
-      <p className="mt-3 text-center text-[12px] leading-5 text-muted">{card?.welcome ? copy.work.briefWelcomeFoot : copy.work.briefFoot}</p>
+      <p className="mt-3 text-center text-[12px] leading-5 text-muted">{editions[0]?.brief.welcome ? copy.work.briefWelcomeFoot : copy.work.briefFoot}</p>
     </div>
   );
 }
 
-function readShown(prefs: BriefPrefs): { slot: BriefSlot; brief: MorningBrief | null } {
-  const day = briefDay();
-  if (slotDue(prefs, "evening")) {
-    const evening = parseStoredBrief(localStorage.getItem(briefStorageKey("evening")), day);
-    if (evening) return { slot: "evening", brief: evening };
-  }
-  return { slot: "morning", brief: parseStoredBrief(localStorage.getItem(briefStorageKey("morning")), day) };
+function editionCaption(edition: BriefEdition, morning: string, evening: string, yesterday: string): { clock: string; title: string; when: string } {
+  const title = edition.slot === "evening" ? evening : morning;
+  const parsed = Date.parse(edition.at);
+  const clock = Number.isFinite(parsed) ? new Date(parsed).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+  const today = briefDay();
+  if (edition.day === today) return { clock, title, when: "" };
+  const prior = new Date();
+  prior.setDate(prior.getDate() - 1);
+  if (edition.day === briefDay(prior)) return { clock, title, when: yesterday };
+  const day = new Date(`${edition.day}T00:00:00`);
+  const when = Number.isNaN(day.getTime()) ? edition.day : day.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return { clock, title, when };
 }
 
 function readPrefs(): BriefPrefs {
@@ -328,8 +365,8 @@ export function BriefStack(props: {
         const layout = card.layout || (card.choices.length >= 2 ? "compare" : card.items.length > 0 ? "checks" : "plain");
         return (
           <article key={card.id} className="min-w-0 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
-            <p className="text-[12px] text-muted">{card.kicker}</p>
-            <h2 className="mt-2 text-[20px] font-semibold leading-7 tracking-[-0.03em]">{card.title}</h2>
+            {card.kicker ? <p className="text-[12px] font-medium text-accent">{card.kicker}</p> : null}
+            <h2 className="mt-1.5 text-[22px] font-semibold leading-8 tracking-[-0.03em]">{card.title}</h2>
             {card.lede ? <p className="mt-2 text-[13px] leading-6 text-muted">{card.lede}</p> : null}
             {layout === "checks" && card.items.length > 0 ? (
               <>
@@ -380,9 +417,12 @@ export function BriefStack(props: {
                 {card.mark ? <p className="mt-4 text-[12px] text-muted">{card.mark}</p> : null}
                 <div className="mt-3 space-y-2">
                   {card.items.map((item, index) => (
-                    <div key={`${item.title}-${index}`} className={cn("border-l-2 py-1 pl-3", item.tone === "stalled" ? "border-warning" : item.tone === "moving" ? "border-accent" : "border-border")}>
-                      <p className="text-[13px] font-medium">{item.title}</p>
-                      {item.detail ? <p className="mt-0.5 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
+                    <div key={`${item.title}-${index}`} className="flex items-start gap-3 rounded-2xl bg-lift/40 px-3 py-2.5">
+                      <span className="mt-0.5 w-6 shrink-0 text-[12px] font-medium tabular-nums text-muted">{String(index + 1).padStart(2, "0")}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium">{item.title}</p>
+                        {item.detail ? <p className="mt-0.5 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
+                      </div>
                     </div>
                   ))}
                 </div>

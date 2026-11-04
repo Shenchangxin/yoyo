@@ -136,6 +136,9 @@ describe("work pane grouping", () => {
     const kept = serializeStoredBrief("2026-11-02", brief);
     assert.equal(parseStoredBrief(kept, "2026-11-02")?.cards[0]?.title, situation?.title);
     assert.equal(parseStoredBrief(kept, "2026-11-03"), null);
+    const older = JSON.parse(kept) as { v: number; brief: unknown };
+    older.v = 1;
+    assert.equal(parseStoredBrief(JSON.stringify(older), "2026-11-02")?.cards[0]?.title, situation?.title);
     assert.equal(parseStoredBrief(JSON.stringify({ day: "2026-11-02", brief: { title: "old", items: [] } }), "2026-11-02"), null);
   });
 

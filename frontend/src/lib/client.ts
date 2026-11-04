@@ -2210,6 +2210,46 @@ export async function deskPush(note: DeskNote): Promise<boolean> {
   return asBool(pick(r, "ok", "Ok"));
 }
 
+/** BriefRecord 是已经固定的一封简报。brief 是卡片 JSON。 */
+export type BriefRecord = {
+  id: string;
+  slot: string;
+  day: string;
+  text: string;
+  chip: string;
+  brief: string;
+  sessionId?: string;
+  at?: string;
+};
+
+/** briefList 列出已经固定的简报。旧宿主没有这个方法时为空，不把它当成失败。 */
+export async function briefList(): Promise<BriefRecord[]> {
+  const s = await wailsService();
+  try {
+    const raw = s?.BriefList ? await s.BriefList() : s ? [] : await http<any>("/api/briefs");
+    return asArray(raw).map(briefRecordOf).filter((row): row is BriefRecord => !!row);
+  } catch {
+    return [];
+  }
+}
+
+function briefRecordOf(raw: any): BriefRecord | null {
+  const slot = str(pick(raw, "slot", "Slot"));
+  const day = str(pick(raw, "day", "Day"));
+  const brief = str(pick(raw, "brief", "Brief"));
+  if (!slot || !day || !brief) return null;
+  return {
+    id: str(pick(raw, "id", "ID")) || `brief:${slot}:${day}`,
+    slot,
+    day,
+    text: str(pick(raw, "text", "Text")),
+    chip: str(pick(raw, "chip", "Chip")),
+    brief,
+    sessionId: str(pick(raw, "sessionId", "SessionID")),
+    at: str(pick(raw, "at", "At")),
+  };
+}
+
 /** poiRefresh 用记忆和桌面表层名字刷新兴趣库。 */
 export async function poiRefresh(): Promise<PoiSnapshot> {
   const s = await wailsService();
