@@ -51,14 +51,9 @@ export function nowTickets(tickets: Ticket[]): Ticket[] {
   return tickets.filter((ticket) => ticket.stage !== "ended" && (ticket.person || ticket.stage === "working"));
 }
 
-/** todayBadge 只计还等着人的消息。正在做的工单留在任务上，不算今天的新进展。 */
-export function todayBadge(tickets: Ticket[], incoming: Trigger[], due: Trigger[]): number {
-  const waiting = tickets.filter((ticket) => {
-    if (ticket.stage === "ended" || !ticket.person) return false;
-    const key = stageKey(ticket);
-    return key === "answer" || key === "blocked" || key === "failed" || key === "delivery" || key === "reviewWait";
-  }).length;
-  return waiting + incoming.length + due.length;
+/** todayBadge 只计还没看的来信和到期。工单留在任务上，等人或被打断都不算今天的新简报。 */
+export function todayBadge(_tickets: Ticket[], incoming: Trigger[], due: Trigger[]): number {
+  return incoming.length + due.length;
 }
 
 const spoken = new Set(["desk", "github", "feishu"]);
@@ -112,6 +107,11 @@ export function manuscriptNames(text: string): string[] {
     if (names.length >= 4) break;
   }
   return names;
+}
+
+/** runningCount 是正在做的工单。等人、空闲和已结束不进任务标题上的数字。 */
+export function runningCount(tickets: Ticket[]): number {
+  return tickets.filter((ticket) => ticket.stage === "working").length;
 }
 
 /** taskGroups 把还开着的和最近结束的分开。结束的只留八张。 */

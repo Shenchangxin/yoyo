@@ -53,14 +53,18 @@ test("review sheet stays closed on a narrow viewport until opened", async ({ pag
   await expect(page.getByRole("tablist", { name: "Review" })).toBeVisible();
 });
 
-test("slash plan toggles the plan chip", async ({ page }) => {
+test("slash plan is not a mode", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  const box = page.getByRole("textbox", { name: "Message" });
-  await expect(box).toBeEnabled({ timeout: 15_000 });
-  await box.fill("/plan");
-  await box.press("Enter");
-  await expect(page.getByRole("button", { name: "Mode" })).toContainText("Plan");
+  await expect(page.getByRole("heading", { name: "What are we doing today?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mode" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-chip")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Where it runs" })).toHaveCount(0);
+  const box = page.getByTestId("composer-input");
+  await expect(box).toBeVisible();
+  await box.click();
+  await page.keyboard.type("/pl");
+  await expect(page.getByRole("option", { name: "/plan" })).toHaveCount(0);
 });
 
 test("control shortcuts section is reachable", async ({ page }) => {
@@ -856,9 +860,8 @@ test("session permission is a select beside the send button", async ({ page }) =
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws", auth_mode: "default" }],
   });
   await page.goto("/");
-  const mode = page.getByRole("button", { name: "Mode" });
-  await expect(mode).toContainText("Agent");
-  await expect(mode).not.toContainText("Full access");
+  await expect(page.getByRole("button", { name: "Mode" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-chip")).toHaveCount(0);
   const permission = page.getByRole("combobox", { name: "Authorization" });
   await expect(permission).toContainText("Default");
   const box = await permission.boundingBox();
@@ -882,19 +885,66 @@ test("plus menu keeps input sources and tucks session actions under More", async
   await expect(page.getByRole("menuitem", { name: "In 1 hour" })).toBeVisible();
 });
 
-test("composer mode menu switches agent and plan", async ({ page }) => {
+test("composer has no agent or plan mode", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
   });
   await page.goto("/");
-  const mode = page.getByRole("button", { name: "Mode" });
-  await expect(mode).toContainText("Agent");
-  await mode.click();
-  await page.getByRole("menuitem", { name: /Plan/ }).click();
-  await expect(mode).toContainText("Plan");
+  await expect(page.getByRole("button", { name: "Mode" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Agent", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("profile-chip")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Where it runs" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Edit the origin folder" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: /Plan/ })).toHaveCount(0);
 });
 
-test("session workspace is on the composer", async ({ page }) => {
+test("a visible desk note leaves the empty welcome", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      {
+        type: "system",
+        source: "runtime",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:00Z",
+        payload: { text: "hidden prompt", kind: "prompt", id: "prompt:1" },
+      },
+      {
+        type: "assistant",
+        source: "desk",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: { text: "Morning note", id: "brief:morning:2026-01-01", kind: "brief", chip: "Morning", slot: "morning", day: "2026-01-01" },
+      },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "What are we doing today?" })).toHaveCount(0);
+  await expect(page.getByTestId("presence-perch")).toHaveCount(0);
+  await expect(page.getByText("Morning note")).toBeVisible();
+  await expect(page.getByText("hidden prompt")).toHaveCount(0);
+});
+
+test("a hidden system event keeps the main loop welcome", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      {
+        type: "system",
+        source: "runtime",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:00Z",
+        payload: { text: "hidden prompt", kind: "prompt", id: "prompt:1" },
+      },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "What are we doing today?" })).toBeVisible();
+  await expect(page.getByTestId("presence-perch")).toBeVisible();
+  await expect(page.getByText("hidden prompt")).toHaveCount(0);
+});
+
+test("main loop does not ask for a workspace", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [
       { id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" },
@@ -902,13 +952,10 @@ test("session workspace is on the composer", async ({ page }) => {
     ],
   });
   await page.goto("/");
-  const picker = page.getByTestId("composer-column").getByRole("button", { name: "Workspace" });
-  await expect(picker).toBeVisible();
-  await expect(picker).toContainText("ws");
-  await expect(page.getByTitle("C:/tmp/ws")).toHaveCount(1);
-  await picker.click();
-  await page.getByRole("menuitem", { name: /other/ }).click();
-  await expect(picker).toContainText("other");
+  await expect(page.getByRole("heading", { name: "What are we doing today?" })).toBeVisible();
+  await expect(page.getByTestId("workspace-chip")).toHaveCount(0);
+  await expect(page.getByTestId("composer-column").getByRole("button", { name: "Workspace" })).toHaveCount(0);
+  await expect(page.locator("[data-hero='true']")).toHaveCount(0);
 });
 
 test("live session hides workspace switcher in the composer", async ({ page }) => {

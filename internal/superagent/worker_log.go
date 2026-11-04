@@ -6,6 +6,7 @@ package superagent
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/dsh"
 )
@@ -105,12 +106,111 @@ func decodeEventData(typ string, raw json.RawMessage) (any, bool) {
 	}
 }
 
+type reportArgs struct {
+	State    string `json:"state"`
+	Summary  string `json:"summary"`
+	Question string `json:"question"`
+}
+
+// rejectedAsk 取出日志里最后一次被拒绝的「做完同时提问」。没有这种调用时 ok 为假。
+func rejectedAsk(body []byte) (summary, question string, ok bool) {
+	var stored []storedEvent
+	if json.Unmarshal(body, &stored) != nil {
+		return "", "", false
+	}
+	calls := map[string]reportArgs{}
+	var last reportArgs
+	found := false
+	for _, ev := range stored {
+		switch ev.Type {
+		case dsh.EventAssistant:
+			var msg dsh.Assistant
+			if json.Unmarshal(ev.Data, &msg) != nil {
+				continue
+			}
+			for _, call := range msg.ToolCalls {
+				rememberReport(calls, call)
+			}
+		case dsh.EventToolCall:
+			var call dsh.ToolCall
+			if json.Unmarshal(ev.Data, &call) != nil {
+				continue
+			}
+			rememberReport(calls, call)
+		case dsh.EventToolResult:
+			var msg dsh.ToolResultEvent
+			if json.Unmarshal(ev.Data, &msg) != nil || msg.Name != "orchestrator_report" || msg.Text != "questionWithResult" {
+				continue
+			}
+			args, known := calls[msg.ID]
+			if !known {
+				continue
+			}
+			last = args
+			found = true
+		}
+	}
+	if !found {
+		return "", "", false
+	}
+	return strings.TrimSpace(last.Summary), strings.TrimSpace(last.Question), true
+}
+
+// rememberReport 记下一次带问题的 orchestrator_report。没有问题的调用不记。
+func rememberReport(calls map[string]reportArgs, call dsh.ToolCall) {
+	if call.Name != "orchestrator_report" || call.ID == "" {
+		return
+	}
+	var args reportArgs
+	if json.Unmarshal([]byte(call.Arguments), &args) != nil || strings.TrimSpace(args.Question) == "" {
+		return
+	}
+	calls[call.ID] = args
+}
+
+// askedQuestion 在 ticketID 已经记过 question 时为真。
+func askedQuestion(e *Engine, ticketID, question string) bool {
+	if e == nil {
+		return false
+	}
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return true
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return false
+	}
+	for _, asg := range t.Assignments {
+		for _, rep := range asg.Reports {
+			if strings.TrimSpace(rep.Question) == question {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// applyRejectedAsk 把日志里被拒绝的提问按 blocked 补进 ticketID。已经有同一问题时不再补。
+func applyRejectedAsk(e *Engine, ticketID string, body []byte) bool {
+	summary, question, ok := rejectedAsk(body)
+	if !ok || askedQuestion(e, ticketID, question) {
+		return false
+	}
+	return e.Report(ticketID, Report{State: "blocked", Summary: summary, Question: question}) == nil
+}
+
 // TranscriptLine 是工单会话里给人看的一行。Role 取 user、assistant、tool_call、tool_result。
+// Source 是这条用户消息从哪来的。Error 为真表示工具结果失败。
 type TranscriptLine struct {
-	ID   string `json:"id"`
-	Role string `json:"role"`
-	Text string `json:"text"`
-	Name string `json:"name,omitempty"`
+	ID     string `json:"id"`
+	Role   string `json:"role"`
+	Text   string `json:"text"`
+	Name   string `json:"name,omitempty"`
+	Source string `json:"source,omitempty"`
+	Error  bool   `json:"error,omitempty"`
 }
 
 // TranscriptLines 把工人日志收成会话行。派工包装、重试和后台完成不进对话。
@@ -123,14 +223,17 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 			if !ok {
 				continue
 			}
-			if msg.Source == "assignment" || msg.Source == "retry" || msg.Source == "job" {
+			if msg.Source == "retry" || msg.Source == "job" {
 				continue
 			}
 			text := strings.TrimSpace(msg.Text)
+			if msg.Source == "assignment" {
+				text = assignmentBody(text)
+			}
 			if text == "" {
 				continue
 			}
-			out = append(out, TranscriptLine{ID: lineID(i, "user"), Role: "user", Text: clipRunes(text, 4000)})
+			out = append(out, TranscriptLine{ID: lineID(i, "user"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)})
 		case dsh.EventAssistant:
 			msg, ok := ev.Data.(dsh.Assistant)
 			if !ok {
@@ -144,8 +247,12 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 				if name == "" {
 					continue
 				}
+				id := strings.TrimSpace(call.ID)
+				if id == "" {
+					id = lineID(i, "call") + "-" + itoa(j)
+				}
 				out = append(out, TranscriptLine{
-					ID: lineID(i, "call") + "-" + itoa(j), Role: "tool_call", Name: name, Text: clipRunes(call.Arguments, 500),
+					ID: id, Role: "tool_call", Name: name, Text: clipRunes(call.Arguments, 500),
 				})
 			}
 		case dsh.EventToolResult:
@@ -157,7 +264,11 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 			if text == "" {
 				continue
 			}
-			out = append(out, TranscriptLine{ID: lineID(i, "result"), Role: "tool_result", Name: msg.Name, Text: clipRunes(text, 1200)})
+			id := strings.TrimSpace(msg.ID)
+			if id == "" {
+				id = lineID(i, "result")
+			}
+			out = append(out, TranscriptLine{ID: id, Role: "tool_result", Name: msg.Name, Text: clipRunes(text, 1200), Error: msg.IsError})
 		}
 	}
 	return out
@@ -165,6 +276,33 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 
 func lineID(i int, role string) string {
 	return role + "-" + itoa(i+1)
+}
+
+// assignmentBody 去掉派工包装，只留人写过的那些话。
+func assignmentBody(text string) string {
+	var keep []string
+	for _, line := range strings.Split(text, "\n") {
+		s := strings.TrimSpace(line)
+		if s == "" || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || s == "完成后调用 orchestrator_report。" {
+			continue
+		}
+		keep = append(keep, s)
+	}
+	return strings.TrimSpace(strings.Join(keep, "\n"))
+}
+
+// watchLog 在这一轮还没结束时把会话写下来，任务页才能跟着长。stop 关上后退出。
+func (e *Executor) watchLog(agent *dsh.Agent, ticketID string, stop <-chan struct{}) {
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-tick.C:
+			e.storeAgent(agent, ticketID)
+		}
+	}
 }
 
 // restoreAgent 把 ticketID 已存的日志灌进 agent，并把回合号接到上次的后面。

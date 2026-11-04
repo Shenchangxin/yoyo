@@ -1,14 +1,12 @@
 /**
  * 拥有：输入框、提及、斜杠和附件，以及创作桌把视频送进剪辑。
- * 不拥有：消息怎么发出去，那由调用方传入 onSend。选文件、导入成片和读取配置档会调用 api。
+ * 不拥有：消息怎么发出去，那由调用方传入 onSend。选文件和导入成片会调用 api。
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { BookOpen, Check, ChevronDown, Folder, GitBranch, Plus, X } from "lucide-react";
-import { ProfileChip } from "./ProfileChip";
+import { BookOpen, Plus, X } from "lucide-react";
 import { Tooltip } from "../components/ui/tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import { cn } from "../lib/utils";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
@@ -19,9 +17,8 @@ import { desktopWindow } from "../lib/chrome";
 import type { Copy } from "../lib/copy";
 import { readBusyEnter, useUI, writeBusyEnter, type BusyEnter } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
-import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Profile, SkillInfo } from "../lib/protocol";
+import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
 import type { TurnStatus } from "../lib/turn-status";
-import { profileOf } from "../lib/profile-label";
 import * as api from "../lib/client";
 import type { TaskPlan } from "../lib/plan";
 import { lookupCatalogModel, composerModelIds, composerModelGroups, decodeChatModel, encodeChatModel, resolveComposerModelValue, resolveContextWindow, UNKNOWN_MODEL_WINDOW } from "../lib/models-dev";
@@ -82,7 +79,7 @@ function submitMode(preferred: BusyEnter, accelerated: boolean): BusyEnter {
 
 /**
  * Composer 在短剧桌且正在跑时不能发送，除非是改道。没有正文、芯片和附件时，只有 allowEmptySend 才能发。需要工作区但还没有路径时整框禁用。
- * props 读取 draftKey、compact、onBrowseWorkspace、workspace、disabled、hero 等，调用 onSearchFiles，调用 onSlash，调用 onIngestVideo，调用 onPickFiles，调用 onScreenshot，调用 onClipboard，调用 onSend，调用 onWorkspace，调用 onBrowseWorkspace，调用 onAuthMode，调用 onIsolate，调用 onApplyWorktree，调用 onModel，调用 onStop。
+ * props 读取 draftKey、compact、onBrowseWorkspace、workspace、disabled、hero 等，调用 onSearchFiles，调用 onSlash，调用 onIngestVideo，调用 onPickFiles，调用 onScreenshot，调用 onClipboard，调用 onSend，调用 onWorkspace，调用 onBrowseWorkspace，调用 onAuthMode，调用 onModel，调用 onStop。
  */
 export function Composer(props: {
   draftKey: string;
@@ -101,7 +98,6 @@ export function Composer(props: {
   onQueueReorder?: (id: string, delta: number) => void;
   onQueueSteer?: (id: string) => void;
   onSteerQueue?: () => void;
-  onApplyWorktree?: () => void;
   skills?: SkillInfo[];
   files?: FileHit[];
   sessions?: MentionSessionRef[];
@@ -117,16 +113,16 @@ export function Composer(props: {
   compact?: boolean;
   /** plain 去掉模式、档案和模型。学习导师只用正文和发送。 */
   plain?: boolean;
+  /** plus 在精简输入条上保留加号：上传附件、选择技能、剪贴板和截图。 */
+  plus?: boolean;
   flush?: boolean;
   hero?: boolean;
   authMode?: AuthMode | string;
   onAuthMode?: (mode: AuthMode) => void;
   workspace?: string;
   workspaces?: string[];
-  isolate?: boolean;
   onWorkspace?: (path: string) => void;
   onBrowseWorkspace?: () => void;
-  onIsolate?: (isolate: boolean) => void;
   taskPlan?: TaskPlan | null;
   ask?: Approval | null;
   approvals?: Approval[];
@@ -135,8 +131,6 @@ export function Composer(props: {
   autoSkills?: { name: string; loaded?: boolean }[];
   onBuildPlan?: () => void;
   sessionId?: string;
-  profileId?: string;
-  onProfile?: (id: string) => void;
   onSavePage?: () => void;
   onFollow?: (in_: string) => void;
   onCall?: () => void;
@@ -153,9 +147,7 @@ export function Composer(props: {
   perchSize?: number;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
-  const plan = useUI((s) => s.plan);
   const setDraft = useUI((s) => s.setDraft);
-  const setPlan = useUI((s) => s.setPlan);
   /** 把正文写回这条草稿。v 传给 setDraft。 */
   const onChange = (v: string) => setDraft(props.draftKey, v);
   const [hint, setHint] = useState<"plus" | null>(null);
@@ -170,7 +162,6 @@ export function Composer(props: {
   const [drilled, setDrilled] = useState(false);
   const [caret, setCaret] = useState(0);
   const [before, setBefore] = useState("");
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [drop, setDrop] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -193,10 +184,12 @@ export function Composer(props: {
   const createMode = useCreateMode((s) => s.mode);
   const talkDesk = createDesk;
   const copilotDesk = studioDesk;
-  const needWorkspace = !copilotDesk && !talkDesk && !!props.onBrowseWorkspace && !pathReady(props.workspace);
+  // 主循环不选目录。工具根用默认工作区，输入框不因为路径还没到就锁住，也不在空会话上露出工作区芯片。
+  const mainLoop = surface === "agent";
+  const needWorkspace = !mainLoop && !copilotDesk && !talkDesk && !!props.onBrowseWorkspace && !pathReady(props.workspace);
   const disabled = props.disabled || needWorkspace;
   const workspaceTrigger = needWorkspace && !props.disabled;
-  const showWorkspaceChip = !!props.hero && !copilotDesk && !talkDesk && !dramaDesk && !!props.onBrowseWorkspace;
+  const showWorkspaceChip = !mainLoop && !!props.hero && !copilotDesk && !talkDesk && !dramaDesk && !!props.onBrowseWorkspace;
   const uniqueWorkspaces = [...new Set([
     ...(pathReady(props.workspace) ? [props.workspace as string] : []),
     ...(props.workspaces || []).filter((p) => pathReady(p)),
@@ -219,7 +212,6 @@ export function Composer(props: {
   const canSend = !disabled && !attaching && (hasPayload || !!props.allowEmptySend) && !(dramaDesk && props.running);
   const orbStops = !!props.running && !hasPayload;
   const canSteerQueue = !disabled && !hasPayload && props.running && (props.queueItems?.length || 0) > 0;
-  const modeMenu = !props.plain && !copilotDesk && !talkDesk && !dramaDesk && (!videoing || !!props.onIsolate);
   const currentModel = (props.model || "").trim();
   const catalog = useModelCatalog((s) => s.catalog);
   const groups = composerModelGroups(props.chatProviders, currentModel, props.connectionId);
@@ -232,8 +224,9 @@ export function Composer(props: {
   const fallbackWindow = resolveContextWindow(catalog, catalogProvider, currentModel) || UNKNOWN_MODEL_WINDOW;
   const modelLabel = meta?.model.name || currentModel;
   const caretText = before;
-  const slashPrefix = props.plain ? null : slashQuery(caretText);
-  const mentionHit = props.plain ? null : mentionTokenAt(caretText, caretText.length);
+  const dockPlus = !!props.plus;
+  const slashPrefix = props.plain && !dockPlus ? null : slashQuery(caretText);
+  const mentionHit = props.plain && !dockPlus ? null : mentionTokenAt(caretText, caretText.length);
   const mentionParsed = mentionQueryOf(mentionHit?.token || "");
   const mentionOpen = !!mentionHit && !(mentionParsed.kind === "harness" && isCompleteMention(mentionHit.token));
   const overlayKind: "plus" | "slash" | "mention" | null = slashPrefix
@@ -243,7 +236,8 @@ export function Composer(props: {
       : hint === "plus"
         ? "plus"
         : null;
-  const slashItems = slashPrefix ? filterSlash(slashPrefix, slashCatalog(copy)) : [];
+  const commands = slashCatalog(copy).filter((s) => !(mainLoop && s.cmd === "/new"));
+  const slashItems = slashPrefix ? filterSlash(slashPrefix, commands) : [];
   const mentionItems = useMemo(() => {
     const token = mentionHit?.token || "";
     const parsed = mentionQueryOf(token);
@@ -303,22 +297,30 @@ export function Composer(props: {
     return [...fileRows, ...sessionRows];
   }, [mentionHit?.token, drilled, props.files, props.sessions, props.sessionId, props.workspace, copy, props.skills]);
 
+  const skillRows: OverlayItem[] = mentionableSkills(props.skills || [], "").map((s) => ({
+    token: `@skill:${s.name}`,
+    label: s.displayName || s.name,
+    alias: s.displayName && s.displayName.toLowerCase() !== s.name.toLowerCase() ? s.name : undefined,
+    hint: s.description || "",
+    kind: "skill" as const,
+    section: copy.composer.sectionSkills,
+  }));
   const plusItems: OverlayItem[] = createDesk
     ? [{ token: "__import_clip__", label: copy.composer.importClip, hint: copy.composer.importClipHint, kind: "attach", section: copy.composer.sectionAdd }]
     : [
     { token: "__file__", label: copy.composer.attach, hint: "", kind: "attach", section: copy.composer.sectionAdd },
     ...(props.onClipboard ? [{ token: "__clipboard__", label: copy.composer.clipboard, hint: "", kind: "clipboard" as const, section: copy.composer.sectionAdd }] : []),
     ...(props.onScreenshot && desktopWindow() ? [{ token: "__screenshot__", label: copy.composer.screenshot, hint: "", kind: "screenshot" as const, section: copy.composer.sectionAdd }] : []),
-    ...slashCatalog(copy).map((s) => ({
+    ...(props.plain && dockPlus ? skillRows : commands.map((s) => ({
       token: s.cmd,
       label: s.cmd,
       hint: s.hint,
       kind: "command" as const,
       section: copy.composer.commands,
-    })),
+    }))),
   ];
   const slashPopup: OverlayItem[] = [
-    ...slashItems.map((s) => ({ token: s.cmd, label: s.cmd, hint: s.hint, kind: "command" as const, section: copy.composer.commands })),
+    ...(props.plain && dockPlus ? [] : slashItems.map((s) => ({ token: s.cmd, label: s.cmd, hint: s.hint, kind: "command" as const, section: copy.composer.commands }))),
     ...mentionableSkills(props.skills || [], (slashPrefix || "").slice(1)).map((s) => ({
       token: `@skill:${s.name}`,
       label: s.displayName || s.name,
@@ -392,11 +394,6 @@ export function Composer(props: {
     document.addEventListener("pointerdown", onDoc, true);
     return () => document.removeEventListener("pointerdown", onDoc, true);
   }, [hint]);
-
-  useEffect(() => {
-    if (!props.onProfile) return;
-    void api.profilesList().then((rows) => setProfiles((rows || []).map(profileOf))).catch(() => setProfiles([]));
-  }, [props.onProfile]);
 
   useEffect(() => {
     const ed = editorRef.current;
@@ -735,6 +732,7 @@ export function Composer(props: {
   const pad = props.flush ? "" : props.compact || copilotDesk ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : THREAD_COL;
   const primaryStops = orbStops;
+  const dockedSend = !!props.plain && !!props.compact;
   const shownLabel = primaryStops ? copy.composer.stop : props.running && hasPayload ? (busyEnter === "steer" ? copy.composer.sendSteer : copy.composer.sendQueue) : (props.sendLabel || copy.composer.send);
   const placeholderText = canSteerQueue ? copy.composer.steerQueue : placeholder;
   const pendingTool = toolApproval && toolApproval.action !== "ask_user" ? toolApproval : null;
@@ -746,10 +744,13 @@ export function Composer(props: {
         className="sc-root"
         data-hero={props.hero ? "true" : "false"}
         data-compact={props.compact ? "true" : "false"}
+        data-plain={props.plain ? "true" : "false"}
+        data-plus={props.plus ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
         data-perch={perch ? "true" : "false"}
         data-create-desk={createDesk ? "true" : "false"}
         data-drama-desk={dramaDesk ? "true" : "false"}
+        data-queue={dockedSend && props.running && hasPayload ? "true" : "false"}
       >
         {takeover && props.onResolveAsk ? (
           <>
@@ -945,20 +946,12 @@ export function Composer(props: {
                       {videoMode === "creative" ? <StudioDeskChip disabled={disabled} /> : null}
                     </>
                   ) : null}
-                  {!props.plain && !copilotDesk && !talkDesk && !dramaDesk && props.onProfile && profiles.length ? (
-                    <ProfileChip
-                      profiles={profiles}
-                      profileId={props.profileId}
-                      disabled={disabled}
-                      onProfile={props.onProfile}
-                    />
-                  ) : null}
-                  {props.compact || (createHome && createMode !== "clip") ? null : (
-                  <Tooltip content={createDesk ? copy.composer.importClip : copy.composer.addFilesOrCommands}>
+                  {(props.compact && !props.plus) || (createHome && createMode !== "clip") ? null : (
+                  <Tooltip content={createDesk ? copy.composer.importClip : props.plain && props.plus ? `${copy.composer.attach} · ${copy.composer.sectionSkills}` : copy.composer.addFilesOrCommands}>
                     <button
                       type="button"
                       className="sc-add"
-                      aria-label={createDesk ? copy.composer.importClip : copy.composer.addFilesOrCommands}
+                      aria-label={createDesk ? copy.composer.importClip : props.plain && props.plus ? `${copy.composer.attach} · ${copy.composer.sectionSkills}` : copy.composer.addFilesOrCommands}
                       aria-haspopup={createDesk ? undefined : "listbox"}
                       aria-expanded={createDesk ? undefined : hint === "plus"}
                       data-testid={studioDesk ? "studio-copilot-attach" : "composer-add"}
@@ -988,66 +981,6 @@ export function Composer(props: {
                         testId={studioDesk ? "studio-copilot-auth" : "composer-auth"}
                         onChange={(mode) => props.onAuthMode?.(mode)}
                       />
-                    ) : null}
-                    {modeMenu ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="sc-chip-btn"
-                            data-on={plan && !videoing ? "true" : "false"}
-                            aria-label={videoing ? copy.composer.location : copy.composer.mode}
-                            disabled={disabled}
-                          >
-                            <span className="truncate">{videoing ? copy.composer.location : plan ? copy.composer.plan : copy.composer.agent}</span>
-                            {props.isolate ? <GitBranch className="size-3 shrink-0 opacity-70" aria-hidden /> : null}
-                            <ChevronDown className="size-3 shrink-0 opacity-70" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" side="top" className="w-60">
-                          {!videoing ? (
-                            <>
-                              <DropdownMenuLabel>{copy.composer.mode}</DropdownMenuLabel>
-                              <DropdownMenuItem className="items-start" onSelect={() => setPlan(false)}>
-                                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                  <span>{copy.composer.agent}</span>
-                                  <span className="text-[11px] text-muted">{copy.composer.agentHint}</span>
-                                </span>
-                                {!plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="items-start" onSelect={() => setPlan(true)}>
-                                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                  <span>{copy.composer.plan}</span>
-                                  <span className="text-[11px] text-muted">{copy.composer.planHint}</span>
-                                </span>
-                                {plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
-                              </DropdownMenuItem>
-                            </>
-                          ) : null}
-                          {!studioDesk && props.onIsolate ? (
-                            <>
-                              {!videoing ? <DropdownMenuSeparator /> : null}
-                              <DropdownMenuLabel>{copy.composer.location}</DropdownMenuLabel>
-                              <DropdownMenuItem disabled={disabled || props.running} onSelect={() => props.onIsolate?.(false)}>
-                                <Folder className="size-3.5" />
-                                <span className="min-w-0 flex-1 truncate">{copy.composer.isolateOff}</span>
-                                {!props.isolate ? <Check className="size-3.5 shrink-0" /> : null}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem disabled={disabled || props.running} onSelect={() => props.onIsolate?.(true)}>
-                                <GitBranch className="size-3.5" />
-                                <span className="min-w-0 flex-1 truncate">{copy.composer.isolateOn}</span>
-                                {props.isolate ? <Check className="size-3.5 shrink-0" /> : null}
-                              </DropdownMenuItem>
-                              {props.isolate && props.onApplyWorktree ? (
-                                <DropdownMenuItem disabled={disabled || props.running} onSelect={() => props.onApplyWorktree?.()}>
-                                  <GitBranch className="size-3.5" />
-                                  <span className="min-w-0 flex-1 truncate">{copy.composer.applyWorktree}</span>
-                                </DropdownMenuItem>
-                              ) : null}
-                            </>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     ) : null}
                   </div>
                 </div>
@@ -1102,18 +1035,25 @@ export function Composer(props: {
                         aria-label={shownLabel}
                         onClick={() => props.onStop()}
                       >
-                        <SendGlyph busy morphDuration={240} squash={0.12} tilt={8} />
+                        {dockedSend ? <StopGlyph /> : <SendGlyph busy morphDuration={240} squash={0.12} tilt={8} />}
                       </button>
                     </Tooltip>
                   ) : (
                     <Tooltip content={shownLabel}>
-                      <SendSling
-                        testId="composer-send"
-                        disabled={!canSend}
-                        ariaLabel={shownLabel}
-                        title={props.running && hasPayload ? (busyEnter === "steer" ? copy.composer.steerHint : copy.composer.queueHint) : undefined}
-                        onSend={() => send()}
-                      />
+                      <span className="sc-send" data-ready={canSend ? "true" : "false"}>
+                        <SendSling
+                          testId="composer-send"
+                          size={dockedSend ? 27 : 22}
+                          disabled={!canSend}
+                          ariaLabel={shownLabel}
+                          title={props.running && hasPayload ? (busyEnter === "steer" ? copy.composer.steerHint : copy.composer.queueHint) : undefined}
+                          padColor={canSend ? "var(--foreground)" : "color-mix(in srgb, var(--foreground) 12%, var(--input-bar, var(--background)))"}
+                          iconColor={canSend ? "var(--background)" : "color-mix(in srgb, var(--foreground) 42%, transparent)"}
+                          wellColor={canSend ? "var(--foreground)" : "color-mix(in srgb, var(--foreground) 12%, var(--input-bar, var(--background)))"}
+                          accentColor="var(--foreground)"
+                          onSend={() => send()}
+                        />
+                      </span>
                     </Tooltip>
                   )}
                 </div>

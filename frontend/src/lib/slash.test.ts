@@ -33,7 +33,8 @@ test("slashQuery does not treat glued paths or email as a slash trigger", () => 
 test("filterSlash keeps the command catalog when the prefix is /", () => {
   const items = slashCatalog(en);
   assert.ok(filterSlash("/", items).length >= 8);
-  assert.ok(filterSlash("/pl", items).some((s) => s.cmd === "/plan"));
+  assert.equal(filterSlash("/pl", items).some((s) => s.cmd === "/plan"), false);
+  assert.ok(filterSlash("/st", items).some((s) => s.cmd === "/stop"));
 });
 
 /** 列表刷新后按 token 保持高亮。找不到或列表为空时回到第一项。 */

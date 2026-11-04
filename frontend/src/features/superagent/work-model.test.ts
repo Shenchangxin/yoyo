@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Decision, Ticket, Trigger } from "./desk-model.ts";
-import { applySenses, auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, shouldPush, slotDue, visibleSlot, stageKey, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
+import { applySenses, auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, runningCount, shouldPush, slotDue, visibleSlot, stageKey, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
 
 function ticket(partial: Partial<Ticket> & Pick<Ticket, "id" | "stage">): Ticket {
   return {
@@ -30,8 +30,9 @@ describe("work pane grouping", () => {
     assert.equal(stageKey(rows[1]), "queued");
     assert.equal(stageKey(rows[2]), "ended");
     assert.equal(stageKey(rows[3]), "idle");
-    assert.equal(todayBadge(rows, [], []), 1);
-    assert.equal(todayBadge([rows[1]], [{ id: "in", source: "desk", sender: "ada", text: "fix", addressed: true, queued: true }], []), 1);
+    assert.equal(runningCount(rows), 1);
+    assert.equal(todayBadge(rows, [], []), 0);
+    assert.equal(todayBadge(rows, [{ id: "in", source: "desk", sender: "ada", text: "fix", addressed: true, queued: true }], []), 1);
   });
 
   /** 搜索只留标题对上的。定时这一档不列工单。文件名从正文里收，不收路径。 */

@@ -170,6 +170,22 @@ func TestTicketDirsStayApart(t *testing.T) {
 	}
 }
 
+// TestReadyQuestionStaysOpen 锁住做完同时提问时，工单不结束，问题按等人记下。
+func TestReadyQuestionStaysOpen(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	id := accept(t, eng, "m1")
+	res, err := (&Executor{Engine: eng}).reportTool(id).Run(context.Background(), dsh.ToolCall{
+		Arguments: `{"state":"ready","summary":"写好了","question":"是原作吗？"}`,
+	})
+	if err != nil || res.IsError || res.Text != "recorded blocked" {
+		t.Fatalf("%+v %v", res, err)
+	}
+	ticket, _ := eng.Ticket(id)
+	if ticket.Ended != nil || ticket.Attention != "是原作吗？" || TicketStage(&ticket).Action != "answer" {
+		t.Fatalf("ended %+v stage %+v attention %q", ticket.Ended, TicketStage(&ticket), ticket.Attention)
+	}
+}
+
 // scriptModel 把测试函数当成一次模型完成。
 type scriptModel struct {
 	fn func(context.Context, dsh.Request) (dsh.Assistant, error)

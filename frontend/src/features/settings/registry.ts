@@ -78,7 +78,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "messaging-policy", tab: "messaging", titleKey: "messagingPolicy", keywords: "im bot telegram qq discord slack wechat lark dingtalk line whatsapp wake mention 消息 机器人 唤醒" },
   { id: "messaging-accounts", tab: "messaging", titleKey: "messagingAccounts", keywords: "im account bot token webhook 账号 令牌 回调" },
   { id: "personal-memory", tab: "personal", titleKey: "personalMemory", keywords: "memory profile staging" },
-  { id: "personal-profiles", tab: "personal", titleKey: "personalProfiles", keywords: "profile identity role tools mcp" },
   { id: "personal-jobs", tab: "personal", titleKey: "personalJobs", keywords: "automation schedule cron job" },
   { id: "personal-work", tab: "personal", titleKey: "personalWork", keywords: "task document proposal lease" },
   { id: "personal-ideas", tab: "personal", titleKey: "personalIdeas", keywords: "ideas mail form meet goal" },

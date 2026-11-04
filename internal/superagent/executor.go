@@ -233,6 +233,9 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	e.restoreAgent(agent, ticketID)
 	e.ackSnapshot(ticketID, ticket)
 	agent.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir), Source: "assignment"})
+	stopSave := make(chan struct{})
+	defer close(stopSave)
+	go e.watchLog(agent, ticketID, stopSave)
 	var deadline time.Time
 	tries := 0
 	for {
@@ -394,13 +397,21 @@ func (e *Executor) afterTurn(agent *dsh.Agent, ticketID string, tries *int) (sto
 	return true, false
 }
 
-// terminalReport 在这份报告该回到主会话时为真。普通进度和等人的等待不回去。
+// askReport 把「做完了，但还有问题」收成等人。ready 会结束工单，问题就不能写回主会话。
+func askReport(state, question string) string {
+	if state == "ready" && strings.TrimSpace(question) != "" {
+		return "blocked"
+	}
+	return state
+}
+
+// terminalReport 在这份报告该回到主会话时为真。进行中、普通进度和等人的等待不回去。
 func terminalReport(state, question string) bool {
 	if strings.TrimSpace(question) != "" {
 		return true
 	}
 	switch state {
-	case "ready", "blocked", "failed", "dropped":
+	case "ready", "blocked", "failed", "dropped", "stopped":
 		return true
 	default:
 		return false
@@ -466,6 +477,9 @@ func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
 	e.live[ticketID] = true
 	e.mu.Unlock()
 	e.Slots.Running(ticketID)
+	stopSave := make(chan struct{})
+	defer close(stopSave)
+	go e.watchLog(agent, ticketID, stopSave)
 	defer e.Slots.Free(ticketID)
 	defer func() {
 		e.mu.Lock()
@@ -481,7 +495,7 @@ func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
 func (e *Executor) reportTool(ticketID string) dsh.Tool {
 	return dsh.Tool{
 		Name:        "orchestrator_report",
-		Description: "向工单报告状态。state 取 progress、waiting、ready、blocked、failed 或 dropped。summary 是给人看的一句。question 是要人回答的问题。",
+		Description: "向工单报告状态。state 取 progress、waiting、ready、blocked、failed 或 dropped。summary 是给人看的一句。question 是要人回答的问题。有 question 时用 blocked，不要用 ready：ready 会结束工单，问题就到不了主会话。",
 		Mode:        func(dsh.ToolCall) string { return dsh.ModeExclusive },
 		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
 			var body struct {
@@ -492,6 +506,7 @@ func (e *Executor) reportTool(ticketID string) dsh.Tool {
 			if err := json.Unmarshal([]byte(call.Arguments), &body); err != nil {
 				return dsh.Result{Text: err.Error(), IsError: true}, nil
 			}
+			body.State = askReport(body.State, body.Question)
 			err := e.Engine.Report(ticketID, Report{State: body.State, Summary: body.Summary, Question: body.Question})
 			if err != nil {
 				return dsh.Result{Text: err.Error(), IsError: true}, nil

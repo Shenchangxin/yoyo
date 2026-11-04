@@ -42,7 +42,6 @@ type UIState = {
   inspTab: InspTab;
   reviewFile: string;
   diffMode: DiffMode;
-  plan: boolean;
   drafts: Record<string, string>;
   sidebarCollapsed: boolean;
   sidebarHover: boolean;
@@ -104,7 +103,6 @@ type UIState = {
   setInspTab: (t: InspTab) => void;
   setReviewFile: (path: string) => void;
   setDiffMode: (m: DiffMode) => void;
-  setPlan: (v: boolean | ((p: boolean) => boolean)) => void;
   setDraft: (key: string, value: string) => void;
   patchDrafts: (patch: Record<string, string>) => void;
   setSidebarCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
@@ -314,7 +312,6 @@ export const useUI = create<UIState>((set, get) => ({
   inspTab: "files",
   reviewFile: "",
   diffMode: readDiffMode(),
-  plan: false,
   drafts: readDrafts(),
   sidebarCollapsed: readCollapsed(),
   sidebarHover: false,
@@ -541,8 +538,6 @@ export const useUI = create<UIState>((set, get) => ({
     }
     set({ diffMode });
   },
-  /** 打开或关掉计划面板。v 用 typeof 看类型，作为分支结果，被调用，并传入 s.plan。 */
-  setPlan: (v) => set((s) => ({ plan: typeof v === "function" ? v(s.plan) : v })),
   /** 按键写入草稿并持久化。key 用作下标。value 写入字段 [key]。 */
   setDraft: (key, value) =>
     set((s) => {

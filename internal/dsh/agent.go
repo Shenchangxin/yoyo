@@ -449,6 +449,8 @@ func (a *Agent) runStep(ctx context.Context, turn, step int, claimed []UserMessa
 	a.mu.Unlock()
 	a.session.Append(EventStepStart, turn, step, nil)
 	defer a.session.Append(EventStepEnd, turn, step, nil)
+	// 工具结果还没落盘就中断时，先补齐再追加这一步的消息，避免下一次模型请求被拒绝。
+	a.session.RepairOpenTools()
 
 	startsSeries := !a.headerLog
 	nodes := a.session.SystemTexts()

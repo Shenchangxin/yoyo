@@ -112,10 +112,22 @@ func (e *Engine) Confirm(triggerID, kind, reason string) (Decision, error) {
 	return e.decideOuter(triggerID, kind, reason, nil, true)
 }
 
+// DecideBrief 和 Decide 一样。brief 非空时，工人看到的是这份说明，不是人的原话。
+// 原话仍留在触发上，任务列表的短标题不变。rules 是推断接受时还启用的规则编号。
+func (e *Engine) DecideBrief(triggerID, kind, reason, brief string, rules []string) (Decision, error) {
+	e.mu.Lock()
+	d, launch, err := e.decide(triggerID, kind, reason, rules, false, strings.TrimSpace(brief))
+	e.mu.Unlock()
+	if err == nil && launch != "" && e.OnLaunch != nil {
+		e.OnLaunch(launch)
+	}
+	return d, err
+}
+
 // decideOuter 在锁外启动派工。confirmed 为真表示人已经点了接受。
 func (e *Engine) decideOuter(triggerID, kind, reason string, rules []string, confirmed bool) (Decision, error) {
 	e.mu.Lock()
-	d, launch, err := e.decide(triggerID, kind, reason, rules, confirmed)
+	d, launch, err := e.decide(triggerID, kind, reason, rules, confirmed, "")
 	e.mu.Unlock()
 	if err == nil && launch != "" && e.OnLaunch != nil {
 		e.OnLaunch(launch)
@@ -233,6 +245,38 @@ func (e *Engine) SetDirectory(ticketID, dir, name string) {
 	if t.Name == "" && name != "" {
 		t.Name = name
 	}
+}
+
+// DeskAudiences 返回这份报告该写进的桌面会话。先用后来跟上的会话。没有时才用开工那一条。
+func (e *Engine) DeskAudiences(ticketID string) []string {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	for _, f := range t.Follows {
+		if sid, ok := strings.CutPrefix(f.Thread, "desk:"); ok {
+			add(sid)
+		}
+	}
+	if len(out) == 0 {
+		add(e.deskSessionLocked(t))
+	}
+	return out
 }
 
 // DeskSession 返回开工这张工单的桌面会话。来源不是桌面时返回空串。
@@ -492,6 +536,32 @@ func (e *Engine) FollowThreads() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ReopenForInput 在工人已经不在、但还有没送到的话时，结束当前派工并再排一轮。已经在排队时只再通知启动。
+func (e *Engine) ReopenForInput(ticketID string) bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	t := e.tickets[ticketID]
+	launch := false
+	if t != nil && t.Ended == nil && len(t.Undelivered) > 0 {
+		asg := latestAssignment(t)
+		if asg == nil || asg.State == "ended" || asg.State == "running" {
+			if asg != nil && asg.State == "running" {
+				asg.State = "ended"
+			}
+			e.addAssignment(t)
+		}
+		launch = true
+	}
+	fn := e.OnLaunch
+	e.mu.Unlock()
+	if launch && fn != nil {
+		fn(ticketID)
+	}
+	return launch
 }
 
 // RecoverHost 结束仍标成 running 的派工，并按工单编号从旧到新返回要重开的工单。
@@ -806,7 +876,8 @@ func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) 
 }
 
 // decide 评估 triggerID。kind 与 reason 写进决定。第二个返回值是要启动的工单，没有则为空。
-func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirmed bool) (Decision, string, error) {
+// brief 非空时替换工人看到的第一条正文。人的原话仍留在触发上。
+func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirmed bool, brief string) (Decision, string, error) {
 	tr := e.triggers[triggerID]
 	if tr == nil || tr.Filtered != "" {
 		return Decision{}, "", errCode("unknownTrigger")
@@ -846,7 +917,7 @@ func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirme
 		e.n++
 		ticketID := fmt.Sprintf("tkt-%d", e.n)
 		d := e.putDecision(tr, "accept", reason, ticketID)
-		e.openTicket(tr, strength, ticketID, reason, matched)
+		e.openTicket(tr, strength, ticketID, reason, matched, brief)
 		e.unqueue(tr)
 		if e.policy.Paused {
 			return d, "", nil
@@ -880,7 +951,8 @@ func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirme
 }
 
 // openTicket 用 tr 和 strength 开出 ticketID。name 收成分支短名，空的就先不记。
-func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules []string) {
+// brief 非空时，工人读到的是这份说明，不是 tr 的原话。
+func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules []string, brief string) {
 	t := &Ticket{ID: ticketID, Origin: tr.ID, Name: branchName(name), Mandate: Mandate{Version: e.policy.Version, Strength: strength, Sender: tr.Sender}}
 	switch {
 	case strength == "explicit":
@@ -900,6 +972,9 @@ func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules 
 		e.subscribe(ticketID, key)
 	}
 	e.addInput(t, tr)
+	if b := strings.TrimSpace(brief); b != "" && len(t.Inputs) > 0 {
+		t.Inputs[len(t.Inputs)-1].Text = clipRunes(b, 4000)
+	}
 	e.n++
 	e.outbox = append(e.outbox, Outbound{
 		ID: fmt.Sprintf("out-%d", e.n), TicketID: ticketID, Kind: "acknowledgement", Text: "已接单", Status: "pending",

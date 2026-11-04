@@ -67,7 +67,32 @@ func (a *App) orchestrator() *superagent.Runtime {
 	a.orch = rt
 	a.deskMu.Unlock()
 	rt.Start()
+	go func() {
+		time.Sleep(time.Second)
+		a.relayWaiting()
+	}()
 	return rt
+}
+
+// relayWaiting 把还等人的工单补进当前主会话。已经写过的同一段正文不会再写。
+func (a *App) relayWaiting() {
+	if a == nil {
+		return
+	}
+	a.deskMu.Lock()
+	rt := a.orch
+	a.deskMu.Unlock()
+	if rt == nil {
+		return
+	}
+	view := rt.View()
+	for _, row := range view.Tickets {
+		state, summary, question, ok := handoffAsk(row)
+		if !ok {
+			continue
+		}
+		a.relayReport(row.ID, state, summary, question)
+	}
 }
 
 // stopOrchestrator 停掉两秒轮次。还没打开过时什么都不做。

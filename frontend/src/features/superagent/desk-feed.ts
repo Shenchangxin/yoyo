@@ -5,7 +5,7 @@
 
 import { composeToday, deskFeedback, deskPush, memoryList, orchestratorView, poiAck, poiRefresh, type Initiative } from "../../lib/client";
 import { copy } from "../../lib/i18n";
-import { applySenses, auditBrief, briefDay, briefStorageKey, mergeSenseCards, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, shouldPush, visibleSlot, BRIEF_PREFS_KEY, type BriefCard, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
+import { applySenses, auditBrief, briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, shouldPush, visibleSlot, BRIEF_PREFS_KEY, type BriefCard, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
 const WELCOME_KEY = "yoyo.brief-welcomed";
@@ -98,10 +98,15 @@ function poiText(added: string[], dropped: string[]): string {
 async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { points: { name: string; kind: string }[]; census?: DeskCensus; initiative?: Initiative }): Promise<void> {
   const day = briefDay();
   const key = briefStorageKey(slot);
+  const stored = readStored(key, day);
   const welcome = !welcomed();
+  if (stored) {
+    await pushBrief(slot, day, stored, scan.initiative, welcome);
+    return;
+  }
   const view = await orchestratorView().catch(() => null);
   const memory = await memoryList().catch(() => []) as { kind: string; text: string; staging?: boolean }[];
-  let fresh = auditBrief({
+  let brief = auditBrief({
     tickets: view?.tickets,
     queued: view?.queued,
     decisions: view?.decisions,
@@ -114,25 +119,20 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { point
     now: new Date(),
   }, phrases);
   const signals = (scan.initiative?.signals || []) as SenseSignal[];
-  if (signals.length) fresh = applySenses(fresh, signals, senseLabels());
-  const stored = readStored(key, day);
-  let brief = stored ?? fresh;
-  if (stored && signals.length) brief = { ...mergeSenseCards(stored, fresh), woven: stored.woven };
-  if (!stored || signals.length) writeBrief(key, day, brief, welcome);
+  if (signals.length) brief = applySenses(brief, signals, senseLabels());
   const woven = await wovenBrief();
   if (woven === "pending") return;
-  if (woven) {
-    brief = { ...woven, picked: brief.picked, woven: true };
-    writeBrief(key, day, brief, welcome);
-  }
-  if (!sessionId || !shouldPush(scan.initiative, welcome)) return;
+  if (woven) brief = { ...woven, picked: brief.picked, woven: true };
+  writeBrief(key, day, brief, welcome);
+  await pushSpeaks(scan.initiative);
+  await pushBrief(slot, day, brief, scan.initiative, welcome);
+}
+
+/** pushBrief 把已经生成的这一档放进主会话。同一天同一档只留一次，不再改简报正文。 */
+async function pushBrief(slot: BriefSlot, day: string, brief: MorningBrief, initiative: Initiative | undefined, welcome: boolean): Promise<void> {
+  if (!sessionId || !shouldPush(initiative, welcome)) return;
   const work = copy.work;
   const chipDay = new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const speaks = signals.filter((signal) => signal.speak && signal.code !== "welcome" && signal.code !== "reach");
-  if (speaks.length) {
-    await pushSpeaks(scan.initiative, JSON.stringify(brief));
-    return;
-  }
   const chip = (slot === "evening" ? work.briefChipEvening : work.briefChipMorning).replace("{day}", chipDay);
   const text = slot === "evening" ? work.briefPushEvening : work.briefPushMorning;
   await deskPush({
@@ -152,6 +152,7 @@ async function pushSpeaks(initiative: Initiative | undefined, briefJSON?: string
   const day = briefDay();
   const speaks = (initiative.signals || []).filter((signal) => {
     if (!signal.speak || signal.code === "welcome") return false;
+    if (signal.class === "ticket" || signal.code === "ticket") return false;
     if (only) return signal.code === only;
     return signal.code !== "reach";
   });

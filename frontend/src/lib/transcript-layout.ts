@@ -190,6 +190,56 @@ export function isDeskNotice(it: Item): boolean {
   return it.source === "desk" || it.payload?.kind === "brief" || it.payload?.kind === "speak" || it.payload?.kind === "poi";
 }
 
+/** isHandoff 是工人写回主会话、等人接手的报告。它自己成一行。 */
+export function isHandoff(it: Item): boolean {
+  if (it.type !== "assistant") return false;
+  return it.payload?.kind === "handoff";
+}
+
+/** foldAsks 同一张工单只留最后一次等人接手。更早的那次改成普通状态，旧问题不再挂着「需要你」。 */
+export function foldAsks(items: Item[]): Item[] {
+  const latest = new Map<string, string>();
+  for (const it of items) {
+    if (!isHandoff(it)) continue;
+    const ticket = String(it.payload?.ticket || "");
+    if (ticket) latest.set(ticket, it.key);
+  }
+  if (!latest.size) return items;
+  let changed = false;
+  const out = items.map((it) => {
+    if (!isHandoff(it)) return it;
+    const ticket = String(it.payload?.ticket || "");
+    if (!ticket || latest.get(ticket) === it.key) return it;
+    changed = true;
+    return { ...it, payload: { ...it.payload, kind: "status" } };
+  });
+  return changed ? out : items;
+}
+
+/** isTaskStatus 是工人写回主会话的进行中或做完。它自己成一行，不装成等人接手。 */
+export function isTaskStatus(it: Item): boolean {
+  if (it.type !== "assistant") return false;
+  return it.payload?.kind === "status";
+}
+
+/** hasConversation 主循环里已经有用户能看见的记录。看不见的系统噪声不算，免得启动后把问候拆掉。 */
+export function hasConversation(items: Item[]): boolean {
+  for (const it of items) {
+    if (it.type === "user") {
+      if (it.source === "steer" || it.source === "job" || it.name === "job") continue;
+      if (it.text.trim()) return true;
+      continue;
+    }
+    if (it.type === "assistant" || it.type === "assistant_stream" || it.type === "reasoning") {
+      const chip = it.payload?.chip;
+      if (it.text.trim() || it.delta || (typeof chip === "string" && chip.trim())) return true;
+      continue;
+    }
+    if (it.type === "tool_call" || it.type === "tool_result" || it.type === "subagent" || it.type === "error") return true;
+  }
+  return false;
+}
+
 /** isAgentItem 属于智能体回合的条目。提及注入不算。it 读取 type，传给 isMentionInject，传给 isToolish，传给 isSteer。 */
 export function isAgentItem(it: Item): boolean {
   if (isMentionInject(it)) return false;
@@ -611,6 +661,7 @@ export function hydrateLayout(rows: LayoutRow[], items: Item[]): LayoutRow[] {
 
 /** layoutRows 一个操作者回合一行。用户之间的助手正文和工具留在同一行。items 用来遍历。opts 读取 showThinking、policy、running，为空时不读。 */
 export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
+  items = foldAsks(items);
   const rows: LayoutRow[] = [];
   let agent: Item[] = [];
   let turnKey = "";
@@ -647,7 +698,7 @@ export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
       agent.push(it);
       continue;
     }
-    if (isDeskNotice(it)) {
+    if (isDeskNotice(it) || isHandoff(it) || isTaskStatus(it)) {
       flushAgent(false, false);
       rows.push({
         key: `turn:${it.key}`,

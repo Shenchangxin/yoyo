@@ -1,6 +1,6 @@
 /**
- * 拥有：个人档案、记忆、任务、工作和目标的设置。
- * 不拥有：偶像服务。增删改会调用 api 改状态。
+ * 拥有：记忆、任务、工作和目标的设置。
+ * 不拥有：偶像服务，也不再编辑身份档案。增删改会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
 import { useCopy } from "../../lib/i18n";
@@ -9,15 +9,11 @@ import { str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { SettingEmpty, SettingRow, SettingSection, SettingsGroupLabel } from "./SettingChrome";
-import { profileLabel, profileOf } from "../../lib/profile-label";
-
-/** PersonalSettings 把档案、记忆、任务和工作各段拼在一起。 */
+/** PersonalSettings 把记忆、任务和工作各段拼在一起。主会话不再切换身份。 */
 export function PersonalSettings() {
   const copy = useCopy();
   return (
     <>
-      <SettingsGroupLabel>{copy.settings.sections.personalIdentity}</SettingsGroupLabel>
-      <ProfileSection />
       <MemorySection />
       <SettingsGroupLabel>{copy.settings.sections.personalActivity}</SettingsGroupLabel>
       <JobSection />
@@ -27,81 +23,6 @@ export function PersonalSettings() {
       <GoalSection />
       <WatchSection />
     </>
-  );
-}
-
-/** 编辑工作档案。 */
-function ProfileSection() {
-  const copy = useCopy();
-  const [rows, setRows] = useState<any[]>([]);
-  const [active, setActive] = useState<any | null>(null);
-  /** 重新拉取档案。 */
-  const refresh = () => {
-    void api.profilesList().then((list) => {
-      setRows((Array.isArray(list) ? list : []).map(profileOf));
-    }).catch(() => {});
-  };
-  useEffect(() => { refresh(); }, []);
-  return (
-    <SettingSection id="personal-profiles" title={copy.settings.sections.personalProfiles} footnote={copy.profile.hint}>
-      {rows.length === 0 ? (
-        <SettingEmpty>{copy.profile.hint}</SettingEmpty>
-      ) : (
-        rows.map((p: any) => (
-          <SettingRow key={str(p.id)} list title={profileLabel(str(p.id), str(p.name), copy)} description={str(p.id)}>
-            <Button size="sm" variant="ghost" onClick={() => setActive(p)}>{copy.profile.edit}</Button>
-          </SettingRow>
-        ))
-      )}
-      {active ? (
-        <SettingRow stack title={profileLabel(str(active.id), str(active.name), copy)}>
-          <Input
-            className="h-8 w-full text-[13px]"
-            aria-label={copy.profile.name}
-            value={str(active.name)}
-            onChange={(e) => setActive({ ...active, name: e.target.value })}
-          />
-          <Input
-            className="h-8 w-full text-[13px]"
-            aria-label={copy.profile.instructions}
-            value={str(active.instructions)}
-            onChange={(e) => setActive({ ...active, instructions: e.target.value })}
-          />
-          <Input
-            className="h-8 w-full text-[13px]"
-            aria-label={copy.profile.deny}
-            value={(active.deny_tools || []).join(", ")}
-            onChange={(e) => setActive({ ...active, deny_tools: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })}
-          />
-          <Input
-            className="h-8 w-full text-[13px]"
-            aria-label={copy.profile.mcp}
-            value={(active.mcp_allow || []).join(", ")}
-            onChange={(e) => setActive({ ...active, mcp_allow: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })}
-          />
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" checked={!!active.research} onChange={(e) => setActive({ ...active, research: e.target.checked })} />
-            {copy.profile.research}
-          </label>
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" checked={!!active.memory} onChange={(e) => setActive({ ...active, memory: e.target.checked })} />
-            {copy.profile.memory}
-          </label>
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              onClick={async () => {
-                await api.profilesSave(active);
-                setActive(null);
-                refresh();
-              }}
-            >
-              {copy.profile.save}
-            </Button>
-          </div>
-        </SettingRow>
-      ) : null}
-    </SettingSection>
   );
 }
 

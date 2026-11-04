@@ -30,8 +30,8 @@ func (a *App) MainSession() (SessionMeta, error) {
 	return meta, nil
 }
 
-// AdoptMainSession 把一条代理会话记成主会话。人新建对话时才调用。
-// 从历史里点开旧对话不会调用它。
+// AdoptMainSession 把一条已有的代理会话记成主会话。
+// 桌面主循环不再为此新建一条。主会话像一条持续对话，上下文用检查点收缩，不靠换 id。
 func (a *App) AdoptMainSession(id string) error {
 	id = strings.TrimSpace(id)
 	if a == nil || a.Home == nil || id == "" {

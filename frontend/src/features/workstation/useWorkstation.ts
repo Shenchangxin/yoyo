@@ -1584,7 +1584,7 @@ export function useWorkstation() {
       } else {
         sendAtts.push(...rawAtts);
       }
-      const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: sendAtts, requestId });
+      const res = await api.send(t.id, text, { attachments: sendAtts, requestId });
       if (wasRunning || res.queued) {
         const q = await api.queueList(t.id).catch(() => []);
         setQueueItems(q);
@@ -1658,12 +1658,8 @@ export function useWorkstation() {
    */
   async function onSlash(cmd: string, rest: string) {
     const raw = cmd.replace(/^\//, "");
-    if (raw === "plan") {
-      useUI.getState().setPlan((v) => !v);
-      return;
-    }
     if (raw === "new") {
-      await onNew();
+      await openMainOrNew();
       return;
     }
     if (raw === "quit") {
@@ -1909,15 +1905,26 @@ export function useWorkstation() {
     }
   }
 
-  /** 在给出的工作区新建会话，没给就用当前通道的工作区。清空条目和队列后打开它。workspace 为假时改用后备值，传给 api.createSession。 */
+  /** 打开已经记下的主会话。已经在看它就不清记录。 */
+  async function openMainSession() {
+    const created = await api.mainSession();
+    const t = created.channel ? created : { ...created, channel: "agent" as const };
+    if (t.id) mainIdRef.current = t.id;
+    setThreads((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? { ...x, ...t } : x)) : [t, ...prev]));
+    if (activeRef.current?.id === t.id && useUI.getState().surface === "agent") return t;
+    openThread(t);
+    return t;
+  }
+
+  /** 代理通道回到主会话。其他通道才新建。workspace 只给非代理通道。 */
   async function onNewIn(workspace?: string) {
     const ch = channelForSurface(useUI.getState().surface);
+    if (ch === "agent") {
+      await openMainSession();
+      return;
+    }
     const created = await adoptPendingAuthMode(await api.createSession(workspace || channelWorkspace(ch), ch));
     const t = created.channel ? created : { ...created, channel: ch };
-    if (ch === "agent" && t.id) {
-      const adopted = await api.adoptMainSession(t.id).then(() => true).catch(() => false);
-      if (adopted) mainIdRef.current = t.id;
-    }
     setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
     itemsAcc.current = [];
     setItems([]);
@@ -1925,15 +1932,23 @@ export function useWorkstation() {
     openThread(t);
   }
 
-  /** 视频表面只打开创作窗格。其他表面先回到会话模块，再新建一条会话对话。 */
-  async function onNew() {
+  /** 视频表面只打开创作窗格。代理表面回到主会话。其他表面先回到会话，再按该通道新建。 */
+  async function openMainOrNew() {
     const surfaceNow = useUI.getState().surface;
     if (surfaceNow === "video") {
       useUI.getState().openVideoPane("create");
       return;
     }
-    if (surfaceNow !== "agent") useUI.getState().showConversation();
-    await onNewIn();
+    if (surfaceNow === "agent") {
+      await openMainSession();
+      return;
+    }
+    useUI.getState().showConversation();
+    await openMainSession();
+  }
+
+  async function onNew() {
+    await openMainOrNew();
   }
 
   /** 记住这条会话并清掉待定权限。视频会话在 keepPane 时不改窗格。否则按通道打开工作室、短剧、画布或创作。其他通道回到对话。t 读取 id，传给 ui.rememberThread，传给 threadChannel，传给 setActive。opts 读取 keepPane，为空时不读。 */
@@ -2216,10 +2231,6 @@ export function useWorkstation() {
           e.preventDefault();
           setHarnessTab(HARNESS_TABS[idx]);
         }
-      }
-      if (e.key === "Tab" && e.shiftKey && !typing) {
-        e.preventDefault();
-        useUI.getState().setPlan((v) => !v);
       }
       if (e.key === "Escape") {
         if (e.defaultPrevented) return;
@@ -2584,14 +2595,6 @@ export function useWorkstation() {
     },
     onSteerQueue: async () => {
       await onSend({ steerQueue: true });
-    },
-    /** 没有当前会话就返回。成功后把返回的会话并进列表。 */
-    onApplyWorktree: async () => {
-      if (!activeId) return;
-      const t = await api.applySessionWorktree(activeId);
-      setActive(t);
-      setThreads((list) => list.map((x) => (x.id === t.id ? { ...x, ...t } : x)));
-      toast.success(copy.app.worktreeApplied);
     },
     /** 先刷新会话列表。找到这条才打开。id 与 x.id 比较是否相等。 */
     onOpenChild: async (id: string) => {

@@ -20,6 +20,21 @@ export async function mockApi(
   extra?: { sessions?: any[]; studios?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any; overlayAdopt?: boolean },
 ) {
   let sessions = [...(extra?.sessions || [])];
+  let mainId = "";
+  /** 主循环只打开这一条。夹具里已有代理会话就用它，没有才新建。 */
+  const ensureMain = () => {
+    const held = sessions.find((t) => t.id === mainId && (t.channel || "agent") === "agent" && !t.archived);
+    if (held) return held;
+    const agent = sessions.find((t) => (t.channel || "agent") === "agent" && !t.archived && !t.parent_id);
+    if (agent) {
+      mainId = agent.id;
+      return agent;
+    }
+    const t = { id: `s${sessions.length + 1}`, title: "session", workspace, channel: "agent", auth_mode: "full" };
+    sessions = [t, ...sessions];
+    mainId = t.id;
+    return t;
+  };
   let canvases: { id: string; title: string; session_id?: string }[] = [];
   let studios: any[] = [...(extra?.studios || [])];
   let topics: any[] = [
@@ -477,6 +492,14 @@ export async function mockApi(
     if (path.endsWith("/api/config") && method === "POST") {
       cfg = { ...cfg, ...body() };
       return route.fulfill({ json: cfg });
+    }
+    if (path.endsWith("/api/session/main") && method === "POST") {
+      const b = body();
+      if (b.adopt && b.id) {
+        mainId = String(b.id);
+        return route.fulfill({ json: { ok: true } });
+      }
+      return route.fulfill({ json: ensureMain() });
     }
     if (path.endsWith("/api/sessions") && method === "POST") {
       const ch = String(body().channel || "agent") === "video" ? "video" : "agent";
