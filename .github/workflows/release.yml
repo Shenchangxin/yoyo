@@ -122,7 +122,22 @@ jobs:
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files (x86)\NSIS"
+          $known = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "$env:ProgramFiles\NSIS\makensis.exe"
+          )
+          $exe = $known | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $exe) {
+            $exe = Get-ChildItem -Path @(${env:ProgramFiles(x86)}, $env:ProgramFiles) -Filter makensis.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $exe) { throw "makensis.exe was not installed" }
+          $dir = Split-Path $exe
+          Write-Host "makensis at $exe"
+          if (Test-Path C:\nsis) { cmd /c rmdir C:\nsis }
+          cmd /c mklink /J C:\nsis "$dir"
+          # Git Bash drops "Program Files (x86)" from the PATH it hands to wails3.
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\nsis" -Encoding utf8NoBOM
 
       - name: Install Wails CLI
         run: |
@@ -135,16 +150,15 @@ jobs:
 
       - name: Build Windows x64 installer
         if: matrix.goos == 'windows'
+        shell: pwsh
         env:
           GOOS: windows
           GOARCH: amd64
         run: |
-          set -euo pipefail
-          wails3 task windows:package \
-            "VERSION=${VERSION}" \
-            "VERSION_NSIS=${VERSION_NSIS}" \
-            ARCH=amd64 \
-            INSTALL_SCOPE=user
+          $env:PATH = "C:\nsis;" + $env:PATH
+          Get-Command makensis | Format-List
+          wails3 task windows:package "VERSION=$env:VERSION" "VERSION_NSIS=$env:VERSION_NSIS" ARCH=amd64 INSTALL_SCOPE=user
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build macOS app and DMG
         if: matrix.goos == 'darwin'
