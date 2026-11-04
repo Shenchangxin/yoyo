@@ -8,8 +8,20 @@ import "strings"
 // Attach 把 triggerID 挂到 ticketID。note 非空时再记一条备注输入。
 // 授权失效，或这条触发已经被这个工单交还过，会拒绝。已经停下的工单沿用原目录再打开。
 func (e *Engine) Attach(ticketID, triggerID, note string) error {
+	return e.finishAttach(ticketID, triggerID, note, false)
+}
+
+// Assign 把 brief 交给 ticketID 的工人，作为这一轮唯一要读的说明。
+// 人的原话留在触发上，不再写进工人能看到的正文。触发仍算到达，阶段也能看到人已经跟上。
+// brief 为空时和 Attach 一样，原话照常送过去。
+func (e *Engine) Assign(ticketID, triggerID, brief string) error {
+	return e.finishAttach(ticketID, triggerID, brief, true)
+}
+
+// finishAttach 挂接触发。fold 为真且 note 非空时，人的原话不进工人正文，note 是唯一的新说明。
+func (e *Engine) finishAttach(ticketID, triggerID, note string, fold bool) error {
 	e.mu.Lock()
-	launch, wake, err := e.attach(ticketID, triggerID, note)
+	launch, wake, err := e.attach(ticketID, triggerID, note, fold)
 	e.mu.Unlock()
 	if err != nil {
 		return err
@@ -30,7 +42,8 @@ func (e *Engine) Attach(ticketID, triggerID, note string) error {
 
 // attach 在锁内挂接触发。launch 为真表示工单被重新打开，调用方应在解锁后启动它。
 // wake 为真表示工单还开着，调用方要把新输入送给工人。
-func (e *Engine) attach(ticketID, triggerID, note string) (bool, bool, error) {
+// fold 为真时，刚记上的原话会从工人正文里拿掉，只留下 note。
+func (e *Engine) attach(ticketID, triggerID, note string, fold bool) (bool, bool, error) {
 	t := e.tickets[ticketID]
 	if t == nil {
 		return false, false, errCode("unknownTicket")
@@ -45,15 +58,19 @@ func (e *Engine) attach(ticketID, triggerID, note string) (bool, bool, error) {
 	if contains(tr.Handbacks, ticketID) {
 		return false, false, errCode("handedBackHere")
 	}
+	note = strings.TrimSpace(note)
 	e.unqueue(tr)
 	if !reachedTrigger(t, tr.ID) {
 		e.addInput(t, tr)
+		if fold && note != "" {
+			e.hideTriggerText(t, tr.ID)
+		}
 		if !contains(tr.Reached, ticketID) {
 			tr.Reached = append(tr.Reached, ticketID)
 		}
 	}
-	if strings.TrimSpace(note) != "" {
-		e.addNote(t, note, false)
+	if note != "" {
+		e.addNote(t, clipRunes(note, 4000), false)
 	}
 	for _, key := range tr.Threads {
 		e.subscribe(ticketID, key)
@@ -428,6 +445,26 @@ func (e *Engine) MarkOutbound(id, status string) {
 			return
 		}
 		e.outbox[i].Status = status
+		return
+	}
+}
+
+// hideTriggerText 把 t 上这条触发的正文清掉，工人的派工和投递都看不到。
+// 输入还在，人和序号都留着，阶段才知道人已经跟上。
+func (e *Engine) hideTriggerText(t *Ticket, triggerID string) {
+	for i := range t.Inputs {
+		if t.Inputs[i].TriggerID != triggerID {
+			continue
+		}
+		t.Inputs[i].Text = ""
+		id := t.Inputs[i].ID
+		kept := make([]string, 0, len(t.Undelivered))
+		for _, pending := range t.Undelivered {
+			if pending != id {
+				kept = append(kept, pending)
+			}
+		}
+		t.Undelivered = kept
 		return
 	}
 }

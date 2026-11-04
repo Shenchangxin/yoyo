@@ -40,6 +40,8 @@ export function CommandPalette(props: {
   videoProjects?: VideoProject[];
   onClose: () => void;
   onNew: () => void;
+  /** 主循环不另起一条对话。其他表面仍可用这个入口回到那一条。 */
+  showNewChat?: boolean;
   onLab: (lab: Lab) => void;
   onOpenHarness: () => void;
   onSelectThread: (t: Thread) => void;
@@ -69,11 +71,13 @@ export function CommandPalette(props: {
             <Command.List className="overscroll-contain">
               <Command.Empty>{copy.palette.empty}</Command.Empty>
               <Command.Group heading={copy.palette.actions}>
+                {props.showNewChat === false ? null : (
                 <Command.Item value={`${copy.palette.newChat} new chat`} onSelect={() => { props.onNew(); props.onClose(); }}>
                   <MessageSquarePlus className="size-4 text-muted" />
                   {copy.palette.newChat}
                   <Kbd className="ml-auto">{displayShortcut(DEFAULT_KEYMAP.newChat)}</Kbd>
                 </Command.Item>
+                )}
                 <Command.Item value={`${copy.palette.agent} agent`} onSelect={() => { useUI.getState().showConversation(); props.onClose(); }}>
                   <Square className="size-4 text-muted" />
                   {copy.palette.agent}

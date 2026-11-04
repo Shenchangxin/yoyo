@@ -565,12 +565,41 @@ func TestDeskThreadDoesNotStealRelatedWork(t *testing.T) {
 	}
 }
 
-// TestTerminalReportSkipsProgress 锁住普通进度和等人的等待不回到主会话，提问和结束会回去。
+// TestReopenForInputStartsAnotherRound 锁住工人不在、人已经答过时，结束停住的派工并再开一轮。阶段回到正在做。
+func TestReopenForInputStartsAnotherRound(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	var launches int
+	eng.OnLaunch = func(string) { launches++ }
+	id := accept(t, eng, "m1")
+	ticket, _ := eng.Ticket(id)
+	if err := eng.AssignmentStarted(id, ticket.Assignments[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Report(id, Report{State: "blocked", Summary: "missing", Question: "which path"}); err != nil {
+		t.Fatal(err)
+	}
+	eng.Receive(human("m2", "create it"))
+	before := launches
+	if !eng.ReopenForInput(id) {
+		t.Fatal("reopen")
+	}
+	ticket, _ = eng.Ticket(id)
+	if launches != before+1 {
+		t.Fatalf("launches %d", launches)
+	}
+	last := ticket.Assignments[len(ticket.Assignments)-1]
+	stage := TicketStage(&ticket)
+	if last.State != "pending" || stage.Name != "working" {
+		t.Fatalf("stage %+v assignment %s", stage, last.State)
+	}
+}
+
+// TestTerminalReportSkipsProgress 锁住进行中、普通进度和等人的等待不回到主会话，提问和结束会回去。
 func TestTerminalReportSkipsProgress(t *testing.T) {
-	if terminalReport("progress", "") || terminalReport("waiting", "") {
+	if terminalReport("progress", "") || terminalReport("waiting", "") || terminalReport("working", "") {
 		t.Fatal("quiet")
 	}
-	if !terminalReport("ready", "") || !terminalReport("failed", "") || !terminalReport("dropped", "") || !terminalReport("blocked", "") {
+	if !terminalReport("ready", "") || !terminalReport("failed", "") || !terminalReport("dropped", "") || !terminalReport("blocked", "") || !terminalReport("stopped", "") {
 		t.Fatal("terminal")
 	}
 	if !terminalReport("progress", "which city") {

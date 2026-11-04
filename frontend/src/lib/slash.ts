@@ -19,7 +19,6 @@ export function slashCatalog(copy: Copy): SlashCommand[] {
     { cmd: "/fork", hint: copy.slash.fork },
     { cmd: "/archive", hint: copy.slash.archive },
     { cmd: "/delete", hint: copy.slash.delete },
-    { cmd: "/plan", hint: copy.slash.plan },
     { cmd: "/diff", hint: copy.slash.diff },
     { cmd: "/steer", hint: copy.slash.steer },
     { cmd: "/compact", hint: copy.slash.compact },

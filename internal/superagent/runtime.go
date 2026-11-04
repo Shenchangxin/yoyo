@@ -231,6 +231,14 @@ func (rt *Runtime) DeskSession(ticketID string) string {
 	return rt.eng.DeskSession(ticketID)
 }
 
+// DeskAudiences 返回这份报告该写进的桌面会话。后来跟上的会话优先于开工那一条。
+func (rt *Runtime) DeskAudiences(ticketID string) []string {
+	if rt == nil || rt.eng == nil {
+		return nil
+	}
+	return rt.eng.DeskAudiences(ticketID)
+}
+
 // refreshEnvLocked 把来源里不含钥匙的说明写进工人环境。调用时要已持有锁。
 func (rt *Runtime) refreshEnvLocked() {
 	if rt == nil || rt.exec == nil || rt.eng == nil {
@@ -330,9 +338,10 @@ func (rt *Runtime) Start() {
 		for _, id := range eng.RecoverHost() {
 			launch(id)
 		}
-		if effects != nil {
-			effects.Pump(time.Now())
-		}
+	}
+	rt.recoverRejectedAsks()
+	if effects != nil {
+		effects.Pump(time.Now())
 	}
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
@@ -421,6 +430,26 @@ func (rt *Runtime) SetEvalTimeout(d time.Duration) {
 // Decide 评估 triggerID。kind 和 reason 写进决定。成功后立刻泵一次派工并落盘。
 func (rt *Runtime) Decide(triggerID, kind, reason string) error {
 	return rt.decide(triggerID, kind, reason, nil, false)
+}
+
+// DecideBrief 接受 triggerID，并把 brief 写成工人看到的任务说明。人的原话不进工人正文。
+func (rt *Runtime) DecideBrief(triggerID, kind, reason, brief string, rules []string) error {
+	if rt == nil || rt.eng == nil {
+		return errCode("empty")
+	}
+	rt.mu.Lock()
+	_, err := rt.eng.DecideBrief(triggerID, kind, reason, brief, rules)
+	if err != nil {
+		rt.mu.Unlock()
+		return err
+	}
+	rt.saveLocked()
+	effects := rt.effects
+	rt.mu.Unlock()
+	if effects != nil {
+		effects.Pump(time.Now())
+	}
+	return nil
 }
 
 // DecideMatched 接受一条推断。rules 必须是还启用的规则编号。
@@ -525,7 +554,7 @@ func (rt *Runtime) Deliver() int {
 	return n
 }
 
-// Act 执行编排台动作。kind 取 attach、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、requestStatus、markUnrelated、follow 或 timeout。
+// Act 执行编排台动作。kind 取 attach、assign、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、requestStatus、markUnrelated、follow 或 timeout。
 // ticketID、triggerID、text 和 reason 按动作使用。成功后立刻泵一次派工并落盘。
 func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	if rt == nil || rt.eng == nil {
@@ -537,6 +566,8 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	switch kind {
 	case "attach":
 		err = rt.eng.Attach(ticketID, triggerID, text)
+	case "assign":
+		err = rt.eng.Assign(ticketID, triggerID, text)
 	case "reply":
 		_, err = rt.eng.Reply(ticketID, reason, triggerID, text)
 	case "note":

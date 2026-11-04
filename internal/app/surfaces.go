@@ -258,7 +258,7 @@ func (a *App) SetSessionPage(id, pageID string) (SessionMeta, error) {
 	return a.attachAuthMode(m), nil
 }
 
-// sessionProfile 读取会话档案。视频频道、有 ParentID 或 id 含 --task-- 的会话返回 nil。档案 id 为空时用默认档案。
+// sessionProfile 读取会话档案。视频频道、有 ParentID 或 id 含 --task-- 的会话返回 nil。除外部聊天的 im 外，一律用全能助手。
 // sessionID 传给 GetSession。
 func (a *App) sessionProfile(sessionID string) *profile.Profile {
 	if a.Profiles == nil {
@@ -274,8 +274,9 @@ func (a *App) sessionProfile(sessionID string) *profile.Profile {
 	if m.ParentID != "" || strings.Contains(m.ID, "--task--") {
 		return nil
 	}
+	// 主会话只有一份全能身份。研究员、秘书和后来改过的档案不再收窄工具。外部聊天的 im 仍是监禁。
 	id := m.ProfileID
-	if id == "" {
+	if id != "im" {
 		id = profile.DefaultID
 	}
 	p, err := a.Profiles.Get(id)

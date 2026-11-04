@@ -9,11 +9,10 @@ import { Composer } from "../Composer";
 import { Transcript } from "../Transcript";
 import { orchestratorAct, orchestratorTranscript } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
-import type { Item } from "../../lib/protocol";
-import type { Assignment, ReportLine, Ticket } from "./desk-model";
+import type { Attachment, FileHit, SkillInfo } from "../../lib/protocol";
+import type { Ticket } from "./desk-model";
+import { taskSessionItems, type TaskLine } from "./task-session";
 import { stageKey } from "./work-model";
-
-type TaskLine = { id: string; role: string; text: string; name?: string };
 
 /** TaskRead 把工单读在侧栏里。底下是这条会话的输入，不带身份设置。 */
 export function TaskRead(props: {
@@ -21,6 +20,13 @@ export function TaskRead(props: {
   onBack: () => void;
   onLook: () => void;
   onSent?: () => void;
+  skills?: SkillInfo[];
+  files?: FileHit[];
+  workspace?: string;
+  onSearchFiles?: (q: string) => void;
+  onPickFiles?: () => Promise<Attachment[]>;
+  onClipboard?: () => Promise<string>;
+  onScreenshot?: () => Promise<string>;
 }) {
   const copy = useCopy();
   const ticket = props.ticket;
@@ -59,18 +65,26 @@ export function TaskRead(props: {
           <p className="truncate text-[12px] text-muted">{taskStatus(ticket, copy.work)}{ticket.directory ? ` · ${ticket.directory}` : ""}</p>
         </div>
       </div>
-      <Transcript compact flush items={sessionItems(ticket, lines)} approvals={[]} running={running} onResolve={() => {}} />
+      <Transcript compact flush items={taskSessionItems(ticket, lines)} approvals={[]} running={running} onResolve={() => {}} />
       <div className="shrink-0 px-2 pb-2">
         <Composer
           plain
+          plus
           compact
           flush
           placeholder={copy.work.taskSayPh}
           draftKey={`task:${ticket.id}`}
           running={running}
           disabled={false}
+          skills={props.skills}
+          files={props.files}
+          workspace={props.workspace}
+          onSearchFiles={props.onSearchFiles}
+          onPickFiles={props.onPickFiles}
+          onClipboard={props.onClipboard}
+          onScreenshot={props.onScreenshot}
           onSend={(opts) => {
-            const line = opts?.text?.trim() || "";
+            const line = workerLine(opts?.text, opts?.attachments);
             if (!line) return;
             void orchestratorAct("say", ticket.id, "", line, "").then(() => props.onSent?.());
           }}
@@ -88,75 +102,25 @@ export function TaskPage(props: {
   onBack: () => void;
   onLook: () => void;
   onSent?: () => void;
+  skills?: SkillInfo[];
+  files?: FileHit[];
+  workspace?: string;
+  onSearchFiles?: (q: string) => void;
+  onPickFiles?: () => Promise<Attachment[]>;
+  onClipboard?: () => Promise<string>;
+  onScreenshot?: () => Promise<string>;
 }) {
   return <TaskRead {...props} />;
 }
 
-function sessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
-  const fromLog = lines.map((line) => lineItem(ticket.id, line));
-  const seen = new Set(fromLog.filter((item) => item.type === "user").map((item) => item.text.trim()));
-  const head: Item[] = [];
-  for (const row of ticket.inputs ?? []) {
-    const text = row.text?.trim();
-    if (!text || seen.has(text)) continue;
-    head.push({
-      key: row.id,
-      type: "user",
-      sessionId: ticket.id,
-      source: "user",
-      ts: "",
-      text,
-      name: "",
-      delta: false,
-      payload: { id: row.id },
-    });
-  }
-  const body = fromLog.some((item) => item.type === "assistant") ? fromLog : [...fromLog, ...reportItems(ticket)];
-  return [...head, ...body];
-}
-
-function lineItem(sessionId: string, line: TaskLine): Item {
-  const role = line.role === "user" || line.role === "tool_call" || line.role === "tool_result" ? line.role : "assistant";
-  return {
-    key: line.id,
-    type: role,
-    sessionId,
-    source: role === "user" ? "user" : "worker",
-    ts: "",
-    text: line.text || "",
-    name: line.name || "",
-    delta: false,
-    payload: { id: line.id, name: line.name || "", ...(role === "tool_call" ? { arguments: line.text || "" } : {}) },
-  };
-}
-
-function reportItems(ticket: Ticket): Item[] {
-  const items: Item[] = [];
-  for (const step of ticket.assignments ?? []) {
-    reportLines(step).forEach((line, index) => {
-      if (line.state === "progress" || line.state === "waiting" || line.state === "pending" || line.state === "running") return;
-      const text = [line.summary, line.question].map((part) => part?.trim() || "").filter((part) => part && part !== "pending" && part !== "running").join("\n\n");
-      if (!text) return;
-      items.push({
-        key: `${step.id}:${index}`,
-        type: "assistant",
-        sessionId: ticket.id,
-        source: "worker",
-        ts: "",
-        text,
-        name: "",
-        delta: false,
-        payload: { id: `${step.id}:${index}` },
-      });
-    });
-  }
-  return items;
-}
-
-function reportLines(step: Assignment): ReportLine[] {
-  if (step.lines && step.lines.length > 0) return step.lines;
-  if (step.summary || step.report) return [{ state: step.report || step.state, summary: step.summary }];
-  return [];
+/** workerLine 把正文和附件路径收成工人能读的一句。技能标记已经在正文里。 */
+function workerLine(text?: string, attachments?: Attachment[]): string {
+  const body = (text || "").trim();
+  const files = (attachments || [])
+    .map((item) => (item.path || item.name || "").trim())
+    .filter((path) => path && !body.includes(path));
+  const stamp = files.map((path) => `@file:${path}`).join(" ");
+  return [body, stamp].filter(Boolean).join("\n");
 }
 
 function taskStatus(ticket: Ticket, work: { taskWorking: string; taskDone: string; taskStopped: string; taskFailed: string; queued: string; running: string; waiting: string; ended: string; blocked: string; failed: string; answer: string; reviewWait: string; delivery: string; idle: string }): string {

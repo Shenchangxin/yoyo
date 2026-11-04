@@ -31,7 +31,7 @@ import type { Approval, Item } from "../lib/protocol";
 import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
 import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
 import { classifyItem, errorCopy } from "../lib/error";
-import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, hydrateLayout, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, foldAsks, hasConversation, hydrateLayout, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig } from "../lib/stream-live";
 import { coerceCollapseTiming, coerceTranscriptView, presentationPolicyFor } from "../lib/presentation-policy";
 import { ScrollFollow, scrollMetrics } from "../lib/scroll-follow";
@@ -182,7 +182,7 @@ export function Transcript(props: {
     [props.items, props.showThinking],
   );
   const layout = useStableLayout(visible, props.running, policy, props.showThinking !== false);
-  const empty = visible.length === 0 && !props.running && props.approvals.length === 0;
+  const empty = !hasConversation(visible) && !props.running && props.approvals.length === 0;
   const streamingKey = props.running ? lastStreamKey(layout) : "";
   const liveLen = useMemo(() => {
     let n = 0;
@@ -450,12 +450,13 @@ function TurnWork({
  * showThinking 为真时才继续，写入字段 showThinking。
  */
 function useStableLayout(items: Item[], running: boolean, policy: ReturnType<typeof presentationPolicyFor>, showThinking: boolean): LayoutRow[] {
-  const sig = `${structureSig(items, running)}\n${policy.mode}\t${policy.collapseTiming}\t${showThinking ? 1 : 0}`;
+  const shown = foldAsks(items);
+  const sig = `${structureSig(shown, running)}\n${policy.mode}\t${policy.collapseTiming}\t${showThinking ? 1 : 0}`;
   const ref = useRef({ sig: "", rows: [] as LayoutRow[] });
   if (ref.current.sig !== sig) {
-    ref.current = { sig, rows: layoutRows(items, { running, showThinking, policy }) };
+    ref.current = { sig, rows: layoutRows(shown, { running, showThinking, policy }) };
   }
-  return hydrateLayout(ref.current.rows, items);
+  return hydrateLayout(ref.current.rows, shown);
 }
 
 /** 陪伴侧空列表只占住剩余高度，不画问候。className 传给 cn。 */
@@ -519,7 +520,6 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         videoing
           ? { key: "mode", node: copy.transcript.hintVideoMode }
           : { key: "at", node: <><kbd className="mr-1">@</kbd>{copy.transcript.hintMention}</> },
-        videoing ? null : { key: "plan", node: <><kbd className="mr-1">⇧⇥</kbd>{copy.transcript.hintPlan}</> },
       ]
   ).filter(Boolean) as { key: string; node: ReactNode }[];
   if (surface === "agent") {
@@ -1330,6 +1330,22 @@ const ItemRow = memo(function ItemRow({
       </div>
     );
   }
+  if (shown.type === "assistant" && shown.payload?.kind === "status") {
+    return (
+      <p className="text-[13px] leading-6 text-muted" data-testid="task-status">{shown.text}</p>
+    );
+  }
+  if (shown.type === "assistant" && shown.payload?.kind === "handoff") {
+    return (
+      <div className="w-full max-w-[40rem] rounded-[24px] bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid="task-handoff">
+        <p className="text-[12px] font-medium tracking-wide text-muted">{copy.transcript.needsYou}</p>
+        <div className="mt-2">
+          <Markdown text={shown.text} streaming={streaming} rich={!!rich && !streaming} />
+        </div>
+        <p className="mt-3 text-[12px] leading-5 text-muted">{copy.transcript.needsYouHint}</p>
+      </div>
+    );
+  }
   if (shown.type === "assistant") {
     const briefKind = String(shown.payload?.kind || "");
     return (
@@ -1337,7 +1353,7 @@ const ItemRow = memo(function ItemRow({
         <div className={cn(streaming && "assistant-live")}>
           <Markdown text={shown.text} streaming={streaming} rich={!!rich && !streaming} />
         </div>
-        {(briefKind === "brief" || briefKind === "speak") && shown.payload?.chip ? (
+        {briefKind === "brief" && shown.payload?.chip ? (
           <button
             type="button"
             className="mt-3 inline-flex h-9 items-center rounded-full bg-card px-3.5 text-[13px] font-medium shadow-[var(--shadow-card)] hover:bg-lift"

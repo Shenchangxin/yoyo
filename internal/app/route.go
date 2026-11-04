@@ -5,6 +5,8 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,7 +29,19 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-const routePrompt = "你是主会话的路由。你只有 task_route、task_status、task_note、task_stop 和 memory_read，不能改文件，也不能跑命令。明确的请求立刻路由。先看材料里列出的工单：和某一张是同一件事，或者明显相关，就用 continue 指到那张工单，沿用它的目录和会话，不要 accept 新开。有多张相关时，继续最贴近的一张。都不相关才 accept，并给出 title，不要把范围展开成工作计划。推断的工作只有在 auto 下、并且 rules 里写了至少一条还启用的规则编号时才能接受。接受或继续之后用一句话告诉人已经开始，然后结束，不要等工人。只是聊天就忽略。人明确要求打断时才 stop。打断只停这一轮，原会话还能继续。工人的阶段性进展和结果会写回这段对话，你不要重做。"
+const routePrompt = `你是主会话的路由。你只有 task_route、task_status、task_note、task_stop 和 memory_read，不能改文件，也不能跑命令。
+
+明确的请求立刻路由。先看材料里列出的工单：和某一张是同一件事，或者明显相关，就用 continue 指到那张工单，沿用它的目录和会话，不要 accept 新开。有多张相关时，继续最贴近的一张。都不相关才 accept。
+
+工人看不到这段对话。人的原话不会再转给工人。accept 和 continue 都必须带 brief，这是工人这一轮唯一会读到的任务说明，要能直接开工。按这个结构写，用你已经知道的目录、进展和约束，不要编造没见过的路径：
+- 背景：这件事做到哪了，人刚刚决定了什么
+- 要做的：产物、放在哪、怎样算做完
+- 不要做的：不能动的文件、必须先确认的动作
+人的短回复只是一个决定，折进背景里，不要原样粘贴，也不要再附一行短标题。title 只在 accept 时写一个短名，continue 时留空。不要把任务说明写进 title。
+
+对人只说一两句：已经交给哪张工单、这一轮要做成什么。不要把 brief 贴进对话，也不要等工人做完。
+
+推断的工作只有在 auto 下、并且 rules 里写了至少一条还启用的规则编号时才能接受。只是聊天就忽略。人明确要求打断时才 stop。打断只停这一轮，原会话还能继续。工人的阶段性进展和结果会写回这段对话，你不要重做。`
 
 // beginRoute 在智能体主会话上换成路由工具。视频、学习、短片和即时消息会话保持原来的工具。
 func (a *App) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID string) bool {
@@ -77,7 +91,7 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	if len(reached) > 0 {
 		return "这条消息已经交给工单 " + strings.Join(reached, ", ") + "。不要再接受。只有人明确要求停止时才用 task_stop。"
 	}
-	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept，并给出 title。只是聊天就忽略。不要改文件，也不要等工人做完。"
+	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 和 continue 都要把工人这一轮要做的事写进 brief：人的原话不会转过去，所以 brief 必须自洽，写清背景、要做的、不要做的。不要把人的短回复原样放进 brief，也不要另附一行短标题。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
 	if roster := taskRoster(rt); roster != "" {
 		line += "\n最近工单：\n" + roster
 	}
@@ -136,8 +150,23 @@ func (a *App) routerExtras() map[string]runtime.ExtraTool {
 
 // routeTool 接受、忽略、停止或挂接触发。一次可以有多项。
 func (a *App) routeTool() runtime.ExtraTool {
-	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、title、reason、ticket、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。推断接受时 rules 是启用的规则编号。", map[string]any{
-		"items": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 是工人这一轮唯一的任务说明，accept 和 continue 必填，要写清背景、要做的、不要做的；人的原话不会另送。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。", map[string]any{
+		"items": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"trigger": map[string]any{"type": "string"},
+					"action":  map[string]any{"type": "string", "enum": []string{"accept", "continue", "ignore", "stop", "attach"}},
+					"ticket":  map[string]any{"type": "string"},
+					"title":   map[string]any{"type": "string", "description": "只在 accept 时填写的短名。不要写成任务说明。"},
+					"brief":   map[string]any{"type": "string", "description": "工人这一轮唯一要读的任务说明。写清背景、要做的、不要做的。人的原话不会另送。"},
+					"reason":  map[string]any{"type": "string"},
+					"rules":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+				"required": []string{"trigger", "action"},
+			},
+		},
 	}, false, func(args map[string]any) (string, error) {
 		rt := a.orchestrator()
 		if rt == nil {
@@ -172,17 +201,23 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 	if reason == "" {
 		reason = title
 	}
+	brief := strings.TrimSpace(strParam(item, "brief"))
 	switch action {
 	case "accept":
 		if ticket != "" {
-			if err := rt.Act("attach", ticket, trigger, title, ""); err != nil {
+			if brief == "" {
+				brief = strings.TrimSpace(title)
+			}
+			if err := rt.Act("assign", ticket, trigger, brief, ""); err != nil {
 				return "", err
 			}
 			return "attached " + trigger + " to " + ticket, nil
 		}
 		rules := ruleParam(item["rules"])
 		var err error
-		if len(rules) > 0 {
+		if brief != "" {
+			err = rt.DecideBrief(trigger, "accept", title, brief, rules)
+		} else if len(rules) > 0 {
 			err = rt.DecideMatched(trigger, "accept", title, rules)
 		} else {
 			err = rt.Decide(trigger, "accept", title)
@@ -195,7 +230,10 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 		if ticket == "" {
 			return "", fmt.Errorf("continue needs ticket")
 		}
-		if err := rt.Act("attach", ticket, trigger, title, ""); err != nil {
+		if brief == "" {
+			brief = strings.TrimSpace(title)
+		}
+		if err := rt.Act("assign", ticket, trigger, brief, ""); err != nil {
 			return "", err
 		}
 		return "continued " + ticket, nil
@@ -400,18 +438,23 @@ func (a *App) relayNotice(sessionID, text string) {
 	}
 }
 
-// relayReport 把需要人看的报告写进开工时的那条桌面会话。
+// relayReport 把需要人看的报告写进正在看这张工单的桌面会话。
 // 做完、失败、放下和打断会带上已经报过的阶段性进展，并写进记忆。会话写不进去时，记忆仍然留下。
+// 同一段正文只写一次。后来跟上的会话优先，没有时才回到开工那一条。
 func (a *App) relayReport(ticketID, state, summary, question string) {
 	if a == nil {
 		return
 	}
+	// 进行中只留在任务页。主会话只收结束、终止，以及要人接手的报告。
+	if strings.TrimSpace(question) == "" && state == "working" {
+		return
+	}
 	text := strings.TrimSpace(summary)
-	if strings.TrimSpace(question) != "" {
+	if q := strings.TrimSpace(question); q != "" && !strings.Contains(text, q) {
 		if text != "" {
-			text += "\n"
+			text += "\n\n"
 		}
-		text += strings.TrimSpace(question)
+		text += q
 	}
 	if taskEndedState(state) {
 		if rt := a.orchestrator(); rt != nil {
@@ -433,22 +476,68 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 	if rt == nil {
 		return
 	}
-	sid := rt.DeskSession(ticketID)
-	if sid == "" {
+	sids := rt.DeskAudiences(ticketID)
+	if len(sids) == 0 {
 		return
 	}
-	ev := trace.Event{
-		Type:      trace.TypeAssistant,
-		Source:    "worker",
-		SessionID: sid,
-		Payload:   map[string]any{"text": text, "id": ticketID + ":" + state + ":" + fmt.Sprintf("%d", time.Now().UnixNano())},
+	sum := sha256.Sum256([]byte(ticketID + "\n" + state + "\n" + text))
+	id := "handoff:" + ticketID + ":" + hex.EncodeToString(sum[:8])
+	kind := "handoff"
+	if strings.TrimSpace(question) == "" && (state == "ready" || state == "waiting" || state == "stopped") {
+		kind = "status"
 	}
-	if err := a.Traces.AppendDurable(ev); err != nil {
-		return
+	for _, sid := range sids {
+		if sid == "" || a.traceHasID(sid, id) {
+			continue
+		}
+		ev := trace.Event{
+			Type:      trace.TypeAssistant,
+			Source:    "worker",
+			SessionID: sid,
+			Payload: map[string]any{
+				"text": text, "id": id, "kind": kind, "ticket": ticketID, "state": state,
+			},
+		}
+		if err := a.Traces.AppendDurable(ev); err != nil {
+			continue
+		}
+		if a.Hub != nil {
+			a.Hub.Publish(ev)
+		}
 	}
-	if a.Hub != nil {
-		a.Hub.Publish(ev)
+}
+
+// handoffAsk 从还等人的工单上取出最后一段该给人看的报告。没有正文时不算。
+func handoffAsk(row superagent.TicketRow) (state, summary, question string, ok bool) {
+	if !row.Person || row.Stage == "ended" {
+		return "", "", "", false
 	}
+	var line superagent.ReportLine
+	found := false
+	for _, asg := range row.Assignments {
+		for _, ln := range asg.Lines {
+			line = ln
+			found = true
+		}
+	}
+	state = row.Action
+	if found {
+		summary = line.Summary
+		question = line.Question
+		if line.State != "" {
+			state = line.State
+		}
+	}
+	if strings.TrimSpace(question) == "" {
+		question = row.Attention
+	}
+	if strings.TrimSpace(summary) == "" && strings.TrimSpace(question) == "" {
+		return "", "", "", false
+	}
+	if state == "" {
+		state = "blocked"
+	}
+	return state, summary, question, true
 }
 
 // taskEndedState 在这份结果该留下记忆时为真。卡住和普通进度都不算结束。

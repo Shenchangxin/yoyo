@@ -711,9 +711,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if err != nil {
 		return "", err
 	}
-	if plan {
-		loop.PlanMode = true
-		pol.Mode = "plan"
+	// 桌面没有 Plan 模式。人不用先选「只写计划」，代理自己决定下一步。快照里残留的 plan 也不把写工具关掉。
+	loop.PlanMode = false
+	if strings.EqualFold(strings.TrimSpace(pol.Mode), "plan") {
+		pol.Mode = "auto"
 	}
 	// 桌面回合在进 Run 前套聊天视界。RulesTokens 会被赋成 1600，不论快照里原来是更大还是更小。TaskMaxTurns 低于 40 会抬到 40。
 	loop = runtime.ApplyChatHorizon(loop)
@@ -731,19 +732,19 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 	}
 	skillRoot := meta.ProjectRoot()
-	toolRoot := meta.ToolRoot()
-	// 会话隔离是工作区副本。这和 YOYO_ISOLATE 的进程拆分不是一回事。副本没建成就仍用原来的工具根。
+	// 这段对话的工具落在项目根。工作区副本留给工人：子任务的 isolate，以及定时任务的 IsolateWorkspace。
+	// 输入框不再选择执行位置。残留的会话标记只在这一轮改掉，随后和回合一起写回。
 	if meta.Isolate {
-		ensured, e2 := a.EnsureSessionWorktree(sessionID)
-		if e2 == nil {
-			meta = ensured
-			skillRoot = meta.ProjectRoot()
-			toolRoot = meta.ToolRoot()
+		meta.Isolate = false
+		if origin := meta.ProjectRoot(); origin != "" {
+			meta.Workspace = origin
+			meta.OriginWorkspace = origin
 		}
 	}
+	toolRoot := meta.ToolRoot()
 	disk := runtime.LoadSkillDirs(a.skillRoots(skillRoot)...)
 	skills = runtime.MergeSkills(skills, disk)
-	skills = runtime.FilterSkills(skills, loop.PlanMode || plan)
+	skills = runtime.FilterSkills(skills, false)
 	skillBodies, skillDirs, skillMeta := runtime.MapSkills(skills)
 	model := a.Config.Model
 	if meta.Model != "" {

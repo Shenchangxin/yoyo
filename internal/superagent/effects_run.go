@@ -70,13 +70,19 @@ func (rt *Runtime) launchWaiting(id string) bool {
 	return ticket.Assignments[len(ticket.Assignments)-1].State == "pending"
 }
 
-// runDelivery 把还没送到工人的输入送进去。工人还没起来时先等。
+// runDelivery 把还没送到工人的输入送进去。工人进程已经不在时，结束停住的派工并再开一轮。
 func (rt *Runtime) runDelivery(payload any) error {
 	id, _ := payload.(string)
 	if rt == nil || rt.exec == nil {
 		return fmt.Errorf("%w", ErrLater)
 	}
-	return rt.exec.DeliverPending(id)
+	if rt.exec.HasAgent(id) {
+		return rt.exec.DeliverPending(id)
+	}
+	if rt.eng != nil && rt.eng.ReopenForInput(id) {
+		return nil
+	}
+	return fmt.Errorf("%w", ErrLater)
 }
 
 // runAssessment 把一轮评估标成已经交给人。正文不写进左边的对话。
@@ -135,6 +141,48 @@ func (rt *Runtime) runNotice(payload any) error {
 	}
 	fn(body.Session, body.Text)
 	return nil
+}
+
+// recoverRejectedAsks 把上次被拒的「做完同时提问」按等人补记一次，并写回主会话。
+// 已经记过的同一问题不重复。没有数据库时什么都不做。
+func (rt *Runtime) recoverRejectedAsks() {
+	if rt == nil || rt.db == nil || rt.eng == nil {
+		return
+	}
+	rows, err := rt.db.Query(`SELECT ticket, body FROM worker_log`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	type pending struct {
+		id, summary, question string
+	}
+	var found []pending
+	for rows.Next() {
+		var id, body string
+		if rows.Scan(&id, &body) != nil {
+			continue
+		}
+		summary, question, ok := rejectedAsk([]byte(body))
+		if !ok || askedQuestion(rt.eng, id, question) {
+			continue
+		}
+		found = append(found, pending{id, summary, question})
+	}
+	if rows.Err() != nil {
+		return
+	}
+	changed := false
+	for _, item := range found {
+		if rt.eng.Report(item.id, Report{State: "blocked", Summary: item.summary, Question: item.question}) != nil {
+			continue
+		}
+		changed = true
+		rt.queueReport(item.id, "blocked", item.summary, item.question)
+	}
+	if changed {
+		rt.save()
+	}
 }
 
 // queueReport 把一份需要人看的报告放进有序队列。

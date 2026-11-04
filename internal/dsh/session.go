@@ -3,7 +3,10 @@
 
 package dsh
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 const (
 	// EventTurnStart 是回合开始。
@@ -284,4 +287,140 @@ type UnansweredCall struct {
 	Name      string
 	Arguments string
 	Started   bool
+}
+
+// RepairOpenTools 把助手的 tool_calls 和结果配回相邻的位置。
+// 结果若被用户或系统消息隔开，就挪到这条助手消息后面；结果没落盘时按中断补一条。
+// 已经配对的日志不动。返回补上或挪动的调用数。
+func (s *Session) RepairOpenTools() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.events) == 0 {
+		return 0
+	}
+	resultAt := map[string]int{}
+	started := map[string]bool{}
+	for i, ev := range s.events {
+		switch ev.Type {
+		case EventToolCall:
+			call, ok := ev.Data.(ToolCall)
+			if ok && call.ID != "" {
+				started[call.ID] = true
+			}
+		case EventToolResult:
+			res, ok := ev.Data.(ToolResultEvent)
+			if ok && res.ID != "" {
+				resultAt[res.ID] = i
+			}
+		}
+	}
+	type openCall struct {
+		id, name, args string
+		turn, step     int
+	}
+	var pending []openCall
+	placed := map[string]bool{}
+	out := make([]Event, 0, len(s.events)+4)
+	changed := 0
+	synth := 0
+	flush := func() {
+		for _, call := range pending {
+			if call.id == "" || placed[call.id] {
+				continue
+			}
+			if idx, ok := resultAt[call.id]; ok {
+				out = append(out, s.events[idx])
+				placed[call.id] = true
+				changed++
+				continue
+			}
+			known := started[call.id]
+			rec := RecoveryResults([]UnansweredCall{{
+				ID: call.id, Name: call.name, Arguments: call.args, Started: known,
+			}})[0]
+			if !known {
+				out = append(out, Event{
+					Type: EventToolCall, Turn: call.turn, Step: call.step,
+					Data: ToolCall{ID: call.id, Name: call.name, Arguments: call.args},
+				})
+			}
+			out = append(out, Event{
+				Type: EventToolResult, Turn: call.turn, Step: call.step,
+				Data: ToolResultEvent{ID: call.id, Name: call.name, Text: rec.Text, IsError: true, Code: rec.Code},
+			})
+			placed[call.id] = true
+			changed++
+		}
+		pending = nil
+	}
+	for _, ev := range s.events {
+		switch ev.Type {
+		case EventAssistant:
+			flush()
+			msg, ok := ev.Data.(Assistant)
+			if !ok || len(msg.ToolCalls) == 0 {
+				out = append(out, ev)
+				continue
+			}
+			calls := append([]ToolCall(nil), msg.ToolCalls...)
+			for i := range calls {
+				if calls[i].ID == "" {
+					synth++
+					name := calls[i].Name
+					if name == "" {
+						name = "tool"
+					}
+					calls[i].ID = fmt.Sprintf("call_repair_%s_%d", name, synth)
+					changed++
+				}
+				pending = append(pending, openCall{
+					id: calls[i].ID, name: calls[i].Name, args: calls[i].Arguments,
+					turn: ev.Turn, step: ev.Step,
+				})
+			}
+			msg.ToolCalls = calls
+			ev.Data = msg
+			out = append(out, ev)
+		case EventToolResult:
+			res, ok := ev.Data.(ToolResultEvent)
+			if ok && res.ID != "" && placed[res.ID] {
+				continue
+			}
+			if ok && res.ID != "" {
+				placed[res.ID] = true
+				next := make([]openCall, 0, len(pending))
+				for _, call := range pending {
+					if call.id != res.ID {
+						next = append(next, call)
+					}
+				}
+				pending = next
+			}
+			out = append(out, ev)
+		case EventUser, EventSystem:
+			flush()
+			out = append(out, ev)
+		default:
+			out = append(out, ev)
+		}
+	}
+	flush()
+	if changed == 0 {
+		return 0
+	}
+	s.events = nil
+	s.nodes = nil
+	s.seq = 0
+	for _, ev := range out {
+		s.seq++
+		ev.Seq = s.seq
+		s.events = append(s.events, ev)
+		if ev.Data != nil {
+			s.applyLocked(ev.Type, ev.Data)
+		}
+	}
+	return changed
 }

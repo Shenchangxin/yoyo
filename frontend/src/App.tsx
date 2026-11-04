@@ -8,6 +8,7 @@ import { Group, Panel } from "react-resizable-panels";
 import { toast } from "sonner";
 import { cn } from "./lib/utils";
 import { THREAD_COL, THREAD_GUTTER } from "./lib/thread";
+import { hasConversation } from "./lib/transcript-layout";
 import * as api from "./lib/client";
 import { writeClipboard } from "./lib/clipboard";
 import { readLayout, writeLayout } from "./lib/layout";
@@ -186,7 +187,9 @@ function WorkstationApp() {
   const agent = popout || ws.surface === "agent";
   /** 欢迎线程还在回放历史或报告残留运行时，创作入口留着。只有从这张桌子发出对话、并且对话里已经有内容时才让开。 */
   const createEntrance = createDesk && !cutBound && !(createEngaged && ws.items.length > 0);
-  const home = !staged && (agent || videoing) && (createEntrance || ((ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0));
+  // 主循环的版式不跟正文到没到走。空会话和已经有消息的会话用同一套输入框，避免启动后自己从「选工作区」跳成普通会话。
+  const agentLoop = ws.surface === "agent";
+  const home = !agentLoop && !staged && (agent || videoing) && (createEntrance || ((ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0));
   const copilotItems = paneMismatch ? [] : ws.items;
   const boundCopilotId = studioDesk ? studioCopilotSession : "";
   const foreignSession = !!(boundCopilotId && ws.activeId && boundCopilotId !== ws.activeId);
@@ -252,19 +255,11 @@ function WorkstationApp() {
       : (ws.active?.authMode || pendingAuthMode || "full"),
     workspace: toolRoot,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
-    isolate: !!ws.active?.isolate,
     /** onWorkspace 调用 applySessionWorkspace。path 传给 applySessionWorkspace。 */
     onWorkspace: (path: string) => { void applySessionWorkspace(path); },
     onBrowseWorkspace: async () => {
       const p = await api.pickFolder();
       if (p) await applySessionWorkspace(p);
-    },
-    /** onIsolate 调用 setSessionIsolate。isolate 传给 api.setSessionIsolate。 */
-    onIsolate: async (isolate: boolean) => {
-      if (!ws.activeId) return;
-      const t = await api.setSessionIsolate(ws.activeId, isolate);
-      ws.setActive(t);
-      ws.setThreads((list) => patchThread(list, t.id, t));
     },
     /** onSearchFiles 调用 catch。q 传给 api.searchFiles。 */
     onSearchFiles: (q: string) => {
@@ -299,7 +294,6 @@ function WorkstationApp() {
     onQueueReorder: (id: string, delta: number) => { void ws.onQueueReorder(id, delta); },
     onQueueSteer: (id: string) => { void ws.onQueueSteer(id); },
     onSteerQueue: () => { void ws.onSteerQueue(); },
-    onApplyWorktree: () => { void ws.onApplyWorktree(); },
     taskPlan: latestTaskPlan(ws.items) || parsePlanText(ws.active?.planText || ""),
     methodologyActive: ws.methodologyActive,
     connectionId: ws.active?.connectionId,
@@ -312,7 +306,6 @@ function WorkstationApp() {
         plan.explanation,
         ...plan.steps.map((s, i) => `${i + 1}. [${s.status}] ${s.step}`),
       ].filter(Boolean).join("\n");
-      useUI.getState().setPlan(false);
       void ws.onSend({ text: body });
     },
   };
@@ -346,16 +339,9 @@ function WorkstationApp() {
       onResolveAsk={ws.onResolve}
       flush
       hero={home}
-      perch={!home && copilotItems.length === 0}
+      perch={!home && !hasConversation(copilotItems)}
       {...bindComposer}
       sessionId={ws.activeId}
-      profileId={ws.active?.profileId}
-      onProfile={async (id) => {
-        const sid = (await ws.ensureThread()).id;
-        const t = await api.setSessionProfile(sid, id);
-        ws.setActive(t);
-        ws.setThreads((list) => patchThread(list, t.id, t));
-      }}
       onSavePage={async () => {
         const sid = (await ws.ensureThread()).id;
         const last = [...ws.items].reverse().find((it) => it.type === "assistant" && it.text.trim());
@@ -475,6 +461,13 @@ function WorkstationApp() {
       }}
       openTaskId={taskId}
       onOpenTask={setTaskId}
+      skills={ws.skills}
+      files={ws.files}
+      workspace={toolRoot}
+      onSearchFiles={bindComposer.onSearchFiles}
+      onPickFiles={bindComposer.onPickFiles}
+      onClipboard={bindComposer.onClipboard}
+      onScreenshot={bindComposer.onScreenshot}
     />
   );
 
@@ -602,7 +595,7 @@ function WorkstationApp() {
         {home && !railNarrow && filmSurface ? homeStarters : null}
         <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
           {createLauncher ? <CreateSkills onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)} /> : null}
-          {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
+          {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && hasConversation(copilotItems) && !ws.threadRunning ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
           {composer}
@@ -1077,6 +1070,7 @@ function WorkstationApp() {
             videoProjects={ws.videoProjects}
             onClose={() => ws.setPalette(false)}
             onNew={ws.onNew}
+            showNewChat={ws.surface !== "agent"}
             onLab={ws.setLab}
             onOpenHarness={() => ws.openHarness("overview")}
             onSelectThread={ws.openThread}

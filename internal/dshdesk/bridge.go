@@ -40,9 +40,10 @@ func (b *Bridge) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant, 
 	if maxTokens <= 0 {
 		maxTokens = b.MaxTokens
 	}
+	// Legalize 保证每个 tool_calls 后面先跟上对应的 tool 消息。工人会话在结果落盘前中断时，原始顺序会被网关拒绝。
 	chat := runtime.ChatRequest{
 		Model:        model,
-		Messages:     b.withParts(toRuntimeMessages(req.Messages)),
+		Messages:     b.withParts(runtime.Legalize(toRuntimeMessages(req.Messages))),
 		Tools:        toToolJSON(req.Tools),
 		MaxTokens:    maxTokens,
 		ShowThinking: b.ShowThinking,

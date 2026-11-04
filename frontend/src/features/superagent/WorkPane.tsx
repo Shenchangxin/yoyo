@@ -6,12 +6,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Calendar, ChevronLeft, ChevronRight, Clock, Folder, ListChecks, Mail, MessageCircle, Monitor, Plus, Search, SlidersHorizontal, Sun, type LucideIcon } from "lucide-react";
 import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, memoryList, memoryWrite, poiRefresh } from "../../lib/client";
+import type { Attachment, FileHit, SkillInfo } from "../../lib/protocol";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import type { DeskView, Rule, Ticket, Trigger } from "./desk-model";
 import { BRIEF_EVENT, latestInitiative, noteFeedback, runDeskFeed } from "./desk-feed";
 import { TaskRead } from "./TaskPage";
-import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
+import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, runningCount, slotDue, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
 
 type Tab = "now" | "tasks" | "memory";
 
@@ -26,6 +27,13 @@ export function WorkPane(props: {
   onDraft: (text: string) => void;
   openTaskId: string;
   onOpenTask: (id: string) => void;
+  skills?: SkillInfo[];
+  files?: FileHit[];
+  workspace?: string;
+  onSearchFiles?: (q: string) => void;
+  onPickFiles?: () => Promise<Attachment[]>;
+  onClipboard?: () => Promise<string>;
+  onScreenshot?: () => Promise<string>;
 }) {
   const copy = useCopy();
   const [tab, setTab] = useState<Tab>("now");
@@ -81,7 +89,7 @@ export function WorkPane(props: {
   const reading = tab === "tasks" && !!props.openTaskId;
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "now", label: copy.work.now, count: todayBadge(tickets, incoming, due) },
-    { id: "tasks", label: copy.work.tasks, count: tasks.open.length },
+    { id: "tasks", label: copy.work.tasks, count: runningCount(tickets) },
     { id: "memory", label: copy.work.memory },
   ];
 
@@ -139,6 +147,13 @@ export function WorkPane(props: {
               onBack={() => props.onOpenTask("")}
               onLook={() => props.onReview(true)}
               onSent={() => { void load(); }}
+              skills={props.skills}
+              files={props.files}
+              workspace={props.workspace}
+              onSearchFiles={props.onSearchFiles}
+              onPickFiles={props.onPickFiles}
+              onClipboard={props.onClipboard}
+              onScreenshot={props.onScreenshot}
             />
           ) : null}
           {view && tab === "tasks" && !props.openTaskId ? (

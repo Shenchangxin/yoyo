@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Item, ItemType } from "./protocol.ts";
-import { clipPreview, hydrateLayout, layoutRows, type AgentPart, type LayoutRow } from "./transcript-layout.ts";
+import { clipPreview, hasConversation, hydrateLayout, layoutRows, type AgentPart, type LayoutRow } from "./transcript-layout.ts";
 import { presentationPolicyFor } from "./presentation-policy.ts";
 
 /**
@@ -298,6 +298,70 @@ describe("layoutRows: desk notices stay their own row", () => {
       assert.ok(answer && (answer.kind === "item" || answer.kind === "stream"));
       if (answer && (answer.kind === "item" || answer.kind === "stream")) assert.equal(answer.item.text, "done");
     }
+  });
+
+  /** 工人等人接手的报告跟在回复后面，自己成一行。 */
+  it("keeps a worker handoff beside the previous answer", () => {
+    const rows = layoutRows([
+      user,
+      assistant("a1", "已经开工。"),
+      item({
+        key: "ask",
+        type: "assistant",
+        source: "worker",
+        text: "找不到 gugu-mart。请确认路径。",
+        payload: { kind: "handoff", ticket: "tkt-4" },
+      }),
+    ]);
+    assert.equal(rows.length, 3);
+    assert.equal(rows[2].kind, "agent");
+    if (rows[2].kind === "agent") {
+      assert.equal(rows[2].parts.length, 1);
+      const part = rows[2].parts[0];
+      assert.equal(part.kind, "item");
+      if (part.kind === "item") assert.equal(part.item.text, "找不到 gugu-mart。请确认路径。");
+    }
+  });
+
+  /** 同一张工单后一次提问留下「需要你」，前一次改成普通状态。 */
+  it("folds an older handoff once a newer question arrives", () => {
+    const rows = layoutRows([
+      item({
+        key: "old",
+        type: "assistant",
+        source: "worker",
+        text: "找不到 gugu-mart。",
+        payload: { kind: "handoff", ticket: "tkt-4" },
+      }),
+      item({
+        key: "new",
+        type: "assistant",
+        source: "worker",
+        text: "是自立题材，还是既有原作？",
+        payload: { kind: "handoff", ticket: "tkt-4" },
+      }),
+    ]);
+    const kinds = rows.map((row) => {
+      if (row.kind !== "agent") return "";
+      const part = row.parts[0];
+      return part.kind === "item" ? String(part.item.payload?.kind || "") : "";
+    });
+    assert.deepEqual(kinds, ["status", "handoff"]);
+  });
+
+  /** 用户能读到的简报算消息记录。看不见的系统事件不算。 */
+  it("treats a visible desk note as a conversation and ignores a system event", () => {
+    const brief = item({
+      key: "brief",
+      type: "assistant",
+      source: "desk",
+      text: "早上这一份在这里。",
+      payload: { kind: "brief" },
+    });
+    const system = item({ key: "sys", type: "system", text: "prompt", payload: { kind: "prompt" } });
+    assert.equal(hasConversation([system]), false);
+    assert.equal(hasConversation([brief, system]), true);
+    assert.equal(hasConversation([user, brief]), true);
   });
 });
 
