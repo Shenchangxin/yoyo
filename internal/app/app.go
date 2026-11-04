@@ -444,6 +444,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		a.resumeCrashed()
 	}
 	a.SweepExpiredSessions()
+	a.sealBriefs()
 	runtime.CatalogWindow = modelcatalog.WindowFor
 	go a.warmModelCatalog()
 	a.startUpdateLoop()

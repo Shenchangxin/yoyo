@@ -48,6 +48,9 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 		_ = json.NewDecoder(r.Body).Decode(&note)
 		writeJSON(w, map[string]any{"ok": a.DeskPush(note)})
 	})
+	mux.HandleFunc("/api/briefs", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.BriefList())
+	})
 	mux.HandleFunc("/api/poi", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var body struct {

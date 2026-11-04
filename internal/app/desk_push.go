@@ -22,7 +22,8 @@ type DeskNote struct {
 	Brief     string `json:"brief"`
 }
 
-// DeskPush 把一条通知写进会话。同一 id 已经在轨迹里时不再写，但仍然返回真，表示这条已经送达。它不开始模型回合。
+// DeskPush 把一条通知写进会话。同一 id 已经在轨迹里时不再写，但仍然返回真，表示这条已经送达。
+// 简报还要看磁盘上的那一封：同一天同一档已经写下之后，换一条会话也不再追加。它不开始模型回合。
 func (a *App) DeskPush(note DeskNote) bool {
 	if a == nil || a.Traces == nil {
 		return false
@@ -32,8 +33,19 @@ func (a *App) DeskPush(note DeskNote) bool {
 	if sessionID == "" || text == "" {
 		return false
 	}
+	kind := strings.TrimSpace(note.Kind)
+	if kind == "brief" {
+		briefSealMu.Lock()
+		defer briefSealMu.Unlock()
+		if a.briefRecorded(note.Slot, note.Day) {
+			return true
+		}
+	}
 	id := deskNoteID(note)
 	if a.traceHasID(sessionID, id) {
+		if kind == "brief" {
+			a.rememberSessionBrief(sessionID, id)
+		}
 		return true
 	}
 	brief := note.Brief
@@ -57,6 +69,9 @@ func (a *App) DeskPush(note DeskNote) bool {
 	}
 	if err := a.Traces.AppendDurable(ev); err != nil {
 		return false
+	}
+	if kind == "brief" {
+		a.rememberBrief(note, ev.TS)
 	}
 	if a.Hub != nil {
 		a.Hub.Publish(ev)

@@ -198,7 +198,7 @@ export type MorningBrief = {
   woven?: boolean;
 };
 
-/** BRIEF_VERSION 变了，当天旧的流水账就作废，下一轮按新的卡片重写。 */
+/** BRIEF_VERSION 只标记现在的写法。同一天已经写下的简报不因版本变化重写。 */
 export const BRIEF_VERSION = 4;
 
 /** BriefPrefs 是晨间和晚间简报的开关和时间。范围不在这里选。 */
@@ -506,12 +506,12 @@ export function briefDay(now = new Date()): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-/** parseStoredBrief 只认同一天存下的简报。过期或坏掉的为空。 */
+/** parseStoredBrief 只认同一天存下的简报。过期或没有卡片时为空。版本不一致也留着，避免到点之后又重写一封。 */
 export function parseStoredBrief(raw: string | null, day: string): MorningBrief | null {
   if (!raw) return null;
   try {
     const body = JSON.parse(raw) as { v?: unknown; day?: unknown; brief?: MorningBrief };
-    if (body.v !== BRIEF_VERSION || body.day !== day || !body.brief || !Array.isArray(body.brief.cards) || body.brief.cards.length < 1) return null;
+    if (body.day !== day || !body.brief || !Array.isArray(body.brief.cards) || body.brief.cards.length < 1) return null;
     const picked = body.brief.picked && typeof body.brief.picked === "object" ? body.brief.picked : {};
     return { cards: body.brief.cards, picked, welcome: body.brief.welcome === true, woven: body.brief.woven === true };
   } catch {

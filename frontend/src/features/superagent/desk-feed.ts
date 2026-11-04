@@ -3,9 +3,9 @@
  * 不拥有：简报卡片怎么画。那在 WorkPane 和简报弹层。
  */
 
-import { composeToday, deskFeedback, deskPush, memoryList, orchestratorView, poiAck, poiRefresh, type Initiative } from "../../lib/client";
+import { briefList, composeToday, deskFeedback, deskPush, mainSession, memoryList, orchestratorView, poiAck, poiRefresh, type BriefRecord, type Initiative } from "../../lib/client";
 import { copy } from "../../lib/i18n";
-import { applySenses, auditBrief, briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, shouldPush, visibleSlot, BRIEF_PREFS_KEY, type BriefCard, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
+import { applySenses, auditBrief, briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, BRIEF_PREFS_KEY, type BriefCard, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
 const WELCOME_KEY = "yoyo.brief-welcomed";
@@ -39,15 +39,34 @@ export function deskSession(): string {
   return sessionId;
 }
 
-/** runDeskFeed 刷新兴趣库，并在到点时生成还没有的那一档简报。force 时立刻生成这一档。 */
+/** runDeskFeed 刷新兴趣库，并在到点时生成还没有的那一档简报。force 时立刻生成这一档。已经写下的不再改，也不再推进。 */
 export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Promise<void> {
   const prefs = readPrefs();
+  const main = await mainSession().catch(() => null);
+  if (main?.id) sessionId = main.id;
   await orchestratorView().catch(() => null);
   const scan = await refreshPoi();
-  const slots: BriefSlot[] = force ? [force] : [visibleSlot(prefs)];
+  const slots: BriefSlot[] = force ? [force] : (["morning", "evening"] as BriefSlot[]).filter((slot) => slotDue(prefs, slot));
   for (const slot of slots) {
     await ensureBrief(slot, phrases, scan);
   }
+}
+
+/** BriefEdition 是看板上的一封已经固定的简报。 */
+export type BriefEdition = {
+  id: string;
+  slot: BriefSlot;
+  day: string;
+  chip: string;
+  at: string;
+  brief: MorningBrief;
+};
+
+/** briefEditions 按时间从新到旧列出最近的简报。服务端有档案时用档案，否则只用本机当天留下的。 */
+export async function briefEditions(): Promise<BriefEdition[]> {
+  const remote = await briefList().catch(() => [] as BriefRecord[]);
+  const rows = (remote.length ? remote.map(editionFromRecord) : localEditions()).filter((row): row is BriefEdition => !!row);
+  return rows.sort(byNewest).slice(0, 12);
 }
 
 async function refreshPoi(): Promise<{ points: { name: string; kind: string }[]; census?: DeskCensus; initiative?: Initiative }> {
@@ -98,10 +117,16 @@ function poiText(added: string[], dropped: string[]): string {
 async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { points: { name: string; kind: string }[]; census?: DeskCensus; initiative?: Initiative }): Promise<void> {
   const day = briefDay();
   const key = briefStorageKey(slot);
+  const sealed = await sealedBrief(slot, day);
+  if (sealed) {
+    adoptSealed(slot, day, sealed);
+    markSent(slot, day);
+    return;
+  }
   const stored = readStored(key, day);
   const welcome = !welcomed();
   if (stored) {
-    await pushBrief(slot, day, stored, scan.initiative, welcome);
+    if (!wasSent(slot, day)) await pushBrief(slot, day, stored);
     return;
   }
   const view = await orchestratorView().catch(() => null);
@@ -125,17 +150,17 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { point
   if (woven) brief = { ...woven, picked: brief.picked, woven: true };
   writeBrief(key, day, brief, welcome);
   await pushSpeaks(scan.initiative);
-  await pushBrief(slot, day, brief, scan.initiative, welcome);
+  await pushBrief(slot, day, brief);
 }
 
-/** pushBrief 把已经生成的这一档放进主会话。同一天同一档只留一次，不再改简报正文。 */
-async function pushBrief(slot: BriefSlot, day: string, brief: MorningBrief, initiative: Initiative | undefined, welcome: boolean): Promise<void> {
-  if (!sessionId || !shouldPush(initiative, welcome)) return;
+/** pushBrief 把刚写成的这一档放进主会话。同一天同一档只推一次。 */
+async function pushBrief(slot: BriefSlot, day: string, brief: MorningBrief): Promise<void> {
+  if (!sessionId || wasSent(slot, day)) return;
   const work = copy.work;
   const chipDay = new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const chip = (slot === "evening" ? work.briefChipEvening : work.briefChipMorning).replace("{day}", chipDay);
   const text = slot === "evening" ? work.briefPushEvening : work.briefPushMorning;
-  await deskPush({
+  const pushed = await deskPush({
     sessionId,
     kind: "brief",
     slot,
@@ -144,6 +169,96 @@ async function pushBrief(slot: BriefSlot, day: string, brief: MorningBrief, init
     chip,
     brief: JSON.stringify(brief),
   }).catch(() => false);
+  if (pushed) markSent(slot, day);
+}
+
+const SENT_KEY = "yoyo.brief-sent";
+
+function sentMap(): Record<string, boolean> {
+  try {
+    const body = JSON.parse(localStorage.getItem(SENT_KEY) || "{}") as Record<string, boolean>;
+    return body && typeof body === "object" ? body : {};
+  } catch {
+    return {};
+  }
+}
+
+function wasSent(slot: BriefSlot, day: string): boolean {
+  return sentMap()[`${slot}:${day}`] === true;
+}
+
+function markSent(slot: BriefSlot, day: string) {
+  try {
+    const body = sentMap();
+    body[`${slot}:${day}`] = true;
+    localStorage.setItem(SENT_KEY, JSON.stringify(body));
+  } catch {
+    /* 记不住时，下一次打开仍会问服务端这封在不在。 */
+  }
+}
+
+async function sealedBrief(slot: BriefSlot, day: string): Promise<BriefRecord | null> {
+  const rows = await briefList().catch(() => [] as BriefRecord[]);
+  return rows.find((row) => row.slot === slot && row.day === day) || null;
+}
+
+function adoptSealed(slot: BriefSlot, day: string, rec: BriefRecord) {
+  let body: MorningBrief;
+  try {
+    body = JSON.parse(rec.brief) as MorningBrief;
+  } catch {
+    return;
+  }
+  if (!body?.cards?.length) return;
+  const prev = readStored(briefStorageKey(slot), day);
+  const next: MorningBrief = { ...body, picked: prev?.picked || body.picked || {} };
+  const raw = serializeStoredBrief(day, next);
+  try {
+    if (localStorage.getItem(briefStorageKey(slot)) === raw) return;
+    localStorage.setItem(briefStorageKey(slot), raw);
+  } catch {
+    return;
+  }
+  window.dispatchEvent(new Event(BRIEF_EVENT));
+}
+
+function editionFromRecord(rec: BriefRecord): BriefEdition | null {
+  try {
+    const body = JSON.parse(rec.brief) as MorningBrief;
+    if (!body?.cards?.length) return null;
+    const slot: BriefSlot = rec.slot === "evening" ? "evening" : "morning";
+    const kept = readStored(briefStorageKey(slot), rec.day);
+    return {
+      id: rec.id || `brief:${slot}:${rec.day}`,
+      slot,
+      day: rec.day,
+      chip: rec.chip || "",
+      at: rec.at || "",
+      brief: { cards: body.cards, picked: kept?.picked || body.picked || {}, welcome: body.welcome === true, woven: body.woven === true },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function localEditions(): BriefEdition[] {
+  const day = briefDay();
+  const out: BriefEdition[] = [];
+  for (const slot of ["evening", "morning"] as BriefSlot[]) {
+    const brief = readStored(briefStorageKey(slot), day);
+    if (!brief) continue;
+    out.push({ id: `brief:${slot}:${day}`, slot, day, chip: "", at: "", brief });
+  }
+  return out;
+}
+
+function byNewest(a: BriefEdition, b: BriefEdition): number {
+  const at = Date.parse(a.at) || Date.parse(`${a.day}T00:00:00`) || 0;
+  const bt = Date.parse(b.at) || Date.parse(`${b.day}T00:00:00`) || 0;
+  if (at !== bt) return bt - at;
+  if (a.day !== b.day) return a.day < b.day ? 1 : -1;
+  if (a.slot === b.slot) return 0;
+  return a.slot === "evening" ? -1 : 1;
 }
 
 /** pushSpeaks 把这一轮该说的短讯放进主会话。同一条同一天只留一次。检索按链接分开，并且不占用晨间那一条。 */

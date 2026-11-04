@@ -69,14 +69,17 @@ function BriefDialog(props: { open: OpenBrief; onClose: () => void; onDraft: (te
 
 function resolveBrief(open: OpenBrief): MorningBrief | null {
   const slot = open.slot === "evening" ? "evening" : "morning";
-  if (open.day === briefDay()) {
-    const stored = parseStoredBrief(localStorage.getItem(briefStorageKey(slot)), open.day);
-    if (stored) return stored;
-  }
+  const stored = open.day === briefDay() ? parseStoredBrief(localStorage.getItem(briefStorageKey(slot)), open.day) : null;
+  const fromMessage = parsePayload(open.brief);
+  if (fromMessage) return { ...fromMessage, picked: { ...fromMessage.picked, ...(stored?.picked || {}) } };
+  return stored;
+}
+
+function parsePayload(raw: string): MorningBrief | null {
   try {
-    const body = JSON.parse(open.brief) as MorningBrief;
-    if (!body || !Array.isArray(body.cards)) return null;
-    return { cards: body.cards, picked: body.picked || {} };
+    const body = JSON.parse(raw) as MorningBrief;
+    if (!body || !Array.isArray(body.cards) || body.cards.length < 1) return null;
+    return { cards: body.cards, picked: body.picked || {}, welcome: body.welcome === true, woven: body.woven === true };
   } catch {
     return null;
   }
@@ -84,12 +87,13 @@ function resolveBrief(open: OpenBrief): MorningBrief | null {
 
 function rememberPick(open: OpenBrief, next: MorningBrief) {
   const slot: BriefSlot = open.slot === "evening" ? "evening" : "morning";
-  if (open.day === briefDay()) {
-    try {
-      localStorage.setItem(briefStorageKey(slot), serializeStoredBrief(open.day, next));
-    } catch {
-      /* 点选写不进去时，弹层这一次仍然留着。 */
-    }
-    window.dispatchEvent(new Event(BRIEF_EVENT));
+  if (open.day !== briefDay()) return;
+  const stored = parseStoredBrief(localStorage.getItem(briefStorageKey(slot)), open.day);
+  const base = stored || next;
+  try {
+    localStorage.setItem(briefStorageKey(slot), serializeStoredBrief(open.day, { ...base, picked: next.picked }));
+  } catch {
+    /* 点选写不进去时，弹层这一次仍然留着。 */
   }
+  window.dispatchEvent(new Event(BRIEF_EVENT));
 }
