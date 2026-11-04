@@ -1,0 +1,26 @@
+---
+description: Regenerating the handheld method catalog whenever a Go remote method is added or changed.
+globs: internal/api/rpc.go,internal/app/video.go,internal/remote/node.go,handheld/lib/methods.g.dart,yoyo/internal/api/rpc.go,yoyo/internal/app/video.go,yoyo/internal/remote/node.go,yoyo/handheld/lib/methods.g.dart
+alwaysApply: false
+---
+
+# Handheld method catalog
+
+`handheld/lib/methods.g.dart` is generated from the Go method table. CI compares them in `TestMethodCatalogMatchesClient`. A new or renamed method without a regenerated catalog fails that test.
+
+## Same turn
+
+If you add, rename, or remove a `case` in `internal/api/rpc.go`, `internal/app/video.go`, or `internal/remote/node.go`, regenerate the catalog before the task is done. The Dart file belongs in the same change as the Go case.
+
+From the `yoyo` module root, in PowerShell:
+
+```powershell
+$env:YOYO_WRITE_METHODS='1'; go test ./internal/remote/ -run TestMethodCatalogMatchesClient -count=1; Remove-Item Env:YOYO_WRITE_METHODS
+go test ./internal/remote/ -run TestMethodCatalogMatchesClient -count=1
+```
+
+The second run must pass with the variable unset. Do not hand-edit `methods.g.dart`.
+
+## What the scanner sees
+
+Only tab-indented `case` lines in those three files. A method name is the quoted string. Fields come from `json:"..."` tags and `str("...")` arguments in that case body. Names sort alphabetically into the Dart list.
