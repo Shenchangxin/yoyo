@@ -77,6 +77,35 @@ describe("task session order", () => {
     ]);
   });
 
+  /** 派工正文和输入只差换行时，说明留在工人开口之前，不补到记录末尾。 */
+  it("keeps a brief in front of the work when only whitespace differs", () => {
+    const rows = ticket([{ id: "in-1", text: "背景\n\n目标产物：一份清单" }]);
+    const lines: TaskLine[] = [
+      { id: "a1", role: "user", source: "assignment", text: "背景\n目标产物：一份清单" },
+      { id: "r1", role: "assistant", text: "开始查" },
+      { id: "c1", role: "tool_call", name: "web_search", text: "{}" },
+    ];
+    assert.deepEqual(taskSessionItems(rows, lines).map((item) => item.text), [
+      "背景\n\n目标产物：一份清单",
+      "开始查",
+      "{}",
+    ]);
+  });
+
+  /** 对不上的新说明出现在它发生的位置，后面的回复不再跑到它前面。 */
+  it("shows an unmatched assignment before the reply that followed it", () => {
+    const rows = ticket([{ id: "in-1", text: "另一件还没送进日志的事" }]);
+    const lines: TaskLine[] = [
+      { id: "a1", role: "user", source: "assignment", text: "先去看公开的招聘页" },
+      { id: "r1", role: "assistant", text: "正在打开" },
+    ];
+    assert.deepEqual(taskSessionItems(rows, lines).map((item) => item.text), [
+      "先去看公开的招聘页",
+      "正在打开",
+      "另一件还没送进日志的事",
+    ]);
+  });
+
   /** 重启说明不再出现在任务会话里。 */
   it("drops the host restart note", () => {
     const rows = ticket([

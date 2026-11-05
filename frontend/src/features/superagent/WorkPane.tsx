@@ -12,7 +12,7 @@ import { cn } from "../../lib/utils";
 import type { DeskView, Rule, Ticket, Trigger } from "./desk-model";
 import { BRIEF_EVENT, briefEditions, latestInitiative, noteFeedback, runDeskFeed, type BriefEdition } from "./desk-feed";
 import { TaskRead } from "./TaskPage";
-import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, parseBriefPrefs, serializeStoredBrief, runningCount, slotDue, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
+import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, offerSlot, parseBriefPrefs, serializeStoredBrief, runningCount, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
 
 type Tab = "now" | "tasks" | "memory";
 
@@ -199,7 +199,7 @@ function Now(props: {
   const [prefsOpen, setPrefsOpen] = useState(false);
   const busy = useRef(false);
   const today = new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", weekday: "long" });
-  const dueSlot: BriefSlot | null = slotDue(prefs, "evening") ? "evening" : slotDue(prefs, "morning") ? "morning" : null;
+  const dueSlot: BriefSlot | null = offerSlot(prefs);
   const dueMissing = !!dueSlot && !editions.some((row) => row.slot === dueSlot && row.day === briefDay());
   const heading = dueSlot === "evening" ? copy.work.briefEvening : copy.work.briefMorning;
   useEffect(() => {
@@ -221,7 +221,8 @@ function Now(props: {
     busy.current = true;
     setWaiting(true);
     try {
-      await runDeskFeed(briefPhrases(copy.work), dueSlot || "morning");
+      if (!dueSlot) return;
+      await runDeskFeed(briefPhrases(copy.work), dueSlot);
       setEditions(await briefEditions());
     } finally {
       busy.current = false;

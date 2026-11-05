@@ -937,7 +937,8 @@ func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirme
 		d := e.putDecision(tr, "accept", reason, ticketID)
 		e.openTicket(tr, strength, ticketID, reason, matched, brief)
 		e.unqueue(tr)
-		if e.policy.Paused {
+		// 暂停只挡住推断出来的开工。人明确交代的仍然马上派工。
+		if e.policy.Paused && strength != "explicit" {
 			return d, "", nil
 		}
 		return d, ticketID, nil
@@ -1021,8 +1022,20 @@ func (e *Engine) applyReportEnd(t *Ticket, report Report) {
 }
 
 // resume 在没暂停且授权仍有效时重新打开 t。需要新派工时返回真。
+// 主动轮次用它。人点的继续走 reopen，不受暂停影响。
 func (e *Engine) resume(t *Ticket) bool {
-	if e.policy.Paused || !e.policy.Revalidate(t.Mandate) {
+	return e.reopen(t, true)
+}
+
+// reopen 重新打开 t。honorPause 为真时，暂停中的主动恢复不做。
+func (e *Engine) reopen(t *Ticket, honorPause bool) bool {
+	if t == nil {
+		return false
+	}
+	if honorPause && e.policy.Paused {
+		return false
+	}
+	if !e.policy.Revalidate(t.Mandate) {
 		return false
 	}
 	t.Ended = nil

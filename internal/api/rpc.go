@@ -1172,6 +1172,13 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, err
 		}
 		return map[string]any{"url": u}, nil
+	case "workspace.present":
+		var present struct {
+			Workspace string   `json:"workspace"`
+			Paths     []string `json:"paths"`
+		}
+		_ = json.Unmarshal(params, &present)
+		return map[string]any{"paths": a.PresentFiles(present.Workspace, present.Paths)}, nil
 	case "workspace.blob":
 		var p struct {
 			Workspace string `json:"workspace"`

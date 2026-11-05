@@ -79,7 +79,8 @@ func (e *Engine) attach(ticketID, triggerID, note string, fold bool) (bool, bool
 	if t.Ended == nil {
 		return false, true, nil
 	}
-	if !e.resume(t) {
+	// 人把下一句交到这张工单上时，暂停不应当成工单已死。否则路由会另开一张永远不派工的单。
+	if !e.reopen(t, false) {
 		return false, false, errCode("ticketEnded")
 	}
 	return true, false, nil

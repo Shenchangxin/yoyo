@@ -1009,6 +1009,17 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, prev)
 	})
+	mux.HandleFunc("POST /api/workspace/present", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Workspace string   `json:"workspace"`
+			Paths     []string `json:"paths"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]any{"paths": a.PresentFiles(body.Workspace, body.Paths)})
+	})
 	mux.HandleFunc("/api/workspace/blob", func(w http.ResponseWriter, r *http.Request) {
 		ws := r.URL.Query().Get("workspace")
 		path := r.URL.Query().Get("path")

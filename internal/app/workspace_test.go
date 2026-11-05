@@ -177,3 +177,19 @@ func TestPreviewWorkspaceFile(t *testing.T) {
 		t.Fatalf("pdf must not leak extracted text %+v", pdf)
 	}
 }
+
+// TestPresentFilesKeepsOnlyRealFiles 锁住还没写出的名字不会变成可预览的文件。
+func TestPresentFilesKeepsOnlyRealFiles(t *testing.T) {
+	dir := t.TempDir()
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(abs, "done.md"), []byte("清单"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := (&App{}).PresentFiles(abs, []string{"done.md", "golang-jobs.md", filepath.Join(abs, "done.md")})
+	if len(got) != 2 || got[0] != "done.md" || got[1] != filepath.Join(abs, "done.md") {
+		t.Fatalf("%#v", got)
+	}
+}

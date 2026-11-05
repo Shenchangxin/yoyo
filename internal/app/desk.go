@@ -66,6 +66,11 @@ func (a *App) orchestrator() *superagent.Runtime {
 	rt.SetIntake(a.connectorTriggers)
 	a.orch = rt
 	a.deskMu.Unlock()
+	// 应用本身没暂停时，清掉快照里留下的编排暂停。
+	// 那一档没有单独开关，留着真值时人点的任务不会开工，页面却像正在执行。
+	if !a.Config.Paused {
+		_ = rt.SetPaused(false)
+	}
 	rt.Start()
 	go func() {
 		time.Sleep(time.Second)

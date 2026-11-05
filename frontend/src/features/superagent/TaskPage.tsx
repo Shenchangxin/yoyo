@@ -55,7 +55,7 @@ export function TaskRead(props: {
     );
   }
   const items = taskSessionItems(ticket, lines);
-  const running = ticket.stage === "working";
+  const running = ticket.stage === "working" && ticket.action !== "queued";
   return (
     <div data-testid="task-read" className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex shrink-0 items-center gap-1 px-1 pt-1">
@@ -67,17 +67,21 @@ export function TaskRead(props: {
           <p className="truncate text-[12px] text-muted">{taskStatus(ticket, copy.work)}{ticket.directory ? ` · ${ticket.directory}` : ""}</p>
         </div>
       </div>
-      <Transcript
-        compact
-        flush
-        linkFiles
-        items={items}
-        approvals={[]}
-        running={running}
-        workspace={ticket.directory || props.workspace}
-        onRevealPath={(path) => { void revealPath(path); }}
-        onResolve={() => {}}
-      />
+      {items.length === 0 ? (
+        <p className="min-h-0 flex-1 px-4 py-8 text-center text-[13px] leading-5 text-muted">{copy.work.taskEmptyHint}</p>
+      ) : (
+        <Transcript
+          compact
+          flush
+          linkFiles
+          items={items}
+          approvals={[]}
+          running={running}
+          workspace={ticket.directory || props.workspace}
+          onRevealPath={(path) => { void revealPath(path); }}
+          onResolve={() => {}}
+        />
+      )}
       <div className="shrink-0 px-2 pb-2">
         <Composer
           plain
@@ -143,6 +147,7 @@ function taskStatus(ticket: Ticket, work: { taskWorking: string; taskDone: strin
     return work.taskDone;
   }
   const key = stageKey(ticket);
-  if (key === "queued" || key === "running") return work.taskWorking;
+  if (key === "running") return work.taskWorking;
+  if (key === "queued") return work.queued;
   return work[key];
 }

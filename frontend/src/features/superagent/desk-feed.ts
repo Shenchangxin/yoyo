@@ -5,13 +5,15 @@
 
 import { briefList, composeToday, deskFeedback, deskPush, mainSession, orchestratorView, poiAck, poiRefresh, type BriefRecord, type Initiative, type TodayCard } from "../../lib/client";
 import { copy } from "../../lib/i18n";
-import { briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, BRIEF_PREFS_KEY, type BriefCard, type BriefLayout, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief } from "./work-model";
+import { briefDay, briefStorageKey, clockMinute, compareEditions, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotsCrossed, BRIEF_PREFS_KEY, type BriefCard, type BriefLayout, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
 const WELCOME_KEY = "yoyo.brief-welcomed";
 
 let sessionId = "";
 let latest: Initiative | undefined;
+/** seenMinute 是这一进程上次看见的本地分钟。-1 表示还没看过钟，第一次只记账，不补生成。 */
+let seenMinute = -1;
 
 /** latestInitiative 是最近一轮感知。任务栏用它显示会说但没说的事。 */
 export function latestInitiative(): Initiative | undefined {
@@ -39,17 +41,24 @@ export function deskSession(): string {
   return sessionId;
 }
 
-/** runDeskFeed 刷新兴趣库，并在到点时生成还没有的那一档简报。force 时立刻生成这一档。已经写下的不再改，也不再推进。 */
+/** runDeskFeed 刷新兴趣库。进程跑着并且时钟跨过设定分钟时，才自动生成那一档。force 是人点的那一档，立刻生成。已经写下的不再改，也不再推进。 */
 export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Promise<void> {
   const prefs = readPrefs();
   const main = await mainSession().catch(() => null);
   if (main?.id) sessionId = main.id;
   await orchestratorView().catch(() => null);
   const scan = await refreshPoi();
-  const slots: BriefSlot[] = force ? [force] : (["morning", "evening"] as BriefSlot[]).filter((slot) => slotDue(prefs, slot));
+  const slots: BriefSlot[] = force ? [force] : crossedNow(prefs);
   for (const slot of slots) {
     await ensureBrief(slot, scan);
   }
+}
+
+function crossedNow(prefs: ReturnType<typeof readPrefs>): BriefSlot[] {
+  const minute = clockMinute();
+  const prev = seenMinute;
+  seenMinute = minute;
+  return slotsCrossed(prefs, prev, minute);
 }
 
 /** BriefEdition 是看板上的一封已经固定的简报。 */
@@ -235,12 +244,7 @@ function localEditions(): BriefEdition[] {
 }
 
 function byNewest(a: BriefEdition, b: BriefEdition): number {
-  const at = Date.parse(a.at) || Date.parse(`${a.day}T00:00:00`) || 0;
-  const bt = Date.parse(b.at) || Date.parse(`${b.day}T00:00:00`) || 0;
-  if (at !== bt) return bt - at;
-  if (a.day !== b.day) return a.day < b.day ? 1 : -1;
-  if (a.slot === b.slot) return 0;
-  return a.slot === "evening" ? -1 : 1;
+  return compareEditions(a, b);
 }
 
 /** pushSpeaks 把这一轮该说的短讯放进主会话。同一条同一天只留一次。检索按链接分开，并且不占用晨间那一条。 */

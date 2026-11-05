@@ -1456,6 +1456,17 @@ export async function readWorkspaceBlob(workspace: string, path: string): Promis
   };
 }
 
+/** presentFiles 只留下磁盘上已经有的普通文件。还没写出来的路径不会返回。 */
+export async function presentFiles(workspace: string, paths: string[]): Promise<string[]> {
+  if (!paths.length) return [];
+  const s = await wailsService();
+  const raw = s?.PresentFiles
+    ? await s.PresentFiles(workspace, paths)
+    : await http("/api/workspace/present", { method: "POST", body: JSON.stringify({ workspace, paths }) });
+  const list = Array.isArray(raw) ? raw : (pick(raw, "paths", "Paths") as unknown[]);
+  return (Array.isArray(list) ? list : []).map((item) => String(item || "")).filter(Boolean);
+}
+
 /** applyHunks 走 ApplyHunks 或 POST /api/workspace/hunks。ids 传给 ApplyHunks，放进请求体。 */
 export async function applyHunks(workspace: string, ids: string[]): Promise<void> {
   const s = await wailsService();
