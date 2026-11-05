@@ -33,15 +33,20 @@ const routePrompt = `你是主会话的路由。你只有 task_route、task_stat
 
 明确的请求立刻路由。先看材料里列出的工单：和某一张是同一件事，或者明显相关，就用 continue 指到那张工单，沿用它的目录和会话，不要 accept 新开。有多张相关时，继续最贴近的一张。都不相关才 accept。
 
-工人看不到这段对话。人的原话不会再转给工人。accept 和 continue 都必须带 brief，这是工人这一轮唯一会读到的任务说明，要能直接开工。按这个结构写，用你已经知道的目录、进展和约束，不要编造没见过的路径：
-- 背景：这件事做到哪了，人刚刚决定了什么
-- 要做的：产物、放在哪、怎样算做完
-- 不要做的：不能动的文件、必须先确认的动作
-人的短回复只是一个决定，折进背景里，不要原样粘贴，也不要再附一行短标题。title 只在 accept 时写一个短名，continue 时留空。不要把任务说明写进 title。
+工人看不到这段对话。人的原话不会再转给工人。accept 和 continue 都必须带 brief，没有 brief 的调用会被拒绝。brief 是工人这一轮唯一会读到的任务说明，要写到不用再回来问就能做完。只用已经出现过的目录、文件和决定，不要编路径，也不要留 A/B/C 让工人挑。按这个结构写：
+- 背景：这件事做到哪了，人刚刚拍板了什么
+- 目标产物：要交出的每一样东西、放在哪个已经知道的路径、怎样算做完
+- 路径：要读写的目录写完整绝对路径。只写文件时，工人只能改这个文件所在的目录
+- 硬性约束：不能动的文件、不能做的事
+- 交付：做完后交回什么
+人的短回复只是一个决定，写进背景和目标里，不要原样粘贴，也不要再附一行短标题。title 只在 accept 时写一个短名，continue 时留空。不要把任务说明写进 title。
 
 对人只说一两句：已经交给哪张工单、这一轮要做成什么。不要把 brief 贴进对话，也不要等工人做完。
 
 推断的工作只有在 auto 下、并且 rules 里写了至少一条还启用的规则编号时才能接受。只是聊天就忽略。人明确要求打断时才 stop。打断只停这一轮，原会话还能继续。工人的阶段性进展和结果会写回这段对话，你不要重做。`
+
+// errNeedsBrief 在 accept 或 continue 没写任务说明时返回。人的原话不会代替这份说明。
+var errNeedsBrief = fmt.Errorf("需要 brief。写清背景、目标产物、已经知道的路径、硬性约束和怎样算做完。人的原话不会另送")
 
 // beginRoute 在智能体主会话上换成路由工具。视频、学习、短片和即时消息会话保持原来的工具。
 func (a *App) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID string) bool {
@@ -91,7 +96,7 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	if len(reached) > 0 {
 		return "这条消息已经交给工单 " + strings.Join(reached, ", ") + "。不要再接受。只有人明确要求停止时才用 task_stop。"
 	}
-	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 和 continue 都要把工人这一轮要做的事写进 brief：人的原话不会转过去，所以 brief 必须自洽，写清背景、要做的、不要做的。不要把人的短回复原样放进 brief，也不要另附一行短标题。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
+	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 和 continue 都必须带 brief，没有 brief 会被拒绝，人的原话也不会送过去。brief 要能让工人做到完，写清背景、目标产物、可写目录的绝对路径、硬性约束、怎样算做完。人已经做过的选择写死，不要留选项。不要把人的短回复原样放进 brief。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
 	if roster := taskRoster(rt); roster != "" {
 		line += "\n最近工单：\n" + roster
 	}
@@ -150,7 +155,7 @@ func (a *App) routerExtras() map[string]runtime.ExtraTool {
 
 // routeTool 接受、忽略、停止或挂接触发。一次可以有多项。
 func (a *App) routeTool() runtime.ExtraTool {
-	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 是工人这一轮唯一的任务说明，accept 和 continue 必填，要写清背景、要做的、不要做的；人的原话不会另送。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。", map[string]any{
+	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 在 accept 和 continue 时必填，是工人这一轮唯一会读的任务说明，要写清背景、目标产物、已知路径、硬性约束和怎样算做完；人的原话不会另送，留空会被拒绝。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。", map[string]any{
 		"items": map[string]any{
 			"type": "array",
 			"items": map[string]any{
@@ -160,7 +165,7 @@ func (a *App) routeTool() runtime.ExtraTool {
 					"action":  map[string]any{"type": "string", "enum": []string{"accept", "continue", "ignore", "stop", "attach"}},
 					"ticket":  map[string]any{"type": "string"},
 					"title":   map[string]any{"type": "string", "description": "只在 accept 时填写的短名。不要写成任务说明。"},
-					"brief":   map[string]any{"type": "string", "description": "工人这一轮唯一要读的任务说明。写清背景、要做的、不要做的。人的原话不会另送。"},
+					"brief":   map[string]any{"type": "string", "description": "工人这一轮唯一要读的任务说明。写清背景、目标产物、可写目录的绝对路径、硬性约束和怎样算做完。人的原话不会另送。accept 和 continue 缺了它会被拒绝。"},
 					"reason":  map[string]any{"type": "string"},
 					"rules":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
@@ -204,25 +209,17 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 	brief := strings.TrimSpace(strParam(item, "brief"))
 	switch action {
 	case "accept":
+		if brief == "" {
+			return "", errNeedsBrief
+		}
 		if ticket != "" {
-			if brief == "" {
-				brief = strings.TrimSpace(title)
-			}
 			if err := rt.Act("assign", ticket, trigger, brief, ""); err != nil {
 				return "", err
 			}
 			return "attached " + trigger + " to " + ticket, nil
 		}
 		rules := ruleParam(item["rules"])
-		var err error
-		if brief != "" {
-			err = rt.DecideBrief(trigger, "accept", title, brief, rules)
-		} else if len(rules) > 0 {
-			err = rt.DecideMatched(trigger, "accept", title, rules)
-		} else {
-			err = rt.Decide(trigger, "accept", title)
-		}
-		if err != nil {
+		if err := rt.DecideBrief(trigger, "accept", title, brief, rules); err != nil {
 			return "", err
 		}
 		return "accepted " + trigger, nil
@@ -231,7 +228,7 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 			return "", fmt.Errorf("continue needs ticket")
 		}
 		if brief == "" {
-			brief = strings.TrimSpace(title)
+			return "", errNeedsBrief
 		}
 		if err := rt.Act("assign", ticket, trigger, brief, ""); err != nil {
 			return "", err
@@ -415,8 +412,29 @@ func (a *App) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID str
 			home = a.Home.Root
 		}
 	}
-	tools := &runtime.WorkspaceTools{Workspace: dir, Home: home, SessionID: id, Caps: caps}
+	var roots []string
+	if a != nil {
+		roots = a.namedWorkRoots(ticketID, home)
+	}
+	tools := &runtime.WorkspaceTools{Workspace: dir, Home: home, SessionID: id, Caps: caps, Roots: roots}
 	return dshdesk.MountWorkspace(reg, agent, tools)
+}
+
+// namedWorkRoots 从这张工单已经交给工人的说明里取出可写目录。家目录和过浅的路径不放进来。
+func (a *App) namedWorkRoots(ticketID, home string) []string {
+	if a == nil {
+		return nil
+	}
+	rt := a.orchestrator()
+	if rt == nil {
+		return nil
+	}
+	var b strings.Builder
+	for _, text := range rt.TicketTexts(ticketID) {
+		b.WriteString(text)
+		b.WriteByte('\n')
+	}
+	return runtime.NamedRoots(b.String(), home)
 }
 
 // relayNotice 把一条通知写进指定的桌面会话。它不开始新的路由回合。

@@ -814,6 +814,8 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			err = a.OpenWorkspaceTerminal(body.Path)
 		case "url":
 			err = a.OpenURL(body.Path)
+		case "reveal":
+			err = a.RevealPath(body.Path)
 		default:
 			err = a.OpenPath(body.Path)
 		}
@@ -988,6 +990,14 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			return
 		}
 		writeJSON(w, h)
+	})
+	mux.HandleFunc("/api/workspace/page", func(w http.ResponseWriter, r *http.Request) {
+		u, err := a.PreviewPageURL(r.URL.Query().Get("workspace"), r.URL.Query().Get("path"))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]any{"url": u})
 	})
 	mux.HandleFunc("/api/workspace/file", func(w http.ResponseWriter, r *http.Request) {
 		ws := r.URL.Query().Get("workspace")

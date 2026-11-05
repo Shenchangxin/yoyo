@@ -3,9 +3,9 @@
  * 不拥有：简报卡片怎么画。那在 WorkPane 和简报弹层。
  */
 
-import { briefList, composeToday, deskFeedback, deskPush, mainSession, memoryList, orchestratorView, poiAck, poiRefresh, type BriefRecord, type Initiative } from "../../lib/client";
+import { briefList, composeToday, deskFeedback, deskPush, mainSession, orchestratorView, poiAck, poiRefresh, type BriefRecord, type Initiative, type TodayCard } from "../../lib/client";
 import { copy } from "../../lib/i18n";
-import { applySenses, auditBrief, briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, BRIEF_PREFS_KEY, type BriefCard, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief, type SenseLabels, type SenseSignal } from "./work-model";
+import { briefDay, briefStorageKey, parseBriefPrefs, parseStoredBrief, serializeStoredBrief, slotDue, BRIEF_PREFS_KEY, type BriefCard, type BriefLayout, type BriefPhrases, type BriefSlot, type DeskCensus, type MorningBrief } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
 const WELCOME_KEY = "yoyo.brief-welcomed";
@@ -48,7 +48,7 @@ export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Pro
   const scan = await refreshPoi();
   const slots: BriefSlot[] = force ? [force] : (["morning", "evening"] as BriefSlot[]).filter((slot) => slotDue(prefs, slot));
   for (const slot of slots) {
-    await ensureBrief(slot, phrases, scan);
+    await ensureBrief(slot, scan);
   }
 }
 
@@ -114,7 +114,7 @@ function poiText(added: string[], dropped: string[]): string {
   return lines.join("\n");
 }
 
-async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { points: { name: string; kind: string }[]; census?: DeskCensus; initiative?: Initiative }): Promise<void> {
+async function ensureBrief(slot: BriefSlot, scan: { initiative?: Initiative }): Promise<void> {
   const day = briefDay();
   const key = briefStorageKey(slot);
   const sealed = await sealedBrief(slot, day);
@@ -124,33 +124,15 @@ async function ensureBrief(slot: BriefSlot, phrases: BriefPhrases, scan: { point
     return;
   }
   const stored = readStored(key, day);
-  const welcome = !welcomed();
   if (stored) {
     if (!wasSent(slot, day)) await pushBrief(slot, day, stored);
     return;
   }
-  const view = await orchestratorView().catch(() => null);
-  const memory = await memoryList().catch(() => []) as { kind: string; text: string; staging?: boolean }[];
-  let brief = auditBrief({
-    tickets: view?.tickets,
-    queued: view?.queued,
-    decisions: view?.decisions,
-    rules: view?.rules,
-    sources: view?.sources,
-    memory,
-    points: scan.points,
-    census: scan.census,
-    welcome,
-    now: new Date(),
-  }, phrases);
-  const signals = (scan.initiative?.signals || []) as SenseSignal[];
-  if (signals.length) brief = applySenses(brief, signals, senseLabels());
-  const woven = await wovenBrief();
-  if (woven === "pending") return;
-  if (woven) brief = { ...woven, picked: brief.picked, woven: true };
-  writeBrief(key, day, brief, welcome);
+  const woven = await wovenBrief(slot);
+  if (woven === "pending" || !woven) return;
+  writeBrief(key, day, woven, false);
   await pushSpeaks(scan.initiative);
-  await pushBrief(slot, day, brief);
+  await pushBrief(slot, day, woven);
 }
 
 /** pushBrief 把刚写成的这一档放进主会话。同一天同一档只推一次。 */
@@ -286,47 +268,6 @@ async function pushSpeaks(initiative: Initiative | undefined, briefJSON?: string
   }
 }
 
-function senseLabels(): SenseLabels {
-  const work = copy.work;
-  return {
-    unchecked: work.senseUnchecked,
-    linked: work.senseLinked,
-    senseTitle: work.senseTitle,
-    senseLede: work.senseLede,
-    listening: work.senseListening,
-    battery: work.senseBattery,
-    charging: work.senseCharging,
-    online: work.senseOnline,
-    offline: work.senseOffline,
-    idle: work.senseIdle,
-    focus: work.senseFocus,
-    power: work.sensePower,
-    net: work.senseNet,
-    git: work.senseGit,
-    mail: work.senseMail,
-    calendar: work.senseCalendar,
-    poi: work.sensePoi,
-    speakKicker: work.speakKicker,
-    speakTitle: work.speakTitle,
-    speakLede: work.speakLede,
-    speakPrimary: work.speakPrimary,
-    speakTask: work.speakTask,
-    why: {
-      changed: work.whyChanged,
-      overdue: work.whyOverdue,
-      due: work.whyDue,
-      waiting: work.whyWaiting,
-      blocked: work.whyBlocked,
-      failed: work.whyFailed,
-      error: work.whyError,
-      low: work.whyLow,
-      offline: work.whyOffline,
-      welcome: work.whyWelcome,
-      match: work.whyMatch,
-    },
-  };
-}
-
 function writeBrief(key: string, day: string, brief: MorningBrief, welcome: boolean) {
   try {
     localStorage.setItem(key, serializeStoredBrief(day, brief));
@@ -337,26 +278,42 @@ function writeBrief(key: string, day: string, brief: MorningBrief, welcome: bool
   window.dispatchEvent(new Event(BRIEF_EVENT));
 }
 
-/** wovenBrief 是按画像、记忆和最近对话写成的简报。材料不够或模型没写出卡片时为空。上一次还在写时返回 pending。 */
-async function wovenBrief(): Promise<MorningBrief | "pending" | null> {
-  const raw = await composeToday().catch(() => null);
+const briefLayouts: readonly BriefLayout[] = ["checks", "compare", "evidence", "chips", "plain", "letter", "rows", "stats"];
+
+/** wovenBrief 是模型按材料写成的简报。材料不够、还在写、或没有卡片时不落盘。 */
+async function wovenBrief(slot: BriefSlot): Promise<MorningBrief | "pending" | null> {
+  const raw = await composeToday(slot).catch(() => null);
   if (raw?.pending) return "pending";
   if (!raw?.woven || !raw.cards?.length) return null;
-  const cards = raw.cards.filter((card) => card.id && card.title).map((card): BriefCard => ({
+  const cards = raw.cards.filter((card) => card.id && card.title).map(briefCard);
+  if (!cards.length) return null;
+  return { cards, picked: {}, woven: true };
+}
+
+function briefCard(card: TodayCard): BriefCard {
+  const layout = briefLayouts.find((item) => item === card.layout);
+  return {
     id: card.id,
     kicker: card.kicker || "",
     title: card.title,
     lede: card.lede || "",
-    layout: card.layout === "rows" || card.layout === "checks" || card.layout === "compare" || card.layout === "chips" || card.layout === "plain" || card.layout === "evidence" ? card.layout : "evidence",
-    items: (card.items || []).map((item) => ({ title: item.title, detail: item.detail || "" })),
-    choices: (card.choices || []).map((item, index) => ({ id: item.id || String(index), title: item.title, detail: item.detail || "" })),
+    layout,
+    items: (card.items || []).filter((item) => item.title).map((item) => ({
+      title: item.title,
+      detail: item.detail || "",
+      tone: item.tone === "moving" || item.tone === "quiet" || item.tone === "stalled" ? item.tone : undefined,
+    })),
+    choices: (card.choices || []).filter((item) => item.title).map((item, index) => ({ id: item.id || String(index), title: item.title, detail: item.detail || "" })),
+    stats: (card.stats || []).filter((stat) => stat.label && stat.value),
+    mark: card.mark || undefined,
+    leftLabel: card.leftLabel || undefined,
+    rightLabel: card.rightLabel || undefined,
+    note: card.note || undefined,
     primary: card.primary || "",
     secondary: card.secondary || "",
     task: card.task,
     alt: card.alt,
-  }));
-  if (!cards.length) return null;
-  return { cards, picked: {} };
+  };
 }
 
 function readPrefs() {
@@ -364,14 +321,6 @@ function readPrefs() {
     return parseBriefPrefs(localStorage.getItem(BRIEF_PREFS_KEY));
   } catch {
     return parseBriefPrefs(null);
-  }
-}
-
-function welcomed(): boolean {
-  try {
-    return localStorage.getItem(WELCOME_KEY) === "1";
-  } catch {
-    return false;
   }
 }
 

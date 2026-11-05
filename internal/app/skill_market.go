@@ -210,6 +210,11 @@ func (a *App) OpenPath(path string) error {
 	return hostopen.Path(path)
 }
 
+// RevealPath 在文件管理器里显示 path。
+func (a *App) RevealPath(path string) error {
+	return hostopen.Reveal(path)
+}
+
 // OpenURL 用 hostopen 打开链接。
 // raw 传给 hostopen.URL。
 func (a *App) OpenURL(raw string) error {

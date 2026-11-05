@@ -756,6 +756,8 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return map[string]any{"ok": true}, a.OpenWorkspaceTerminal(p.Path)
 		case "url":
 			return map[string]any{"ok": true}, a.OpenURL(p.Path)
+		case "reveal":
+			return map[string]any{"ok": true}, a.RevealPath(p.Path)
 		default:
 			return map[string]any{"ok": true}, a.OpenPath(p.Path)
 		}
@@ -1159,6 +1161,17 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.PreviewWorkspaceFile(p.Workspace, p.Path)
+	case "workspace.page":
+		var p struct {
+			Workspace string `json:"workspace"`
+			Path      string `json:"path"`
+		}
+		_ = json.Unmarshal(params, &p)
+		u, err := a.PreviewPageURL(p.Workspace, p.Path)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"url": u}, nil
 	case "workspace.blob":
 		var p struct {
 			Workspace string `json:"workspace"`
@@ -1741,10 +1754,18 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		return a.WorkerTranscript(transcript.TicketID), nil
 	case "today.compose":
+		var today struct {
+			Slot string `json:"slot"`
+		}
+		if len(params) > 0 && string(params) != "null" {
+			if err := json.Unmarshal(params, &today); err != nil {
+				return nil, err
+			}
+		}
 		if a == nil {
 			return nil, fmt.Errorf("app is not running")
 		}
-		return a.ComposeToday(), nil
+		return a.ComposeToday(today.Slot), nil
 	case "orchestrator.mode":
 		var mode struct {
 			Mode string `json:"mode"`

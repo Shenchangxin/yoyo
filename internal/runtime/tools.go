@@ -92,6 +92,8 @@ type WorkspaceTools struct {
 	ReadOnly bool
 	// ChatOverlay 为真表示桌面或 CLI 的个人聊天。Harbor 评测保持为假，使 shell、计划用语和工具菜单保持评测稳定。
 	ChatOverlay bool
+	// Roots 是任务说明里点名、允许读写的额外目录。工作区本身不在这里。
+	Roots []string
 	// RouteOnly 为真时只广告 Extra 里的路由工具。写文件、shell 和浏览器不在这张表里。
 	RouteOnly bool
 	// DshShell 为真时，聊天叠加层的空闲和阻塞熔断不杀掉 shell。命令仍受自己的超时限制。
@@ -520,7 +522,7 @@ func (t *WorkspaceTools) resolve(rel string) (string, error) {
 		p = filepath.Join(t.Workspace, p)
 	}
 	p = filepath.Clean(p)
-	if !capability.WithinWorkspace(t.Workspace, p) {
+	if !capability.WithinWorkspace(t.Workspace, p) && !capability.WithinAny(t.Roots, p) {
 		return "", fmt.Errorf("path escapes workspace")
 	}
 	if capability.ForbiddenDiagPath(t.Home, p) {
@@ -545,6 +547,7 @@ func (t *WorkspaceTools) check(level capability.Level, action, path, cmd string)
 		Command:   cmd,
 		SessionID: t.SessionID,
 		Workspace: t.Workspace,
+		Roots:     append([]string(nil), t.Roots...),
 		ForceAsk:  policyRequires(t.Policy, level),
 	}
 	if t.Ctx != nil {
@@ -1114,7 +1117,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	if runtime.GOOS == "windows" {
 		command, argv = rewriteWindowsBash(command, argv)
 	}
-	extra := t.skillDirRoots()
+	extra := append(t.skillDirRoots(), t.Roots...)
 	if err := ShellDenied(command, t.Workspace, t.Policy.NetworkAllow, extra...); err != nil {
 		return ToolResult{Err: err}
 	}

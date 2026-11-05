@@ -227,10 +227,13 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 				continue
 			}
 			text := strings.TrimSpace(msg.Text)
+			if text == hostRestartNote {
+				continue
+			}
 			if msg.Source == "assignment" {
 				text = assignmentBody(text)
 			}
-			if text == "" {
+			if text == "" || text == hostRestartNote {
 				continue
 			}
 			out = append(out, TranscriptLine{ID: lineID(i, "user"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)})
@@ -252,7 +255,7 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 					id = lineID(i, "call") + "-" + itoa(j)
 				}
 				out = append(out, TranscriptLine{
-					ID: id, Role: "tool_call", Name: name, Text: clipRunes(call.Arguments, 500),
+					ID: id, Role: "tool_call", Name: name, Text: clipRunes(call.Arguments, transcriptClip(name, 500)),
 				})
 			}
 		case dsh.EventToolResult:
@@ -268,14 +271,56 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 			if id == "" {
 				id = lineID(i, "result")
 			}
-			out = append(out, TranscriptLine{ID: id, Role: "tool_result", Name: msg.Name, Text: clipRunes(text, 1200), Error: msg.IsError})
+			out = append(out, TranscriptLine{ID: id, Role: "tool_result", Name: msg.Name, Text: clipRunes(text, transcriptClip(msg.Name, 1200)), Error: msg.IsError})
 		}
 	}
 	return out
 }
 
+// transcriptClip 给计划工具留更长的参数和结果，任务页才能把步骤展开。其余工具仍用 fallback。
+func transcriptClip(name string, fallback int) int {
+	if name == "update_plan" {
+		return 8000
+	}
+	return fallback
+}
+
 func lineID(i int, role string) string {
 	return role + "-" + itoa(i+1)
+}
+
+// scrubRestartNotes 去掉重启说明。它不是新任务，留在日志里会让工人把已经做过的事当成不能再做。
+func scrubRestartNotes(events []dsh.Event) []dsh.Event {
+	if len(events) == 0 {
+		return events
+	}
+	out := make([]dsh.Event, 0, len(events))
+	for _, ev := range events {
+		if ev.Type == dsh.EventUser {
+			msg, ok := ev.Data.(dsh.UserMessage)
+			if ok {
+				msg.Text = dropRestartLines(msg.Text)
+				if strings.TrimSpace(msg.Text) == "" {
+					continue
+				}
+				ev.Data = msg
+			}
+		}
+		out = append(out, ev)
+	}
+	return out
+}
+
+// dropRestartLines 删掉和宿主重启说明完全相同的行。
+func dropRestartLines(text string) string {
+	var keep []string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == hostRestartNote {
+			continue
+		}
+		keep = append(keep, line)
+	}
+	return strings.TrimSpace(strings.Join(keep, "\n"))
 }
 
 // assignmentBody 去掉派工包装，只留人写过的那些话。
@@ -283,7 +328,7 @@ func assignmentBody(text string) string {
 	var keep []string
 	for _, line := range strings.Split(text, "\n") {
 		s := strings.TrimSpace(line)
-		if s == "" || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || s == "完成后调用 orchestrator_report。" {
+		if s == "" || s == hostRestartNote || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || s == "完成后调用 orchestrator_report。" {
 			continue
 		}
 		keep = append(keep, s)
@@ -305,20 +350,22 @@ func (e *Executor) watchLog(agent *dsh.Agent, ticketID string, stop <-chan struc
 	}
 }
 
-// restoreAgent 把 ticketID 已存的日志灌进 agent，并把回合号接到上次的后面。
-func (e *Executor) restoreAgent(agent *dsh.Agent, ticketID string) {
+// restoreAgent 把 ticketID 已存的日志灌进 agent，并把回合号接到上次的后面。灌进去时返回真。
+func (e *Executor) restoreAgent(agent *dsh.Agent, ticketID string) bool {
 	if e == nil || agent == nil || e.LogLoad == nil {
-		return
+		return false
 	}
 	body := e.LogLoad(ticketID)
 	events, turn := decodeLog(body)
+	events = scrubRestartNotes(events)
 	if len(events) == 0 {
-		return
+		return false
 	}
 	agent.Session().Restore(events)
 	if turn > 0 {
 		agent.ResumeTurn(turn)
 	}
+	return true
 }
 
 // storeAgent 把 agent 当前日志交给 LogSave。没有日志时不写。

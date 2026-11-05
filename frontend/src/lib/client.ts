@@ -1390,6 +1390,18 @@ export type FilePreview = {
   office: boolean;
 };
 
+/** previewPageURL 返回可嵌进弹框的本机页面地址。同目录的脚本和样式也能打开。 */
+export async function previewPageURL(workspace: string, path: string): Promise<string> {
+  const s = await wailsService();
+  const call = (s as { PreviewPageURL?: (workspace: string, path: string) => Promise<string> } | null)?.PreviewPageURL;
+  if (call) {
+    const raw = await call(workspace, path);
+    return typeof raw === "string" ? raw : str(pick(raw, "url", "URL"));
+  }
+  const raw = await http(`/api/workspace/page?workspace=${encodeURIComponent(workspace || "")}&path=${encodeURIComponent(path || "")}`);
+  return str(pick(raw, "url", "URL"));
+}
+
 /**
  * previewWorkspaceFile 走 PreviewWorkspaceFile 或 /api/workspace/file。
  * path 为假时用空字符串，编码，拼进字符串，传给 PreviewWorkspaceFile，写进 /api/workspace/file?workspace={…}&path={path}。
@@ -2007,6 +2019,14 @@ export async function openPath(path: string): Promise<void> {
   await http("/api/open", { method: "POST", body: JSON.stringify({ path, kind: "path" }) });
 }
 
+/** revealPath 在文件管理器里定位 path。 */
+export async function revealPath(path: string): Promise<void> {
+  const s = await wailsService();
+  const reveal = (s as { RevealPath?: (path: string) => Promise<void> } | null)?.RevealPath;
+  if (reveal) return reveal(path);
+  await http("/api/open", { method: "POST", body: JSON.stringify({ path, kind: "reveal" }) });
+}
+
 /** openURL 走 OpenURL，或 POST /api/open 且 kind 为 url。raw 传给 OpenURL，放进请求体。 */
 export async function openURL(raw: string): Promise<void> {
   const s = await wailsService();
@@ -2032,6 +2052,14 @@ export async function openWorkspaceTerminal(dir: string): Promise<void> {
 export async function popOutThread(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.PopOutThread) return s.PopOutThread(id);
+}
+
+/** openFilePreview 再开一个独立预览窗口。没有绑定方法时，用浏览器窗口打开同一页。 */
+export async function openFilePreview(workspace: string, path: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.OpenFilePreview) return s.OpenFilePreview(workspace, path);
+  const q = new URLSearchParams({ filepreview: "1", workspace, path });
+  window.open(`${window.location.origin}${window.location.pathname}?${q}#filepreview=1&${q}`, "_blank", "noopener,width=1100,height=820");
 }
 
 /** pickFolder 走 PickFolder；没有该方法时，browserSurface 为真则用 prompt 问路径，否则返回空串。 */
@@ -3528,9 +3556,31 @@ export function orchestratorTranscript(ticketId: string): Promise<{ id: string; 
   return imCall("OrchestratorTranscript", [ticketId], `/api/orchestrator/transcript?ticket=${q}`);
 }
 
-/** composeToday 用画像、记忆和最近对话写今天的简报。材料不够时 woven 为假。 */
-export function composeToday(): Promise<{ cards?: { id: string; title: string; kicker?: string; lede?: string; layout?: string; items?: { title: string; detail?: string }[]; choices?: { id?: string; title: string; detail?: string }[]; primary?: string; secondary?: string; task?: string; alt?: string }[]; woven?: boolean; pending?: boolean }> {
-  return imCall("ComposeToday", [], "/api/today/brief", { method: "POST", body: "{}" });
+export type TodayCard = {
+  id: string;
+  title: string;
+  kicker?: string;
+  lede?: string;
+  layout?: string;
+  items?: { title: string; detail?: string; tone?: string }[];
+  choices?: { id?: string; title: string; detail?: string }[];
+  stats?: { label: string; value: string }[];
+  mark?: string;
+  leftLabel?: string;
+  rightLabel?: string;
+  note?: string;
+  primary?: string;
+  secondary?: string;
+  task?: string;
+  alt?: string;
+};
+
+/** composeToday 用画像、记忆、感知和最近对话写这一档简报。材料不够时 woven 为假。slot 取 morning 或 evening。 */
+export function composeToday(slot: string): Promise<{ cards?: TodayCard[]; woven?: boolean; pending?: boolean }> {
+  return imCall("ComposeToday", [slot], "/api/today/brief", {
+    method: "POST",
+    body: JSON.stringify({ slot }),
+  });
 }
 
 /** orchestratorAct 执行编排台动作。kind 是动作名。ticketId、triggerId、text 和 reason 按动作使用。 */

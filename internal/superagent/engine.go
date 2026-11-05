@@ -564,8 +564,26 @@ func (e *Engine) ReopenForInput(ticketID string) bool {
 	return launch
 }
 
+// TakeResume 取走 ticketID 上的续跑标记。没有时返回假。
+func (e *Engine) TakeResume(ticketID string) bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || !t.Resume {
+		return false
+	}
+	t.Resume = false
+	return true
+}
+
+// hostRestartNote 是旧版本重启时写进工单的那句。新的重启不再写它，展示时也把它滤掉。
+const hostRestartNote = "宿主重启了。先看工作目录、git 和 GitHub，不要重复已经做过的外部动作。"
+
 // RecoverHost 结束仍标成 running 的派工，并按工单编号从旧到新返回要重开的工单。
-// waiting、ready、blocked、failed 保持原样。pending 的派工也包含在返回值里。
+// 已有的会话日志会原样接上，不再追加一条新的任务说明。waiting、ready、blocked、failed 保持原样。pending 的派工也包含在返回值里。
 func (e *Engine) RecoverHost() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -590,7 +608,7 @@ func (e *Engine) RecoverHost() []string {
 			}
 			asg.State = "ended"
 			e.addAssignment(t)
-			e.addNote(t, "宿主重启了。先看工作目录、git 和 GitHub，不要重复已经做过的外部动作。", false)
+			t.Resume = true
 			out = append(out, id)
 			continue
 		}
@@ -973,7 +991,7 @@ func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules 
 	}
 	e.addInput(t, tr)
 	if b := strings.TrimSpace(brief); b != "" && len(t.Inputs) > 0 {
-		t.Inputs[len(t.Inputs)-1].Text = clipRunes(b, 4000)
+		t.Inputs[len(t.Inputs)-1].Text = clipRunes(b, 12000)
 	}
 	e.n++
 	e.outbox = append(e.outbox, Outbound{

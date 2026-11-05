@@ -12,6 +12,36 @@ import (
 	"testing"
 )
 
+// TestPageURLServesHTML 锁住 PageURL 不打开 Chrome，也能取回这份 HTML。
+func TestPageURLServesHTML(t *testing.T) {
+	dir := t.TempDir()
+	page := filepath.Join(dir, "index.html")
+	if err := os.WriteFile(page, []byte("<p>play</p>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(h.Close)
+	u, err := h.PageURL(page)
+	if err != nil || !strings.HasPrefix(u, "http://127.0.0.1:") {
+		t.Fatal(u, err)
+	}
+	if h.cmd != nil {
+		t.Fatal("chrome started")
+	}
+	resp, err := http.Get(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 || string(body) != "<p>play</p>" {
+		t.Fatalf("%d %s", resp.StatusCode, body)
+	}
+}
+
 // TestServeFileURLServesWorkspaceHTML 锁住 serveFileURL 返回的地址能取回写入的 HTML。
 func TestServeFileURLServesWorkspaceHTML(t *testing.T) {
 	dir := t.TempDir()

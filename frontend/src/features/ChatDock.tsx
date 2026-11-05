@@ -1,6 +1,7 @@
 // 本文件拥有侧栏里的转录和输入。不拥有消息怎么发出去。调用方传入 items 和 onSend。
 
 import { Transcript } from "./Transcript";
+import { revealPath } from "../lib/client";
 import { Composer } from "./Composer";
 import { pendingAsk } from "../lib/ask-form";
 import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
@@ -71,7 +72,7 @@ export function ChatDock(props: {
           {copy.dock.expand}
         </button>
       </div>
-      <Transcript items={props.items} showThinking={props.showThinking} transcriptView={props.transcriptView} collapseTiming={props.collapseTiming} approvals={props.approvals} running={props.running} compact workspace={props.workspace} onResolve={props.onResolve} onRetry={props.onRetry} />
+      <Transcript items={props.items} showThinking={props.showThinking} transcriptView={props.transcriptView} collapseTiming={props.collapseTiming} approvals={props.approvals} running={props.running} compact linkFiles workspace={props.workspace} onRevealPath={(path) => { void revealPath(path); }} onResolve={props.onResolve} onRetry={props.onRetry} />
       {props.onImproveThisChat && props.items.length > 0 && !props.running ? (
         <ChatNotWorking compact onImprove={props.onImproveThisChat} />
       ) : null}

@@ -8,8 +8,153 @@ import { useCopy } from "../lib/i18n";
 import * as api from "../lib/client";
 import type { BrowserView } from "../lib/client";
 import { looksLikeHTMLFile } from "../lib/html-preview";
+import { fileBase, isBrowserPreviewPath, joinedPath, previewTarget } from "../lib/file-paths";
 import { joinWorkspace } from "../lib/workspace";
 import { WorkspaceFileView } from "./transcript/FilePreview";
+
+/** parseCsv 按逗号和引号切开。引号里的逗号和换行留在格子里。 */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === "\"" && text[i + 1] === "\"") {
+        cell += "\"";
+        i += 1;
+      } else if (ch === "\"") quoted = false;
+      else cell += ch;
+      continue;
+    }
+    if (ch === "\"") quoted = true;
+    else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else if (ch !== "\r") cell += ch;
+  }
+  if (cell || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows.filter((line) => line.some((part) => part.trim()));
+}
+
+/** CsvSheet 把表格预览限制在前 120 行、16 列。 */
+function CsvSheet(props: { workspace?: string; path: string }) {
+  const copy = useCopy();
+  const [rows, setRows] = useState<string[][]>([]);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!props.workspace || !props.path) return;
+    let stop = false;
+    setErr("");
+    void api.previewWorkspaceFile(props.workspace, props.path).then((file) => {
+      if (!stop) setRows(parseCsv(file.text || "").slice(0, 120).map((line) => line.slice(0, 16)));
+    }).catch((e) => {
+      if (!stop) setErr(e instanceof Error ? e.message : String(e));
+    });
+    return () => { stop = true; };
+  }, [props.workspace, props.path]);
+  if (err) return <p className="grid h-full place-items-center px-6 text-[13px] text-muted">{err}</p>;
+  if (!rows.length) return <p className="grid h-full place-items-center text-[13px] text-muted">{copy.review.openingFile}</p>;
+  const head = rows[0];
+  const body = rows.slice(1);
+  return (
+    <div className="overlay-scroll h-full overflow-auto" data-testid="csv-sheet">
+      <table className="w-full border-collapse text-left text-[12px]">
+        <thead className="sticky top-0 bg-card">
+          <tr>
+            {head.map((cell, i) => (
+              <th key={i} className="border-b border-border/70 px-3 py-2 font-medium text-muted">{cell}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((line, r) => (
+            <tr key={r} className="border-b border-border/40">
+              {head.map((_, c) => (
+                <td key={c} className="max-w-[16rem] truncate px-3 py-1.5 font-mono text-foreground/90">{line[c] || ""}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * FilePreviewPane 占满自己的窗口。HTML 用本机页面，CSV 用表格，其余用文件预览。
+ * 这个窗口和主窗口分开，关掉它不会挡住主窗口。
+ */
+export function FilePreviewPane(props: { workspace?: string; path: string }) {
+  const copy = useCopy();
+  const target = previewTarget(props.workspace, props.path);
+  const name = fileBase(props.path);
+  const html = isBrowserPreviewPath(props.path);
+  const csv = /\.csv$/i.test(props.path);
+  const [pageURL, setPageURL] = useState("");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    document.title = name || "Yoyo";
+  }, [name]);
+  useEffect(() => {
+    if (!html || !target.workspace || !target.path) return;
+    let stop = false;
+    setPageURL("");
+    setFailed(false);
+    void api.previewPageURL(target.workspace, target.path).then((url) => {
+      if (stop) return;
+      if (!url) setFailed(true);
+      else setPageURL(url);
+    }).catch(() => {
+      if (!stop) setFailed(true);
+    });
+    return () => { stop = true; };
+  }, [html, target.workspace, target.path]);
+  const abs = joinedPath(props.workspace, props.path);
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="file-preview-window">
+      <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border/60 py-2 pl-4 pr-3">
+        <h1 className="min-w-0 flex-1 truncate text-[14px] font-medium">{name}</h1>
+        <button
+          type="button"
+          className="h-7 rounded-full border border-border/70 px-3 text-[12px] text-foreground hover:bg-lift"
+          onClick={() => { if (abs) void api.revealPath(abs); }}
+        >
+          {copy.review.openFolder}
+        </button>
+        <button
+          type="button"
+          className="h-7 rounded-full border border-border/70 px-3 text-[12px] text-foreground hover:bg-lift"
+          onClick={() => { if (abs) void api.openPath(abs); }}
+        >
+          {copy.review.openWithApp}
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 bg-background">
+        {html && pageURL ? (
+          <iframe title={name} src={pageURL} className="h-full w-full border-0 bg-white" data-testid="file-browser-frame" />
+        ) : html && !failed ? (
+          <div className="grid h-full place-items-center text-[12px] text-muted">{copy.review.openingFile}</div>
+        ) : csv && target.workspace && target.path ? (
+          <CsvSheet workspace={target.workspace} path={target.path} />
+        ) : target.workspace && target.path ? (
+          <WorkspaceFileView workspace={target.workspace} path={target.path} fill />
+        ) : (
+          <div className="grid h-full place-items-center text-[12px] text-muted">{copy.review.cannotPreview}</div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** isExternalURL http、https 或 file 开头算外部地址。raw 为假时用空字符串，去掉首尾空白，传给 test。 */
 function isExternalURL(raw: string): boolean {

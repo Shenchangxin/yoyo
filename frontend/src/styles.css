@@ -996,6 +996,44 @@ html.dark .code-hl span {
   text-decoration: underline dotted;
 }
 
+.deliverable {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 28rem);
+  min-height: 64px;
+  margin: 0;
+  padding: 10px 12px 10px 10px;
+  border: 0.5px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+}
+.deliverable:hover { background: color-mix(in srgb, var(--lift) 70%, var(--card)); }
+.deliverable:disabled { opacity: 0.6; }
+.deliverable-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.deliverable-mark.is-html {
+  background: color-mix(in srgb, #2f6fed 16%, var(--background));
+  color: #2f6fed;
+}
+.deliverable-mark.is-csv {
+  background: color-mix(in srgb, #1f8a4c 16%, var(--background));
+  color: #1f8a4c;
+}
 .file-bubble {
   display: flex;
   flex-direction: column;

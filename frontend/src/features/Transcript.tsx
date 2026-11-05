@@ -3,9 +3,9 @@
  * 不拥有：工具步骤的内部排版，那些在 ProcessGroup。只投影条目，复制走剪贴板，不调用 api。
  */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, RotateCcw, ShieldAlert } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, RotateCcw, ShieldAlert } from "lucide-react";
 import { SendSling } from "../components/SendSling";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
@@ -38,6 +38,8 @@ import { ScrollFollow, scrollMetrics } from "../lib/scroll-follow";
 import { ProcessGroup, ToolLine } from "./transcript/ProcessGroup";
 import { SubagentCard } from "./transcript/SubagentCard";
 import { ArtifactBody } from "./transcript/FilePreview";
+import { openFilePreview } from "../lib/client";
+import { deliverablePaths, fileBase, fileKind, hidePaths, joinedPath, previewTarget } from "../lib/file-paths";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
@@ -142,6 +144,13 @@ function partSpace(parts: AgentPart[], i: number): string {
   return "pt-2";
 }
 
+const FileActions = createContext<{
+  workspace?: string;
+  linkFiles?: boolean;
+  reveal?: (path: string) => void;
+  openBrowser?: (path: string) => void;
+}>({});
+
 /**
  * Transcript 在没有可见条目、没在跑、也没有待批时显示空态。showThinking 为假时丢掉 reasoning。紧凑模式不给用户行复制、恢复和分叉。
  * props 读取 flush、compact、transcriptView、collapseTiming、showThinking、items 等。
@@ -163,6 +172,8 @@ export function Transcript(props: {
   onResolve: (id: string, decision: string, answer?: string) => void;
   onPrompt?: (text: string) => void;
   onOpenReview?: (path?: string) => void;
+  onRevealPath?: (path: string) => void;
+  linkFiles?: boolean;
   onRetry?: () => void;
   jumpTo?: { key: string; aliases?: string[]; nonce: number } | null;
   latestNonce?: number;
@@ -171,6 +182,7 @@ export function Transcript(props: {
   onRestoreFiles?: (from: string) => void | Promise<void>;
   onForkFrom?: (from: string) => void | Promise<void>;
 }) {
+  const linkFiles = props.linkFiles ?? !!props.workspace;
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
   const policy = useMemo(
@@ -327,6 +339,7 @@ export function Transcript(props: {
     })),
   ];
   return (
+    <FileActions.Provider value={{ workspace: props.workspace, linkFiles, reveal: props.onRevealPath, openBrowser: (path) => { void openFilePreview(props.workspace || "", path); } }}>
     <div
       className="prose-select relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       data-testid="conversation-column"
@@ -354,6 +367,41 @@ export function Transcript(props: {
           onJumpLatest={props.onJumpLatest}
         />
       )}
+    </div>
+    </FileActions.Provider>
+  );
+}
+
+function DeliverableBubble(props: { path: string; pending?: boolean; onOpen?: () => void }) {
+  const kind = fileKind(props.path);
+  return (
+    <button
+      type="button"
+      className="deliverable"
+      data-testid="deliverable-bubble"
+      disabled={props.pending}
+      onClick={props.onOpen}
+    >
+      <span className={cn("deliverable-mark", kind === "CSV" && "is-csv", kind === "HTML" && "is-html")} aria-hidden>{kind.slice(0, 4)}</span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-[14px] font-medium leading-5">{fileBase(props.path)}</span>
+        <span className="block truncate text-[12px] leading-5 text-muted">{kind}</span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+    </button>
+  );
+}
+
+function FilePathList({ text }: { text: string }) {
+  const actions = useContext(FileActions);
+  if (!actions.linkFiles) return null;
+  const paths = deliverablePaths(text);
+  if (!paths.length) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-2" data-testid="file-path-list">
+      {paths.map((path) => (
+        <DeliverableBubble key={path} path={path} onOpen={() => actions.openBrowser?.(path)} />
+      ))}
     </div>
   );
 }
@@ -1302,6 +1350,7 @@ const ItemRow = memo(function ItemRow({
   onRetry?: () => void;
 }) {
   const copy = useCopy();
+  const fileActions = useContext(FileActions);
   const shown = liveText != null ? { ...item, text: liveText } : item;
   if (shown.type === "user") {
     if (shown.source === "steer") {
@@ -1330,19 +1379,17 @@ const ItemRow = memo(function ItemRow({
       </div>
     );
   }
-  if (shown.type === "assistant" && shown.payload?.kind === "status") {
+  if (shown.type === "assistant" && (shown.payload?.kind === "status" || shown.payload?.kind === "handoff")) {
+    const handoff = shown.payload?.kind === "handoff";
+    const body = !streaming && fileActions.linkFiles ? hidePaths(shown.text) : shown.text;
     return (
-      <p className="text-[13px] leading-6 text-muted" data-testid="task-status">{shown.text}</p>
-    );
-  }
-  if (shown.type === "assistant" && shown.payload?.kind === "handoff") {
-    return (
-      <div className="w-full max-w-[40rem] rounded-[24px] bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid="task-handoff">
-        <p className="text-[12px] font-medium tracking-wide text-muted">{copy.transcript.needsYou}</p>
-        <div className="mt-2">
-          <Markdown text={shown.text} streaming={streaming} rich={!!rich && !streaming} />
+      <div className={cn("assistant-prose w-full min-w-0", handoff && "max-w-[40rem] rounded-[24px] bg-card px-4 py-3.5 shadow-[var(--shadow-card)]")} data-testid={handoff ? "task-handoff" : "task-status"}>
+        {handoff ? <p className="text-[12px] font-medium tracking-wide text-muted">{copy.transcript.needsYou}</p> : null}
+        <div className={cn(handoff && "mt-2")}>
+          <Markdown text={body} streaming={streaming} rich={!!rich && !streaming} />
+          {streaming ? null : <FilePathList text={shown.text} />}
         </div>
-        <p className="mt-3 text-[12px] leading-5 text-muted">{copy.transcript.needsYouHint}</p>
+        {handoff ? <p className="mt-3 text-[12px] leading-5 text-muted">{copy.transcript.needsYouHint}</p> : null}
       </div>
     );
   }
@@ -1351,7 +1398,8 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="assistant-prose w-full min-w-0">
         <div className={cn(streaming && "assistant-live")}>
-          <Markdown text={shown.text} streaming={streaming} rich={!!rich && !streaming} />
+          <Markdown text={!streaming && fileActions.linkFiles ? hidePaths(shown.text) : shown.text} streaming={streaming} rich={!!rich && !streaming} />
+          {streaming ? null : <FilePathList text={shown.text} />}
         </div>
         {briefKind === "brief" && shown.payload?.chip ? (
           <button
@@ -1475,12 +1523,14 @@ function ArtifactCard({
   const files = name === "apply_patch" ? patchFileCount(body) : 0;
   const args = toolArgs(call || result || item);
   const path = view.path || String(args.path || args.file || "");
+  const target = previewTarget(workspace, path);
+  const actions = useContext(FileActions);
   const mcpHtml = result ? extractHTML(body) : "";
   const pdf = looksLikePDF(path);
   const office = name.startsWith("office_") && /\.(docx|xlsx|pptx|pdf)$/i.test(path);
   const mcp = looksLikeMCPUI(mcpHtml, name);
   const htmlish = view.kind === "html" || looksLikeHTMLFile(path) || looksLikeHTML(view.html) || mcp;
-  const hasPreview = artifactShouldShow(view) || mcp || ((office || pdf) && !!path && !!workspace) || (htmlish && !!workspace && looksLikeHTMLFile(path)) || !!view.diff;
+  const hasPreview = artifactShouldShow(view) || mcp || ((office || pdf) && !!path && !!target.workspace) || (htmlish && !!target.workspace && looksLikeHTMLFile(path)) || !!view.diff || (!!target.workspace && !!target.path);
   const fileChip = isArtifactTool(name) && !!path;
   useEffect(() => {
     if (codeChange || pending) return;
@@ -1493,6 +1543,9 @@ function ArtifactCard({
     return <BrowserShotCard call={call} result={result} />;
   }
   if (!office && !pdf && name !== "cite_sources" && !hasPreview && !fileChip) return null;
+  if (path && !view.diff && !mcp && actions.linkFiles) {
+    return <DeliverableBubble path={path} pending={pending} onOpen={() => actions.openBrowser?.(path)} />;
+  }
   const title = view.path
     ? view.path.replace(/\\/g, "/").split("/").pop() || view.path
     : name === "apply_patch"
@@ -1521,7 +1574,7 @@ function ArtifactCard({
         </span>
         <div className="file-bubble-titles">
           <div className="file-bubble-title">
-            <span className={cn("truncate", pending && "shimmer-text")}>{title}</span>
+            <button type="button" className={cn("max-w-full truncate bg-transparent text-left font-[inherit]", pending && "shimmer-text")} onClick={() => setOpen((v) => !v)}>{title}</button>
             {interrupted ? (
               <span className="ml-2 rounded-md bg-warning/12 px-1.5 py-px text-[11px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
             ) : null}
@@ -1531,7 +1584,7 @@ function ArtifactCard({
               {counts.length ? <span>{counts.join(" · ")}</span> : null}
               {added ? <span className="file-bubble-added">+{added}</span> : null}
               {removed ? <span className="file-bubble-deleted">−{removed}</span> : null}
-              {!added && !removed && !counts.length ? <span className="truncate">{path || detail || name}</span> : null}
+              {!added && !removed && !counts.length ? <span className="truncate">{fileKind(path) || detail || name}</span> : null}
             </span>
             <span className="file-bubble-hint">{copy.transcript.preview}</span>
           </div>
@@ -1551,6 +1604,11 @@ function ArtifactCard({
               {source ? copy.transcript.preview : copy.transcript.source}
             </button>
           ) : null}
+          {actions.reveal && path ? (
+            <button type="button" onClick={() => actions.reveal?.(joinedPath(workspace, path))}>
+              {copy.settings.reveal}
+            </button>
+          ) : null}
           {onOpenReview ? (
             <button type="button" onClick={() => onOpenReview(path || undefined)}>
               {copy.review.openReview}
@@ -1563,7 +1621,7 @@ function ArtifactCard({
           {mcp && mcpHtml && !view.diff && !view.code && !view.html ? (
             <SandboxedFrame html={mcpHtml} title={title} allowScripts />
           ) : (
-            <ArtifactBody view={{ ...view, path: view.path || path, kind: view.kind || ((office || pdf) ? "text" : view.kind) }} workspace={workspace} source={source} />
+            <ArtifactBody view={{ ...view, path: target.path || view.path || path, kind: view.kind || ((office || pdf) ? "text" : view.kind) }} workspace={target.workspace || workspace} source={source} />
           )}
         </>
       ) : null}

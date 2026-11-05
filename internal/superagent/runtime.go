@@ -214,6 +214,24 @@ func (rt *Runtime) TicketLabel(id string) string {
 	return strings.TrimSpace(t.Name)
 }
 
+// TicketTexts 返回这张工单交给工人的正文，不截断。
+func (rt *Runtime) TicketTexts(id string) []string {
+	if rt == nil || rt.eng == nil {
+		return nil
+	}
+	t, ok := rt.eng.Ticket(id)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, in := range t.Inputs {
+		if strings.TrimSpace(in.Text) != "" {
+			out = append(out, in.Text)
+		}
+	}
+	return out
+}
+
 // WorkerTranscript 返回这张工单已经落下的会话。还没有日志时为空。
 func (rt *Runtime) WorkerTranscript(ticketID string) []TranscriptLine {
 	if rt == nil || strings.TrimSpace(ticketID) == "" {

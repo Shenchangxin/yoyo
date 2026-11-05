@@ -8,6 +8,12 @@ import type { Assignment, Input, ReportLine, Ticket } from "./desk-model";
 
 export type TaskLine = { id: string; role: string; text: string; name?: string; source?: string; error?: boolean };
 
+const HOST_RESTART = "宿主重启了。先看工作目录、git 和 GitHub，不要重复已经做过的外部动作。";
+
+function hiddenNote(text: string): boolean {
+  return text.trim() === HOST_RESTART;
+}
+
 /** taskSessionItems 按日志顺序排。派工只露出这一次新写上的话，短句不会借旧句子里的同样几个字提前出现。 */
 export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
   const inputs = (ticket.inputs ?? []).filter((row) => row.text?.trim());
@@ -18,6 +24,7 @@ export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
   const emit = (row: Input) => {
     if (shown.has(row.id)) return;
     shown.add(row.id);
+    if (hiddenNote(row.text)) return;
     out.push(userItem(ticket.id, row.id, row.text.trim()));
   };
   for (const line of lines) {
@@ -30,6 +37,7 @@ export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
     }
     if (line.role === "user") {
       const text = (line.text || "").trim();
+      if (hiddenNote(text)) continue;
       if (cursor < inputs.length && inputs[cursor].text.trim() === text) {
         emit(inputs[cursor]);
         cursor += 1;
@@ -45,8 +53,16 @@ export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
     cursor += 1;
     if (!shown.has(row.id) && row.text.trim()) emit(row);
   }
-  if (!out.some((item) => item.type === "assistant")) return [...out, ...reportItems(ticket)];
-  return out;
+  return withClosing(out, ticket);
+}
+
+function withClosing(items: Item[], ticket: Ticket): Item[] {
+  const seen = new Set(items.map((item) => (item.text || "").trim()).filter(Boolean));
+  const extra = reportItems(ticket).filter((item) => {
+    const text = (item.text || "").trim();
+    return text && !seen.has(text);
+  });
+  return extra.length ? [...items, ...extra] : items;
 }
 
 /** assignmentDelta 只留这一次派工比上一次多出来的正文。对不上前缀时不把整段历史再发一遍。 */
@@ -94,8 +110,17 @@ function userItem(sessionId: string, id: string, text: string): Item {
   };
 }
 
+function toolPath(name: string, text: string): string {
+  const wrote = text.match(/^wrote\s+(\S+)/i);
+  if (wrote && (!name || name === "write_file" || name === "create_file" || name === "str_replace" || name === "edit_file")) return wrote[1];
+  const hit = text.match(/"path"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (!hit) return "";
+  return hit[1].replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+}
+
 function lineItem(sessionId: string, line: TaskLine): Item {
   const role = line.role === "user" || line.role === "tool_call" || line.role === "tool_result" ? line.role : "assistant";
+  const path = toolPath(line.name || "", line.text || "");
   return {
     key: line.role === "tool_result" ? `${line.id}:result` : line.id,
     type: role,
@@ -110,6 +135,7 @@ function lineItem(sessionId: string, line: TaskLine): Item {
       name: line.name || "",
       ...(role === "tool_call" ? { arguments: line.text || "" } : {}),
       ...(role === "tool_result" && line.error ? { ok: false } : {}),
+      ...(path ? { path } : {}),
     },
   };
 }

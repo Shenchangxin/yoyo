@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
 // ErrBusy 表示没有空闲工人槽。它包装 ErrLater，效果队列不计这次失败。
@@ -230,14 +231,20 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	e.agents[ticketID] = agent
 	e.live[ticketID] = true
 	e.mu.Unlock()
-	e.restoreAgent(agent, ticketID)
+	restored := e.restoreAgent(agent, ticketID)
+	resumed := e.Engine.TakeResume(ticketID) && restored
 	e.ackSnapshot(ticketID, ticket)
-	agent.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir), Source: "assignment"})
+	if resumed {
+		agent.Followup(dsh.UserMessage{Text: "继续。", Source: "retry"})
+	} else {
+		agent.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir), Source: "assignment"})
+	}
 	stopSave := make(chan struct{})
 	defer close(stopSave)
 	go e.watchLog(agent, ticketID, stopSave)
 	var deadline time.Time
 	tries := 0
+	nudges := 0
 	for {
 		if !deadline.IsZero() && !time.Now().Before(deadline) {
 			agent.Cancel(dsh.CancelCause{Kind: "limit", Reason: "background"}, false)
@@ -253,6 +260,11 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 			continue
 		}
 		if e.busyLeft(ticketID, jobs) == 0 {
+			if nudges < maxWorkerNudges && e.openWork(ticketID) {
+				nudges++
+				agent.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
+				continue
+			}
 			e.settle(ticketID)
 			return
 		}
@@ -283,7 +295,34 @@ func (e *Executor) busyLeft(ticketID string, jobs func() int) int {
 	return n
 }
 
-// settle 在一轮做完且没有后台命令时，补一条 waiting。人已经接过的报告保持原样。
+// maxWorkerNudges 是工人没写完成报告时，再催它做下去的次数。
+const maxWorkerNudges = 4
+
+const workerContinueNudge = "任务说明里的完成标准还没达到。从停下的地方继续做完，不要停下来让人选择下一步。只有说明没授权的破坏、必须改说明和工单目录以外的文件、或缺少密钥时才提问。"
+
+// openWork 在这一轮还没有完成、受阻或等待报告时为真。上一份报告之后又来了新输入，也算还没做完。
+func (e *Executor) openWork(ticketID string) bool {
+	if e == nil || e.Engine == nil {
+		return false
+	}
+	ticket, ok := e.Engine.Ticket(ticketID)
+	if !ok || ticket.Ended != nil || len(ticket.Assignments) == 0 {
+		return false
+	}
+	asg := ticket.Assignments[len(ticket.Assignments)-1]
+	if len(asg.Reports) == 0 {
+		return true
+	}
+	last := asg.Reports[len(asg.Reports)-1]
+	switch last.State {
+	case "waiting", "ready", "blocked", "failed", "dropped":
+		return inputAfter(&ticket, last.Seq)
+	default:
+		return true
+	}
+}
+
+// settle 在一轮做完且没有后台命令时，补一条 waiting。上一份完成报告之后又有新输入时，也要记下这一轮已经停下。
 func (e *Executor) settle(ticketID string) {
 	ticket, ok := e.Engine.Ticket(ticketID)
 	if !ok || ticket.Ended != nil || len(ticket.Assignments) == 0 {
@@ -291,9 +330,12 @@ func (e *Executor) settle(ticketID string) {
 	}
 	asg := ticket.Assignments[len(ticket.Assignments)-1]
 	if len(asg.Reports) > 0 {
-		switch asg.Reports[len(asg.Reports)-1].State {
+		last := asg.Reports[len(asg.Reports)-1]
+		switch last.State {
 		case "waiting", "ready", "blocked", "failed", "dropped":
-			return
+			if !inputAfter(&ticket, last.Seq) {
+				return
+			}
 		}
 	}
 	_ = e.Engine.Report(ticketID, Report{State: "waiting", Summary: "这一轮做完了，在等下一条消息"})
@@ -487,15 +529,51 @@ func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
 		e.mu.Unlock()
 	}()
 	agent.Steer(dsh.UserMessage{Text: text, Source: "human"})
-	agent.WhenIdle()
+	var errors, nudges int
+	for {
+		agent.WhenIdle()
+		e.storeAgent(agent, ticketID)
+		if stop, again := e.afterTurn(agent, ticketID, &errors); stop {
+			return
+		} else if again {
+			continue
+		}
+		if nudges < maxWorkerNudges && e.openWork(ticketID) {
+			nudges++
+			agent.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
+			continue
+		}
+		break
+	}
 	e.settle(ticketID)
+}
+
+// planStillOpen 在这张工单的计划文件里还有未完成步骤时为真。没有计划文件时为假。
+func (e *Executor) planStillOpen(ticketID string) bool {
+	if e == nil {
+		return false
+	}
+	dir, err := e.workDir(ticketID)
+	if err != nil || dir == "" {
+		return false
+	}
+	text := runtime.LoadPlanFile(dir, "ticket-"+ticketID)
+	if text == "" {
+		return false
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "[pending]") || strings.Contains(line, "[in_progress]") {
+			return true
+		}
+	}
+	return false
 }
 
 // reportTool 返回 ticketID 使用的 orchestrator_report。progress 不结束回合，其余成功的报告会结束回合。
 func (e *Executor) reportTool(ticketID string) dsh.Tool {
 	return dsh.Tool{
 		Name:        "orchestrator_report",
-		Description: "向工单报告状态。state 取 progress、waiting、ready、blocked、failed 或 dropped。summary 是给人看的一句。question 是要人回答的问题。有 question 时用 blocked，不要用 ready：ready 会结束工单，问题就到不了主会话。",
+		Description: "向工单报告状态。state 取 progress、waiting、ready、blocked、failed 或 dropped。summary 是给人看的一句，也会留在这条会话末尾。progress 不结束这一轮。ready 只在任务说明里的完成标准达到、并且计划步骤都已 complete 时使用；计划里还有 pending 或 in_progress 会被拒绝。有 question 时不要用 ready。question 只在被硬性挡住时填写：没授权的破坏、说明和工单目录以外的必改路径、缺少密钥。不要为了确认下一步而提问。",
 		Mode:        func(dsh.ToolCall) string { return dsh.ModeExclusive },
 		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
 			var body struct {
@@ -507,6 +585,9 @@ func (e *Executor) reportTool(ticketID string) dsh.Tool {
 				return dsh.Result{Text: err.Error(), IsError: true}, nil
 			}
 			body.State = askReport(body.State, body.Question)
+			if body.State == "ready" && e.planStillOpen(ticketID) {
+				return dsh.Result{Text: "计划里还有没完成的步骤。先做完，用 update_plan 标成 complete，然后再 ready。", IsError: true}, nil
+			}
 			err := e.Engine.Report(ticketID, Report{State: body.State, Summary: body.Summary, Question: body.Question})
 			if err != nil {
 				return dsh.Result{Text: err.Error(), IsError: true}, nil
@@ -589,7 +670,7 @@ func assignmentText(ticket Ticket, dir string) string {
 		fmt.Fprintf(&b, "工作目录 %s\n", dir)
 	}
 	for _, in := range ticket.Inputs {
-		if in.Text == "" {
+		if in.Text == "" || strings.TrimSpace(in.Text) == hostRestartNote {
 			continue
 		}
 		b.WriteString(in.Text)

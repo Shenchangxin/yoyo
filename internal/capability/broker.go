@@ -53,6 +53,8 @@ type Request struct {
 	Workspace string `json:"workspace"`
 	// ForceAsk 为真时 CheckCtx 不读会话缓存，仍然先看始终表。
 	ForceAsk bool `json:"force_ask"`
+	// Roots 是这一轮任务说明里点名的额外目录。读和写可以落在这些目录里，不能借此逃到它们外面。
+	Roots []string `json:"roots,omitempty"`
 }
 
 // AutoPolicy 是构造 Broker 时写入始终表的级别。
@@ -175,7 +177,7 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 		ctx = context.Background()
 	}
 	if req.Workspace != "" && req.Path != "" && workspacePathJail(req) {
-		if !WithinWorkspace(req.Workspace, req.Path) {
+		if !WithinWorkspace(req.Workspace, req.Path) && !WithinAny(req.Roots, req.Path) {
 			return fmt.Errorf("capability: path %q escapes workspace", req.Path)
 		}
 	}
@@ -249,6 +251,16 @@ func WithinWorkspace(root, p string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(osPathSeparator()))
+}
+
+// WithinAny 判断 p 是否落在 roots 里的某一个目录中。空目录跳过。
+func WithinAny(roots []string, p string) bool {
+	for _, root := range roots {
+		if strings.TrimSpace(root) != "" && WithinWorkspace(root, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // osPathSeparator 返回 string(filepath.Separator)，供 WithinWorkspace 识别 ".." 前缀。

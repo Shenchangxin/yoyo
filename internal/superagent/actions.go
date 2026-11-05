@@ -70,7 +70,7 @@ func (e *Engine) attach(ticketID, triggerID, note string, fold bool) (bool, bool
 		}
 	}
 	if note != "" {
-		e.addNote(t, clipRunes(note, 4000), false)
+		e.addNote(t, clipRunes(note, 12000), false)
 	}
 	for _, key := range tr.Threads {
 		e.subscribe(ticketID, key)

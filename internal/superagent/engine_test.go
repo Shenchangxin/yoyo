@@ -606,3 +606,33 @@ func TestTerminalReportSkipsProgress(t *testing.T) {
 		t.Fatal("question")
 	}
 }
+
+// TestReadyYieldsWhileTheNextRoundRuns 锁住上一份完成报告还在时，新输入已经跟上并且派工仍在进行，阶段回到正在做。
+func TestReadyYieldsWhileTheNextRoundRuns(t *testing.T) {
+	ticket := Ticket{
+		ID: "tkt-4",
+		Assignments: []Assignment{{
+			ID: "asg-22", State: "running",
+			Reports: []Report{{State: "ready", Summary: "wrote", Seq: 17}},
+		}},
+		Inputs: []Input{{Human: true, Text: "继续", Seq: 18}},
+	}
+	if stage := TicketStage(&ticket); stage.Name != "working" || stage.Person {
+		t.Fatalf("%+v", stage)
+	}
+	ticket.Inputs = nil
+	if stage := TicketStage(&ticket); stage.Name != "person" || stage.Action != "review" {
+		t.Fatalf("%+v", stage)
+	}
+	waiting := Ticket{
+		Assignments: []Assignment{{State: "running", Reports: []Report{{State: "waiting", Seq: 3}}}},
+		Inputs:      []Input{{Seq: 4, Text: "go"}},
+	}
+	if stage := TicketStage(&waiting); stage.Name != "working" {
+		t.Fatalf("%+v", stage)
+	}
+	waiting.Inputs = nil
+	if stage := TicketStage(&waiting); stage.Name != "idle" {
+		t.Fatalf("%+v", stage)
+	}
+}

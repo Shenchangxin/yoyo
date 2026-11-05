@@ -72,6 +72,7 @@
   min-height: 44px;
   padding: 9px 46px 9px 16px;
   border-radius: 22px;
+  cursor: text;
 }
 
 .sc-root[data-compact="true"][data-plain="true"][data-plus="true"] .sc-card {
@@ -90,6 +91,7 @@
   min-height: 24px;
   padding: 0;
   line-height: 24px;
+  cursor: text;
 }
 
 .sc-root[data-compact="true"][data-plain="true"] .sc-row {
@@ -398,6 +400,7 @@
   box-sizing: border-box;
   min-height: 36px;
   padding: 4px 8px 0 14px;
+  cursor: text;
   font: inherit;
   line-height: inherit;
   white-space: pre-wrap;
@@ -416,6 +419,7 @@
 .sc-input .ProseMirror {
   outline: none;
   min-height: 28px;
+  cursor: text;
 }
 
 .sc-input p.is-editor-empty:first-child::before,
