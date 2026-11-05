@@ -162,6 +162,18 @@ func (a *App) DistillExpert(name, description, body string) (string, error) {
 	return path, nil
 }
 
+// PreviewPageURL 把 workspace 里的文件做成可嵌进弹框的本机页面地址。不打开侧边栏里的浏览器。
+func (a *App) PreviewPageURL(workspace, rel string) (string, error) {
+	if a == nil || a.Browser == nil {
+		return "", fmt.Errorf("no isolated browser")
+	}
+	p, _, err := a.resolveWorkspaceFile(workspace, rel)
+	if err != nil {
+		return "", err
+	}
+	return a.Browser.PageURL(p)
+}
+
 // BrowserView 返回当前浏览器视图。浏览器为空时 lane 为 isolated、live 为 false。预览文件能相对工作区时改成斜杠相对路径。
 func (a *App) BrowserView() map[string]any {
 	if a == nil || a.Browser == nil {

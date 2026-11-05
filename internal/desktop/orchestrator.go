@@ -80,15 +80,15 @@ func (s *Service) OrchestratorTranscript(ticketID string) ([]superagent.Transcri
 	return s.App.WorkerTranscript(ticketID), nil
 }
 
-// ComposeToday 按画像、记忆和最近对话写今天的简报。
-func (s *Service) ComposeToday() (app.TodayBrief, error) {
+// ComposeToday 按画像、记忆、感知和最近对话写这一档简报。slot 取 morning 或 evening。
+func (s *Service) ComposeToday(slot string) (app.TodayBrief, error) {
 	if s.RPC != nil {
-		return decode[app.TodayBrief](s.call("today.compose", nil))
+		return decode[app.TodayBrief](s.call("today.compose", map[string]any{"slot": slot}))
 	}
 	if s.App == nil {
 		return app.TodayBrief{}, fmt.Errorf("app is not running")
 	}
-	return s.App.ComposeToday(), nil
+	return s.App.ComposeToday(slot), nil
 }
 
 // OrchestratorAct 执行编排台动作。kind、ticketID、triggerID、text 和 reason 原样交给应用。

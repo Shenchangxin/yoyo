@@ -353,6 +353,24 @@ function readPrefs(): BriefPrefs {
   }
 }
 
+/** actionLabel 用模型写的短字。没写短字、但写了点下去要放进输入框的请求时，用请求的第一句。 */
+function actionLabel(label?: string, task?: string): string {
+  const name = (label || "").trim();
+  if (name) return name;
+  const line = ((task || "").trim().split("\n")[0] || "").trim();
+  if (!line) return "";
+  const chars = Array.from(line);
+  return chars.length > 18 ? chars.slice(0, 18).join("") : line;
+}
+
+function toneColor(tone?: string): string {
+  if (tone === "moving") return "var(--accent)";
+  if (tone === "stalled") return "var(--warning)";
+  if (tone === "quiet") return "var(--muted)";
+  return "";
+}
+
+/** BriefStack 按卡上的 layout 排。模型选 checks、compare、evidence、chips、plain、letter、rows、stats。没选时按内容推断。 */
 export function BriefStack(props: {
   brief: MorningBrief;
   onUse: (card: BriefCard, which: "primary" | "secondary") => void;
@@ -363,6 +381,8 @@ export function BriefStack(props: {
       {props.brief.cards.map((card) => {
         const picked = props.brief.picked[card.id] || "";
         const layout = card.layout || (card.choices.length >= 2 ? "compare" : card.items.length > 0 ? "checks" : "plain");
+        const primaryLabel = actionLabel(card.primary, card.task);
+        const secondaryLabel = actionLabel(card.secondary, card.alt);
         return (
           <article key={card.id} className="min-w-0 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
             {card.kicker ? <p className="text-[12px] font-medium text-accent">{card.kicker}</p> : null}
@@ -418,7 +438,7 @@ export function BriefStack(props: {
                 <div className="mt-3 space-y-2">
                   {card.items.map((item, index) => (
                     <div key={`${item.title}-${index}`} className="flex items-start gap-3 rounded-2xl bg-lift/40 px-3 py-2.5">
-                      <span className="mt-0.5 w-6 shrink-0 text-[12px] font-medium tabular-nums text-muted">{String(index + 1).padStart(2, "0")}</span>
+                      <span className={cn("mt-0.5 w-6 shrink-0 text-[12px] font-medium tabular-nums", !toneColor(item.tone) && "text-muted")} style={toneColor(item.tone) ? { color: toneColor(item.tone) } : undefined}>{String(index + 1).padStart(2, "0")}</span>
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] font-medium">{item.title}</p>
                         {item.detail ? <p className="mt-0.5 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
@@ -466,21 +486,21 @@ export function BriefStack(props: {
               </div>
             ) : null}
             {card.note ? <p className="mt-4 rounded-2xl bg-lift/50 px-3 py-3 text-[12px] leading-5 text-muted">{card.note}</p> : null}
-            {card.primary || card.secondary ? (
+            {primaryLabel || secondaryLabel ? (
               <div className="mt-4 flex flex-wrap gap-2">
-                {card.primary ? (
+                {primaryLabel ? (
                   <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-lift text-foreground" : "bg-accent text-white")} onClick={() => props.onUse(card, "primary")}>
-                    {card.primary}
+                    {primaryLabel}
                   </button>
                 ) : null}
-                {card.secondary ? (
+                {secondaryLabel ? (
                   <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-foreground text-background" : "bg-lift text-foreground")} onClick={() => props.onUse(card, "secondary")}>
-                    {card.secondary}
+                    {secondaryLabel}
                   </button>
                 ) : null}
               </div>
             ) : null}
-            {picked && (card.primary || card.secondary) ? <p className="mt-2 text-[12px] text-muted">{props.filledLabel}</p> : null}
+            {picked && (primaryLabel || secondaryLabel) ? <p className="mt-2 text-[12px] text-muted">{props.filledLabel}</p> : null}
           </article>
         );
       })}

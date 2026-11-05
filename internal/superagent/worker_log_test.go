@@ -2,6 +2,7 @@ package superagent
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/dsh"
@@ -21,6 +22,26 @@ func TestTranscriptLinesSkipAssignment(t *testing.T) {
 		t.Fatalf("assignment %+v", lines[0])
 	}
 	if lines[1].Role != "assistant" || lines[2].Role != "tool_call" || lines[2].ID != "c1" || lines[3].Role != "tool_result" || lines[4].Text != "再看上海" {
+		t.Fatalf("%+v", lines)
+	}
+}
+
+func TestScrubRestartNote(t *testing.T) {
+	events := []dsh.Event{
+		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "工单 tkt-1\n" + hostRestartNote + "\n原文", Source: "assignment"}},
+		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: hostRestartNote, Source: "human"}},
+		{Type: dsh.EventAssistant, Data: dsh.Assistant{Text: "继续写"}},
+	}
+	got := scrubRestartNotes(events)
+	if len(got) != 2 {
+		t.Fatalf("%+v", got)
+	}
+	msg, ok := got[0].Data.(dsh.UserMessage)
+	if !ok || strings.Contains(msg.Text, "宿主重启了") || !strings.Contains(msg.Text, "原文") {
+		t.Fatalf("%+v", got[0].Data)
+	}
+	lines := TranscriptLines([]dsh.Event{{Type: dsh.EventUser, Data: dsh.UserMessage{Text: hostRestartNote}}})
+	if len(lines) != 0 {
 		t.Fatalf("%+v", lines)
 	}
 }

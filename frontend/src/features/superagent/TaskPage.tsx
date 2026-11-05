@@ -7,8 +7,9 @@ import { useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Composer } from "../Composer";
 import { Transcript } from "../Transcript";
-import { orchestratorAct, orchestratorTranscript } from "../../lib/client";
+import { orchestratorAct, orchestratorTranscript, revealPath } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
+import { latestTaskPlan } from "../../lib/plan";
 import type { Attachment, FileHit, SkillInfo } from "../../lib/protocol";
 import type { Ticket } from "./desk-model";
 import { taskSessionItems, type TaskLine } from "./task-session";
@@ -53,6 +54,7 @@ export function TaskRead(props: {
       </div>
     );
   }
+  const items = taskSessionItems(ticket, lines);
   const running = ticket.stage === "working";
   return (
     <div data-testid="task-read" className="flex h-full min-h-0 flex-col bg-background">
@@ -65,7 +67,17 @@ export function TaskRead(props: {
           <p className="truncate text-[12px] text-muted">{taskStatus(ticket, copy.work)}{ticket.directory ? ` · ${ticket.directory}` : ""}</p>
         </div>
       </div>
-      <Transcript compact flush items={taskSessionItems(ticket, lines)} approvals={[]} running={running} onResolve={() => {}} />
+      <Transcript
+        compact
+        flush
+        linkFiles
+        items={items}
+        approvals={[]}
+        running={running}
+        workspace={ticket.directory || props.workspace}
+        onRevealPath={(path) => { void revealPath(path); }}
+        onResolve={() => {}}
+      />
       <div className="shrink-0 px-2 pb-2">
         <Composer
           plain
@@ -74,6 +86,7 @@ export function TaskRead(props: {
           flush
           placeholder={copy.work.taskSayPh}
           draftKey={`task:${ticket.id}`}
+          taskPlan={latestTaskPlan(items)}
           running={running}
           disabled={false}
           skills={props.skills}

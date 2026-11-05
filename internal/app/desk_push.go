@@ -49,8 +49,8 @@ func (a *App) DeskPush(note DeskNote) bool {
 		return true
 	}
 	brief := note.Brief
-	if len(brief) > 32_000 {
-		brief = brief[:32_000]
+	if len(brief) > 1<<20 {
+		return false
 	}
 	ev := trace.Event{
 		TS:        time.Now().UTC(),

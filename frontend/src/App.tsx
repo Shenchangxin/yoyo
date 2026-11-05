@@ -41,7 +41,8 @@ import { BootSkeleton } from "./features/BootSkeleton";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "./lib/harness-refs";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
-import { isCompanionSurface, readPopoutId } from "./lib/popout";
+import { isCompanionSurface, readFilePreview, readPopoutId } from "./lib/popout";
+import { FilePreviewPane } from "./features/BrowserPane";
 import { CompanionApp, PresenceLayer } from "./features/presence";
 import { IdolStage } from "./features/idol/IdolStage";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
@@ -88,8 +89,10 @@ function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread
   return next;
 }
 
-/** App 在陪伴表面只渲染 CompanionApp，其余交给 WorkstationApp。 */
+/** App 在文件预览窗口只渲染预览，在陪伴表面只渲染 CompanionApp，其余交给 WorkstationApp。 */
 export default function App() {
+  const preview = readFilePreview();
+  if (preview) return <FilePreviewPane workspace={preview.workspace} path={preview.path} />;
   if (isCompanionSurface()) return <CompanionApp />;
   return <WorkstationApp />;
 }
@@ -574,6 +577,8 @@ function WorkstationApp() {
               useUI.getState().setDraft(ws.draftKey, text);
             }}
             onRetry={() => { void ws.onRetryLast(); }}
+            linkFiles
+            onRevealPath={(path) => { void api.revealPath(path); }}
             onOpenReview={(path) => {
               useUI.getState().askWorkReview();
               if (path) {

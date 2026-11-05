@@ -200,6 +200,22 @@ func normalizeDocPath(p string) string {
 	return strings.TrimSuffix(p, "/")
 }
 
+// PageURL 只为本地文件所在目录起一个本机地址，不打开 Chrome。目录和空宿主返回错误。
+func (h *Host) PageURL(abs string) (string, error) {
+	if h == nil {
+		return "", fmt.Errorf("browser: no host")
+	}
+	abs = filepath.Clean(abs)
+	st, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if st.IsDir() {
+		return "", fmt.Errorf("browser: need a file, got directory")
+	}
+	return h.serveFileURL(abs)
+}
+
 // serveFileURL 在 127.0.0.1 的临时端口上提供该文件所在目录。根目录没变时复用已有服务。空路径对应该文件本身。含 .. 或逃出目录的请求返回 404。
 // abs 用 Dir 当根、Base 当文件名。根与已有 fileRoot 相同时返回已有 fileURL、斜杠和转义后的文件名。
 func (h *Host) serveFileURL(abs string) (string, error) {

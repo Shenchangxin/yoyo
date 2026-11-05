@@ -244,3 +244,19 @@ func TestBrokerReadStillJailsEscape(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// TestBrokerReadAllowsNamedRoot 锁住任务说明点名的目录可以读，这个目录的邻居仍然被拒绝。
+func TestBrokerReadAllowsNamedRoot(t *testing.T) {
+	b := NewBroker(AutoPolicy{}, func(context.Context, Request) (Decision, error) {
+		return Once, nil
+	})
+	ws := t.TempDir()
+	root := t.TempDir()
+	if err := b.Check(Request{Level: ReadWorkspace, Path: filepath.Join(root, "a.txt"), Workspace: ws, Roots: []string{root}, SessionID: "s1"}); err != nil {
+		t.Fatal(err)
+	}
+	err := b.Check(Request{Level: ReadWorkspace, Path: filepath.Join(root, "..", "secret"), Workspace: ws, Roots: []string{root}, SessionID: "s1"})
+	if err == nil || !strings.Contains(err.Error(), "escapes workspace") {
+		t.Fatalf("%v", err)
+	}
+}

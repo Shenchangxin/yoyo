@@ -125,6 +125,8 @@ type Ticket struct {
 	// Directory 是这张工单的工作目录。Name 是短名，准备命令和重试沿用它。
 	Directory string
 	Name      string
+	// Resume 为真时，下一次启动只接上已有日志，不再把工单说明重发一遍。
+	Resume bool
 }
 
 // Decision 是一次评估结果。Kind 为 accept、stop、ignore、unavailable。

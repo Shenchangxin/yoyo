@@ -136,6 +136,12 @@ func mountOrchestrator(mux *http.ServeMux, a *app.App) {
 			writeJSONStatus(w, 503, map[string]any{"error": "app is not running"})
 			return
 		}
-		writeJSON(w, a.ComposeToday())
+		var body struct {
+			Slot string `json:"slot"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+		writeJSON(w, a.ComposeToday(body.Slot))
 	})
 }

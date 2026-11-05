@@ -71,14 +71,13 @@ func TestRecoverHostSkipsSettled(t *testing.T) {
 	if again.Assignments[0].State != "ended" || again.Assignments[1].State != "pending" {
 		t.Fatalf("assignments %+v", again.Assignments)
 	}
-	found := false
 	for _, in := range again.Inputs {
 		if strings.Contains(in.Text, "宿主重启了") {
-			found = true
+			t.Fatal("recovery note")
 		}
 	}
-	if !found {
-		t.Fatal("missing recovery note")
+	if !again.Resume {
+		t.Fatal("resume")
 	}
 	left, _ := eng.Ticket(waiting)
 	if len(left.Assignments) != 1 || left.Assignments[0].State != "running" {
@@ -187,6 +186,45 @@ func TestOrderedRelayWaits(t *testing.T) {
 	q.Pump(now.Add(time.Minute))
 	if len(got) != 0 {
 		t.Fatalf("second ran %v", got)
+	}
+}
+
+// TestHostRestartContinuesWithoutNewBrief 锁住宿主重启只接上已有日志，不再把工单说明重发一遍。
+func TestHostRestartContinuesWithoutNewBrief(t *testing.T) {
+	sess := dsh.NewSession()
+	sess.Append(dsh.EventUser, 1, 1, dsh.UserMessage{Text: "已改过 README", Source: "assignment"})
+	sess.Append(dsh.EventTurnEnd, 1, 0, dsh.TurnEnd{Kind: "completed"})
+	body, _ := encodeLog(sess.Events())
+	eng := NewEngine(autoPolicy())
+	id := accept(t, eng, "m1")
+	ticket, _ := eng.Ticket(id)
+	if err := eng.AssignmentStarted(id, ticket.Assignments[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if ids := eng.RecoverHost(); len(ids) != 1 || ids[0] != id {
+		t.Fatalf("ids %v", ids)
+	}
+	var seen []string
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(_ context.Context, req dsh.Request) (dsh.Assistant, error) {
+		for _, msg := range req.Messages {
+			seen = append(seen, msg.Text)
+		}
+		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+			ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"ok"}`,
+		}}}, nil
+	}})
+	ex.LogLoad = func(string) []byte { return body }
+	ex.LogSave = func(string, []byte) {}
+	if err := ex.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitOutcome(t, eng, id, "completed")
+	joined := strings.Join(seen, "\n")
+	if !strings.Contains(joined, "已改过 README") || !strings.Contains(joined, "继续。") {
+		t.Fatal(joined)
+	}
+	if strings.Contains(joined, "完成后调用 orchestrator_report。") {
+		t.Fatal(joined)
 	}
 }
 

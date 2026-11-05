@@ -29,16 +29,17 @@ func TicketStage(ticket *Ticket) Stage {
 	if asg != nil && len(asg.Reports) > 0 {
 		report = asg.Reports[len(asg.Reports)-1].State
 	}
-	if report == "ready" {
+	// 人已经跟上、这一轮还在排队或进行时，上一份完成或等待报告不再把按钮停回发送。
+	if report == "ready" && !followUpOpen(ticket, asg) {
 		return Stage{Name: "person", Person: true, Action: "review"}
 	}
-	if (report == "blocked" || report == "failed") && WaitsForPerson(ticket) {
+	if (report == "blocked" || report == "failed") && WaitsForPerson(ticket) && !followUpOpen(ticket, asg) {
 		return Stage{Name: "person", Person: true, Action: report}
 	}
 	if asg == nil || asg.State == "pending" {
 		return Stage{Name: "working", Action: "queued"}
 	}
-	if report == "waiting" || asg.State == "ended" {
+	if asg.State == "ended" || (report == "waiting" && !followUpOpen(ticket, asg)) {
 		return Stage{Name: "idle"}
 	}
 	return Stage{Name: "working"}

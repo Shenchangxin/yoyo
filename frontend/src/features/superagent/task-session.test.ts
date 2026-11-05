@@ -61,4 +61,32 @@ describe("task session order", () => {
       "再补一张图",
     ]);
   });
+
+  /** 工人已经说过话时，完成报告仍留在会话末尾。 */
+  it("appends the closing report after the worker has spoken", () => {
+    const rows = ticket([{ id: "in-7", text: "先定方向" }]);
+    rows.assignments = [{ id: "asg-1", state: "ended", lines: [{ state: "ready", summary: "可以试玩了" }] }];
+    const lines: TaskLine[] = [
+      { id: "a1", role: "user", source: "assignment", text: "先定方向" },
+      { id: "r1", role: "assistant", text: "先写页面" },
+    ];
+    assert.deepEqual(taskSessionItems(rows, lines).map((item) => item.text), [
+      "先定方向",
+      "先写页面",
+      "可以试玩了",
+    ]);
+  });
+
+  /** 重启说明不再出现在任务会话里。 */
+  it("drops the host restart note", () => {
+    const rows = ticket([
+      { id: "in-7", text: "先定方向" },
+      { id: "in-8", text: "宿主重启了。先看工作目录、git 和 GitHub，不要重复已经做过的外部动作。" },
+    ]);
+    const lines: TaskLine[] = [
+      { id: "a1", role: "user", source: "assignment", text: "先定方向" },
+      { id: "n1", role: "user", text: "宿主重启了。先看工作目录、git 和 GitHub，不要重复已经做过的外部动作。" },
+    ];
+    assert.deepEqual(taskSessionItems(rows, lines).map((item) => item.text), ["先定方向"]);
+  });
 });

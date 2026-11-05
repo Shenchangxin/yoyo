@@ -340,6 +340,29 @@ func (s *Service) WorkspaceHunks(workspace string) (any, error) {
 	return s.App.WorkspaceHunks(workspace)
 }
 
+// PreviewPageURL 在 RPC 非空时调用 workspace.page，否则走 App.PreviewPageURL。返回可嵌进弹框的本机地址。
+func (s *Service) PreviewPageURL(workspace, path string) (string, error) {
+	if s.RPC != nil {
+		raw, err := s.call("workspace.page", map[string]any{"workspace": workspace, "path": path})
+		if err != nil {
+			return "", err
+		}
+		switch v := raw.(type) {
+		case string:
+			return v, nil
+		case map[string]any:
+			if u, ok := v["url"].(string); ok {
+				return u, nil
+			}
+		}
+		return "", fmt.Errorf("no page url")
+	}
+	if s.App != nil {
+		return s.App.PreviewPageURL(workspace, path)
+	}
+	return "", fmt.Errorf("no app")
+}
+
 // PreviewWorkspaceFile 在 RPC 非空时调用 workspace.preview，否则走 App.PreviewWorkspaceFile。
 // path 在 RPC 非空时放进 workspace.preview，否则传给 App.PreviewWorkspaceFile。
 func (s *Service) PreviewWorkspaceFile(workspace, path string) (any, error) {

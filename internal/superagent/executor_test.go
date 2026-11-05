@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
 // TestHumanSlotAndBusyLaunch 锁住普通人槽满后，人还可以多占一个，第二张普通派工会返回 ErrBusy。
@@ -167,6 +168,71 @@ func TestTicketDirsStayApart(t *testing.T) {
 	}
 	if _, err := ex.ticketDir("../escape"); err == nil {
 		t.Fatal("escaped")
+	}
+}
+
+// TestReadyWaitsForOpenPlan 锁住计划还有未完成步骤时，ready 不结束工单。
+func TestReadyWaitsForOpenPlan(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	ex := NewExecutor(eng, NewSlots(1), nil)
+	ex.Root = t.TempDir()
+	id := accept(t, eng, "m1")
+	dir, err := ex.ensureWorkDir(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.WritePlanFile(dir, "ticket-"+id, "1. [in_progress] 同步到目标目录\n")
+	res, err := ex.reportTool(id).Run(context.Background(), dsh.ToolCall{
+		Arguments: `{"state":"ready","summary":"写好了"}`,
+	})
+	if err != nil || !res.IsError {
+		t.Fatalf("%+v %v", res, err)
+	}
+	ticket, _ := eng.Ticket(id)
+	if ticket.Ended != nil {
+		t.Fatal("ended")
+	}
+	runtime.WritePlanFile(dir, "ticket-"+id, "1. [complete] 同步到目标目录\n")
+	res, err = ex.reportTool(id).Run(context.Background(), dsh.ToolCall{
+		Arguments: `{"state":"ready","summary":"可以试玩了"}`,
+	})
+	if err != nil || res.IsError || !res.Concludes {
+		t.Fatalf("%+v %v", res, err)
+	}
+	ticket, _ = eng.Ticket(id)
+	if ticket.Ended == nil || ticket.Ended.Outcome != "completed" {
+		t.Fatalf("%+v", ticket.Ended)
+	}
+}
+
+// TestTurnWithoutReportContinues 锁住只回了一句、没有完成报告时，工人会被催着再做，直到写出 ready。
+func TestTurnWithoutReportContinues(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	var mu sync.Mutex
+	n := 0
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(context.Context, dsh.Request) (dsh.Assistant, error) {
+		mu.Lock()
+		n++
+		call := n
+		mu.Unlock()
+		if call == 1 {
+			return dsh.Assistant{Text: "先更新计划"}, nil
+		}
+		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+			ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"done"}`,
+		}}}, nil
+	}})
+	eng.OnLaunch = func(id string) {
+		if err := ex.Launch(id); err != nil {
+			t.Errorf("launch %s: %v", id, err)
+		}
+	}
+	id := accept(t, eng, "m1")
+	waitOutcome(t, eng, id, "completed")
+	mu.Lock()
+	defer mu.Unlock()
+	if n < 2 {
+		t.Fatalf("calls %d", n)
 	}
 }
 
