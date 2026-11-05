@@ -72,6 +72,19 @@ func decode[T any](v any, err error) (T, error) {
 	return out, json.Unmarshal(b, &out)
 }
 
+// stringList 把 JSON 数组收成字符串。不是数组时为空。
+func stringList(v any) []string {
+	items, _ := v.([]any)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		s, _ := item.(string)
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // call 在 RPC 为空时返回 no rpc。否则把方法和参数交给 LineClient.Call。
 // method 在 RPC 非 nil 时传给 LineClient.Call。
 // params 在 RPC 非 nil 时传给 LineClient.Call。
@@ -370,6 +383,26 @@ func (s *Service) PreviewWorkspaceFile(workspace, path string) (any, error) {
 		return s.call("workspace.preview", map[string]any{"workspace": workspace, "path": path})
 	}
 	return s.App.PreviewWorkspaceFile(workspace, path)
+}
+
+// PresentFiles 在 RPC 非空时调用 workspace.present，否则走 App.PresentFiles。
+// 只返回已经落成文件的路径。还没产出的名字不会进来。
+func (s *Service) PresentFiles(workspace string, paths []string) ([]string, error) {
+	if s.RPC != nil {
+		v, err := s.call("workspace.present", map[string]any{"workspace": workspace, "paths": paths})
+		m, err := decode[map[string]any](v, err)
+		if err != nil {
+			return nil, err
+		}
+		if m == nil {
+			return []string{}, nil
+		}
+		return stringList(m["paths"]), nil
+	}
+	if s.App == nil {
+		return nil, fmt.Errorf("no app")
+	}
+	return s.App.PresentFiles(workspace, paths), nil
 }
 
 // ReadWorkspaceBlob 在 RPC 非空时调用 workspace.blob，否则走 App.ReadWorkspaceBlob。

@@ -127,6 +127,41 @@ func readCapped(path string, limit int) ([]byte, bool, error) {
 	return raw, trunc, nil
 }
 
+// PresentFiles 只留下已经落成普通文件的路径。提到了但还没写出来的不算。目录和逃出工作区的路径也不算。
+func (a *App) PresentFiles(workspace string, paths []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, raw := range paths {
+		if len(out) >= 12 {
+			break
+		}
+		p := strings.TrimSpace(raw)
+		if p == "" || seen[p] || strings.Contains(p, "://") {
+			continue
+		}
+		seen[p] = true
+		root := strings.TrimSpace(workspace)
+		abs := p
+		if filepath.IsAbs(p) {
+			abs = filepath.Clean(p)
+			root = filepath.Dir(abs)
+		} else if root != "" {
+			abs = filepath.Clean(filepath.Join(root, p))
+		} else {
+			continue
+		}
+		if root == "" || !capability.WithinWorkspace(root, abs) {
+			continue
+		}
+		st, err := os.Stat(abs)
+		if err != nil || !st.Mode().IsRegular() {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 // resolveWorkspaceFile 把相对路径拼到工作区。工作区参数为空时用 App.Workspace。逃出 capability.WithinWorkspace 的路径返回 path escapes workspace。
 // rel 先 TrimSpace，空串则返回 empty path；不是绝对路径时拼到工作区上，再传给 WithinWorkspace。
 func (a *App) resolveWorkspaceFile(workspace, rel string) (abs, slashRel string, err error) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Decision, Ticket, Trigger } from "./desk-model.ts";
-import { applySenses, auditBrief, briefDue, briefPrompt, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, parseStoredBrief, serializeStoredBrief, runningCount, shouldPush, slotDue, visibleSlot, stageKey, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
+import { applySenses, auditBrief, briefDue, briefPrompt, clockMinute, compareEditions, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, offerSlot, parseStoredBrief, serializeStoredBrief, runningCount, shouldPush, slotDue, slotsCrossed, visibleSlot, stageKey, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
 
 function ticket(partial: Partial<Ticket> & Pick<Ticket, "id" | "stage">): Ticket {
   return {
@@ -186,7 +186,7 @@ describe("work pane grouping", () => {
     assert.match(briefPrompt(bare, "primary"), /一件事/);
   });
 
-  /** 到了设定时间才静默生成。早于时间、或关掉早晨，都不算到点。 */
+  /** 设定时间过后 slotDue 为真。这只表示钟点过了，不表示打开应用时就要生成。 */
   it("treats the morning brief as due only after its time", () => {
     const prefs = defaultBriefPrefs();
     assert.equal(briefDue(prefs, new Date(2026, 10, 2, 8, 30)), true);
@@ -196,6 +196,24 @@ describe("work pane grouping", () => {
     assert.equal(slotDue(prefs, "evening", new Date(2026, 10, 2, 21, 29)), false);
     assert.equal(visibleSlot(prefs, new Date(2026, 10, 2, 8, 0)), "morning");
     assert.equal(visibleSlot(prefs, new Date(2026, 10, 2, 22, 0)), "evening");
+  });
+
+  /** 自动生成只在进程看着钟并且跨过设定分钟时发生。上午和晚间才给按钮，下午不给。 */
+  it("generates a brief only when the clock crosses its minute", () => {
+    const prefs = defaultBriefPrefs();
+    assert.deepEqual(slotsCrossed(prefs, -1, clockMinute(new Date(2026, 10, 2, 21, 53))), []);
+    assert.deepEqual(slotsCrossed(prefs, 8 * 60 + 29, 8 * 60 + 30), ["morning"]);
+    assert.deepEqual(slotsCrossed(prefs, 21 * 60 + 29, 21 * 60 + 30), ["evening"]);
+    assert.deepEqual(slotsCrossed(prefs, 8 * 60 + 29, 21 * 60 + 53), []);
+    assert.equal(offerSlot(prefs, new Date(2026, 10, 2, 9, 0)), "morning");
+    assert.equal(offerSlot(prefs, new Date(2026, 10, 2, 7, 0)), "morning");
+    assert.equal(offerSlot(prefs, new Date(2026, 10, 2, 15, 0)), null);
+    assert.equal(offerSlot(prefs, new Date(2026, 10, 2, 18, 10)), "evening");
+    assert.equal(offerSlot(prefs, new Date(2026, 10, 2, 22, 0)), "evening");
+    assert.equal(offerSlot({ ...prefs, morningOn: false }, new Date(2026, 10, 2, 9, 0)), null);
+    const morning = { day: "2026-11-05", slot: "morning" as const, at: "2026-11-05T13:53:55Z" };
+    const evening = { day: "2026-11-05", slot: "evening" as const, at: "2026-11-05T13:53:31Z" };
+    assert.ok(compareEditions(evening, morning) < 0);
   });
 
   /** 第一封信只用本机名字和修改时间。有日程时不再说今天无法确认，周末也不替用户选继续还是停下。 */

@@ -14,7 +14,7 @@ function hiddenNote(text: string): boolean {
   return text.trim() === HOST_RESTART;
 }
 
-/** taskSessionItems 按日志顺序排。派工只露出这一次新写上的话，短句不会借旧句子里的同样几个字提前出现。 */
+/** taskSessionItems 按日志顺序排。派工只露出这一次新写上的话，短句不会借旧句子里的同样几个字提前出现。对不上的新说明留在它发生的位置，不挪到整段记录后面。 */
 export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
   const inputs = (ticket.inputs ?? []).filter((row) => row.text?.trim());
   let cursor = 0;
@@ -31,29 +31,61 @@ export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
     if (line.role === "user" && line.source === "assignment") {
       const body = (line.text || "").trim();
       const delta = assignmentDelta(prev, body);
+      const spoken = delta || (flat(body) !== flat(prev) ? body : "");
       prev = body || prev;
-      cursor = peel(delta, inputs, cursor, emit);
+      const before = cursor;
+      cursor = peel(spoken, inputs, cursor, emit);
+      if (cursor === before && spoken.trim()) {
+        out.push(userItem(ticket.id, `log:${line.id}`, spoken.trim()));
+        coverInputs(spoken, inputs, shown);
+      }
       continue;
     }
     if (line.role === "user") {
       const text = (line.text || "").trim();
       if (hiddenNote(text)) continue;
-      if (cursor < inputs.length && inputs[cursor].text.trim() === text) {
+      if (cursor < inputs.length && flat(inputs[cursor].text) === flat(text)) {
         emit(inputs[cursor]);
         cursor += 1;
         continue;
       }
       out.push(lineItem(ticket.id, line));
+      for (let i = cursor; i < inputs.length; i++) {
+        if (flat(inputs[i].text) === flat(text)) shown.add(inputs[i].id);
+      }
       continue;
     }
     out.push(lineItem(ticket.id, line));
   }
-  while (cursor < inputs.length) {
-    const row = inputs[cursor];
-    cursor += 1;
+  for (const row of inputs) {
     if (!shown.has(row.id) && row.text.trim()) emit(row);
   }
   return withClosing(out, ticket);
+}
+
+/** flat 把空白收成一个空格，换行多少不影响是不是同一段话。 */
+function flat(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** coverInputs 记下和这段话已经是同一段的输入，避免记录末尾再贴一次。 */
+function coverInputs(spoken: string, inputs: Input[], shown: Set<string>) {
+  const said = flat(spoken);
+  if (said.length < 40) return;
+  for (const row of inputs) {
+    const text = flat(row.text);
+    if (!text) continue;
+    const n = sharedPrefix(said, text);
+    if (n >= 40 && n >= Math.min(said.length, text.length) * 0.8) shown.add(row.id);
+  }
+}
+
+function sharedPrefix(a: string, b: string): number {
+  const left = [...a];
+  const right = [...b];
+  let n = 0;
+  while (n < left.length && n < right.length && left[n] === right[n]) n += 1;
+  return n;
 }
 
 function withClosing(items: Item[], ticket: Ticket): Item[] {
@@ -76,18 +108,18 @@ function assignmentDelta(prev: string, body: string): string {
   return "";
 }
 
-/** peel 从 delta 开头按整段正文取下一条输入。必须顶格，避免「新建吧」撞上「找不到的话就新建吧」。 */
+/** peel 从 delta 开头按整段正文取下一条输入。空白多少不计入。必须顶格，避免「新建吧」撞上「找不到的话就新建吧」。 */
 function peel(delta: string, inputs: Input[], cursor: number, emit: (row: Input) => void): number {
-  let rest = delta.trim();
+  let rest = flat(delta);
   while (cursor < inputs.length && rest) {
-    const text = inputs[cursor].text.trim();
+    const text = flat(inputs[cursor].text);
     if (!text) {
       cursor += 1;
       continue;
     }
-    if (rest === text || rest.startsWith(`${text}\n`)) {
+    if (rest === text || rest.startsWith(`${text} `)) {
       emit(inputs[cursor]);
-      rest = rest.slice(text.length).replace(/^\n/, "").trim();
+      rest = rest.slice(text.length).trim();
       cursor += 1;
       continue;
     }
@@ -143,6 +175,7 @@ function lineItem(sessionId: string, line: TaskLine): Item {
 function reportItems(ticket: Ticket): Item[] {
   const items: Item[] = [];
   for (const step of ticket.assignments ?? []) {
+    if (step.state !== "ended") continue;
     reportLines(step).forEach((line, index) => {
       if (line.state === "progress" || line.state === "waiting" || line.state === "pending" || line.state === "running") return;
       const text = [line.summary, line.question].map((part) => part?.trim() || "").filter((part) => part && part !== "pending" && part !== "running").join("\n\n");

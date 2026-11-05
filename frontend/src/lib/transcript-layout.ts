@@ -120,7 +120,7 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
   if (name === "cite_sources" || name === "review_page" || name === "browser_screenshot" || name === "browser_snapshot" || name === "browser_verify") return true;
   if (name.startsWith("office_")) return /\.(docx|xlsx|pptx|pdf)$/i.test(path);
   if (name === "write_file" || name === "create_file" || name === "str_replace" || name === "edit_file" || name === "apply_patch") {
-    return true;
+    return !!pair.result && !isToolFailed(pair.result);
   }
   if (artifactShouldShow(artifactView(pair.call, pair.result))) return true;
   const body = String((pair.result || item).payload?.content || (pair.result || item).text || "");

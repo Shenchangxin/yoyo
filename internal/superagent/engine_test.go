@@ -289,6 +289,53 @@ func TestPauseSkipsLaunchAndResume(t *testing.T) {
 	}
 }
 
+// TestExplicitAcceptLaunchesWhilePaused 锁住暂停只挡住推断。人明确交代的仍然派工。
+func TestExplicitAcceptLaunchesWhilePaused(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	var launches int
+	eng.OnLaunch = func(string) { launches++ }
+	p := autoPolicy()
+	p.Paused = true
+	eng.SetPolicy(p)
+	if eng.Receive(human("m1", "fix")) != "stored" {
+		t.Fatal("stored")
+	}
+	if _, err := eng.DecideBrief("m1", "accept", "ok", "do the work", nil); err != nil {
+		t.Fatal(err)
+	}
+	if launches != 1 {
+		t.Fatalf("launches %d", launches)
+	}
+}
+
+// TestAssignReopensWhilePaused 锁住暂停时人继续已停下的工单，沿用原单并重新派工。
+func TestAssignReopensWhilePaused(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	var launches int
+	eng.OnLaunch = func(string) { launches++ }
+	id := accept(t, eng, "m1")
+	if err := eng.Stop(id, "hold"); err != nil {
+		t.Fatal(err)
+	}
+	p := autoPolicy()
+	p.Paused = true
+	eng.SetPolicy(p)
+	if eng.Receive(human("m2", "continue")) != "stored" {
+		t.Fatal("stored")
+	}
+	before := launches
+	if err := eng.Assign(id, "m2", "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	if launches != before+1 {
+		t.Fatalf("launches %d want %d", launches, before+1)
+	}
+	ticket, ok := eng.Ticket(id)
+	if !ok || ticket.Ended != nil {
+		t.Fatalf("ended %+v", ticket.Ended)
+	}
+}
+
 // TestQuestionCannotRideReady 锁住问题和 ready 不能写在同一次报告里。
 func TestQuestionCannotRideReady(t *testing.T) {
 	eng := NewEngine(autoPolicy())

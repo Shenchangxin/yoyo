@@ -236,7 +236,7 @@ export function parseBriefPrefs(raw: string | null): BriefPrefs {
   }
 }
 
-/** briefDue 在早晨开着、而且本地时间已经到点时为真。 */
+/** briefDue 在早晨开着、而且本地时间已经到点时为真。到点不等于打开应用时就要生成。 */
 export function briefDue(prefs: BriefPrefs, now = new Date()): boolean {
   return slotDue(prefs, "morning", now);
 }
@@ -248,12 +248,58 @@ export function visibleSlot(prefs: BriefPrefs, now = new Date()): BriefSlot {
 
 /** slotDue 看这一档开着没有，以及本地时间过了没有。 */
 export function slotDue(prefs: BriefPrefs, slot: BriefSlot, now = new Date()): boolean {
+  const at = slotMinute(prefs, slot);
+  if (at == null) return false;
+  return clockMinute(now) >= at;
+}
+
+/** clockMinute 是本地时钟的分钟数，从午夜算起。 */
+export function clockMinute(now = new Date()): number {
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+/** slotsCrossed 只在已经看着钟、并且这一小段里跨过设定分钟时返回那一档。
+ *  第一次观察和隔了太久的补跑都不算，避免一打开就把错过的简报补上。 */
+export function slotsCrossed(prefs: BriefPrefs, prevMinute: number, nowMinute: number): BriefSlot[] {
+  if (prevMinute < 0) return [];
+  let gap = nowMinute - prevMinute;
+  if (gap < 0) gap += 24 * 60;
+  if (gap <= 0 || gap > 3) return [];
+  const out: BriefSlot[] = [];
+  for (const slot of ["morning", "evening"] as BriefSlot[]) {
+    const at = slotMinute(prefs, slot);
+    if (at == null) continue;
+    const hit = prevMinute < nowMinute ? at > prevMinute && at <= nowMinute : at > prevMinute || at <= nowMinute;
+    if (hit) out.push(slot);
+  }
+  return out;
+}
+
+/** offerSlot 是当前时段可以点开的那一档。上午给晨间，晚间给晚间，其余时间不提供。 */
+export function offerSlot(prefs: BriefPrefs, now = new Date()): BriefSlot | null {
+  const hour = now.getHours();
+  if (hour >= 5 && hour < 12) return slotMinute(prefs, "morning") == null ? null : "morning";
+  const at = slotMinute(prefs, "evening");
+  if (at == null) return null;
+  if (hour >= 18 || (hour >= 12 && clockMinute(now) >= at)) return "evening";
+  return null;
+}
+
+/** compareEditions 同一天晚间在晨间上面，更晚的日期在上面。不按写成时间排。 */
+export function compareEditions(a: { day: string; slot: BriefSlot; at: string }, b: { day: string; slot: BriefSlot; at: string }): number {
+  if (a.day !== b.day) return a.day < b.day ? 1 : -1;
+  const rank = (slot: BriefSlot) => (slot === "evening" ? 0 : 1);
+  if (rank(a.slot) !== rank(b.slot)) return rank(a.slot) - rank(b.slot);
+  return (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0);
+}
+
+function slotMinute(prefs: BriefPrefs, slot: BriefSlot): number | null {
   const on = slot === "evening" ? prefs.eveningOn : prefs.morningOn;
+  if (!on) return null;
   const at = slot === "evening" ? prefs.eveningAt : prefs.morningAt;
-  if (!on) return false;
   const [hour, minute] = at.split(":").map((part) => Number(part));
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
-  return now.getHours() * 60 + now.getMinutes() >= hour * 60 + minute;
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
 }
 
 /** briefStorageKey 早晨和晚上各存一份。 */

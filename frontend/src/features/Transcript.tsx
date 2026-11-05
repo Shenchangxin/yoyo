@@ -20,6 +20,7 @@ import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread"
 import {
   formatToolBody,
   isArtifactTool,
+  isToolFailed,
   patchFileCount,
   toolArgs,
   toolDetail,
@@ -38,7 +39,7 @@ import { ScrollFollow, scrollMetrics } from "../lib/scroll-follow";
 import { ProcessGroup, ToolLine } from "./transcript/ProcessGroup";
 import { SubagentCard } from "./transcript/SubagentCard";
 import { ArtifactBody } from "./transcript/FilePreview";
-import { openFilePreview } from "../lib/client";
+import { openFilePreview, presentFiles } from "../lib/client";
 import { deliverablePaths, fileBase, fileKind, hidePaths, joinedPath, previewTarget } from "../lib/file-paths";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { PresenceStamp } from "./presence";
@@ -392,14 +393,50 @@ function DeliverableBubble(props: { path: string; pending?: boolean; onOpen?: ()
   );
 }
 
+const presentCache = new Map<string, boolean>();
+
+function presentKey(workspace: string | undefined, path: string): string {
+  return `${workspace || ""}\n${path}`;
+}
+
+/** usePresentPaths 只留下磁盘上已经有的文件。提到了但还没写出来的先不出现。 */
+function usePresentPaths(workspace: string | undefined, paths: string[]): string[] {
+  const id = paths.join("\n");
+  const [hit, setHit] = useState<string[]>(() => paths.filter((path) => presentCache.get(presentKey(workspace, path)) === true));
+  useEffect(() => {
+    const list = id ? id.split("\n").filter(Boolean) : [];
+    const ready = () => list.filter((path) => presentCache.get(presentKey(workspace, path)) === true);
+    if (!list.length) {
+      setHit([]);
+      return;
+    }
+    const unknown = list.filter((path) => !presentCache.has(presentKey(workspace, path)));
+    if (!unknown.length) {
+      setHit(ready());
+      return;
+    }
+    let stop = false;
+    presentFiles(workspace || "", unknown).then((have) => {
+      const got = new Set(have);
+      for (const path of unknown) presentCache.set(presentKey(workspace, path), got.has(path));
+      if (!stop) setHit(ready());
+    }).catch(() => {
+      for (const path of unknown) presentCache.set(presentKey(workspace, path), false);
+      if (!stop) setHit(ready());
+    });
+    return () => { stop = true; };
+  }, [workspace, id]);
+  return hit;
+}
+
 function FilePathList({ text }: { text: string }) {
   const actions = useContext(FileActions);
-  if (!actions.linkFiles) return null;
-  const paths = deliverablePaths(text);
-  if (!paths.length) return null;
+  const paths = actions.linkFiles ? deliverablePaths(text) : [];
+  const produced = usePresentPaths(actions.workspace, paths);
+  if (!actions.linkFiles || !produced.length) return null;
   return (
     <div className="mt-3 flex flex-col gap-2" data-testid="file-path-list">
-      {paths.map((path) => (
+      {produced.map((path) => (
         <DeliverableBubble key={path} path={path} onOpen={() => actions.openBrowser?.(path)} />
       ))}
     </div>
@@ -1525,6 +1562,8 @@ function ArtifactCard({
   const path = view.path || String(args.path || args.file || "");
   const target = previewTarget(workspace, path);
   const actions = useContext(FileActions);
+  const fileOnDisk = !!(result && !isToolFailed(result) && path);
+  const produced = usePresentPaths(actions.workspace, fileOnDisk ? [path] : []);
   const mcpHtml = result ? extractHTML(body) : "";
   const pdf = looksLikePDF(path);
   const office = name.startsWith("office_") && /\.(docx|xlsx|pptx|pdf)$/i.test(path);
@@ -1543,9 +1582,10 @@ function ArtifactCard({
     return <BrowserShotCard call={call} result={result} />;
   }
   if (!office && !pdf && name !== "cite_sources" && !hasPreview && !fileChip) return null;
-  if (path && !view.diff && !mcp && actions.linkFiles) {
-    return <DeliverableBubble path={path} pending={pending} onOpen={() => actions.openBrowser?.(path)} />;
+  if (path && !view.diff && !mcp && actions.linkFiles && produced.includes(path)) {
+    return <DeliverableBubble path={path} onOpen={() => actions.openBrowser?.(path)} />;
   }
+  if ((isArtifactTool(name) || isCodeChangeTool(name)) && path && !view.diff && !mcp && actions.linkFiles) return null;
   const title = view.path
     ? view.path.replace(/\\/g, "/").split("/").pop() || view.path
     : name === "apply_patch"
