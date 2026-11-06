@@ -26,6 +26,38 @@ func TestTranscriptLinesSkipAssignment(t *testing.T) {
 	}
 }
 
+func TestTranscriptShowsAPendingSteerAndATurnError(t *testing.T) {
+	lines := TranscriptLines([]dsh.Event{
+		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "先做完", Source: "human"}},
+		{Type: dsh.EventInbox, Data: dsh.UserMessage{Text: "把天数延长", Source: "human"}},
+		{Type: dsh.EventAssistant, Data: dsh.Assistant{Text: "先做完这一轮"}},
+		{Type: dsh.EventTurnEnd, Data: dsh.TurnEnd{Kind: "error", Reason: `Post "https://example.test/chat/completions": EOF`}},
+	})
+	if len(lines) != 4 {
+		t.Fatalf("%+v", lines)
+	}
+	if lines[1].Role != "user" || lines[1].Text != "把天数延长" {
+		t.Fatalf("pending %+v", lines[1])
+	}
+	if lines[3].Role != "assistant" || !strings.Contains(lines[3].Text, "EOF") {
+		t.Fatalf("error %+v", lines[3])
+	}
+	claimed := TranscriptLines([]dsh.Event{
+		{Type: dsh.EventInbox, Data: dsh.UserMessage{Text: "把天数延长", Source: "human"}},
+		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "把天数延长", Source: "human"}},
+	})
+	if len(claimed) != 1 || claimed[0].Text != "把天数延长" {
+		t.Fatalf("dup %+v", claimed)
+	}
+	continued := TranscriptLines([]dsh.Event{
+		{Type: dsh.EventTurnEnd, Data: dsh.TurnEnd{Kind: "error", Reason: "EOF"}},
+		{Type: dsh.EventAssistant, Data: dsh.Assistant{Text: "接着做"}},
+	})
+	if len(continued) != 1 || continued[0].Text != "接着做" {
+		t.Fatalf("continued %+v", continued)
+	}
+}
+
 func TestScrubRestartNote(t *testing.T) {
 	events := []dsh.Event{
 		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "工单 tkt-1\n" + hostRestartNote + "\n原文", Source: "assignment"}},

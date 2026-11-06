@@ -1,4 +1,4 @@
-// web_search 的检索顺序：调用方 SearchAPI、Jina、DuckDuckGo，最后在同一次时限内抓搜索页。出网审批是 Network。抓取与主机拒绝在 tools_codex.go。
+// web_search 的检索顺序：调用方 SearchAPI、免密钥的 Exa、Jina、DuckDuckGo，最后在同一次时限内抓搜索页。出网审批是 Network。抓取与主机拒绝在 tools_codex.go。
 
 package runtime
 
@@ -29,12 +29,14 @@ var (
 	builtinDDGLite = webcontent.DefaultDDGLite
 	// builtinSearchPage 是检索都没有结果时要抓的搜索页前缀，后面接上转义后的查询。测试可以换掉。
 	builtinSearchPage = "https://html.duckduckgo.com/html/?q="
+	// builtinExaMCP 是免密钥的 Exa 托管搜索。测试可以换掉，空字符串表示这一跳跳过。
+	builtinExaMCP = webcontent.DefaultExaMCP
 )
 
 // webSearchBudget 是一次检索的总时限，包含最后的搜索页抓取。测试可以改短。
 var webSearchBudget = 20 * time.Second
 
-// webSearch 去掉空白后检索。空查询返回错误。查询本身是 http(s) 地址时改走 webFetch。先过 Network 审批。SearchAPI 有可用结果就返回；否则依次试 Jina 和 DuckDuckGo。时限用完就返回已记下的失败，不再另开一次抓取。还有剩余时间才抓搜索页。
+// webSearch 去掉空白后检索。空查询返回错误。查询本身是 http(s) 地址时改走 webFetch。先过 Network 审批。SearchAPI 有可用结果就返回；否则依次试 Exa、Jina 和 DuckDuckGo。时限用完就返回已记下的失败，不再另开一次抓取。还有剩余时间才抓搜索页。
 // query 先去掉空白，空串返回错误；看起来是 http(s) 地址时交给 webFetch，否则作为检索词传给 SearchAPI、SearchJina 和 SearchDuckDuckGo。
 func (t *WorkspaceTools) webSearch(query string) ToolResult {
 	query = strings.TrimSpace(query)
@@ -68,6 +70,13 @@ func (t *WorkspaceTools) webSearch(query string) ToolResult {
 			return ToolResult{Content: "search: " + query + "\n\n" + out}
 		}
 		note("search", err)
+	}
+	if ctx.Err() == nil && strings.TrimSpace(builtinExaMCP) != "" {
+		out, err := webcontent.SearchExaMCP(ctx, webHTTP, builtinExaMCP, query)
+		if err == nil && webcontent.Useful(out) {
+			return ToolResult{Content: "search (exa): " + query + "\n\n" + out}
+		}
+		note("exa", err)
 	}
 	if ctx.Err() == nil {
 		out, err := webcontent.SearchJina(ctx, webHTTP, builtinJinaSearch, query)

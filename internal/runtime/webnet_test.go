@@ -34,18 +34,23 @@ func TestWebSearchUsesSearchAPI(t *testing.T) {
 
 // TestWebSearchJinaFallback 锁住没有 SearchAPI 时，检索落到 Jina，正文含 search (jina)。
 func TestWebSearchJinaFallback(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "exa") {
+			http.Error(w, "exa down", http.StatusBadGateway)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{"title": "JinaHit", "url": "https://jina.example", "description": "ok"}},
 		})
 	}))
 	t.Cleanup(srv.Close)
-	prevJina, prevDDG, prevLite := builtinJinaSearch, builtinDDGHTML, builtinDDGLite
+	prevJina, prevDDG, prevLite, prevExa := builtinJinaSearch, builtinDDGHTML, builtinDDGLite, builtinExaMCP
 	builtinJinaSearch = srv.URL + "/"
 	builtinDDGHTML = srv.URL + "/no-ddg"
 	builtinDDGLite = srv.URL + "/no-ddg"
+	builtinExaMCP = srv.URL + "/exa"
 	t.Cleanup(func() {
-		builtinJinaSearch, builtinDDGHTML, builtinDDGLite = prevJina, prevDDG, prevLite
+		builtinJinaSearch, builtinDDGHTML, builtinDDGLite, builtinExaMCP = prevJina, prevDDG, prevLite, prevExa
 	})
 	res := (&WorkspaceTools{}).webSearch("frameworks")
 	if res.Err != nil {
@@ -186,11 +191,12 @@ func TestWebSearchDoesNotExtendBudget(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	t.Cleanup(srv.Close)
-	prevJina, prevPage := builtinJinaSearch, builtinSearchPage
+	prevJina, prevPage, prevExa := builtinJinaSearch, builtinSearchPage, builtinExaMCP
 	builtinJinaSearch = srv.URL + "/jina?q="
 	builtinSearchPage = srv.URL + "/page?q="
+	builtinExaMCP = ""
 	t.Cleanup(func() {
-		builtinJinaSearch, builtinSearchPage = prevJina, prevPage
+		builtinJinaSearch, builtinSearchPage, builtinExaMCP = prevJina, prevPage, prevExa
 	})
 	parent, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

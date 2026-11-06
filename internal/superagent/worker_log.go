@@ -99,6 +99,12 @@ func decodeEventData(typ string, raw json.RawMessage) (any, bool) {
 			return nil, false
 		}
 		return msg, true
+	case dsh.EventInbox:
+		var msg dsh.UserMessage
+		if json.Unmarshal(raw, &msg) != nil {
+			return nil, false
+		}
+		return msg, true
 	case dsh.EventTurnStart, dsh.EventStepStart, dsh.EventStepEnd:
 		return nil, true
 	default:
@@ -213,11 +219,59 @@ type TranscriptLine struct {
 	Error  bool   `json:"error,omitempty"`
 }
 
+// stuckTurnError 返回还没被后续发言盖过去的那次错误回合。后面又有人说话或工人开口时返回 -1。
+func stuckTurnError(events []dsh.Event) int {
+	last := -1
+	for i, ev := range events {
+		end, ok := ev.Data.(dsh.TurnEnd)
+		if ev.Type == dsh.EventTurnEnd && ok && end.Kind == "error" && strings.TrimSpace(end.Reason) != "" {
+			last = i
+		}
+	}
+	if last < 0 {
+		return -1
+	}
+	for _, ev := range events[last+1:] {
+		switch ev.Type {
+		case dsh.EventAssistant, dsh.EventUser, dsh.EventToolResult, dsh.EventToolCall:
+			return -1
+		}
+	}
+	return last
+}
+
 // TranscriptLines 把工人日志收成会话行。派工包装、重试和后台完成不进对话。
+// 还没被下一步领走的新消息会先出现。只有停在错误上、后面没有再开口时，才把中断原因留在末尾。
 func TranscriptLines(events []dsh.Event) []TranscriptLine {
+	claimed := map[string]bool{}
+	for _, ev := range events {
+		msg, ok := ev.Data.(dsh.UserMessage)
+		if ev.Type == dsh.EventUser && ok {
+			if text := strings.TrimSpace(msg.Text); text != "" {
+				claimed[strings.Join(strings.Fields(text), " ")] = true
+			}
+		}
+	}
+	stuck := stuckTurnError(events)
 	var out []TranscriptLine
 	for i, ev := range events {
 		switch ev.Type {
+		case dsh.EventInbox:
+			msg, ok := ev.Data.(dsh.UserMessage)
+			if !ok || msg.Source == "retry" || msg.Source == "job" {
+				continue
+			}
+			text := strings.TrimSpace(msg.Text)
+			if text == "" || text == hostRestartNote || claimed[strings.Join(strings.Fields(text), " ")] {
+				continue
+			}
+			out = append(out, TranscriptLine{ID: lineID(i, "inbox"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)})
+		case dsh.EventTurnEnd:
+			if i != stuck {
+				continue
+			}
+			end, _ := ev.Data.(dsh.TurnEnd)
+			out = append(out, TranscriptLine{ID: lineID(i, "error"), Role: "assistant", Text: "这一回合中断了：" + clipRunes(strings.TrimSpace(end.Reason), 300)})
 		case dsh.EventUser:
 			msg, ok := ev.Data.(dsh.UserMessage)
 			if !ok {
@@ -338,7 +392,7 @@ func assignmentBody(text string) string {
 
 // watchLog 在这一轮还没结束时把会话写下来，任务页才能跟着长。stop 关上后退出。
 func (e *Executor) watchLog(agent *dsh.Agent, ticketID string, stop <-chan struct{}) {
-	tick := time.NewTicker(2 * time.Second)
+	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
 		select {
@@ -386,7 +440,7 @@ func passingError(err string) bool {
 	if text == "" {
 		return false
 	}
-	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "temporarily"} {
+	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "connection closed", "broken pipe", "eof", "temporarily"} {
 		if strings.Contains(text, part) {
 			return true
 		}

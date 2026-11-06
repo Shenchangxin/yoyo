@@ -283,6 +283,28 @@ func TestBackgroundJobSteersNextStep(t *testing.T) {
 	t.Fatalf("last assistant %q", got)
 }
 
+// TestResumeKeepsTheSystemHead 锁住已有系统提示的会话在提示更新后仍把旧头部留在原处，新提示追加在后面。
+func TestResumeKeepsTheSystemHead(t *testing.T) {
+	sess := NewSession()
+	sess.Append(EventSystem, 1, 1, SystemCommit{Op: "append", Text: "v1"})
+	sess.Append(EventUser, 1, 1, UserMessage{Text: "先定方向", Source: "assignment"})
+	sess.Append(EventAssistant, 1, 1, Assistant{Text: "看过了"})
+	var seen []Message
+	agent := New("ticket-tkt-4", scriptModel{fn: func(_ context.Context, req Request) (Assistant, error) {
+		seen = append([]Message(nil), req.Messages...)
+		return Assistant{Text: "继续"}, nil
+	}}, nil, Options{Prompt: "v2"})
+	agent.Session().Restore(sess.Events())
+	agent.Followup(UserMessage{Text: "新建吧", Source: "human"})
+	agent.WhenIdle()
+	if len(seen) < 5 || seen[0].Text != "v1" || seen[1].Text != "先定方向" || seen[2].Text != "看过了" {
+		t.Fatalf("prefix %#v", seen)
+	}
+	if seen[3].Role != "system" || seen[3].Text != "v2" || seen[4].Text != "新建吧" {
+		t.Fatalf("update %#v", seen[3:])
+	}
+}
+
 // TestProjectSystemAppendsInHistory 锁住历史内的提示变化会追加，替换模式则改写头部。
 func TestProjectSystemAppendsInHistory(t *testing.T) {
 	first := ProjectSystem(nil, "v1", true, true)

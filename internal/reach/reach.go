@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -244,6 +245,51 @@ func ParseHost(text string) []Item {
 		}
 	}
 	flush()
+	return out
+}
+
+var exaHeader = regexp.MustCompile(`^(Title|URL|Published|Author):\s*(.*)$`)
+
+// ParseExa 读取 Exa 的 Title / URL 分块。没有公开链接的块丢掉。
+func ParseExa(text string) []Item {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	var out []Item
+	chunks := strings.Split(text, "\nTitle: ")
+	for i, block := range chunks {
+		if i > 0 {
+			block = "Title: " + block
+		}
+		block = strings.TrimSpace(block)
+		if !strings.HasPrefix(block, "Title:") {
+			continue
+		}
+		fields := map[string]string{}
+		var body []string
+		header := true
+		for _, line := range strings.Split(block, "\n") {
+			if header {
+				if m := exaHeader.FindStringSubmatch(line); m != nil {
+					fields[strings.ToLower(m[1])] = strings.TrimSpace(m[2])
+					continue
+				}
+				header = false
+			}
+			trim := strings.TrimSpace(line)
+			if trim == "" || trim == "Highlights:" || trim == "Text:" {
+				continue
+			}
+			body = append(body, trim)
+		}
+		title := fields["title"]
+		link := fields["url"]
+		if title == "" || !publicURL(link) {
+			continue
+		}
+		out = append(out, Item{Title: title, URL: link, Snippet: strings.Join(body, " ")})
+	}
 	return out
 }
 

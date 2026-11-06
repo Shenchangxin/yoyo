@@ -41,7 +41,7 @@ export function TaskRead(props: {
       }).catch(() => {});
     };
     pull();
-    const timer = window.setInterval(pull, 2000);
+    const timer = window.setInterval(pull, 1000);
     return () => {
       stop = true;
       window.clearInterval(timer);
