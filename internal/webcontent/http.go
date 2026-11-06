@@ -37,6 +37,11 @@ func httpClient(c *http.Client) *http.Client {
 // rawURL 作为 GET 的地址。构造请求失败时仍作为最终 URL 返回。
 // accept 为空时改成 text/html, application/json;q=0.9, text/plain;q=0.8, */*;q=0.7，然后写入 Accept。
 func get(ctx context.Context, client *http.Client, rawURL, accept string) (status int, finalURL, contentType, body string, err error) {
+	return getReferer(ctx, client, rawURL, accept, "")
+}
+
+// getReferer 与 get 相同。referer 非空时带上 Referer，给要求来源页的公开接口用。
+func getReferer(ctx context.Context, client *http.Client, rawURL, accept, referer string) (status int, finalURL, contentType, body string, err error) {
 	if ctx == nil {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(context.Background(), defaultTimeout)
@@ -51,6 +56,9 @@ func get(ctx context.Context, client *http.Client, rawURL, accept string) (statu
 		accept = "text/html, application/json;q=0.9, text/plain;q=0.8, */*;q=0.7"
 	}
 	req.Header.Set("Accept", accept)
+	if strings.TrimSpace(referer) != "" {
+		req.Header.Set("Referer", strings.TrimSpace(referer))
+	}
 	resp, err := httpClient(client).Do(req)
 	if err != nil {
 		return 0, rawURL, "", "", err

@@ -51,7 +51,9 @@ func (t *WorkspaceTools) reachStatus() ToolResult {
 	b.WriteString("Internet backends (host tools first; never curl)\n")
 	b.WriteString("\nsearch:\n")
 	b.WriteString("  web_search uses the configured Search connection when it returns hits.\n")
-	b.WriteString("  builtin fallbacks: Jina Search, then DuckDuckGo HTML (structured).\n")
+	b.WriteString("  builtin fallbacks: Exa hosted search, then Jina Search, then DuckDuckGo HTML.\n")
+	b.WriteString("  hot lists: Bilibili popular and V2EX hot use their public JSON APIs in-process.\n")
+	b.WriteString("  X/Twitter search uses the public web, scoped to x.com and twitter.com.\n")
 	if t != nil && t.SearchAPI != nil {
 		b.WriteString("  SearchAPI: hooked\n")
 	} else {

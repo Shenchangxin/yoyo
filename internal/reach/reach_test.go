@@ -68,6 +68,14 @@ func TestNextRotatesNewsAndHot(t *testing.T) {
 	}
 }
 
+func TestParseExaKeepsPublicLinks(t *testing.T) {
+	text := "Title: Step 5\nURL: https://example.com/step\nPublished: N/A\n\n免费预览\nTitle: Local\nURL: http://127.0.0.1/x\n"
+	items := ParseExa(text)
+	if len(items) != 1 || items[0].URL != "https://example.com/step" || items[0].Snippet != "免费预览" {
+		t.Fatalf("%#v", items)
+	}
+}
+
 func TestParseHost(t *testing.T) {
 	text := "1. Step 5\n   https://example.com/step\n   免费预览\n2. Local\n   http://127.0.0.1/x\n"
 	items := ParseHost(text)

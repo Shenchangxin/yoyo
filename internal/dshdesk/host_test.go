@@ -45,6 +45,45 @@ func (c *seeingClient) Chat(ctx context.Context, req runtime.ChatRequest) (runti
 	return runtime.Message{Role: runtime.RoleAssistant, Content: c.reply}, nil
 }
 
+// keyClient 记下每次请求的缓存键。
+type keyClient struct {
+	keys []string
+}
+
+// Chat 记录 req 的缓存键并回一句固定正文。ctx 取消时返回 ctx.Err。
+func (c *keyClient) Chat(ctx context.Context, req runtime.ChatRequest) (runtime.Message, error) {
+	if err := ctx.Err(); err != nil {
+		return runtime.Message{}, err
+	}
+	c.keys = append(c.keys, req.CacheKey)
+	return runtime.Message{Role: runtime.RoleAssistant, Content: "ok"}, nil
+}
+
+// TestCacheKeyStaysOnTheHead 锁住对话变长或后面追加新提示时，缓存键仍由第一段系统提示和工具清单决定。
+func TestCacheKeyStaysOnTheHead(t *testing.T) {
+	client := &keyClient{}
+	bridge := &Bridge{Client: client}
+	tools := []dsh.ToolSchema{{Name: "shell", Description: "run"}}
+	head := []dsh.Message{{Role: "system", Text: "你是工人"}, {Role: "user", Text: "先定方向"}}
+	if _, err := bridge.Complete(context.Background(), dsh.Request{Messages: head, Tools: tools}); err != nil {
+		t.Fatal(err)
+	}
+	grown := append(append([]dsh.Message{}, head...), dsh.Message{Role: "assistant", Text: "看过了"}, dsh.Message{Role: "user", Text: "继续"}, dsh.Message{Role: "system", Text: "新提示"})
+	if _, err := bridge.Complete(context.Background(), dsh.Request{Messages: grown, Tools: tools}); err != nil {
+		t.Fatal(err)
+	}
+	if client.keys[0] == "" || client.keys[0] != client.keys[1] {
+		t.Fatalf("keys %q %q", client.keys[0], client.keys[1])
+	}
+	changed := []dsh.Message{{Role: "system", Text: "另一份提示"}, {Role: "user", Text: "先定方向"}}
+	if _, err := bridge.Complete(context.Background(), dsh.Request{Messages: changed, Tools: tools}); err != nil {
+		t.Fatal(err)
+	}
+	if client.keys[2] == client.keys[0] {
+		t.Fatal("prompt change kept the key")
+	}
+}
+
 // TestDeskReusesAgent 确认同一会话的第二次发送不再重灌历史，模型仍能看见上一轮。
 func TestDeskReusesAgent(t *testing.T) {
 	host := New()

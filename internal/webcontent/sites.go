@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -28,6 +29,8 @@ var (
 	YouTubeTimedTextBase = "https://www.youtube.com/api/timedtext"
 	// BilibiliViewBase 是 Bilibili 视频信息接口。
 	BilibiliViewBase = "https://api.bilibili.com/x/web-interface/view"
+	// BilibiliPopularBase 是 Bilibili 综合热门接口。测试会临时改它。
+	BilibiliPopularBase = "https://api.bilibili.com/x/web-interface/popular"
 	// V2EXAPIBase 是 V2EX API 根。
 	V2EXAPIBase = "https://www.v2ex.com/api"
 	// GitHubAPIBase 是 GitHub API 根。测试会临时改它。
@@ -267,6 +270,96 @@ func v2exJSON(ctx context.Context, client *http.Client, api, label string) (stri
 		}
 	}
 	return strings.TrimSpace(b.String()), nil
+}
+
+// BilibiliPopular 读取综合热门。limit 小于 1 时按 5，大于 20 时按 20。code 不是 0 时返回错误。
+func BilibiliPopular(ctx context.Context, client *http.Client, limit int) ([]Hit, error) {
+	limit = clampLimit(limit)
+	api := strings.TrimRight(BilibiliPopularBase, "/") + "?ps=" + strconv.Itoa(limit) + "&pn=1"
+	status, _, _, body, err := getReferer(ctx, client, api, "application/json", "https://www.bilibili.com/")
+	if err != nil {
+		return nil, err
+	}
+	if status >= 300 {
+		return nil, fmt.Errorf("bilibili popular %d", status)
+	}
+	var wrap struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				Title string `json:"title"`
+				BVID  string `json:"bvid"`
+				Desc  string `json:"desc"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if json.Unmarshal([]byte(body), &wrap) != nil || wrap.Code != 0 {
+		return nil, fmt.Errorf("bilibili popular: bad json")
+	}
+	var hits []Hit
+	for _, item := range wrap.Data.List {
+		title := strings.TrimSpace(item.Title)
+		bvid := strings.TrimSpace(item.BVID)
+		if title == "" || bvid == "" {
+			continue
+		}
+		hits = append(hits, Hit{
+			Title:   title,
+			URL:     "https://www.bilibili.com/video/" + bvid,
+			Snippet: strings.TrimSpace(item.Desc),
+		})
+		if len(hits) >= limit {
+			break
+		}
+	}
+	if len(hits) == 0 {
+		return nil, fmt.Errorf("bilibili popular: empty")
+	}
+	return hits, nil
+}
+
+// V2EXHot 读取今日热门主题。limit 小于 1 时按 5，大于 20 时按 20。
+func V2EXHot(ctx context.Context, client *http.Client, limit int) ([]Hit, error) {
+	limit = clampLimit(limit)
+	api := strings.TrimRight(V2EXAPIBase, "/") + "/topics/hot.json"
+	status, _, _, body, err := get(ctx, client, api, "application/json")
+	if err != nil {
+		return nil, err
+	}
+	if status >= 300 {
+		return nil, fmt.Errorf("v2ex hot %d", status)
+	}
+	var arr []map[string]any
+	if json.Unmarshal([]byte(body), &arr) != nil || len(arr) == 0 {
+		return nil, fmt.Errorf("v2ex hot: bad json")
+	}
+	var hits []Hit
+	for _, m := range arr {
+		title := firstString(m, "title")
+		link := firstString(m, "url")
+		if title == "" || link == "" {
+			continue
+		}
+		snip := collapseSpace(stripTags(firstString(m, "content", "content_rendered")))
+		hits = append(hits, Hit{Title: title, URL: link, Snippet: snip})
+		if len(hits) >= limit {
+			break
+		}
+	}
+	if len(hits) == 0 {
+		return nil, fmt.Errorf("v2ex hot: empty")
+	}
+	return hits, nil
+}
+
+func clampLimit(limit int) int {
+	if limit < 1 {
+		return 5
+	}
+	if limit > 20 {
+		return 20
+	}
+	return limit
 }
 
 // githubRepoText 只接受路径正好两段的仓库根。仓库名小写后是 issues、pulls、actions、projects、settings 时不当成仓库。

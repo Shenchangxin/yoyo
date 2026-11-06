@@ -452,8 +452,15 @@ func (a *Agent) runStep(ctx context.Context, turn, step int, claimed []UserMessa
 	// 工具结果还没落盘就中断时，先补齐再追加这一步的消息，避免下一次模型请求被拒绝。
 	a.session.RepairOpenTools()
 
-	startsSeries := !a.headerLog
+	// 头部已经有系统提示时，不再把它当成新系列去改写。提示变了就追加在后面，已经缓存的前缀保持不动。
 	nodes := a.session.SystemTexts()
+	startsSeries := true
+	for _, n := range nodes {
+		if strings.TrimSpace(n) != "" {
+			startsSeries = false
+			break
+		}
+	}
 	for _, c := range ProjectSystem(nodes, a.opts.Prompt, !a.opts.ReplacePrompt, startsSeries) {
 		a.session.Append(EventSystem, turn, step, c)
 	}

@@ -583,7 +583,7 @@ func (e *Engine) TakeResume(ticketID string) bool {
 const hostRestartNote = "宿主重启了。先看工作目录、git 和 GitHub，不要重复已经做过的外部动作。"
 
 // RecoverHost 结束仍标成 running 的派工，并按工单编号从旧到新返回要重开的工单。
-// 已有的会话日志会原样接上，不再追加一条新的任务说明。waiting、ready、blocked、failed 保持原样。pending 的派工也包含在返回值里。
+// 已有的会话日志会原样接上，不再追加一条新的任务说明。waiting、ready、blocked 和永久性的 failed 保持原样。连接中断这种暂时失败会重开。pending 的派工也包含在返回值里。
 func (e *Engine) RecoverHost() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -603,7 +603,7 @@ func (e *Engine) RecoverHost() []string {
 			continue
 		}
 		if asg.State == "running" {
-			if settled(asg) && !inputAfter(t, asg.Reports[len(asg.Reports)-1].Seq) {
+			if settled(asg) && !inputAfter(t, asg.Reports[len(asg.Reports)-1].Seq) && !transientReport(asg) {
 				continue
 			}
 			asg.State = "ended"
@@ -617,6 +617,15 @@ func (e *Engine) RecoverHost() []string {
 		}
 	}
 	return out
+}
+
+// transientReport 在最近一次报告是暂时的网络失败时为真。这种派工重启后续上，不留在原地。
+func transientReport(asg *Assignment) bool {
+	if asg == nil || len(asg.Reports) == 0 {
+		return false
+	}
+	last := asg.Reports[len(asg.Reports)-1]
+	return last.State == "failed" && passingError(last.Summary)
 }
 
 // settled 在最近一次报告已经是等待、完成、受阻或失败时为真。

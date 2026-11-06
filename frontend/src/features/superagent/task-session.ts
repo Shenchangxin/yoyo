@@ -14,18 +14,27 @@ function hiddenNote(text: string): boolean {
   return text.trim() === HOST_RESTART;
 }
 
-/** taskSessionItems 按日志顺序排。派工只露出这一次新写上的话，短句不会借旧句子里的同样几个字提前出现。对不上的新说明留在它发生的位置，不挪到整段记录后面。 */
+/** taskSessionItems 按日志顺序排。派工只露出这一次新写上的话。已经出现过的同一句不再从后来的派工快照里冒出来。只有还没写进日志、又比已经对上的输入更晚的说明，才补在末尾。 */
 export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
   const inputs = (ticket.inputs ?? []).filter((row) => row.text?.trim());
   let cursor = 0;
   let prev = "";
+  let placed = -1;
   const shown = new Set<string>();
+  const said = new Set<string>();
   const out: Item[] = [];
-  const emit = (row: Input) => {
-    if (shown.has(row.id)) return;
+  const place = (index: number) => {
+    if (index > placed) placed = index;
+  };
+  const emit = (index: number) => {
+    const row = inputs[index];
+    if (!row || shown.has(row.id)) return;
     shown.add(row.id);
+    place(index);
     if (hiddenNote(row.text)) return;
-    out.push(userItem(ticket.id, row.id, row.text.trim()));
+    const text = row.text.trim();
+    said.add(flat(text));
+    out.push(userItem(ticket.id, row.id, text));
   };
   for (const line of lines) {
     if (line.role === "user" && line.source === "assignment") {
@@ -35,31 +44,35 @@ export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
       prev = body || prev;
       const before = cursor;
       cursor = peel(spoken, inputs, cursor, emit);
-      if (cursor === before && spoken.trim()) {
+      if (cursor === before && spoken.trim() && !said.has(flat(spoken))) {
+        said.add(flat(spoken));
         out.push(userItem(ticket.id, `log:${line.id}`, spoken.trim()));
-        coverInputs(spoken, inputs, shown);
+        coverInputs(spoken, inputs, shown, place);
       }
       continue;
     }
     if (line.role === "user") {
       const text = (line.text || "").trim();
       if (hiddenNote(text)) continue;
+      cursor = nextVisible(inputs, cursor);
       if (cursor < inputs.length && flat(inputs[cursor].text) === flat(text)) {
-        emit(inputs[cursor]);
+        emit(cursor);
         cursor += 1;
         continue;
       }
       out.push(lineItem(ticket.id, line));
+      said.add(flat(text));
       for (let i = cursor; i < inputs.length; i++) {
-        if (flat(inputs[i].text) === flat(text)) shown.add(inputs[i].id);
+        if (flat(inputs[i].text) === flat(text)) {
+          shown.add(inputs[i].id);
+          place(i);
+        }
       }
       continue;
     }
     out.push(lineItem(ticket.id, line));
   }
-  for (const row of inputs) {
-    if (!shown.has(row.id) && row.text.trim()) emit(row);
-  }
+  for (let i = placed + 1; i < inputs.length; i++) emit(i);
   return withClosing(out, ticket);
 }
 
@@ -69,15 +82,18 @@ function flat(text: string): string {
 }
 
 /** coverInputs 记下和这段话已经是同一段的输入，避免记录末尾再贴一次。 */
-function coverInputs(spoken: string, inputs: Input[], shown: Set<string>) {
+function coverInputs(spoken: string, inputs: Input[], shown: Set<string>, place: (index: number) => void) {
   const said = flat(spoken);
   if (said.length < 40) return;
-  for (const row of inputs) {
+  inputs.forEach((row, index) => {
     const text = flat(row.text);
-    if (!text) continue;
+    if (!text) return;
     const n = sharedPrefix(said, text);
-    if (n >= 40 && n >= Math.min(said.length, text.length) * 0.8) shown.add(row.id);
-  }
+    if (n >= 40 && n >= Math.min(said.length, text.length) * 0.8) {
+      shown.add(row.id);
+      place(index);
+    }
+  });
 }
 
 function sharedPrefix(a: string, b: string): number {
@@ -89,10 +105,11 @@ function sharedPrefix(a: string, b: string): number {
 }
 
 function withClosing(items: Item[], ticket: Ticket): Item[] {
-  const seen = new Set(items.map((item) => (item.text || "").trim()).filter(Boolean));
+  const seen = items.map((item) => (item.text || "").trim()).filter(Boolean);
   const extra = reportItems(ticket).filter((item) => {
     const text = (item.text || "").trim();
-    return text && !seen.has(text);
+    if (!text || seen.includes(text)) return false;
+    return !seen.some((have) => have.includes(text));
   });
   return extra.length ? [...items, ...extra] : items;
 }
@@ -109,16 +126,23 @@ function assignmentDelta(prev: string, body: string): string {
 }
 
 /** peel 从 delta 开头按整段正文取下一条输入。空白多少不计入。必须顶格，避免「新建吧」撞上「找不到的话就新建吧」。 */
-function peel(delta: string, inputs: Input[], cursor: number, emit: (row: Input) => void): number {
+function nextVisible(inputs: { text: string }[], cursor: number): number {
+  while (cursor < inputs.length && hiddenNote(inputs[cursor].text)) cursor += 1;
+  return cursor;
+}
+
+function peel(delta: string, inputs: { text: string }[], cursor: number, emit: (index: number) => void): number {
   let rest = flat(delta);
   while (cursor < inputs.length && rest) {
+    cursor = nextVisible(inputs, cursor);
+    if (cursor >= inputs.length) break;
     const text = flat(inputs[cursor].text);
     if (!text) {
       cursor += 1;
       continue;
     }
     if (rest === text || rest.startsWith(`${text} `)) {
-      emit(inputs[cursor]);
+      emit(cursor);
       rest = rest.slice(text.length).trim();
       cursor += 1;
       continue;
@@ -173,27 +197,42 @@ function lineItem(sessionId: string, line: TaskLine): Item {
 }
 
 function reportItems(ticket: Ticket): Item[] {
-  const items: Item[] = [];
-  for (const step of ticket.assignments ?? []) {
-    if (step.state !== "ended") continue;
-    reportLines(step).forEach((line, index) => {
-      if (line.state === "progress" || line.state === "waiting" || line.state === "pending" || line.state === "running") return;
-      const text = [line.summary, line.question].map((part) => part?.trim() || "").filter((part) => part && part !== "pending" && part !== "running").join("\n\n");
-      if (!text) return;
-      items.push({
-        key: `${step.id}:${index}`,
-        type: "assistant",
-        sessionId: ticket.id,
-        source: "worker",
-        ts: "",
-        text,
-        name: "",
-        delta: false,
-        payload: { id: `${step.id}:${index}` },
-      });
-    });
+  const steps = ticket.assignments ?? [];
+  let step: Assignment | undefined;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (reportLines(steps[i]).some(closingLine)) {
+      step = steps[i];
+      break;
+    }
   }
-  return items;
+  if (!step) return [];
+  const lines = reportLines(step);
+  let index = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (closingLine(lines[i])) {
+      index = i;
+      break;
+    }
+  }
+  if (index < 0) return [];
+  const line = lines[index];
+  const text = [line.summary, line.question].map((part) => part?.trim() || "").filter((part) => part && part !== "pending" && part !== "running").join("\n\n");
+  if (!text) return [];
+  return [{
+    key: `${step.id}:${index}`,
+    type: "assistant",
+    sessionId: ticket.id,
+    source: "worker",
+    ts: "",
+    text,
+    name: "",
+    delta: false,
+    payload: { id: `${step.id}:${index}` },
+  }];
+}
+
+function closingLine(line: ReportLine): boolean {
+  return line.state !== "progress" && line.state !== "waiting" && line.state !== "pending" && line.state !== "running";
 }
 
 function reportLines(step: Assignment): ReportLine[] {

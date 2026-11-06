@@ -99,7 +99,7 @@ func novelToGameMapping() string {
 // agentReachMapping 在对照表后接上 agent-reach 的检索、抓取和技能加载说明。
 func agentReachMapping() string {
 	return hostActionTable() + `
-**This pack (agent-reach) on Yoyo:** routing table only. The Go host owns search and fetch.
+**This pack (agent-reach) on Yoyo:** routing table only. The Go host owns search and fetch. Open-web search uses Exa inside the host. Bilibili hot and V2EX hot use their public JSON APIs. X search stays on the public web.
 
 Ignore bash in upstream SKILL.md that uses ` + "`curl`" + `, ` + "`mcporter call exa.web_search_exa`" + `, or ` + "`https://r.jina.ai`" + ` for generic web search/read. Those resolve to ` + "`web_search`" + ` and ` + "`web_fetch`" + `. Call ` + "`reach_status`" + ` to see whether an optional ` + "`agent-reach`" + ` CLI is on PATH. Platform CLIs (` + "`gh`" + `, ` + "`yt-dlp`" + `, ` + "`bili`" + `, ` + "`twitter`" + `) may run through ` + "`shell`" + ` only after ` + "`reach_status`" + ` lists them. Do not ` + "`curl`" + `. Do not drive the operator's daily Chrome or CDP 9222; use isolated ` + "`browser_*`" + ` and ` + "`browser_takeover`" + ` for login walls.
 

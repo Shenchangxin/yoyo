@@ -85,6 +85,39 @@ func TestRecoverHostSkipsSettled(t *testing.T) {
 	}
 }
 
+// TestRecoverHostRetriesADroppedConnection 锁住连接中断的派工在重启后续上，已经等人的失败保持原样。
+func TestRecoverHostRetriesADroppedConnection(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	dropped := acceptOn(t, eng, "m1", "room-a")
+	held, _ := eng.Ticket(dropped)
+	if err := eng.AssignmentStarted(dropped, held.Assignments[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Report(dropped, Report{State: "failed", Summary: `Post "https://example.test/chat/completions": EOF`}); err != nil {
+		t.Fatal(err)
+	}
+	stuck := acceptOn(t, eng, "m2", "room-b")
+	live, _ := eng.Ticket(stuck)
+	if err := eng.AssignmentStarted(stuck, live.Assignments[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Report(stuck, Report{State: "failed", Summary: "缺少目录，先确认要新建还是停下"}); err != nil {
+		t.Fatal(err)
+	}
+	ids := eng.RecoverHost()
+	if len(ids) != 1 || ids[0] != dropped {
+		t.Fatalf("ids %v", ids)
+	}
+	again, _ := eng.Ticket(dropped)
+	if !again.Resume || again.Assignments[0].State != "ended" || again.Assignments[1].State != "pending" {
+		t.Fatalf("%+v resume %v", again.Assignments, again.Resume)
+	}
+	left, _ := eng.Ticket(stuck)
+	if len(left.Assignments) != 1 || left.Assignments[0].State != "running" {
+		t.Fatalf("held %+v", left.Assignments)
+	}
+}
+
 // TestPrepareFailureDoesNotRetry 锁住准备命令失败会结束工单，再次启动不会再跑准备命令。
 func TestPrepareFailureDoesNotRetry(t *testing.T) {
 	eng := NewEngine(autoPolicy())

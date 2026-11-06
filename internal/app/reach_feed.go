@@ -197,8 +197,12 @@ func reachFallback(item reach.Item) string {
 	return b.String()
 }
 
-// searchProbe 先用 PATH 上的 agent-reach 查对应渠道。没有这条命令或没有结果时，用宿主的公开检索。
+// searchProbe 先走宿主里的公开渠道：网页和 X 用免密钥的 Exa，B 站热门和 V2EX 热帖用各自的公开接口。
+// 这一步没有结果时，才试 PATH 上的 agent-reach。仍然没有，就用宿主的公开网页检索。
 func searchProbe(ctx context.Context, probe reach.Probe) []reach.Item {
+	if items := nativeProbe(ctx, probe); len(items) > 0 {
+		return items
+	}
 	if bin, err := exec.LookPath("agent-reach"); err == nil && bin != "" {
 		args := reach.Command(probe)
 		cmd := exec.CommandContext(ctx, bin, args...)
@@ -223,4 +227,60 @@ func searchProbe(ctx context.Context, probe reach.Probe) []reach.Item {
 		return nil
 	}
 	return reach.ParseHost(text)
+}
+
+// nativeProbe 在进程内完成 Agent-Reach 公开路径上的四个动作。登录、浏览器和字幕不在这里。
+func nativeProbe(ctx context.Context, probe reach.Probe) []reach.Item {
+	switch probe.Channel {
+	case "bilibili":
+		if probe.Action != "hot" {
+			return nil
+		}
+		hits, err := webcontent.BilibiliPopular(ctx, http.DefaultClient, 5)
+		if err != nil {
+			return nil
+		}
+		return hitsToItems(hits)
+	case "v2ex":
+		if probe.Action != "hot" {
+			return nil
+		}
+		hits, err := webcontent.V2EXHot(ctx, http.DefaultClient, 5)
+		if err != nil {
+			return nil
+		}
+		return hitsToItems(hits)
+	case "web", "twitter":
+		query := strings.TrimSpace(probe.Query)
+		if probe.Channel == "twitter" {
+			if query == "" {
+				query = "热点"
+			}
+			query = "(" + query + ") (site:x.com/ OR site:twitter.com/)"
+		}
+		if query == "" {
+			query = strings.TrimSpace(probe.Fallback)
+		}
+		if query == "" {
+			return nil
+		}
+		text, err := webcontent.SearchExaMCP(ctx, http.DefaultClient, "", query)
+		if err != nil || !webcontent.Useful(text) {
+			return nil
+		}
+		if items := reach.ParseExa(text); len(items) > 0 {
+			return items
+		}
+		return reach.ParseHost(text)
+	default:
+		return nil
+	}
+}
+
+func hitsToItems(hits []webcontent.Hit) []reach.Item {
+	var out []reach.Item
+	for _, hit := range hits {
+		out = append(out, reach.Item{Title: hit.Title, URL: hit.URL, Snippet: hit.Snippet})
+	}
+	return out
 }

@@ -5,6 +5,7 @@ package dshdesk
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
@@ -41,12 +42,15 @@ func (b *Bridge) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant, 
 		maxTokens = b.MaxTokens
 	}
 	// Legalize 保证每个 tool_calls 后面先跟上对应的 tool 消息。工人会话在结果落盘前中断时，原始顺序会被网关拒绝。
+	tools := toToolJSON(req.Tools)
 	chat := runtime.ChatRequest{
 		Model:        model,
 		Messages:     b.withParts(runtime.Legalize(toRuntimeMessages(req.Messages))),
-		Tools:        toToolJSON(req.Tools),
+		Tools:        tools,
 		MaxTokens:    maxTokens,
 		ShowThinking: b.ShowThinking,
+		// 键只钉第一段系统提示和工具清单。后面追加的对话不进键，同一条工人会话才能反复命中这段前缀。
+		CacheKey: runtime.PromptCacheKey("yoyo-worker", cacheHead(req.Messages), tools),
 	}
 	var msg runtime.Message
 	var err error
@@ -123,6 +127,16 @@ func (b *Bridge) withParts(msgs []runtime.Message) []runtime.Message {
 		break
 	}
 	return msgs
+}
+
+// cacheHead 取第一条非空系统消息。后来追加的提示留在历史里，不改这段头部，缓存键才能跨回合不变。
+func cacheHead(msgs []dsh.Message) string {
+	for _, msg := range msgs {
+		if msg.Role == "system" && strings.TrimSpace(msg.Text) != "" {
+			return msg.Text
+		}
+	}
+	return ""
 }
 
 // toToolJSON 把 tools 转成函数工具清单。Parameters 非空时放进 function.parameters。
