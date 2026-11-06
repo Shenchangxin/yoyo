@@ -1,16 +1,16 @@
-/**
- * 拥有：MCP、插件和连接器的设置。
- * 不拥有：服务商密钥表。启动、停止和替换会调用 api 改状态。
+﻿/**
+ * 拥有：MCP 和插件的设置。
+ * 不拥有：连接应用。那些在连接页。启动、停止和替换会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
-import * as api from "../../lib/client";
 import { asArray, str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { FormDialog } from "../FormDialog";
 import {
   SettingActionRow,
   SettingEmpty,
@@ -18,10 +18,6 @@ import {
   SettingSection,
 } from "./SettingChrome";
 import type { SettingsHost } from "./host";
-import { WorkSources } from "../superagent/SourceSettings";
-import { catalogRows, ConnectorDirectory, hostPlatform, type CatalogRow } from "./ConnectorDirectory";
-import { connectorName, resolvedAccess } from "./connector-directory";
-import { getLocale } from "../../lib/i18n";
 
 /** 画一行输入。label 用作标签，作为子节点渲染。value 写到 Input 的 value。onChange 被调用，并传入 e.target.value。 */
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -33,14 +29,12 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   );
 }
 
-/** ExtensionsSettings 把 MCP、插件和连接器拼在一起。host 写到 McpSection 的 host。 */
+/** ExtensionsSettings 只放 MCP 和插件。host 写到 McpSection 的 host。 */
 export function ExtensionsSettings({ host }: { host: SettingsHost }) {
   return (
     <>
       <McpSection host={host} />
       <FiberSection host={host} />
-      <ConnectorSection />
-      <WorkSources />
     </>
   );
 }
@@ -139,50 +133,45 @@ function McpSection({ host }: { host: SettingsHost }) {
               );
             })
           )}
-          {adding ? (
-            <SettingRow stack border={false}>
-              <div className="flex w-full flex-col gap-[var(--space-group)]">
-                <Field label={copy.settings.mcpName} value={name} onChange={setName} />
-                <Field label={copy.settings.mcpCommand} value={command} onChange={setCommand} />
-                <Field label={copy.settings.mcpArgs} value={args} onChange={setArgs} />
-                <Field label={copy.settings.mcpEndpoint} value={endpoint} onChange={setEndpoint} />
-                <div className="flex items-center justify-end gap-2">
-                  <Button size="sm" variant="ghost" onClick={reset}>
-                    {copy.settings.discard}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!name.trim() || !endpoint.trim()}
-                    onClick={async () => {
-                      await host.onStartMcpHttp?.(name.trim(), endpoint.trim());
-                      reset();
-                    }}
-                  >
-                    {copy.settings.mcpHttp}
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={!name.trim() || !command.trim()}
-                    onClick={async () => {
-                      await host.onStartMcp(name.trim(), command.trim(), args.split(/\s+/).filter(Boolean));
-                      reset();
-                    }}
-                  >
-                    {copy.settings.mcpStart}
-                  </Button>
-                </div>
+          <SettingActionRow
+            border={false}
+            chevron={false}
+            title={copy.settings.addServer}
+            trailing={<Plus className="size-4" aria-hidden />}
+            onClick={() => setAdding(true)}
+          />
+          <FormDialog open={adding} title={copy.settings.addServer} description={copy.settings.mcpHint} onClose={reset}>
+            <div className="flex flex-col gap-3">
+              <Field label={copy.settings.mcpName} value={name} onChange={setName} />
+              <Field label={copy.settings.mcpCommand} value={command} onChange={setCommand} />
+              <Field label={copy.settings.mcpArgs} value={args} onChange={setArgs} />
+              <Field label={copy.settings.mcpEndpoint} value={endpoint} onChange={setEndpoint} />
+              <div className="dialog-actions">
+                <Button size="sm" variant="lift" onClick={reset}>{copy.dialog.cancel}</Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!name.trim() || !endpoint.trim()}
+                  onClick={async () => {
+                    await host.onStartMcpHttp?.(name.trim(), endpoint.trim());
+                    reset();
+                  }}
+                >
+                  {copy.settings.mcpHttp}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!name.trim() || !command.trim()}
+                  onClick={async () => {
+                    await host.onStartMcp(name.trim(), command.trim(), args.split(/\s+/).filter(Boolean));
+                    reset();
+                  }}
+                >
+                  {copy.settings.mcpStart}
+                </Button>
               </div>
-            </SettingRow>
-          ) : (
-            <SettingActionRow
-              border={false}
-              chevron={false}
-              title={copy.settings.addServer}
-              trailing={<Plus className="size-4" aria-hidden />}
-              onClick={() => setAdding(true)}
-            />
-          )}
+            </div>
+          </FormDialog>
         </>
       )}
     </SettingSection>
@@ -219,128 +208,6 @@ function FiberSection({ host }: { host: SettingsHost }) {
           setPending("");
         }}
       />
-    </SettingSection>
-  );
-}
-
-/** 连接或断开连接器。 */
-function ConnectorSection() {
-  const copy = useCopy();
-  const [data, setData] = useState<{ accounts?: any[]; catalog?: any[] }>({});
-  const [picked, setPicked] = useState<CatalogRow | null>(null);
-  const [clientId, setClientId] = useState("");
-  const [code, setCode] = useState("");
-  /** 重新拉取连接器。 */
-  const refresh = () => {
-    void api.connectors().then(setData).catch(() => {});
-  };
-  useEffect(() => {
-    refresh();
-  }, []);
-  useEffect(() => {
-    if (picked?.access === "oauth") document.getElementById("connector-oauth")?.scrollIntoView({ block: "nearest" });
-  }, [picked]);
-  const catalog = catalogRows(asArray(data.catalog));
-  const accounts = asArray(data.accounts);
-  const connected = accounts.map((a: any) => str(a.provider || a.Provider));
-  /** 点一张卡：本机只说明，工作来源滚到下面，账户才打开授权表单。 */
-  const pick = (row: CatalogRow) => {
-    const access = resolvedAccess(row.provider, row.access);
-    if (access === "local") {
-      toast(row.platform === hostPlatform() ? copy.settings.appsLocalHint : copy.settings.appsOtherDevice);
-      return;
-    }
-    if (access === "source") {
-      document.getElementById("extensions-work")?.scrollIntoView({ block: "start" });
-      return;
-    }
-    if (access === "oauth") {
-      setPicked({ ...row, access });
-      setCode("");
-      return;
-    }
-    if (row.platform === "ios" || row.platform === "android" || row.provider.endsWith("-operate")) {
-      toast(copy.settings.appsDeviceHint);
-      return;
-    }
-    document.getElementById("extensions-mcp")?.scrollIntoView({ block: "start" });
-    toast(copy.settings.appsMcpHint);
-  };
-  return (
-    <SettingSection
-      id="extensions-connectors"
-      title={copy.settings.appsTitle}
-      footnote={copy.settings.connectorsHint}
-    >
-      {accounts.length === 0 ? (
-        <SettingEmpty border>{copy.settings.noConnectors}</SettingEmpty>
-      ) : (
-        accounts.map((a: any, i: number) => (
-          <SettingRow
-            key={str(a.id || a.ID || i)}
-            list
-            title={str(a.label || a.Label || a.provider)}
-            description={str(a.kind || a.Kind) || undefined}
-          >
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                await api.connectorDisconnect(str(a.id || a.ID));
-                refresh();
-              }}
-            >
-              {copy.settings.disconnect}
-            </Button>
-          </SettingRow>
-        ))
-      )}
-      <ConnectorDirectory catalog={catalog} connected={connected} onPick={pick} />
-      {picked?.access === "oauth" ? (
-        <div id="connector-oauth">
-        <SettingRow title={connectorName(picked.provider, picked.label, getLocale())} stack border={false}>
-          <div className="flex w-full flex-col gap-[var(--space-group)]">
-            <Field label={copy.settings.oauthClientId} value={clientId} onChange={setClientId} />
-            <Field label={copy.settings.oauthCode} value={code} onChange={setCode} />
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  const r = await api.connectorAuthURL(picked.provider, clientId, "http://127.0.0.1:3080/oauth");
-                  const url = str(r?.url || r?.URL);
-                  if (url) window.open(url, "_blank", "noopener");
-                }}
-              >
-                <ExternalLink aria-hidden />
-                {copy.settings.oauth}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!code.trim()}
-                onClick={async () => {
-                  await api.connectorComplete(picked.provider, code.trim(), clientId);
-                  setCode("");
-                  refresh();
-                }}
-              >
-                {copy.settings.completeOAuth}
-              </Button>
-              <Button
-                size="sm"
-                onClick={async () => {
-                  await api.connectorConnect({ provider: picked.provider, kind: picked.kind || "mail", label: picked.label });
-                  refresh();
-                }}
-              >
-                {copy.settings.connect}
-              </Button>
-            </div>
-          </div>
-        </SettingRow>
-        </div>
-      ) : null}
     </SettingSection>
   );
 }

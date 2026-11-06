@@ -376,44 +376,28 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
 
       <PwshSection />
 
-      <details className="mb-[var(--space-section)]">
-        <summary className="fold-summary">{copy.settings.sections.policyBudget}</summary>
-        <div className="mt-[var(--space-group)] flex flex-col gap-[var(--space-group)]">
-          <SettingRow title={copy.settings.searchUrl} description={copy.settings.searchUrlDesc}>
-            <Input
-              aria-label={copy.settings.searchUrl}
-              className={CONTROL_LG}
-              value={host.cfg.searchUrl || ""}
-              onChange={(e) => void host.patch({ searchUrl: e.target.value })}
-            />
-          </SettingRow>
-          <SettingRow title={copy.settings.maxBudget}>
-            <Input
-              aria-label={copy.settings.maxBudget}
-              className={CONTROL_SM}
-              type="number"
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-            />
-          </SettingRow>
-          <SettingRow title={copy.settings.usdPerMtok}>
-            <Input
-              aria-label={copy.settings.usdPerMtok}
-              className={CONTROL_SM}
-              type="number"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-            />
-          </SettingRow>
-        </div>
-      </details>
+      <SettingSection id="policy-budget" title={copy.settings.sections.policyBudget}>
+        <SettingRow title={copy.settings.maxBudget}>
+          <Input
+            aria-label={copy.settings.maxBudget}
+            className={CONTROL_SM}
+            type="number"
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+          />
+        </SettingRow>
+        <SettingRow title={copy.settings.usdPerMtok} border={false}>
+          <Input
+            aria-label={copy.settings.usdPerMtok}
+            className={CONTROL_SM}
+            type="number"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+          />
+        </SettingRow>
+      </SettingSection>
 
-      <details className="mb-[var(--space-section)]">
-        <summary className="fold-summary">{copy.settings.sections.policyIsolation}</summary>
-        <div className="mt-[var(--space-group)]">
-          <IsolationSection host={host} />
-        </div>
-      </details>
+      <IsolationSection host={host} />
 
       <SettingsSaveBar
         open={dirty}
@@ -533,7 +517,7 @@ function IsolationSection({ host }: { host: SettingsHost }) {
   return (
     <SettingSection
       id="policy-isolation"
-      compact
+      title={copy.settings.sections.policyIsolation}
       footnote={`${copy.settings.isolationHint} ${copy.settings.isolationSleep}`}
     >
       <SettingValueRow title={copy.settings.isolationKind} value={str(os.kind || os.Kind, "none")} mono />

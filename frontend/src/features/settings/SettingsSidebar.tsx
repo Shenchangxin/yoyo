@@ -7,6 +7,7 @@ import { motion } from "motion/react";
 import {
   Blocks,
   Brain,
+  Link2,
   MessageCircle,
   Cpu,
   Palette,
@@ -33,6 +34,7 @@ const ICONS = {
   heart: Heart,
   shield: Shield,
   blocks: Blocks,
+  link: Link2,
   message: MessageCircle,
   brain: Brain,
   wrench: Wrench,

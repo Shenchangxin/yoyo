@@ -258,7 +258,9 @@ async function pushSpeaks(initiative: Initiative | undefined, briefJSON?: string
     return signal.code !== "reach";
   });
   for (const signal of speaks) {
-    const text = [signal.name, signal.detail].filter(Boolean).join("\n");
+    const text = signal.code === "reach"
+      ? (signal.detail || signal.name)
+      : [signal.name, signal.detail].filter(Boolean).join("\n");
     if (!text) continue;
     await deskPush({
       sessionId,

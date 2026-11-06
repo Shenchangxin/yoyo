@@ -165,7 +165,7 @@ func Assess(in Input) (Briefing, Book) {
 		}
 		limit := 120
 		if fact.Code == "reach" {
-			limit = 480
+			limit = 900
 		}
 		signals = append(signals, Signal{
 			ID:       fact.ID,

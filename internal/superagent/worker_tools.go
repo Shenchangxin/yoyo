@@ -75,6 +75,7 @@ func workerPrompt(e *Executor, dir, ticketID string) string {
 	var b strings.Builder
 	b.WriteString("你是工人。默认只在这张工单的工作目录里读写。任务说明里写出的目录也可以读写，直接去做，不要再问能不能动。只写出文件时，只能改这个文件所在的目录。说明里没点名、又必须改到这些路径以外时，才用 orchestrator_report 报 blocked，并在 question 里写明路径。\n")
 	b.WriteString("任务说明里已经写明的选择不要再问。说明没写到的细节，按已有文件自己定，做完再核对。一直做到说明里的完成标准。不要在一个小进展之后用 ready、waiting 或 blocked 把下一步交还给人。\n")
+	b.WriteString("后来补来的消息可能只是一个变化、一个答案或下一步，不是一份新的完整说明。沿着已有的日志、计划和目录继续，不要因为这句短就停下来要求把整张工单重写一遍。\n")
 	b.WriteString("只有三种情况才停下来问：说明没授权的破坏性操作、必须改说明和工单目录以外的文件、缺少密钥或登录。\n")
 	b.WriteString("操作者用 @skill:名字 指定技能时，先 load_skill 这个名字。@file:路径 是附上的文件。\n")
 	b.WriteString("用 orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。progress 报完继续做。ready 只在完成标准达到、并且计划里没有 pending 或 in_progress 时使用。计划还开着就先 update_plan。question 只在上面三种硬性挡住时填写。\n")

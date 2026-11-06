@@ -1273,6 +1273,14 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return a.ConnectorsList(), nil
 	case "connectors.catalog":
 		return a.ConnectorCatalog(), nil
+	case "connectors.use":
+		var p struct {
+			Provider string `json:"provider"`
+			Token    string `json:"token"`
+			Endpoint string `json:"endpoint"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ConnectorUse(p.Provider, p.Token, p.Endpoint)
 	case "connectors.connect":
 		var p connector.Account
 		_ = json.Unmarshal(params, &p)

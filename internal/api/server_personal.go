@@ -100,6 +100,20 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 		}
 		writeJSON(w, a.ScheduleList())
 	})
+	mux.HandleFunc("/api/connectors/use", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Provider string `json:"provider"`
+			Token    string `json:"token"`
+			Endpoint string `json:"endpoint"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		out, err := a.ConnectorUse(body.Provider, body.Token, body.Endpoint)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, out)
+	})
 	mux.HandleFunc("/api/connectors", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var acct connector.Account

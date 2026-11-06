@@ -22,6 +22,7 @@ import {
   SettingSegmented,
 } from "./SettingChrome";
 import { ProviderMark } from "./ProviderMark";
+import type { SettingsHost } from "./host";
 
 type Kind = "image" | "video" | "tts" | "music" | "matting" | "stock" | "asr" | "storage" | "search" | "workflow";
 
@@ -301,7 +302,7 @@ type FFmpegInstall = {
 };
 
 /** GenerationSettings 管工作室、服务商和画布通道。 */
-export function GenerationSettings() {
+export function GenerationSettings({ host }: { host?: SettingsHost }) {
   const copy = useCopy();
   const v = copy.video;
   const [templates, setTemplates] = useState<MediaProvider[]>([]);
@@ -704,6 +705,16 @@ export function GenerationSettings() {
         copy={copy}
         onChanged={refresh}
         footnote={v.searchHint}
+        lead={host ? (
+          <SettingRow title={copy.settings.searchUrl} description={copy.settings.searchUrlDesc} stack>
+            <Input
+              aria-label={copy.settings.searchUrl}
+              className={CONTROL_LG}
+              value={host.cfg.searchUrl || ""}
+              onChange={(e) => void host.patch({ searchUrl: e.target.value })}
+            />
+          </SettingRow>
+        ) : null}
       />
       <AdapterSection
         id="generation-workflow"
