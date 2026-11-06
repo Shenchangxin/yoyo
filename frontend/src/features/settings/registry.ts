@@ -24,19 +24,20 @@ export type SettingsSectionDef = {
 };
 
 /** SETTINGS_GROUPS 是设置分组的顺序。 */
-export const SETTINGS_GROUPS: readonly GroupKey[] = ["app", "agent", "system"];
+export const SETTINGS_GROUPS: readonly GroupKey[] = ["app", "agent", "link", "system"];
 
 /** SETTINGS_TABS 是现行页签。 */
 export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "general", group: "app", icon: "sliders" },
   { key: "appearance", group: "app", icon: "palette" },
   { key: "idol", group: "app", icon: "heart" },
+  { key: "personal", group: "app", icon: "brain" },
   { key: "provider", group: "agent", icon: "cpu" },
   { key: "generation", group: "agent", icon: "film" },
   { key: "policy", group: "agent", icon: "shield" },
-  { key: "extensions", group: "agent", icon: "blocks" },
-  { key: "messaging", group: "agent", icon: "message" },
-  { key: "personal", group: "agent", icon: "brain" },
+  { key: "connectors", group: "link", icon: "link" },
+  { key: "messaging", group: "link", icon: "message" },
+  { key: "extensions", group: "system", icon: "blocks" },
   { key: "advanced", group: "system", icon: "wrench" },
 ];
 
@@ -73,7 +74,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "policy-isolation", tab: "policy", titleKey: "policyIsolation", keywords: "isolation sandbox vault signature" },
   { id: "extensions-mcp", tab: "extensions", titleKey: "extensionsMcp", keywords: "mcp server stdio http json" },
   { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm" },
-  { id: "extensions-connectors", tab: "extensions", titleKey: "extensionsConnectors", keywords: "connector oauth gmail feishu" },
+  { id: "extensions-connectors", tab: "connectors", titleKey: "connectorsDirectory", keywords: "connector oauth gmail notion slack github 连接应用 邮件 日历" },
   { id: "extensions-work", tab: "extensions", titleKey: "extensionsWorkSources", keywords: "github feishu source token work 来源 飞书" },
   { id: "messaging-policy", tab: "messaging", titleKey: "messagingPolicy", keywords: "im bot telegram qq discord slack wechat lark dingtalk line whatsapp wake mention 消息 机器人 唤醒" },
   { id: "messaging-accounts", tab: "messaging", titleKey: "messagingAccounts", keywords: "im account bot token webhook 账号 令牌 回调" },

@@ -75,6 +75,7 @@ type Broker struct {
 	acct   []Account
 	drafts []Draft
 	local  map[string][]map[string]string
+	phone  map[string][]map[string]string
 	tokens TokenStore
 	http   *http.Client
 }
@@ -146,6 +147,8 @@ func (b *Broker) Read(id, query string) ([]map[string]string, error) {
 	}
 	if live, err := b.liveRead(a, query); err == nil {
 		return live, nil
+	} else if !missingToken(err) {
+		return nil, err
 	}
 	q := strings.ToLower(query)
 	var out []map[string]string

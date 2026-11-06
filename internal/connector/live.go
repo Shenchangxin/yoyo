@@ -77,6 +77,8 @@ func (b *Broker) Exchange(provider, code, clientID, secret, redirect string) (To
 		endpoint = "https://oauth2.googleapis.com/token"
 	case "outlook":
 		endpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	case "slack":
+		endpoint = "https://slack.com/api/oauth.v2.access"
 	default:
 		return Token{}, fmt.Errorf("connector: token exchange for %s is MCP-pack only", provider)
 	}
@@ -99,6 +101,14 @@ func (b *Broker) Exchange(provider, code, clientID, secret, redirect string) (To
 		return Token{}, err
 	}
 	if tok.AccessToken == "" {
+		var slack struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(body, &slack)
+		if slack.Error != "" {
+			return Token{}, fmt.Errorf("connector: token exchange %s", slack.Error)
+		}
 		return Token{}, fmt.Errorf("connector: empty access token")
 	}
 	if tok.Expiry.IsZero() {
@@ -151,11 +161,20 @@ func (b *Broker) loadToken(vaultKey string) (Token, error) {
 // liveRead 用账号的 VaultKey 取令牌。日历种类或查询像日历时走日历接口，否则走邮件。其他供应商返回 MCP-pack only。
 // query 传给 looksCalendar。日历分支里传给 gcalList 或 outlookEvents，邮件分支里传给 gmailList 或 outlookList。
 func (b *Broker) liveRead(a Account, query string) ([]map[string]string, error) {
+	if items, handled, err := readSurface(a.Provider); handled {
+		return filterItems(items, query), err
+	}
+	if items, handled, err := b.readPhone(a.Provider); handled {
+		return filterItems(items, query), err
+	}
 	tok, err := b.loadToken(a.VaultKey)
 	if err != nil {
 		return nil, err
 	}
 	provider := strings.ToLower(a.Provider)
+	if isMailbox(provider) {
+		return readMailbox(a.Endpoint, tok.AccessToken, provider)
+	}
 	if a.Kind == KindCalendar || looksCalendar(query) {
 		switch provider {
 		case "gmail", "gcal":
@@ -169,7 +188,12 @@ func (b *Broker) liveRead(a Account, query string) ([]map[string]string, error) 
 		return gmailList(b.client(), tok.AccessToken, query)
 	case "outlook":
 		return outlookList(b.client(), tok.AccessToken, query)
+	case "slack":
+		return slackList(b.client(), tok.AccessToken)
 	default:
+		if items, handled, err := callTokenAPI(b.client(), provider, tok.AccessToken, a.Endpoint); handled {
+			return filterItems(items, query), err
+		}
 		return nil, fmt.Errorf("connector: live read for %s is MCP-pack only", a.Provider)
 	}
 }
@@ -189,6 +213,8 @@ func (b *Broker) liveSend(a Account, d Draft) error {
 		return gmailSend(b.client(), tok.AccessToken, d)
 	case "outlook":
 		return outlookSend(b.client(), tok.AccessToken, d)
+	case "slack":
+		return slackSend(b.client(), tok.AccessToken, d)
 	default:
 		return fmt.Errorf("connector: live send for %s is MCP-pack only", a.Provider)
 	}

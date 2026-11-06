@@ -1432,8 +1432,11 @@ const ItemRow = memo(function ItemRow({
   }
   if (shown.type === "assistant") {
     const briefKind = String(shown.payload?.kind || "");
+    const noted = briefKind === "speak" || briefKind === "reach";
+    const notedAt = noted ? formatMessageClock(Date.parse(shown.ts), { md: copy.transcript.clockMd, ymd: copy.transcript.clockYmd }) : "";
     return (
       <div className="assistant-prose w-full min-w-0">
+        {notedAt ? <p className="mb-1 text-[12px] tabular-nums text-muted" data-testid="reach-clock">{notedAt}</p> : null}
         <div className={cn(streaming && "assistant-live")}>
           <Markdown text={!streaming && fileActions.linkFiles ? hidePaths(shown.text) : shown.text} streaming={streaming} rich={!!rich && !streaming} />
           {streaming ? null : <FilePathList text={shown.text} />}

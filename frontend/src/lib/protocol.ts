@@ -124,6 +124,7 @@ export type SettingsTab =
   | "generation"
   | "policy"
   | "extensions"
+  | "connectors"
   | "messaging"
   | "personal"
   | "advanced"

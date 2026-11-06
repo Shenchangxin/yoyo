@@ -51,6 +51,14 @@ func (a *App) MemoryWrite(kind, text, project string) memory.Item {
 	return it
 }
 
+// ConnectorUse 按目录连上一个应用并读一页。令牌进保险库。
+func (a *App) ConnectorUse(provider, token, endpoint string) (connector.UseResult, error) {
+	if a == nil || a.Connectors == nil {
+		return connector.UseResult{}, fmt.Errorf("no connectors")
+	}
+	return a.Connectors.Use(provider, token, endpoint)
+}
+
 // ConnectorCatalog 返回连接器目录。
 func (a *App) ConnectorCatalog() []connector.CatalogEntry {
 	return connector.Catalog()
@@ -104,7 +112,16 @@ func (a *App) ConnectorComplete(provider, code, clientID, secret, redirect strin
 	if err != nil {
 		return zero, err
 	}
-	acct := a.Connectors.Connect(connector.Account{Provider: provider, Kind: connector.KindMail, Label: provider})
+	kind := connector.KindMail
+	label := provider
+	for _, entry := range connector.Catalog() {
+		if entry.Provider == provider {
+			kind = entry.Kind
+			label = entry.Label
+			break
+		}
+	}
+	acct := a.Connectors.Connect(connector.Account{Provider: provider, Kind: kind, Label: label})
 	if err := a.Connectors.SaveToken(acct.VaultKey, tok); err != nil {
 		return acct, err
 	}

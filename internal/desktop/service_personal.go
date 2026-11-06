@@ -174,6 +174,22 @@ func (s *Service) ConnectorCatalog() []connector.CatalogEntry {
 	return s.App.ConnectorCatalog()
 }
 
+// ConnectorUse 在 RPC 非空时调用 connectors.use，否则走 App.ConnectorUse。
+func (s *Service) ConnectorUse(provider, token, endpoint string) (connector.UseResult, error) {
+	if s.RPC != nil {
+		v, err := s.call("connectors.use", map[string]string{"provider": provider, "token": token, "endpoint": endpoint})
+		out, decErr := decode[connector.UseResult](v, err)
+		if decErr != nil {
+			return out, decErr
+		}
+		return out, err
+	}
+	if s.App == nil {
+		return connector.UseResult{}, fmt.Errorf("no connectors")
+	}
+	return s.App.ConnectorUse(provider, token, endpoint)
+}
+
 // ConnectorConnect 在 RPC 非空时调用 connectors.connect，否则走 App.ConnectorConnect。
 // acct 在 RPC 非空时传给 connectors.connect。否则传给 App.ConnectorConnect。
 func (s *Service) ConnectorConnect(acct connector.Account) connector.Account {

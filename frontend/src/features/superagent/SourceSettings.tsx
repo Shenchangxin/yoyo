@@ -4,16 +4,28 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { FormDialog } from "../FormDialog";
+import { Button } from "../../components/ui/button";
 import { orchestratorAct, orchestratorMode, orchestratorView } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { SettingSection } from "../settings/SettingChrome";
 import type { DeskView, Source } from "./desk-model";
 
-/** WorkSources 把工作来源放进设置。打开时读一次编排台，保存后再读。 */
-export function WorkSources() {
+export type WorkSourceName = "github" | "feishu" | "prepare" | "allowed";
+
+/** WorkSources 把工作来源放进设置。凭证在弹框里填。打开时读一次编排台，保存后再读。 */
+export function WorkSources(props: { openSource?: WorkSourceName | null; onOpenSource?: (name: WorkSourceName | null) => void }) {
   const copy = useCopy();
   const [view, setView] = useState<DeskView | null>(null);
+  const [which, setWhich] = useState<WorkSourceName | null>(null);
+  useEffect(() => {
+    if (props.openSource) setWhich(props.openSource);
+  }, [props.openSource]);
+  function closeWhich() {
+    setWhich(null);
+    props.onOpenSource?.(null);
+  }
   const load = useCallback(async () => {
     try {
       setView(await orchestratorView());
@@ -28,8 +40,20 @@ export function WorkSources() {
   return (
     <SettingSection id="extensions-work" title={copy.settings.sections.extensionsWorkSources} description={copy.work.linksHint}>
       <Mode mode={view.mode} onMode={async (mode) => { await orchestratorMode(mode); await load(); }} />
-      <Prepare initial={view.prepare || ""} onSave={async (text) => { await orchestratorAct("prepare", "", "", text); await load(); }} />
-      <SourceCard
+      <ConfigRow title={copy.work.prepare} detail={view.prepare || copy.work.prepareHint} action={copy.settings.configure} onOpen={() => setWhich("prepare")} />
+      <ConfigRow title={copy.work.github} detail={github?.repo || copy.work.githubNeed} state={github?.state} action={copy.settings.configure} onOpen={() => setWhich("github")} />
+      <ConfigRow title={copy.work.feishu} detail={feishu?.chat || copy.work.feishuNeed} state={feishu?.state} action={copy.settings.configure} onOpen={() => setWhich("feishu")} />
+      <ConfigRow title={copy.work.allowed} detail={(view.allowed ?? []).join(", ") || copy.work.allowedHint} action={copy.settings.configure} onOpen={() => setWhich("allowed")} />
+      <TextDialog
+        open={which === "prepare"}
+        title={copy.work.prepare}
+        hint={copy.work.prepareHint}
+        initial={view.prepare || ""}
+        onClose={closeWhich}
+        onSave={async (text) => { await orchestratorAct("prepare", "", "", text); await load(); }}
+      />
+      <SourceDialog
+        open={which === "github"}
         title={copy.work.github}
         source={github}
         need={copy.work.githubNeed}
@@ -38,6 +62,7 @@ export function WorkSources() {
           { key: "account", label: copy.work.account, value: github?.account || "" },
           { key: "token", label: github?.hasSecret ? copy.work.tokenKept : copy.work.token, secret: true },
         ]}
+        onClose={closeWhich}
         onSave={async (values, clear) => {
           await orchestratorAct("sources", "", "", JSON.stringify({
             githubRepo: values.repo || "",
@@ -51,7 +76,8 @@ export function WorkSources() {
           await load();
         }}
       />
-      <SourceCard
+      <SourceDialog
+        open={which === "feishu"}
         title={copy.work.feishu}
         source={feishu}
         need={copy.work.feishuNeed}
@@ -61,6 +87,7 @@ export function WorkSources() {
           { key: "mention", label: copy.work.mention, value: feishu?.account || "" },
           { key: "secret", label: feishu?.hasSecret ? copy.work.secretKept : copy.work.secret, secret: true },
         ]}
+        onClose={closeWhich}
         onSave={async (values, clear) => {
           await orchestratorAct("sources", "", "", JSON.stringify({
             githubRepo: github?.repo || "",
@@ -74,7 +101,14 @@ export function WorkSources() {
           await load();
         }}
       />
-      <Allowed initial={(view.allowed ?? []).join(", ")} onSave={async (text) => { await orchestratorAct("allowed", "", "", text); await load(); }} />
+      <TextDialog
+        open={which === "allowed"}
+        title={copy.work.allowed}
+        hint={copy.work.allowedHint}
+        initial={(view.allowed ?? []).join(", ")}
+        onClose={closeWhich}
+        onSave={async (text) => { await orchestratorAct("allowed", "", "", text); await load(); }}
+      />
     </SettingSection>
   );
 }
@@ -106,102 +140,116 @@ function Mode(props: { mode: string; onMode: (mode: string) => Promise<void> }) 
   );
 }
 
-function SourceCard(props: {
+function ConfigRow(props: { title: string; detail: string; state?: string; action: string; onOpen: () => void }) {
+  const copy = useCopy();
+  const state = props.state || "";
+  const stateLabel = state === "ok" ? copy.work.ok : state === "error" ? copy.work.error : state ? copy.work.missing : "";
+  return (
+    <button type="button" className="mt-3 flex w-full max-w-md items-center justify-between gap-3 border-t border-border/50 pt-3 text-left" onClick={props.onOpen}>
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium">{props.title}</span>
+        <span className="mt-0.5 block truncate text-[12px] text-muted">{props.detail}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        {stateLabel ? <span className={cn("text-[11px]", state === "error" ? "text-danger" : state === "ok" ? "text-foreground" : "text-warning")}>{stateLabel}</span> : null}
+        <span className="text-[12px] text-muted">{props.action}</span>
+      </span>
+    </button>
+  );
+}
+
+function SourceDialog(props: {
+  open: boolean;
   title: string;
   source?: Source;
   need: string;
   fields: { key: string; label: string; value?: string; secret?: boolean }[];
+  onClose: () => void;
   onSave: (values: Record<string, string>, clear: boolean) => Promise<void>;
 }) {
   const copy = useCopy();
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(props.fields.map((field) => [field.key, field.secret ? "" : field.value || ""])));
+  const [values, setValues] = useState<Record<string, string>>({});
   const [clear, setClear] = useState(false);
   const [note, setNote] = useState("");
+  useEffect(() => {
+    if (!props.open) return;
+    setValues(Object.fromEntries(props.fields.map((field) => [field.key, field.secret ? "" : field.value || ""])));
+    setClear(false);
+    setNote("");
+    // 只在打开时带入当前值。fields 每次渲染都是新数组，不能放进依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open]);
   const state = props.source?.state || "unconfigured";
-  const stateLabel = state === "ok" ? copy.work.ok : state === "error" ? copy.work.error : copy.work.missing;
   return (
-    <form
-      className="mt-4 max-w-md border-t border-border/50 pt-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void props.onSave(values, clear).then(() => {
-          setNote(copy.work.saved);
-          setClear(false);
-        }).catch((e) => setNote(e instanceof Error ? e.message : String(e)));
-      }}
-    >
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-[13px] font-medium">{props.title}</h3>
-        <span className={cn("text-[11px]", state === "error" ? "text-danger" : state === "ok" ? "text-foreground" : "text-warning")}>{stateLabel}</span>
-      </div>
-      {state !== "ok" ? <p className="mt-1 text-[12px] leading-5 text-muted">{props.source?.detail || props.need}</p> : null}
-      {props.fields.map((field) => (
-        <label key={field.key} className="mt-2.5 block">
-          <span className="text-[11px] text-muted">{field.label}</span>
-          <input
-            className="mt-1 h-8 w-full rounded-xl border border-transparent bg-lift/80 px-2.5 text-[13px] outline-none focus:border-accent/40"
-            value={values[field.key] ?? ""}
-            type={field.secret ? "password" : "text"}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => setValues((cur) => ({ ...cur, [field.key]: event.target.value }))}
-          />
-        </label>
-      ))}
-      {props.fields.some((field) => field.secret && props.source?.hasSecret) ? (
-        <label className="mt-2 flex items-center gap-2 text-[12px] text-muted">
-          <input type="checkbox" checked={clear} onChange={(event) => setClear(event.target.checked)} />
-          {copy.work.clearSecret}
-        </label>
-      ) : null}
-      <div className="mt-2.5 flex items-center gap-3">
-        <button type="submit" className="h-8 rounded-lg bg-foreground px-3 text-[12px] font-medium text-background">{copy.work.save}</button>
-        {note ? <span className="text-[12px] text-muted">{note}</span> : null}
-      </div>
-    </form>
+    <FormDialog open={props.open} title={props.title} description={state === "ok" ? undefined : props.source?.detail || props.need} onClose={props.onClose}>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void props.onSave(values, clear).then(() => {
+            setNote(copy.work.saved);
+            setClear(false);
+            props.onClose();
+          }).catch((e) => setNote(e instanceof Error ? e.message : String(e)));
+        }}
+      >
+        {props.fields.map((field) => (
+          <label key={field.key} className="block">
+            <span className="text-[12px] text-muted">{field.label}</span>
+            <input
+              className="mt-1 h-8 w-full rounded-xl border border-border bg-background px-2.5 text-[13px] outline-none focus:border-foreground/25"
+              value={values[field.key] ?? ""}
+              type={field.secret ? "password" : "text"}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setValues((cur) => ({ ...cur, [field.key]: event.target.value }))}
+            />
+          </label>
+        ))}
+        {props.fields.some((field) => field.secret && props.source?.hasSecret) ? (
+          <label className="flex items-center gap-2 text-[12px] text-muted">
+            <input type="checkbox" checked={clear} onChange={(event) => setClear(event.target.checked)} />
+            {copy.work.clearSecret}
+          </label>
+        ) : null}
+        {note ? <p className="text-[12px] text-muted">{note}</p> : null}
+        <div className="dialog-actions">
+          <Button type="button" size="sm" variant="lift" onClick={props.onClose}>{copy.dialog.cancel}</Button>
+          <Button type="submit" size="sm">{copy.work.save}</Button>
+        </div>
+      </form>
+    </FormDialog>
   );
 }
 
-function Prepare(props: { initial: string; onSave: (text: string) => Promise<void> }) {
+function TextDialog(props: { open: boolean; title: string; hint: string; initial: string; onClose: () => void; onSave: (text: string) => Promise<void> }) {
   const copy = useCopy();
   const [text, setText] = useState(props.initial);
   const [note, setNote] = useState("");
+  useEffect(() => {
+    if (!props.open) return;
+    setText(props.initial);
+    setNote("");
+  }, [props.open, props.initial]);
   return (
-    <form className="mt-4 max-w-md" onSubmit={(event) => {
-      event.preventDefault();
-      void props.onSave(text).then(() => setNote(copy.work.saved)).catch((e) => setNote(e instanceof Error ? e.message : String(e)));
-    }}>
-      <label className="block">
-        <span className="text-[11px] text-muted">{copy.work.prepare}</span>
-        <input className="mt-1 h-8 w-full rounded-xl bg-lift/80 px-2.5 text-[13px] outline-none" value={text} autoComplete="off" spellCheck={false} onChange={(event) => setText(event.target.value)} />
-      </label>
-      <p className="mt-1.5 text-[12px] leading-5 text-muted">{copy.work.prepareHint}</p>
-      <div className="mt-2.5 flex items-center gap-3">
-        <button type="submit" className="h-8 rounded-lg bg-foreground px-3 text-[12px] font-medium text-background">{copy.work.save}</button>
-        {note ? <span className="text-[12px] text-muted">{note}</span> : null}
-      </div>
-    </form>
-  );
-}
-
-function Allowed(props: { initial: string; onSave: (text: string) => Promise<void> }) {
-  const copy = useCopy();
-  const [text, setText] = useState(props.initial);
-  const [note, setNote] = useState("");
-  return (
-    <form className="mt-4 max-w-md" onSubmit={(event) => {
-      event.preventDefault();
-      void props.onSave(text).then(() => setNote(copy.work.saved)).catch((e) => setNote(e instanceof Error ? e.message : String(e)));
-    }}>
-      <label className="block">
-        <span className="text-[11px] text-muted">{copy.work.allowed}</span>
-        <input className="mt-1 h-8 w-full rounded-xl bg-lift/80 px-2.5 text-[13px] outline-none" value={text} autoComplete="off" spellCheck={false} onChange={(event) => setText(event.target.value)} />
-      </label>
-      <p className="mt-1.5 text-[12px] leading-5 text-muted">{copy.work.allowedHint}</p>
-      <div className="mt-2.5 flex items-center gap-3">
-        <button type="submit" className="h-8 rounded-lg bg-foreground px-3 text-[12px] font-medium text-background">{copy.work.save}</button>
-        {note ? <span className="text-[12px] text-muted">{note}</span> : null}
-      </div>
-    </form>
+    <FormDialog open={props.open} title={props.title} description={props.hint} onClose={props.onClose}>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void props.onSave(text).then(() => {
+            setNote(copy.work.saved);
+            props.onClose();
+          }).catch((e) => setNote(e instanceof Error ? e.message : String(e)));
+        }}
+      >
+        <input className="h-8 w-full rounded-xl border border-border bg-background px-2.5 text-[13px] outline-none" value={text} autoComplete="off" spellCheck={false} onChange={(event) => setText(event.target.value)} />
+        {note ? <p className="text-[12px] text-muted">{note}</p> : null}
+        <div className="dialog-actions">
+          <Button type="button" size="sm" variant="lift" onClick={props.onClose}>{copy.dialog.cancel}</Button>
+          <Button type="submit" size="sm">{copy.work.save}</Button>
+        </div>
+      </form>
+    </FormDialog>
   );
 }

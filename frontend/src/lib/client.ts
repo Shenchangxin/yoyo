@@ -2140,6 +2140,13 @@ export async function connectors(): Promise<any> {
   return http("/api/connectors");
 }
 
+/** connectorUse 连上目录里的一项并读一页。令牌只传给本机。 */
+export async function connectorUse(provider: string, token = "", endpoint = ""): Promise<any> {
+  const s = await wailsService();
+  if (s?.ConnectorUse) return s.ConnectorUse(provider, token, endpoint);
+  return http("/api/connectors/use", { method: "POST", body: JSON.stringify({ provider, token, endpoint }) });
+}
+
 /** connectorConnect 走 ConnectorConnect 或 POST /api/connectors。row 传给 ConnectorConnect，传给 JSON.stringify。 */
 export async function connectorConnect(row: any): Promise<any> {
   const s = await wailsService();

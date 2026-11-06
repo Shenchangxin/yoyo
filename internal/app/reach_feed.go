@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/initiative"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/osutil"
@@ -22,7 +23,7 @@ import (
 var reachFileMu sync.Mutex
 
 // reachFacts 把一条还没说过的公开检索交给开口门。检索本身在后台，不占这一轮刷新。
-// 没有画像、没到点、或命令还在跑时，什么都不加。搜不到就沉默，不编一条新闻。
+// 没到点或上一轮还在跑时什么都不加。画像、新闻和热榜轮流查；搜不到就沉默，不编一条新闻。
 func (a *App) reachFacts(seen map[string]string, now time.Time) []initiative.Fact {
 	if a == nil || a.Home == nil {
 		return nil
@@ -42,11 +43,11 @@ func (a *App) reachFacts(seen map[string]string, now time.Time) []initiative.Fac
 		return []initiative.Fact{fact}
 	}
 	lines := a.reachLines()
-	query, ok := reach.Plan(log, lines, now)
+	probe, ok := reach.Next(log, lines, now)
 	if !ok || !a.reachMu.TryLock() {
 		return nil
 	}
-	go a.runReach(query, log, seenIDs)
+	go a.runReach(probe, log, seenIDs)
 	return nil
 }
 
@@ -67,15 +68,18 @@ func (a *App) reachLines() []string {
 	return reach.Lines(texts)
 }
 
-func (a *App) runReach(query string, log reach.Log, seen map[string]bool) {
+func (a *App) runReach(probe reach.Probe, log reach.Log, seen map[string]bool) {
 	defer a.reachMu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Second)
 	defer cancel()
 	now := time.Now()
-	items, _ := searchReach(ctx, query)
+	items := searchProbe(ctx, probe)
 	if item := reach.Choose(items, seen); item != nil {
-		item.Line = query
-		log.Pending = item
+		item.Line = probe.Line
+		item.Note = a.reachNote(*item)
+		if item.Note != "" {
+			log.Pending = item
+		}
 	}
 	log.Cursor++
 	log.Next = now.Add(reach.Gap(now)).Format(time.RFC3339)
@@ -119,26 +123,104 @@ func (a *App) writeReachLog(log reach.Log) {
 	_ = os.WriteFile(path, b, 0o600)
 }
 
-// searchReach 优先用 PATH 上的 agent-reach 做只读网页检索。没有这条命令时，用宿主的公开检索。
-func searchReach(ctx context.Context, query string) ([]reach.Item, string) {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return nil, ""
+const reachNotePrompt = `你在主会话里留一张便条，像同事顺手丢来的一条消息。不是简报，不是卡片，也不要分栏。
+
+材料只有一条公开检索，和它要对上的那句画像。只用材料里出现过的话。材料里没有的数字、日期、价格、名额都不要写。
+
+先用一句话说明它和这句画像有没有关系。对得上，就说对在哪。对不上、但这条本身值得一看，就明说这是一条轻松的消息，跟手头的工作无关，想看再看。
+
+然后用两三句讲检索实际说了什么。
+
+最后写最小的下一步，并写明现在忽略也没有任何影响。不要催人立刻去做。
+
+链接单独放在第二行。不要用标题、编号列表或 JSON。不值得打扰时，只输出一个字：静。`
+
+// reachNote 把一条检索写成便条。模型认为不值得开口时返回空串，调用失败时用材料本身拼一句，不编新事实。
+func (a *App) reachNote(item reach.Item) string {
+	packet := reachPacket(item)
+	if packet == "" {
+		return ""
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	out, err := liveModel{app: a}.Complete(ctx, dsh.Request{
+		Messages: []dsh.Message{
+			{Role: "system", Text: reachNotePrompt},
+			{Role: "user", Text: packet},
+		},
+		MaxTokens: 700,
+	})
+	note := strings.TrimSpace(out.Text)
+	if err != nil || note == "" || note == "静" || note == "沉默" {
+		if err != nil {
+			return reachFallback(item)
+		}
+		return ""
+	}
+	if url := strings.TrimSpace(item.URL); url != "" && !strings.Contains(note, url) {
+		note = url + "\n" + note
+	}
+	return clipBrief(note, 860)
+}
+
+func reachPacket(item reach.Item) string {
+	if strings.TrimSpace(item.Title) == "" || strings.TrimSpace(item.URL) == "" {
+		return ""
+	}
+	var b strings.Builder
+	if line := strings.TrimSpace(item.Line); line != "" {
+		b.WriteString("要对上的画像 " + line + "\n")
+	} else {
+		b.WriteString("这是外部热榜或新闻，不一定对得上手头的工作。\n")
+	}
+	b.WriteString("标题 " + strings.TrimSpace(item.Title) + "\n")
+	b.WriteString("链接 " + strings.TrimSpace(item.URL) + "\n")
+	if snip := strings.TrimSpace(item.Snippet); snip != "" {
+		b.WriteString("摘要 " + snip + "\n")
+	}
+	return b.String()
+}
+
+func reachFallback(item reach.Item) string {
+	var b strings.Builder
+	if line := strings.TrimSpace(item.Line); line != "" {
+		b.WriteString("跟你记过的「" + line + "」对得上。\n")
+	} else {
+		b.WriteString("一条轻松的消息，跟手头的工作无关。\n")
+	}
+	b.WriteString(strings.TrimSpace(item.URL) + "\n")
+	b.WriteString(strings.TrimSpace(item.Title))
+	if snip := strings.TrimSpace(item.Snippet); snip != "" {
+		b.WriteString("\n" + snip)
+	}
+	b.WriteString("\n最小的下一步：有空再点开看一眼。现在忽略也没有任何影响。")
+	return b.String()
+}
+
+// searchProbe 先用 PATH 上的 agent-reach 查对应渠道。没有这条命令或没有结果时，用宿主的公开检索。
+func searchProbe(ctx context.Context, probe reach.Probe) []reach.Item {
 	if bin, err := exec.LookPath("agent-reach"); err == nil && bin != "" {
-		cmd := exec.CommandContext(ctx, bin, "web", "search", query, "--limit", "3", "--timeout", "15")
+		args := reach.Command(probe)
+		cmd := exec.CommandContext(ctx, bin, args...)
 		osutil.HideConsole(cmd)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		_ = cmd.Run()
 		if items := reach.ParseEnvelope(stdout.String()); len(items) > 0 {
-			return items, "agent-reach"
+			return items
 		}
+	}
+	query := strings.TrimSpace(probe.Fallback)
+	if query == "" {
+		query = strings.TrimSpace(probe.Query)
+	}
+	if query == "" {
+		return nil
 	}
 	text, err := webcontent.SearchJina(ctx, http.DefaultClient, "", query)
 	if err != nil {
-		return nil, ""
+		return nil
 	}
-	return reach.ParseHost(text), "host"
+	return reach.ParseHost(text)
 }

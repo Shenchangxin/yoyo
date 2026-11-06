@@ -50,7 +50,12 @@ func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, e
 		}
 		raw = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + q.Encode()
 	case "slack":
-		q := url.Values{"client_id": {clientID}, "state": {state}, "scope": {"channels:read,chat:write"}}
+		q := url.Values{
+			"client_id":    {clientID},
+			"redirect_uri": {redirect},
+			"state":        {state},
+			"scope":        {"channels:read,chat:write"},
+		}
 		raw = "https://slack.com/oauth/v2/authorize?" + q.Encode()
 	default:
 		return "", "", fmt.Errorf("connector: oauth for %s is MCP-pack only", provider)

@@ -36,25 +36,35 @@ func TestParseEnvelopeAndChooseSkipsSeen(t *testing.T) {
 	if !ok || !strings.Contains(fact.Detail, "https://example.com/step") || fact.Code != "reach" {
 		t.Fatalf("%#v", fact)
 	}
+	noted := *first
+	noted.Note = "跟你记过的短剧对得上。\nhttps://example.com/step\n最小的下一步：有空再看。现在忽略也没有任何影响。"
+	got, ok := Emit(&noted, nil)
+	if !ok || !strings.Contains(got.Detail, "现在忽略也没有任何影响") || strings.Contains(got.Detail, "免费到 25 日") {
+		t.Fatalf("%#v", got)
+	}
 }
 
-func TestPlanWaitsAndRotates(t *testing.T) {
+func TestNextRotatesNewsAndHot(t *testing.T) {
 	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
 	lines := []string{"开源模型", "短剧"}
-	q, ok := Plan(Log{}, lines, now)
-	if !ok || q != "开源模型" {
-		t.Fatalf("%s %v", q, ok)
+	got, ok := Next(Log{}, lines, now)
+	if !ok || got.Channel != "web" || got.Query != "开源模型" {
+		t.Fatalf("%#v %v", got, ok)
 	}
-	if _, ok := Plan(Log{Next: now.Add(time.Hour).Format(time.RFC3339)}, lines, now); ok {
+	if _, ok := Next(Log{Next: now.Add(time.Hour).Format(time.RFC3339)}, lines, now); ok {
 		t.Fatal("not due")
 	}
-	if _, ok := Plan(Log{}, nil, now); ok {
-		t.Fatal("no profile")
+	hot, ok := Next(Log{Cursor: 1}, nil, now)
+	if !ok || hot.Channel != "bilibili" || hot.Action != "hot" {
+		t.Fatalf("hot %#v", hot)
 	}
-	log := Log{Cursor: 1}
-	q, ok = Plan(log, lines, now)
-	if !ok || q != "短剧" {
-		t.Fatalf("rotate %s", q)
+	news, ok := Next(Log{Cursor: 3}, lines, now)
+	if !ok || news.Query != "短剧 新闻" {
+		t.Fatalf("news %#v", news)
+	}
+	social := Command(Probe{Channel: "twitter", Action: "search", Query: "热点"})
+	if !strings.Contains(strings.Join(social, " "), "public-web") {
+		t.Fatalf("%#v", social)
 	}
 }
 

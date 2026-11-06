@@ -1,5 +1,5 @@
-// Package reach 从画像里挑一句，准备一次只读的公开检索。
-// 拥有：该搜哪一句、一条结果怎么变成开口材料、同一条链接不重复。
+// Package reach 准备一次只读的公开检索：画像相关的网页，以及新闻和社交热榜。
+// 拥有：这一轮该问哪个渠道、一条结果怎么变成开口材料、同一条链接不重复。
 // 不拥有：发请求、开工单、改写检索里的数字。
 package reach
 
@@ -14,12 +14,13 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/initiative"
 )
 
-// Item 是一条公开检索结果。Line 是它要对上的那句画像。
+// Item 是一条公开检索结果。Line 是它要对上的那句画像。Note 是写给人看的便条，有它时不再把标题和摘要原样倒出来。
 type Item struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet,omitempty"`
 	Line    string `json:"line,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // Log 记下下次检索时间和还没说出口的那一条。
@@ -75,16 +76,77 @@ func Gap(now time.Time) time.Duration {
 	return 3*time.Hour + time.Duration(now.YearDay()%40)*time.Minute
 }
 
-// Plan 在没有待说的结果、画像非空、并且到点时，返回下一句。
-func Plan(log Log, lines []string, now time.Time) (query string, ok bool) {
-	if log.Pending != nil || len(lines) == 0 || !Due(log, now) {
-		return "", false
+// Probe 是一轮只读检索。Channel 和 Action 对应 agent-reach 的渠道动作。
+// Query 只在 search 时使用。Line 是它对上的画像，热榜可以空着。
+// Fallback 是 agent-reach 没有结果时交给其他公开检索的词。
+type Probe struct {
+	Channel  string
+	Action   string
+	Query    string
+	Line     string
+	Fallback string
+}
+
+// Next 到点且没有待说结果时，轮流查画像、新闻和热榜。没有画像时仍然查热榜和新闻。
+func Next(log Log, lines []string, now time.Time) (Probe, bool) {
+	if log.Pending != nil || !Due(log, now) {
+		return Probe{}, false
 	}
-	i := log.Cursor % len(lines)
-	if i < 0 {
-		i = 0
+	slot := log.Cursor % 5
+	if slot < 0 {
+		slot = 0
 	}
-	return lines[i], true
+	line := ""
+	if len(lines) > 0 {
+		i := log.Cursor % len(lines)
+		if i < 0 {
+			i = 0
+		}
+		line = lines[i]
+	}
+	switch slot {
+	case 1:
+		return Probe{Channel: "bilibili", Action: "hot", Fallback: "B站 热门"}, true
+	case 2:
+		return Probe{Channel: "v2ex", Action: "hot", Fallback: "V2EX 今日热门"}, true
+	case 4:
+		q := line
+		if q == "" {
+			q = "热点"
+		}
+		return Probe{Channel: "twitter", Action: "search", Query: q, Line: line, Fallback: "社交媒体 热点 " + q}, true
+	default:
+		q := line
+		if slot == 3 {
+			if line != "" {
+				q = line + " 新闻"
+			} else {
+				q = "今日新闻"
+			}
+		}
+		if q == "" {
+			q = "今日新闻"
+		}
+		return Probe{Channel: "web", Action: "search", Query: q, Line: line, Fallback: q}, true
+	}
+}
+
+// Command 是 agent-reach 的参数。社交搜索限定公开网页，不打开浏览器。
+func Command(p Probe) []string {
+	args := []string{p.Channel, p.Action}
+	switch p.Action {
+	case "search":
+		if q := strings.TrimSpace(p.Query); q != "" {
+			args = append(args, q, "--limit", "5")
+		}
+	case "hot":
+		args = append(args, "--limit", "5")
+	}
+	if p.Channel == "twitter" || p.Channel == "reddit" {
+		args = append(args, "--backend", "public-web")
+	}
+	args = append(args, "--timeout", "20")
+	return args
 }
 
 // ID 用链接的摘要当稳定编号。
@@ -186,19 +248,23 @@ func ParseHost(text string) []Item {
 }
 
 func fact(item Item) initiative.Fact {
-	var b strings.Builder
-	if line := strings.TrimSpace(item.Line); line != "" {
-		b.WriteString(line)
-		b.WriteByte('\n')
-	}
-	b.WriteString(strings.TrimSpace(item.URL))
-	if snip := strings.TrimSpace(item.Snippet); snip != "" {
-		b.WriteByte('\n')
-		b.WriteString(snip)
+	detail := strings.TrimSpace(item.Note)
+	if detail == "" {
+		var b strings.Builder
+		if line := strings.TrimSpace(item.Line); line != "" {
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+		b.WriteString(strings.TrimSpace(item.URL))
+		if snip := strings.TrimSpace(item.Snippet); snip != "" {
+			b.WriteByte('\n')
+			b.WriteString(snip)
+		}
+		detail = b.String()
 	}
 	return initiative.Fact{
 		ID: ID(item.URL), Code: "reach", Class: "reach", Name: item.Title,
-		Detail: b.String(), State: "match", Sig: strings.TrimSpace(item.URL), Rank: 2, Eligible: true,
+		Detail: detail, State: "match", Sig: strings.TrimSpace(item.URL), Rank: 2, Eligible: true,
 	}
 }
 

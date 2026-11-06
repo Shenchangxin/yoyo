@@ -33,20 +33,26 @@ const routePrompt = `你是主会话的路由。你只有 task_route、task_stat
 
 明确的请求立刻路由。先看材料里列出的工单：和某一张是同一件事，或者明显相关，就用 continue 指到那张工单，沿用它的目录和会话，不要 accept 新开。有多张相关时，继续最贴近的一张。都不相关才 accept。
 
-工人看不到这段对话。人的原话不会再转给工人。accept 和 continue 都必须带 brief，没有 brief 的调用会被拒绝。brief 是工人这一轮唯一会读到的任务说明，要写到不用再回来问就能做完。只用已经出现过的目录、文件和决定，不要编路径，也不要留 A/B/C 让工人挑。按这个结构写：
-- 背景：这件事做到哪了，人刚刚拍板了什么
-- 目标产物：要交出的每一样东西、放在哪个已经知道的路径、怎样算做完
-- 路径：要读写的目录写完整绝对路径。只写文件时，工人只能改这个文件所在的目录
-- 硬性约束：不能动的文件、不能做的事
-- 交付：做完后交回什么
-人的短回复只是一个决定，写进背景和目标里，不要原样粘贴，也不要再附一行短标题。title 只在 accept 时写一个短名，continue 时留空。不要把任务说明写进 title。
+工人看不到这段对话。人的原话不会再转给工人，也不要把人的短句原样贴进 brief。brief 按工人现在的状态写，不要每次都重写整张工单。
+
+accept 是新开一张工单，工人还没有上下文。这时 brief 要能独立做完，写清背景、目标产物、可写目录的绝对路径、硬性约束、怎样算做完。只用已经出现过的目录、文件和决定，不要编路径，也不要留 A/B/C 让工人挑。title 只在 accept 时写一个短名。
+
+continue 沿用已有工单。先看材料里这一张的阶段，再决定 brief 写多长：
+- 正在做，人只是改一个决定或补一句：只写变化。不要重述背景、路径和完成标准。
+- 在等回答：只写答案，点明它回答的是哪个问题。
+- 停着或等你看结果，目录和上一次说明还在：写从哪停下、下一步做什么。不重写整张工单。
+- 没有目录、说明已经对不上、或人把目标换成了另一件事：才按 accept 那样写完整说明。
+continue 的 title 留空。brief 为空会被拒绝。
 
 对人只说一两句：已经交给哪张工单、这一轮要做成什么。不要把 brief 贴进对话，也不要等工人做完。
 
 推断的工作只有在 auto 下、并且 rules 里写了至少一条还启用的规则编号时才能接受。只是聊天就忽略。人明确要求打断时才 stop。打断只停这一轮，原会话还能继续。工人的阶段性进展和结果会写回这段对话，你不要重做。`
 
-// errNeedsBrief 在 accept 或 continue 没写任务说明时返回。人的原话不会代替这份说明。
-var errNeedsBrief = fmt.Errorf("需要 brief。写清背景、目标产物、已经知道的路径、硬性约束和怎样算做完。人的原话不会另送")
+// errNeedsBrief 在新开一张工单却没写任务说明时返回。人的原话不会代替这份说明。
+var errNeedsBrief = fmt.Errorf("需要 brief。新开的工单要写清背景、目标产物、已经知道的路径、硬性约束和怎样算做完。人的原话不会另送")
+
+// errNeedsHandoff 在继续一张已有工单却什么都没交代时返回。交代可以很短，但不能空，也不能用原话顶上。
+var errNeedsHandoff = fmt.Errorf("继续这张工单需要给工人一句交代。正在做就只写变化，在等回答就只写答案，上下文断了再写完整说明。不要把人的原话原样送去")
 
 // beginRoute 在智能体主会话上换成路由工具。视频、学习、短片和即时消息会话保持原来的工具。
 func (a *App) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID string) bool {
@@ -96,7 +102,7 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	if len(reached) > 0 {
 		return "这条消息已经交给工单 " + strings.Join(reached, ", ") + "。不要再接受。只有人明确要求停止时才用 task_stop。"
 	}
-	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 和 continue 都必须带 brief，没有 brief 会被拒绝，人的原话也不会送过去。brief 要能让工人做到完，写清背景、目标产物、可写目录的绝对路径、硬性约束、怎样算做完。人已经做过的选择写死，不要留选项。不要把人的短回复原样放进 brief。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
+	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单和它现在的阶段。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 要写完整 brief。continue 的 brief 看阶段：正在做就只写变化，在等回答就只写答案，停着就写下一步，上下文断了才写完整说明。人的原话不要原样送去，brief 留空会被拒绝。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
 	if roster := taskRoster(rt); roster != "" {
 		line += "\n最近工单：\n" + roster
 	}
@@ -155,7 +161,7 @@ func (a *App) routerExtras() map[string]runtime.ExtraTool {
 
 // routeTool 接受、忽略、停止或挂接触发。一次可以有多项。
 func (a *App) routeTool() runtime.ExtraTool {
-	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 在 accept 和 continue 时必填，是工人这一轮唯一会读的任务说明，要写清背景、目标产物、已知路径、硬性约束和怎样算做完；人的原话不会另送，留空会被拒绝。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。", map[string]any{
+	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 不能空，人的原话不会另送。accept 要写完整说明。continue 按工单阶段写：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。", map[string]any{
 		"items": map[string]any{
 			"type": "array",
 			"items": map[string]any{
@@ -165,7 +171,7 @@ func (a *App) routeTool() runtime.ExtraTool {
 					"action":  map[string]any{"type": "string", "enum": []string{"accept", "continue", "ignore", "stop", "attach"}},
 					"ticket":  map[string]any{"type": "string"},
 					"title":   map[string]any{"type": "string", "description": "只在 accept 时填写的短名。不要写成任务说明。"},
-					"brief":   map[string]any{"type": "string", "description": "工人这一轮唯一要读的任务说明。写清背景、目标产物、可写目录的绝对路径、硬性约束和怎样算做完。人的原话不会另送。accept 和 continue 缺了它会被拒绝。"},
+					"brief":   map[string]any{"type": "string", "description": "交给工人的交代。accept 写完整说明。continue 按阶段伸缩：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。不要把人的原话原样放进来。留空会被拒绝。"},
 					"reason":  map[string]any{"type": "string"},
 					"rules":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
@@ -228,7 +234,7 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 			return "", fmt.Errorf("continue needs ticket")
 		}
 		if brief == "" {
-			return "", errNeedsBrief
+			return "", errNeedsHandoff
 		}
 		if err := rt.Act("assign", ticket, trigger, brief, ""); err != nil {
 			return "", err
@@ -288,9 +294,57 @@ func taskRoster(rt *superagent.Runtime) string {
 		if title == "" {
 			title = "未命名"
 		}
-		fmt.Fprintf(&b, "%s %s %s\n", ticket.ID, ticketState(ticket), title)
+		fmt.Fprintf(&b, "%s %s %s\n", ticket.ID, ticketSituation(ticket), title)
+		if dir := strings.TrimSpace(ticket.Directory); dir != "" {
+			fmt.Fprintf(&b, "  目录 %s\n", dir)
+		}
+		if ask := strings.TrimSpace(ticket.Attention); ask != "" {
+			fmt.Fprintf(&b, "  在等回答 %s\n", clipBrief(ask, 160))
+		}
+		if summary := lastTicketSummary(ticket); summary != "" {
+			fmt.Fprintf(&b, "  最近 %s\n", clipBrief(summary, 180))
+		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// ticketSituation 用阶段告诉路由该写多长的交代。
+func ticketSituation(ticket superagent.TicketRow) string {
+	if ticket.Stage == "ended" {
+		return ticketState(ticket)
+	}
+	switch ticket.Action {
+	case "answer":
+		return "在等回答"
+	case "review":
+		return "等你看结果"
+	case "blocked", "failed":
+		return "卡住了"
+	case "delivery":
+		return "结果没送出"
+	case "queued":
+		return "还没开始"
+	}
+	switch ticket.Stage {
+	case "working":
+		return "正在做"
+	case "idle":
+		return "停着"
+	case "person":
+		return "在等人"
+	default:
+		return ticketState(ticket)
+	}
+}
+
+// lastTicketSummary 取最近一次派工留给人看的那句。
+func lastTicketSummary(ticket superagent.TicketRow) string {
+	for i := len(ticket.Assignments) - 1; i >= 0; i-- {
+		if text := strings.TrimSpace(ticket.Assignments[i].Summary); text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func ticketNum(id string) int {
