@@ -13,7 +13,7 @@ func TestAssessBaselinesLinesThenSpeaksOnChange(t *testing.T) {
 	if first.Speak {
 		t.Fatal("first sight should stay quiet")
 	}
-	second, _ := Assess(Input{Now: now, Facts: []Fact{line}, Book: book})
+	second, book := Assess(Input{Now: now, Facts: []Fact{line}, Book: book})
 	if second.Speak {
 		t.Fatal("same signature should stay quiet")
 	}
@@ -23,11 +23,70 @@ func TestAssessBaselinesLinesThenSpeaksOnChange(t *testing.T) {
 	if !third.Speak || !third.Signals[0].Speak || third.Signals[0].Why != "changed" {
 		t.Fatalf("change = %#v", third)
 	}
+	book = Deliver(book, third.Signals, now.Add(time.Hour))
+	if book.Seen["line:yoyo"] != "stalled|blank.txt" {
+		t.Fatalf("delivered change should become the baseline, seen = %q", book.Seen["line:yoyo"])
+	}
 	line.Sig = "quiet|"
 	line.State = "quiet"
 	fourth, _ := Assess(Input{Now: now.Add(2 * time.Hour), Facts: []Fact{line}, Book: book})
 	if fourth.Speak || !fourth.Signals[0].Held {
 		t.Fatalf("same class same day should be held, %#v", fourth.Signals)
+	}
+}
+
+func TestAssessKeepsSpeakingUntilDelivered(t *testing.T) {
+	now := time.Date(2026, 11, 6, 0, 1, 0, 0, time.Local)
+	due := Fact{ID: "cal:1", Code: "calendar", Class: "calendar", Name: "评审", State: "due", Rank: 1, Eligible: true}
+	line := Fact{ID: "line:yoyo", Code: "line", Class: "line", Name: "yoyo", State: "moving", Sig: "moving|main.go", Rank: 5, Eligible: true}
+	_, book := Assess(Input{Now: now, Facts: []Fact{line}})
+	line.State, line.Sig = "stalled", "stalled|blank.txt"
+	first, book := Assess(Input{Now: now, Facts: []Fact{due, line}, Book: book})
+	if !first.Signals[0].Speak || !first.Signals[1].Speak {
+		t.Fatalf("both should speak, %#v", first.Signals)
+	}
+	later, book := Assess(Input{Now: now.Add(8 * time.Hour), Facts: []Fact{due, line}, Book: book})
+	for _, signal := range later.Signals {
+		if !signal.Speak || signal.Held {
+			t.Fatalf("an undelivered signal was used up: %#v", signal)
+		}
+	}
+	book = Deliver(book, later.Signals, now.Add(8*time.Hour))
+	again, _ := Assess(Input{Now: now.Add(9 * time.Hour), Facts: []Fact{due, line}, Book: book})
+	if again.Speak {
+		t.Fatalf("delivered signals should stay quiet the same day, %#v", again.Signals)
+	}
+	for _, signal := range again.Signals {
+		if signal.Held {
+			t.Fatalf("a signal already told today is not held, %#v", signal)
+		}
+	}
+	tomorrow, _ := Assess(Input{Now: now.Add(26 * time.Hour), Facts: []Fact{due}, Book: book})
+	if !tomorrow.Speak || !tomorrow.Signals[0].Speak {
+		t.Fatalf("still due the next day should speak again, %#v", tomorrow.Signals)
+	}
+}
+
+func TestAssessLetsOneSignalPerClassSpeak(t *testing.T) {
+	now := time.Date(2026, 11, 6, 9, 0, 0, 0, time.Local)
+	overdue := Fact{ID: "cal:a", Code: "calendar", Class: "calendar", Name: "报销", State: "overdue", Rank: 0, Eligible: true}
+	due := Fact{ID: "cal:b", Code: "calendar", Class: "calendar", Name: "评审", State: "due", Rank: 1, Eligible: true}
+	brief, _ := Assess(Input{Now: now, Facts: []Fact{due, overdue}})
+	if len(brief.Signals) != 2 || brief.Signals[0].ID != "cal:a" || !brief.Signals[0].Speak {
+		t.Fatalf("the most urgent should speak first, %#v", brief.Signals)
+	}
+	if brief.Signals[1].Speak || !brief.Signals[1].Held {
+		t.Fatalf("the second of the same class is held, %#v", brief.Signals[1])
+	}
+}
+
+func TestAssessDoesNotChangeTheCallerBook(t *testing.T) {
+	now := time.Date(2026, 11, 6, 9, 0, 0, 0, time.Local)
+	book := Book{Seen: map[string]string{"line:yoyo": "moving|main.go"}}
+	line := Fact{ID: "line:yoyo", Code: "line", Class: "line", Name: "yoyo", State: "quiet", Sig: "quiet|", Rank: 5, Eligible: true}
+	_, _ = Assess(Input{Now: now, Facts: []Fact{line}, Book: book})
+	if book.Seen["line:yoyo"] != "moving|main.go" {
+		t.Fatalf("caller book changed: %q", book.Seen["line:yoyo"])
 	}
 }
 
@@ -38,6 +97,7 @@ func TestAssessOverdueSpeaksOnceAndMuteHolds(t *testing.T) {
 	if !brief.Speak || brief.Signals[0].Why != "overdue" {
 		t.Fatalf("%#v", brief)
 	}
+	book = Deliver(book, brief.Signals, now)
 	book, _ = Feedback(book, "calendar", "", "ignore", "2026-11-03")
 	book, _ = Feedback(book, "calendar", "", "ignore", "2026-11-04")
 	book, forget := Feedback(book, "calendar", "mem-1", "ignore", "2026-11-05")
@@ -54,15 +114,38 @@ func TestAssessOverdueSpeaksOnceAndMuteHolds(t *testing.T) {
 	}
 }
 
+func TestFeedbackMutesUntilUnmuted(t *testing.T) {
+	book, _ := Feedback(Book{}, "reach", "", "mute", "2026-11-06")
+	if got := Quiet(book, "2026-11-06"); got["reach"].Until != Forever {
+		t.Fatalf("mute = %#v", got)
+	}
+	book, _ = Feedback(book, "reach", "", "later", "2026-11-07")
+	if got := Quiet(book, "2026-11-08"); got["reach"].Until != Forever {
+		t.Fatalf("later must not shorten a standing mute, %#v", got)
+	}
+	book, _ = Feedback(book, "reach", "", "unmute", "2026-11-08")
+	if got := Quiet(book, "2026-11-08"); len(got) != 0 {
+		t.Fatalf("unmute = %#v", got)
+	}
+	book, _ = Feedback(book, "line", "", "later", "2026-11-08")
+	if got := Quiet(book, "2026-11-09"); len(got) != 0 {
+		t.Fatalf("later only covers the day it was given, %#v", got)
+	}
+}
+
 func TestAssessIdleHoldsGitNotOutage(t *testing.T) {
 	now := time.Date(2026, 11, 3, 9, 0, 0, 0, time.Local)
 	git := Fact{ID: "git:yoyo", Code: "git", Class: "git", Name: "yoyo", State: "dirty", Sig: "main/dirty", Rank: 5, Eligible: true}
 	_, book := Assess(Input{Now: now, Facts: []Fact{git}})
 	git.Sig = "main/clean"
 	git.State = "clean"
-	held, _ := Assess(Input{Now: now.Add(time.Hour), Idle: 25 * time.Minute, Facts: []Fact{git}, Book: book})
+	held, book := Assess(Input{Now: now.Add(time.Hour), Idle: 25 * time.Minute, Facts: []Fact{git}, Book: book})
 	if held.Speak || !held.Signals[0].Held {
 		t.Fatalf("idle git = %#v", held.Signals)
+	}
+	back, _ := Assess(Input{Now: now.Add(2 * time.Hour), Facts: []Fact{git}, Book: book})
+	if !back.Speak {
+		t.Fatalf("the held change should speak once the operator is back, %#v", back.Signals)
 	}
 	off := Fact{ID: "net", Code: "net", Class: "net", Name: "network", State: "offline", Rank: 4, Eligible: true}
 	out, _ := Assess(Input{Now: now, Idle: time.Hour, Facts: []Fact{off}})
@@ -78,6 +161,7 @@ func TestAssessUncheckedDoesNotSpeak(t *testing.T) {
 	if !brief.Speak {
 		t.Fatal("welcome still speaks")
 	}
+	book = Deliver(book, brief.Signals, now)
 	again, _ := Assess(Input{Now: now.Add(time.Hour), Welcome: true, Facts: []Fact{mail}, Book: book})
 	if again.Speak {
 		t.Fatal("welcome is once a day")
@@ -109,6 +193,7 @@ func TestAssessReachSpacesNotesAndKeepsTheLink(t *testing.T) {
 	if !first.Speak || first.Signals[0].Why != "match" || !strings.Contains(first.Signals[0].Detail, "https://example.com/step") {
 		t.Fatalf("first note = %#v", first)
 	}
+	book = Deliver(book, first.Signals, now)
 	again, book := Assess(Input{Now: now.Add(time.Hour), Facts: []Fact{item}, Book: book})
 	if again.Speak {
 		t.Fatal("same link should stay quiet")
@@ -122,7 +207,11 @@ func TestAssessReachSpacesNotesAndKeepsTheLink(t *testing.T) {
 		t.Fatalf("spacing = %#v", held)
 	}
 	later, book := Assess(Input{Now: now.Add(4 * time.Hour), Facts: []Fact{next}, Book: book})
-	if !later.Speak || book.Reach.N != 2 {
-		t.Fatalf("second note = %#v n=%d", later, book.Reach.N)
+	if !later.Speak {
+		t.Fatalf("second note = %#v", later)
+	}
+	book = Deliver(book, later.Signals, now.Add(4*time.Hour))
+	if book.Reach.N != 2 {
+		t.Fatalf("quota n = %d", book.Reach.N)
 	}
 }

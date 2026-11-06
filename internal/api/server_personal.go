@@ -48,6 +48,22 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 		_ = json.NewDecoder(r.Body).Decode(&note)
 		writeJSON(w, map[string]any{"ok": a.DeskPush(note)})
 	})
+	mux.HandleFunc("/api/desk/state", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.DeskState())
+	})
+	mux.HandleFunc("/api/desk/feedback", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, map[string]any{"ok": false})
+			return
+		}
+		var body struct {
+			ClassName string `json:"className"`
+			Kind      string `json:"kind"`
+			MemoryID  string `json:"memoryId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, map[string]any{"ok": a.DeskFeedback(body.ClassName, body.Kind, body.MemoryID)})
+	})
 	mux.HandleFunc("/api/briefs", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.BriefList())
 	})
@@ -78,6 +94,9 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 				return
 			case "forget":
 				writeJSON(w, map[string]any{"ok": a.MemoryForget(body.ID)})
+				return
+			case "edit":
+				writeJSON(w, a.MemoryEdit(body.ID, body.Text))
 				return
 			default:
 				writeJSON(w, a.MemoryWrite(body.Kind, body.Text, body.Project))

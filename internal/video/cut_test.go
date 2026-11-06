@@ -3,6 +3,7 @@
 package video
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -196,6 +197,38 @@ func TestVideoRouteCreatesCut(t *testing.T) {
 	}
 }
 
+// TestVideoRouteNoticeStaysCompact 确认新建短片的路由通知不带整份工程，界面切窗格要的字段都在，体积能放进桌面通知。
+func TestVideoRouteNoticeStaysCompact(t *testing.T) {
+	e := testEngine(t)
+	var kind string
+	var got map[string]any
+	e.OnHub = func(k string, payload map[string]any) {
+		if k == "video_route" {
+			kind, got = k, payload
+		}
+	}
+	out, err := e.VideoRoute("sess-route", "studio", "", "通勤穿搭", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := out["project"]; !ok {
+		t.Fatal("the RPC result should still carry the new project")
+	}
+	if kind != "video_route" {
+		t.Fatal("no video_route notice")
+	}
+	if _, ok := got["project"]; ok {
+		t.Fatal("hub notice must not carry the whole project")
+	}
+	if got["pane"] != "studio" || got["id"] != out["id"] || got["title"] != "通勤穿搭" {
+		t.Fatalf("notice %+v", got)
+	}
+	raw, _ := json.Marshal(got)
+	if len(raw) > 400 {
+		t.Fatalf("notice too large to inline: %d bytes", len(raw))
+	}
+}
+
 // ffmpegBin 寻找 ffmpeg 和 ffprobe，找不到 ffmpeg 时跳过测试。
 func ffmpegBin(t *testing.T) (string, string) {
 	t.Helper()
@@ -343,7 +376,7 @@ func TestSampleBCaptionsAndDuckMix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err = e.CutMix(p.ID, true)
+	p, err = e.CutMix(p.ID, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,6 +386,120 @@ func TestSampleBCaptionsAndDuckMix(t *testing.T) {
 	filter, _ := cut.MixGraph(true, true, cut.MixOpts{Duck: true})
 	if filter == "" {
 		t.Fatal("duck graph empty")
+	}
+}
+
+// TestSampleCRecipeKeepsLengthAndLayers 确认成片按配方从源片重做：短配音不会把片子剪短，重复调色不叠加，重新合成后配音还在，烧字幕可以叠在配音之上。
+func TestSampleCRecipeKeepsLengthAndLayers(t *testing.T) {
+	ff, probe := ffmpegBin(t)
+	e := testEngine(t)
+	e.FFMPEG, e.FFProbe = ff, probe
+	dir := t.TempDir()
+	hash, err := e.PutBytes(mustRead(t, makeTalkingClip(t, dir, ff)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := e.CutIngest("", hash, "配方小样C")
+	if err != nil {
+		t.Fatal(err)
+	}
+	voice := filepath.Join(dir, "dub.wav")
+	if b, err := exec.Command(ff, "-y", "-f", "lavfi", "-i", "sine=frequency=880:duration=2", voice).CombinedOutput(); err != nil {
+		t.Skipf("dub: %s", ffmpegErr(b, err))
+	}
+	dub, err := e.PutBytes(mustRead(t, voice))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CutSetStem(p.ID, "dub", dub); err != nil {
+		t.Fatal(err)
+	}
+	mixed, err := e.CutMix(p.ID, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.mediaSeconds(mixed.ResultHash); got < 11 {
+		t.Fatalf("a 2s dub cut the 12s film down to %.2fs", got)
+	}
+	if !e.cutBin().HasAudio(e.FilePath(mixed.ResultHash)) {
+		t.Fatal("mixed film lost its audio")
+	}
+	warm, err := e.CutGrade(p.ID, "warm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cool, err := e.CutGrade(p.ID, "cool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cool.Grade != "cool" || cool.ResultHash == "" || cool.ResultHash == warm.ResultHash {
+		t.Fatalf("grade should be replaced, not stacked: %+v", cool.Grade)
+	}
+	if _, err := e.CutPropose(p.ID, 2, "8-15"); err != nil {
+		t.Fatal(err)
+	}
+	applied, err := e.CutApply(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.Stems.Dub != dub || applied.Grade != "cool" || applied.Stale {
+		t.Fatalf("apply dropped the recipe: dub=%q grade=%q stale=%v", applied.Stems.Dub, applied.Grade, applied.Stale)
+	}
+	want := outputDuration(applied)
+	if got := e.mediaSeconds(applied.ResultHash); got < want-1 || got > want+1 {
+		t.Fatalf("applied film %.2fs want about %.2fs", got, want)
+	}
+	if _, err := e.CutCaptions(p.ID, "第一句话。第二句话。", "zh"); err != nil {
+		t.Fatal(err)
+	}
+	burned, err := e.CutBurnin(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !burned.Burn || burned.ResultHash == "" || burned.ResultHash == applied.ResultHash || burned.Stale {
+		t.Fatalf("burn %+v", burned)
+	}
+	again, err := e.CutBurnin(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ResultHash != burned.ResultHash {
+		t.Fatal("burning again should not render a second layer")
+	}
+}
+
+// TestLookWhisperModelPrefersMultilingual 确认 WHISPER_MODEL 优先，其次在 whisper 旁的 models 里挑多语言模型，只有英文模型时才用 .en。
+func TestLookWhisperModelPrefersMultilingual(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "whisper-cli.exe")
+	models := filepath.Join(dir, "models")
+	if err := os.MkdirAll(models, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"whisper-cli.exe", filepath.Join("models", "ggml-base.en.bin")} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("WHISPER_MODEL", "")
+	t.Setenv("USERPROFILE", dir)
+	t.Setenv("HOME", dir)
+	if got := LookWhisperModel(bin); filepath.Base(got) != "ggml-base.en.bin" {
+		t.Fatalf("english-only fallback got %q", got)
+	}
+	if err := os.WriteFile(filepath.Join(models, "ggml-small.bin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := LookWhisperModel(bin); filepath.Base(got) != "ggml-small.bin" {
+		t.Fatalf("multilingual should win, got %q", got)
+	}
+	pinned := filepath.Join(dir, "pinned.bin")
+	if err := os.WriteFile(pinned, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WHISPER_MODEL", pinned)
+	if got := LookWhisperModel(bin); got != pinned {
+		t.Fatalf("WHISPER_MODEL should win, got %q", got)
 	}
 }
 

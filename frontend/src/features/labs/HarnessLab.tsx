@@ -64,17 +64,17 @@ export function HarnessLab(props: {
 
   return (
     <LabFrame>
-      <p className="mb-4 max-w-[62ch] text-[13px] leading-5 text-muted">{copy.labs.ceremony}</p>
+      <p className="mb-4 max-w-[62ch] text-ui-body leading-5 text-muted">{copy.labs.ceremony}</p>
       <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40">
         {pointers.map((p, i) => (
           <div key={p.id} className={"flex items-center gap-3 px-4 py-3" + (i > 0 ? " border-t border-border/70" : "")}>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-medium">{pointerLabel(copy, p.id)}</div>
-              <div className={lab ? "font-mono text-[11px] text-muted" : "text-[12px] text-muted"} title={lab ? p.hash : undefined}>
+              <div className="text-ui-body font-medium">{pointerLabel(copy, p.id)}</div>
+              <div className={lab ? "font-mono text-ui-caption text-muted" : "text-ui-footnote text-muted"} title={lab ? p.hash : undefined}>
                 {lab ? shortHash(p.hash, 12) : p.hint}
               </div>
             </div>
-            <span className="text-[11px] text-muted">{p.id === "active" ? copy.labs.trusted : copy.labs.notTrusted}</span>
+            <span className="text-ui-caption text-muted">{p.id === "active" ? copy.labs.trusted : copy.labs.notTrusted}</span>
             {p.id !== "active" ? (
               <Button size="sm" onClick={() => void tryCheckout(p.hash)}>{copy.labs.moveActive}</Button>
             ) : null}
@@ -86,20 +86,20 @@ export function HarnessLab(props: {
           <Button variant="lift" onClick={() => props.onCompare(refs.active, refs.staging)}>{copy.labs.compareStaging}</Button>
         </div>
       ) : null}
-      <h3 className="mb-3 text-[13px] font-medium">{copy.labs.fieldDiff}</h3>
+      <h3 className="mb-3 text-ui-body font-medium">{copy.labs.fieldDiff}</h3>
       {props.diffOut ? (
         <div className="mb-4">
           <MaterialChangeList changes={changes} empty={copy.rsi.noChanges} />
         </div>
       ) : null}
       {lab && fields.length ? (
-        <button type="button" className="mb-3 text-[12px] text-muted hover:text-foreground" onClick={() => setShowHashes((v) => !v)}>
+        <button type="button" className="mb-3 text-ui-footnote text-muted hover:text-foreground" onClick={() => setShowHashes((v) => !v)}>
           {copy.labs.hashFields}
         </button>
       ) : null}
       {lab && showHashes && fields.length ? (
         <LabTable>
-          <thead className="text-[11px] text-muted">
+          <thead className="text-ui-caption text-muted">
             <tr>
               <th className="px-4 py-2 font-medium">{copy.labs.field}</th>
               <th className="font-medium">{copy.labs.from}</th>
@@ -110,15 +110,15 @@ export function HarnessLab(props: {
             {fields.map((f: any) => (
               <tr key={str(pick(f, "field", "Field"))} className={pick(f, "changed", "Changed") ? "bg-lift/50" : ""}>
                 <td className="px-4 py-2">{str(pick(f, "field", "Field"))}</td>
-                <td className="font-mono text-[11px]">{String(pick(f, "from", "From") || "").slice(0, 24)}</td>
-                <td className="font-mono text-[11px]">{String(pick(f, "to", "To") || "").slice(0, 24)}</td>
+                <td className="font-mono text-ui-caption">{String(pick(f, "from", "From") || "").slice(0, 24)}</td>
+                <td className="font-mono text-ui-caption">{String(pick(f, "to", "To") || "").slice(0, 24)}</td>
               </tr>
             ))}
           </tbody>
         </LabTable>
       ) : null}
       {lab ? (
-        <button type="button" className="mt-4 text-[12px] text-muted hover:text-foreground" onClick={() => setAdvanced((v) => !v)}>
+        <button type="button" className="mt-4 text-ui-footnote text-muted hover:text-foreground" onClick={() => setAdvanced((v) => !v)}>
           {copy.labs.advancedHashes}
         </button>
       ) : null}
@@ -130,7 +130,7 @@ export function HarnessLab(props: {
         </div>
       ) : null}
       <div className="mt-8 border-t border-border/80 pt-4">
-        <div className="mb-2 text-[11px] font-medium text-muted">{copy.rsi.danger}</div>
+        <div className="mb-2 text-ui-caption font-medium text-muted">{copy.rsi.danger}</div>
         <Button variant="danger" onClick={props.onRollback}>{copy.labs.rollback}</Button>
       </div>
       <ConfirmDialog

@@ -254,6 +254,10 @@ export function ThreadRail(props: {
   onShowArchived?: (on: boolean) => void;
   onIdolSlot?: (node: HTMLDivElement | null) => void;
   day?: ReactNode;
+  /** needs 是等你决定的条数，挂在底部坞的会话图标上。 */
+  needs?: number;
+  /** dockBasis 是模块栏占窗口的百分比。底部坞按它排，会话页和其他模块一样大。 */
+  dockBasis?: number;
 }) {
   const copy = useCopy();
   const videoPane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
@@ -375,8 +379,8 @@ export function ThreadRail(props: {
     <SidebarCard>
       <div className={cn("chrome drag flex h-12 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
         <YoyoMark live />
-        {props.isolated ? <span className="rounded-full bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
-          <span className="rounded-full bg-lift px-1.5 py-0.5 text-[10px] text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
+        {props.isolated ? <span className="rounded-full bg-lift px-1.5 py-0.5 text-ui-badge text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
+          <span className="rounded-full bg-lift px-1.5 py-0.5 text-ui-badge text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
         ) : null}
         <Tooltip content={copy.rail.collapse} side="bottom">
           <button
@@ -395,14 +399,14 @@ export function ThreadRail(props: {
       ) : null}
       {showSessions ? (
       <div className="px-2.5 pb-2">
-        <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" onClick={props.onNew}>
+        <Button className="h-9 w-full justify-start gap-2 rounded-xl text-ui-body" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
           {copy.rail.newChat}
         </Button>
         <div className="relative mt-2.5">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
           <Input
-            className="h-8 rounded-xl border-transparent bg-lift/80 pl-8 text-[13px]"
+            className="h-8 rounded-xl border-transparent bg-lift/80 pl-8 text-ui-body"
             placeholder={copy.rail.search}
             aria-label={copy.rail.search}
             value={props.query}
@@ -415,7 +419,7 @@ export function ThreadRail(props: {
         {props.onShowArchived ? (
           <button
             type="button"
-            className="mt-1.5 w-full rounded-lg px-2 py-1 text-left text-[11px] text-muted hover:bg-lift/50 hover:text-foreground"
+            className="mt-1.5 w-full rounded-lg px-2 py-1 text-left text-ui-caption text-muted hover:bg-lift/50 hover:text-foreground"
             onClick={() => props.onShowArchived?.(!props.showArchived)}
           >
             {props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}
@@ -474,7 +478,7 @@ export function ThreadRail(props: {
           {collapsed["creation-history"] ? null : (
             <div className="min-h-0 flex-1 overflow-auto">
               {entries.length === 0 ? (
-                <p className="px-2.5 py-2 text-[12px] text-muted">{copy.video.historyEmptyCuts}</p>
+                <p className="px-2.5 py-2 text-ui-footnote text-muted">{copy.video.historyEmptyCuts}</p>
               ) : entries.map(renderEntry)}
             </div>
           )}
@@ -485,6 +489,8 @@ export function ThreadRail(props: {
           copy={copy}
           surface={props.surface}
           mark={dirty || canary}
+          needs={props.needs}
+          basis={props.dockBasis}
           onChats={props.onChats}
           onSkills={props.onSkills}
           onVideo={props.onVideo}
@@ -501,7 +507,7 @@ export function ThreadRail(props: {
 /** 小节标题。第一条少留一点上边距。label 作为子节点渲染。 */
 function RailLabel({ label }: { label: string }) {
   return (
-    <div className="px-2.5 pb-1 pt-3 text-[11px] font-medium text-muted first:pt-1.5">
+    <div className="px-2.5 pb-1 pt-3 text-ui-caption font-medium text-muted first:pt-1.5">
       {label}
     </div>
   );
@@ -516,7 +522,7 @@ function HistoryRow(props: { testId: string; title: string; active: boolean; ico
       data-testid={props.testId}
       aria-current={props.active ? "page" : undefined}
       className={cn(
-        "mb-px ml-2 flex min-h-8 w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
+        "mb-px ml-2 flex min-h-8 w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-ui-body transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
         props.active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
       )}
       onClick={props.onSelect}
@@ -539,7 +545,7 @@ function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: (
       data-testid={`video-project-${p.kind}-${p.id}`}
       aria-current={props.active ? "page" : undefined}
       className={cn(
-        "mb-px ml-2 flex min-h-8 w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
+        "mb-px ml-2 flex min-h-8 w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-ui-body transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
         props.active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
       )}
       onClick={props.onSelect}
@@ -567,7 +573,7 @@ function SpaceHeader(props: {
     <div className="group/space flex items-center gap-0.5 px-1.5 pb-0.5 pt-3 first:pt-1.5">
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12px] font-medium tracking-[-0.01em] text-foreground/80 transition-colors hover:bg-lift/55 hover:text-foreground"
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-ui-footnote font-medium tracking-[-0.01em] text-foreground/80 transition-colors hover:bg-lift/55 hover:text-foreground"
         onClick={props.onToggle}
         data-testid={props.path === "creation-history" ? "video-rail-history-toggle" : undefined}
         aria-expanded={!props.collapsed}
@@ -715,7 +721,7 @@ function ThreadRow(props: {
           aria-label={copy.rail.rename}
           autoComplete="off"
           spellCheck={false}
-          className="w-full rounded-md bg-background px-1 text-[13px] font-medium text-foreground"
+          className="w-full rounded-md bg-background px-1 text-ui-body font-medium text-foreground"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
@@ -772,10 +778,10 @@ function ThreadRow(props: {
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1">
               {t.pinned ? <Pin className="size-3 text-muted" aria-hidden /> : null}
-              <span className={cn("block truncate text-[13px]", active ? "font-medium text-foreground" : "font-normal")}>{displayTitle(t.title, copy.rail.untitled)}</span>
+              <span className={cn("block truncate text-ui-body", active ? "font-medium text-foreground" : "font-normal")}>{displayTitle(t.title, copy.rail.untitled)}</span>
             </span>
             {run || t.archived || t.isolate || t.interrupted || (t.queued || 0) > 0 || t.preview ? (
-              <span className="block truncate text-[11px] text-muted">
+              <span className="block truncate text-ui-caption text-muted">
                 {run ? copy.rail.running : t.interrupted ? copy.rail.interrupted : (t.queued || 0) > 0 ? copy.rail.queued : t.archived ? copy.rail.archived : t.preview || (t.isolate ? copy.rail.isolated : "")}
               </span>
             ) : null}
@@ -898,29 +904,29 @@ function SessionMetaCard(props: {
       role="complementary"
       aria-label={copy.rail.meta}
       data-testid="session-meta-card"
-      className="fixed z-[60] w-[272px] overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-popover)]"
+      className="fixed z-[60] w-[272px] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-popover)]"
       style={{ left: pos.left, top: pos.top, visibility: pos.ready ? "visible" : "hidden" }}
       onMouseEnter={props.onMouseEnter}
       onMouseLeave={props.onMouseLeave}
     >
       <div className="px-3 py-2.5">
-        <div className="text-[11px] font-medium text-muted">{copy.rail.meta}</div>
-        <div className="mt-1 truncate text-[13px] font-medium text-foreground">{title}</div>
+        <div className="text-ui-caption font-medium text-muted">{copy.rail.meta}</div>
+        <div className="mt-1 truncate text-ui-body font-medium text-foreground">{title}</div>
         {chips.length ? (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {chips.map((c) => (
-              <span key={c} className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{c}</span>
+              <span key={c} className="rounded-md bg-lift px-1.5 py-0.5 text-ui-badge text-muted">{c}</span>
             ))}
           </div>
         ) : null}
       </div>
       <div className="border-t border-border/50 px-3 py-2">
-        <div className="text-[11px] font-medium text-muted">{copy.rail.sessionId}</div>
+        <div className="text-ui-caption font-medium text-muted">{copy.rail.sessionId}</div>
         <div className="mt-1 flex items-center gap-1">
-          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground" title={t.id}>{t.id}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-ui-footnote text-foreground" title={t.id}>{t.id}</span>
           <button
             type="button"
-            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground"
             aria-label={copy.rail.copyId}
             onClick={async () => {
               if (!(await writeClipboard(t.id))) return;
@@ -954,9 +960,9 @@ function SessionMetaCard(props: {
 function MetaLine(props: { label: string; value: string; title?: string; mono?: boolean }) {
   return (
     <div className="border-t border-border/50 px-3 py-2">
-      <div className="text-[11px] font-medium text-muted">{props.label}</div>
+      <div className="text-ui-caption font-medium text-muted">{props.label}</div>
       <div
-        className={cn("mt-1 truncate text-[12px] text-foreground", props.mono && "font-mono text-[12px]")}
+        className={cn("mt-1 truncate text-ui-footnote text-foreground", props.mono && "font-mono text-ui-footnote")}
         title={props.title || props.value}
       >
         {props.value}

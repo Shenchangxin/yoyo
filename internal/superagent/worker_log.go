@@ -382,7 +382,7 @@ func assignmentBody(text string) string {
 	var keep []string
 	for _, line := range strings.Split(text, "\n") {
 		s := strings.TrimSpace(line)
-		if s == "" || s == hostRestartNote || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || s == "完成后调用 orchestrator_report。" {
+		if s == "" || s == hostRestartNote || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || strings.HasPrefix(s, mandatePrefix) || s == "完成后调用 orchestrator_report。" {
 			continue
 		}
 		keep = append(keep, s)

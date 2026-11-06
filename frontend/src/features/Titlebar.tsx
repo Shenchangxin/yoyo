@@ -47,10 +47,20 @@ export function Titlebar(props: {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(props.title);
   const skipBlur = useRef(false);
+  // 只在 Agent 第一次给会话起名时打一次字。切换会话、改名、打开窗口都直接显示。
+  const [typing, setTyping] = useState(false);
+  const shownTitle = useRef(props.title);
 
   useEffect(() => {
     if (!editing) setDraft(props.title);
   }, [props.title, editing]);
+
+  useEffect(() => {
+    const was = shownTitle.current;
+    shownTitle.current = props.title;
+    if (was === props.title) return;
+    setTyping(!!props.title && (!was || was === copy.rail.untitled || was === copy.rail.newChat));
+  }, [props.title, copy.rail.untitled, copy.rail.newChat]);
 
   useEffect(() => {
     if (!props.renameTick) return;
@@ -84,7 +94,7 @@ export function Titlebar(props: {
           aria-label={copy.titlebar.rename}
           autoComplete="off"
           spellCheck={false}
-          className="min-w-0 flex-1 rounded-md bg-lift px-2 py-1 text-[13px] font-medium text-foreground"
+          className="min-w-0 flex-1 rounded-md bg-lift px-2 py-1 text-ui-body font-medium text-foreground"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
@@ -104,7 +114,7 @@ export function Titlebar(props: {
       ) : props.title ? (
         <button
           type="button"
-          className="min-w-0 max-w-[46%] shrink overflow-hidden rounded-lg px-1.5 py-0.5 text-left text-[14px] font-medium tracking-[-0.02em] text-foreground hover:bg-lift/70"
+          className="min-w-0 max-w-[46%] shrink overflow-hidden rounded-lg px-1.5 py-0.5 text-left text-ui-body-l font-medium tracking-[-0.02em] text-foreground hover:bg-lift/70"
           onClick={() => {
             setDraft(props.title);
             setEditing(true);
@@ -112,23 +122,27 @@ export function Titlebar(props: {
           aria-label={copy.titlebar.rename}
           title={props.title}
         >
-          <TextType
-            key={props.title}
-            as="span"
-            text={props.title}
-            typingSpeed={32}
-            initialDelay={40}
-            pauseDuration={1500}
-            loop={false}
-            deleteMode="backspace"
-            typeEffect="fade"
-            mistakes={0}
-            cursorStyle="bar"
-            cursorGlide
-            showCursor
-            className="max-w-full align-bottom"
-            style={{ whiteSpace: "nowrap" }}
-          />
+          {typing ? (
+            <TextType
+              key={props.title}
+              as="span"
+              text={props.title}
+              typingSpeed={32}
+              initialDelay={40}
+              pauseDuration={1500}
+              loop={false}
+              deleteMode="backspace"
+              typeEffect="fade"
+              mistakes={0}
+              cursorStyle="bar"
+              cursorGlide
+              showCursor={false}
+              className="max-w-full align-bottom"
+              style={{ whiteSpace: "nowrap" }}
+            />
+          ) : (
+            <span className="block truncate">{props.title}</span>
+          )}
         </button>
       ) : null}
       <div className="h-full min-w-4 flex-1" aria-hidden />
@@ -222,7 +236,7 @@ function NoticeButton(props: {
         >
           <Bell className="size-4" aria-hidden />
           {n > 0 ? (
-            <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-[9px] text-background">{n}</span>
+            <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-ui-badge text-background">{n}</span>
           ) : null}
         </Button>
       </DropdownMenuTrigger>

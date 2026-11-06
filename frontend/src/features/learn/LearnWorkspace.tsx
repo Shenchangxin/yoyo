@@ -271,7 +271,7 @@ export function LearnWorkspace(props: {
       )}
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {err ? <p className="px-6 pt-4 text-[12px] text-danger">{err}</p> : null}
+          {err ? <p className="px-6 pt-4 text-ui-footnote text-danger">{err}</p> : null}
           <div className="min-h-0 flex-1">
             {lane === "today" ? (
               <TodayPane
@@ -533,7 +533,7 @@ function PointMark(props: { status: string }) {
 function Field(props: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[12px] text-muted">{props.label}</span>
+      <span className="text-ui-footnote text-muted">{props.label}</span>
       {props.children}
     </label>
   );
@@ -589,34 +589,34 @@ function TodayPane(props: {
                 <span className="grid size-9 place-items-center rounded-lg bg-lift text-muted">
                   <Icon className="size-4" aria-hidden />
                 </span>
-                <span className="mt-4 truncate text-[15px] font-medium tracking-[-0.02em]">{way.title}</span>
-                <span className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">{way.hint}</span>
+                <span className="mt-4 truncate text-ui-title-s font-medium tracking-[-0.02em]">{way.title}</span>
+                <span className="mt-1 line-clamp-2 text-ui-footnote leading-relaxed text-muted">{way.hint}</span>
               </button>
             );
           })}
         </div>
         {due.length + paths.length + books.length > 0 ? (
           <section>
-            <h2 className="text-[13px] text-muted">{L.attention}</h2>
+            <h2 className="text-ui-body text-muted">{L.attention}</h2>
             <div className="mt-2 flex flex-col">
               {due.slice(0, 3).map((card) => (
                 <button key={card.id} type="button" data-testid="learn-due" className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onPractice(card.id)}>
-                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{L.practice}</span>
-                  <span className="min-w-0 flex-1 truncate text-[14px]">{card.stem}</span>
+                  <span className="shrink-0 whitespace-nowrap text-ui-footnote text-muted">{L.practice}</span>
+                  <span className="min-w-0 flex-1 truncate text-ui-body-l">{card.stem}</span>
                 </button>
               ))}
               {paths.slice(0, 3).map((path) => (
                 <button key={path.id} type="button" className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenPath(path.id)}>
-                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{L.study}</span>
-                  <span className="min-w-0 flex-1 truncate text-[14px]">{path.name}</span>
-                  <span className="shrink-0 tabular-nums text-[12px] text-muted">{path.counts?.mastered || 0}/{path.counts?.total || 0}</span>
+                  <span className="shrink-0 whitespace-nowrap text-ui-footnote text-muted">{L.study}</span>
+                  <span className="min-w-0 flex-1 truncate text-ui-body-l">{path.name}</span>
+                  <span className="shrink-0 tabular-nums text-ui-footnote text-muted">{path.counts?.mastered || 0}/{path.counts?.total || 0}</span>
                 </button>
               ))}
               {books.slice(0, 2).map((book) => (
                 <button key={book.id} type="button" className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left" onClick={() => props.onOpenBook(book.id, book.library_id)}>
-                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{L.books}</span>
-                  <span className="min-w-0 flex-1 truncate text-[14px]">{book.title}</span>
-                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{book.status === "ready" || book.status === "paused" ? L.readOn : bookStatus(book.status)}</span>
+                  <span className="shrink-0 whitespace-nowrap text-ui-footnote text-muted">{L.books}</span>
+                  <span className="min-w-0 flex-1 truncate text-ui-body-l">{book.title}</span>
+                  <span className="shrink-0 whitespace-nowrap text-ui-footnote text-muted">{book.status === "ready" || book.status === "paused" ? L.readOn : bookStatus(book.status)}</span>
                 </button>
               ))}
             </div>
@@ -624,10 +624,10 @@ function TodayPane(props: {
         ) : null}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-[13px] text-muted">{L.mission}</h2>
-            <button type="button" className="shrink-0 whitespace-nowrap text-[12px] text-muted hover:text-foreground" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>{L.editMission}</button>
+            <h2 className="text-ui-body text-muted">{L.mission}</h2>
+            <button type="button" className="shrink-0 whitespace-nowrap text-ui-footnote text-muted hover:text-foreground" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>{L.editMission}</button>
           </div>
-          {!editing && topic ? <p className="text-[15px] leading-snug">{topic}</p> : null}
+          {!editing && topic ? <p className="text-ui-title-s leading-snug">{topic}</p> : null}
           {editing ? (
             <div className="flex flex-col gap-3">
               <Field label={L.mission}><Input value={topic} placeholder={L.missionPh} onChange={(e) => setTopic(e.target.value)} /></Field>
@@ -639,7 +639,7 @@ function TodayPane(props: {
         </section>
         <section className="flex flex-col gap-2">
           {records.map((row: { id: string; insight: string }) => (
-            <p key={row.id} className="text-[13px] leading-relaxed text-muted">{row.insight}</p>
+            <p key={row.id} className="text-ui-body leading-relaxed text-muted">{row.insight}</p>
           ))}
           <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!insight.trim()) return; void props.onRecord(insight.trim()); setInsight(""); }}>
             <div className="min-w-0 flex-1">
@@ -699,8 +699,8 @@ function StudyPane(props: {
                     <button type="button" onClick={() => props.onOpen(path.id)} className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left hover:bg-lift/40">
                       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-lift text-muted"><ListChecks className="size-4" aria-hidden /></span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[14px]">{path.name}</span>
-                        <span className="mt-0.5 block tabular-nums text-[12px] text-muted">{mastered}/{total}</span>
+                        <span className="block truncate text-ui-body-l">{path.name}</span>
+                        <span className="mt-0.5 block tabular-nums text-ui-footnote text-muted">{mastered}/{total}</span>
                         {total > 0 ? <ProgressHairline className="mt-2" value={(mastered / total) * 100} /> : null}
                       </span>
                     </button>
@@ -747,15 +747,15 @@ function StudyPane(props: {
           />
         </div>
         <section data-testid="learn-next" className="rounded-xl border border-border/60 p-5">
-          <p className="text-[13px] text-muted">{stepCopy(current.next?.action, L, current.mode)}</p>
-          {current.next?.name ? <p className="mt-2 text-[18px] font-semibold leading-snug tracking-[-0.03em]">{current.next.name}</p> : null}
+          <p className="text-ui-body text-muted">{stepCopy(current.next?.action, L, current.mode)}</p>
+          {current.next?.name ? <p className="mt-2 text-ui-title font-semibold leading-snug tracking-[-0.03em]">{current.next.name}</p> : null}
           {waiting ? (
             <div className="mt-4 flex flex-col gap-3">
-              <p className="text-[15px] font-medium leading-snug">{question?.prompt}</p>
+              <p className="text-ui-title-s font-medium leading-snug">{question?.prompt}</p>
               {question?.options && question.options.length > 0 ? (
                 <div className="flex flex-col gap-1">
                   {question.options.map((option) => (
-                    <button key={option} type="button" aria-pressed={guess === option} onClick={() => setGuess(option)} className={cn("rounded-lg border border-border/60 px-3 py-2 text-left text-[13px]", guess === option ? "bg-accent/10 text-accent" : "hover:bg-lift")}>
+                    <button key={option} type="button" aria-pressed={guess === option} onClick={() => setGuess(option)} className={cn("rounded-lg border border-border/60 px-3 py-2 text-left text-ui-body", guess === option ? "bg-accent/10 text-accent" : "hover:bg-lift")}>
                       {option}
                     </button>
                   ))}
@@ -767,7 +767,7 @@ function StudyPane(props: {
             </div>
           ) : null}
           {reveal ? (
-            <div className="mt-4 text-[13px]">
+            <div className="mt-4 text-ui-body">
               <p>{reveal.correct ? L.correct : L.incorrect}</p>
               {reveal.answer ? <p className="mt-1 text-muted">{reveal.answer}</p> : null}
               <Button size="sm" className="mt-3 whitespace-nowrap" variant="ghost" onClick={() => setReveal(null)}>{L.continue}</Button>
@@ -777,17 +777,17 @@ function StudyPane(props: {
         </section>
         {(current.modules || []).map((mod) => (
           <section key={mod.id}>
-            <h3 className="text-[13px] text-muted">{mod.name}</h3>
+            <h3 className="text-ui-body text-muted">{mod.name}</h3>
             <ul className="mt-1">
               {(mod.points || []).map((pt) => (
                 <li key={pt.id} className="flex items-center gap-3 border-b border-border/60 py-2.5">
                   <PointMark status={pt.status} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px]">{pt.name}</p>
-                    <p className="mt-0.5 truncate text-[12px] text-muted">{kindName(pt.kind)} · {pt.status === "mastered" ? L.mastered : pt.status === "learning" ? L.learning : L.fresh} · {Math.round((pt.mastery || 0) * 100)}%</p>
+                    <p className="truncate text-ui-body-l">{pt.name}</p>
+                    <p className="mt-0.5 truncate text-ui-footnote text-muted">{kindName(pt.kind)} · {pt.status === "mastered" ? L.mastered : pt.status === "learning" ? L.learning : L.fresh} · {Math.round((pt.mastery || 0) * 100)}%</p>
                   </div>
                   {pt.status !== "mastered" ? (
-                    <button type="button" className="shrink-0 whitespace-nowrap text-[12px] text-muted hover:text-foreground" onClick={() => { void props.onClaim(pt.id); }}>{L.claim}</button>
+                    <button type="button" className="shrink-0 whitespace-nowrap text-ui-footnote text-muted hover:text-foreground" onClick={() => { void props.onClaim(pt.id); }}>{L.claim}</button>
                   ) : null}
                 </li>
               ))}
@@ -799,8 +799,8 @@ function StudyPane(props: {
             <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (!point.trim()) return; setDraft((d) => [...d, { name: point.trim(), kind }]); setPoint(""); }}>
               <div className="min-w-0 flex-1"><Field label={L.pointPh}><Input value={point} onChange={(e) => setPoint(e.target.value)} /></Field></div>
               <label className="mb-px flex shrink-0 flex-col gap-1">
-                <span className="text-[12px] text-muted">{L.kindLabel}</span>
-                <select className="h-8 whitespace-nowrap rounded-lg border border-border/60 bg-transparent px-2 text-[12px]" value={kind} onChange={(e) => setKind(e.target.value)}>
+                <span className="text-ui-footnote text-muted">{L.kindLabel}</span>
+                <select className="h-8 whitespace-nowrap rounded-lg border border-border/60 bg-transparent px-2 text-ui-footnote" value={kind} onChange={(e) => setKind(e.target.value)}>
                   {kinds.map((k) => <option key={k} value={k}>{kindName(k)}</option>)}
                 </select>
               </label>
@@ -809,7 +809,7 @@ function StudyPane(props: {
             {draft.length > 0 ? (
               <div className="flex flex-col gap-2">
                 <ul>
-                  {draft.map((item, i) => <li key={`${item.name}-${i}`} className="truncate text-[13px] text-muted">{item.name}</li>)}
+                  {draft.map((item, i) => <li key={`${item.name}-${i}`} className="truncate text-ui-body text-muted">{item.name}</li>)}
                 </ul>
                 <div>
                   <Button size="sm" className="whitespace-nowrap" onClick={() => {
@@ -997,7 +997,7 @@ function Materials(props: {
             <Button size="sm" type="submit" className="shrink-0 whitespace-nowrap">{L.applyEmbed}</Button>
           </form>
         ) : null}
-        {props.hitMsg ? <p className="text-[13px] text-muted">{props.hitMsg}</p> : null}
+        {props.hitMsg ? <p className="text-ui-body text-muted">{props.hitMsg}</p> : null}
         {searching && props.hits && props.hits.length === 0 && !props.hitMsg ? <EmptyState title={L.noHits} body={L.noHitsHint} /> : null}
         {!searching && rows.length === 0 && props.libId !== "notes" ? <EmptyState title={L.filesEmpty} body={L.filesEmptyHint} /> : null}
         <ul className="flex flex-col">
@@ -1013,11 +1013,11 @@ function Materials(props: {
                     void props.onOpenDoc(doc);
                   }}
                 >
-                  <span className="block truncate text-[14px]">{hit.title}</span>
-                  {searching && hit.excerpt ? <span className="mt-0.5 block truncate text-[12px] text-muted">{hit.excerpt}</span> : null}
+                  <span className="block truncate text-ui-body-l">{hit.title}</span>
+                  {searching && hit.excerpt ? <span className="mt-0.5 block truncate text-ui-footnote text-muted">{hit.excerpt}</span> : null}
                 </button>
                 {removable ? (
-                  <button type="button" className="shrink-0 whitespace-nowrap text-[12px] text-muted hover:text-foreground" onClick={() => { void props.onRemove(hit.document_id); }}>{L.remove}</button>
+                  <button type="button" className="shrink-0 whitespace-nowrap text-ui-footnote text-muted hover:text-foreground" onClick={() => { void props.onRemove(hit.document_id); }}>{L.remove}</button>
                 ) : null}
               </li>
             );
@@ -1095,8 +1095,8 @@ function BookPane(props: {
                 <li key={item.id}>
                   <button type="button" onClick={() => props.onSelect(item.id)} className="flex w-full items-center gap-3 border-b border-border/60 py-3 text-left hover:bg-lift/40">
                     <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-lift text-muted"><BookOpen className="size-4" aria-hidden /></span>
-                    <span className="min-w-0 flex-1 truncate text-[14px]">{item.title}</span>
-                    <span className="shrink-0 whitespace-nowrap text-[12px] text-muted">{bookStatus(item.status)}</span>
+                    <span className="min-w-0 flex-1 truncate text-ui-body-l">{item.title}</span>
+                    <span className="shrink-0 whitespace-nowrap text-ui-footnote text-muted">{bookStatus(item.status)}</span>
                   </button>
                 </li>
               ))}
@@ -1123,25 +1123,25 @@ function BookPane(props: {
     >
       <article className="mx-auto flex max-w-[680px] flex-col gap-5 px-8 py-6" data-testid="learn-book">
         <div>
-          <button type="button" className="whitespace-nowrap text-[12px] text-muted hover:text-foreground" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>{editing ? L.hideSpine : L.editSpine}</button>
+          <button type="button" className="whitespace-nowrap text-ui-footnote text-muted hover:text-foreground" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>{editing ? L.hideSpine : L.editSpine}</button>
         </div>
         {editing ? (
           <div className="flex flex-col gap-3">
             <Field label={L.proposalPh}><Input value={proposal} onChange={(e) => setProposal(e.target.value)} /></Field>
             <Field label={L.spinePh}>
-              <textarea className="min-h-24 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-[13px]" value={spine} onChange={(e) => setSpine(e.target.value)} />
+              <textarea className="min-h-24 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-ui-body" value={spine} onChange={(e) => setSpine(e.target.value)} />
             </Field>
             <div><Button size="sm" className="whitespace-nowrap" onClick={() => { void props.onCompile(book.id, proposal, spine); }}>{L.compile}</Button></div>
           </div>
         ) : null}
         {blocks.map((block, i) => (
           <div key={`${block.kind}-${i}`}>
-            {blockLabel(block.kind) ? <p className="mb-1 text-[11px] text-muted">{blockLabel(block.kind)}</p> : null}
+            {blockLabel(block.kind) ? <p className="mb-1 text-ui-caption text-muted">{blockLabel(block.kind)}</p> : null}
             <div className={cn(
-              "text-[14px] leading-[1.7]",
-              block.kind === "section" && "text-[16px] font-semibold tracking-[-0.02em]",
+              "text-ui-body-l leading-[1.7]",
+              block.kind === "section" && "text-ui-title-s font-semibold tracking-[-0.02em]",
               block.kind === "callout" && "border-l border-border pl-3 text-muted",
-              block.kind === "code" && "whitespace-pre-wrap rounded-lg bg-sidebar px-3 py-2 font-mono text-[12px]",
+              block.kind === "code" && "whitespace-pre-wrap rounded-lg bg-sidebar px-3 py-2 font-mono text-ui-footnote",
               block.kind !== "code" && "whitespace-pre-wrap",
             )}>{block.body}</div>
           </div>
@@ -1185,15 +1185,15 @@ function ReaderPane(props: {
           <Input className="min-w-0 flex-1" value={query} placeholder={L.searchPh} onChange={(e) => setQuery(e.target.value)} aria-label={L.searchPh} />
           <Button size="sm" type="submit" variant="ghost" className="shrink-0 whitespace-nowrap">{L.search}</Button>
         </form>
-        <article className="whitespace-pre-wrap text-[14px] leading-[1.7]">
+        <article className="whitespace-pre-wrap text-ui-body-l leading-[1.7]">
           <Highlighted text={props.reader.text || L.noHits} quote={props.reader.highlight} />
         </article>
         {pageMarks.length > 0 ? (
           <section>
-            <h3 className="text-[13px] text-muted">{L.margin}</h3>
+            <h3 className="text-ui-body text-muted">{L.margin}</h3>
             <ul className="mt-2">
               {pageMarks.map((item) => (
-                <li key={item.id} className="border-b border-border/60 py-2 text-[13px]">
+                <li key={item.id} className="border-b border-border/60 py-2 text-ui-body">
                   {item.quote ? <p className="text-muted">{item.quote}</p> : null}
                   {item.note ? <p className={item.quote ? "mt-1" : ""}>{item.note}</p> : null}
                 </li>
@@ -1277,7 +1277,7 @@ function PracticePane(props: {
       <Field label={L.answerPh}><Input value={answer} onChange={(e) => setAnswer(e.target.value)} /></Field>
       {qtype === "choice" ? (
         <Field label={L.optionsPh}>
-          <textarea className="min-h-20 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-[13px]" value={options} onChange={(e) => setOptions(e.target.value)} />
+          <textarea className="min-h-20 w-full rounded-lg border border-border/60 bg-transparent px-3 py-2 text-ui-body" value={options} onChange={(e) => setOptions(e.target.value)} />
         </Field>
       ) : null}
       <div><Button size="sm" type="submit" className="whitespace-nowrap">{L.addCard}</Button></div>
@@ -1294,12 +1294,12 @@ function PracticePane(props: {
           <section className="rounded-xl border border-border/60 p-5">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <p className="text-[21px] font-semibold tabular-nums tracking-[-0.03em]">{dueN}</p>
-                <p className="mt-1 text-[13px] text-muted">{L.due}</p>
+                <p className="text-ui-display font-semibold tabular-nums tracking-[-0.03em]">{dueN}</p>
+                <p className="mt-1 text-ui-body text-muted">{L.due}</p>
               </div>
               <Button className="shrink-0 whitespace-nowrap" disabled={ordered.length === 0} onClick={() => setSession(true)}>{L.startReview}</Button>
             </div>
-            <p className="mt-5 border-t border-border/60 pt-4 text-[13px] tabular-nums text-muted">{fill(L.reviewedToday, { n: reviewed })}</p>
+            <p className="mt-5 border-t border-border/60 pt-4 text-ui-body tabular-nums text-muted">{fill(L.reviewedToday, { n: reviewed })}</p>
           </section>
           {dueN === 0 ? <EmptyState title={done ? L.doneToday : L.emptyBank} body={done ? L.doneTodayHint : L.emptyBankHint} /> : null}
           {importForm}
@@ -1318,8 +1318,8 @@ function PracticePane(props: {
         <ProgressHairline value={progress} />
         {!card ? <EmptyState title={done ? L.doneToday : L.emptyBank} body={done ? L.doneTodayHint : L.emptyBankHint} /> : (
           <article data-testid="learn-practice-card" className="flex flex-col gap-4">
-            <p className="text-[18px] font-semibold leading-snug tracking-[-0.03em]">{card.stem}</p>
-            {card.streak ? <p className="tabular-nums text-[12px] text-muted">{fill(L.streak, { n: card.streak })}</p> : null}
+            <p className="text-ui-title font-semibold leading-snug tracking-[-0.03em]">{card.stem}</p>
+            {card.streak ? <p className="tabular-nums text-ui-footnote text-muted">{fill(L.streak, { n: card.streak })}</p> : null}
             {objective ? (
               <form className="flex flex-col gap-3" onSubmit={(e) => {
                 e.preventDefault();
@@ -1330,7 +1330,7 @@ function PracticePane(props: {
                 {card.options && card.options.length > 0 ? (
                   <div className="flex flex-col gap-1">
                     {card.options.map((option) => (
-                      <button key={option} type="button" aria-pressed={guess === option} onClick={() => setGuess(option)} className={cn("rounded-lg border border-border/60 px-3 py-2 text-left text-[13px]", guess === option ? "bg-accent/10 text-accent" : "hover:bg-lift")}>
+                      <button key={option} type="button" aria-pressed={guess === option} onClick={() => setGuess(option)} className={cn("rounded-lg border border-border/60 px-3 py-2 text-left text-ui-body", guess === option ? "bg-accent/10 text-accent" : "hover:bg-lift")}>
                         {option}
                       </button>
                     ))}
@@ -1342,10 +1342,10 @@ function PracticePane(props: {
               </form>
             ) : (
               <div className="flex flex-col gap-2">
-                <p className="text-[13px] text-muted">{L.rate}</p>
+                <p className="text-ui-body text-muted">{L.rate}</p>
                 <div className="grid grid-cols-4 gap-2">
                   {(["again", "hard", "good", "easy"] as const).map((rating) => (
-                    <Button key={rating} variant="outline" className="w-full whitespace-nowrap px-1 text-[12px]" onClick={() => {
+                    <Button key={rating} variant="outline" className="w-full whitespace-nowrap px-1 text-ui-footnote" onClick={() => {
                       void api.learnCall("learn.practice.rate", { id: card.id, rating }).then((res) => {
                         setReveal({ answer: res?.reveal?.answer, explanation: res?.reveal?.explanation });
                       }).catch(props.onFail);
@@ -1355,7 +1355,7 @@ function PracticePane(props: {
               </div>
             )}
             {reveal ? (
-              <div className="border-t border-border/60 pt-3 text-[13px]">
+              <div className="border-t border-border/60 pt-3 text-ui-body">
                 {reveal.correct !== undefined ? <p>{reveal.correct ? L.correct : L.incorrect}</p> : null}
                 {reveal.answer ? <p className="mt-1 text-muted">{reveal.answer}</p> : null}
                 {reveal.explanation ? <p className="mt-1 text-muted">{reveal.explanation}</p> : null}

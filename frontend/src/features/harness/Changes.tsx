@@ -9,20 +9,20 @@ import { cn } from "../../lib/utils";
 export function MaterialChangeList({ changes, empty }: { changes: MaterialChange[]; empty?: string }) {
   const copy = useCopy();
   if (!changes.length) {
-    return empty ? <p className="text-[13px] text-muted">{empty}</p> : null;
+    return empty ? <p className="text-ui-body text-muted">{empty}</p> : null;
   }
   return (
     <ul className="space-y-1" data-testid="harness-changes">
       {changes.map((c, i) => (
-        <li key={`${c.surface}-${c.op}-${c.id}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-5">
+        <li key={`${c.surface}-${c.op}-${c.id}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-ui-body leading-5">
           <span className="font-medium text-foreground/85">{surfaceLabel(copy, c.surface)}</span>
           <span className={cn(
-            "text-[11px] font-medium",
+            "text-ui-caption font-medium",
             c.op === "added" ? "text-success" : c.op === "removed" ? "text-danger" : "text-muted",
           )}>
             {opLabel(copy, c.op)}
           </span>
-          {c.l3 ? <span className="text-[11px] text-warning">{copy.rsi.l3}</span> : null}
+          {c.l3 ? <span className="text-ui-caption text-warning">{copy.rsi.l3}</span> : null}
           <span className="min-w-0 break-words text-foreground/90">{c.detail || c.id || `${c.from} → ${c.to}`}</span>
         </li>
       ))}

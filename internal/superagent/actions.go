@@ -186,7 +186,8 @@ func (e *Engine) Handback(ticketID, triggerID, reason string) (bool, error) {
 }
 
 // Say 把人的下一句交给工单，并叫醒工人。做完或被人打断的工单都沿用原目录再开一轮。
-// 空正文返回 empty。重新开工时不再单独投递，派工正文里已经带上这一句。
+// 空正文返回 empty。工作站暂停时已经结束的工单不重开，返回 paused；授权已经失效时返回 mandate。
+// 重新开工时不再单独投递，派工正文里已经带上这一句。
 func (e *Engine) Say(ticketID, text string) error {
 	text = strings.TrimSpace(text)
 	if e == nil || text == "" {
@@ -200,9 +201,13 @@ func (e *Engine) Say(ticketID, text string) error {
 	}
 	launch := false
 	if t.Ended != nil {
+		if e.policy.Paused {
+			e.mu.Unlock()
+			return errCode("paused")
+		}
 		if !e.resume(t) {
 			e.mu.Unlock()
-			return errCode("ticketEnded")
+			return errCode("mandate")
 		}
 		launch = true
 	}
@@ -218,18 +223,24 @@ func (e *Engine) Say(ticketID, text string) error {
 	return nil
 }
 
-// Note 给还开着的 ticketID 记一条事实。text 原样成为输入。工单已结束时返回 ticketEnded。
+// Note 给还开着的 ticketID 记一条事实。text 原样成为输入，并像别的输入一样送给工人，不等下一句人话。
+// 工单已结束时返回 ticketEnded。
 func (e *Engine) Note(ticketID, text string) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	t := e.tickets[ticketID]
 	if t == nil {
+		e.mu.Unlock()
 		return errCode("unknownTicket")
 	}
 	if t.Ended != nil {
+		e.mu.Unlock()
 		return errCode("ticketEnded")
 	}
 	e.addNote(t, text, false)
+	e.mu.Unlock()
+	if e.OnInput != nil {
+		e.OnInput(ticketID, text)
+	}
 	return nil
 }
 

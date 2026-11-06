@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yoyo UI/UX 方案 · 界面草图</title>
+<style>
+@font-face {
+  font-family: "Plus Jakarta Sans Variable";
+  src: url("../../frontend/node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 800;
+}
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  src: url("../../frontend/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 800;
+}
+
+:root, [data-theme="dark"] {
+  --bg: #1c1c1a;
+  --sidebar: #222220;
+  --card: #262624;
+  --popover: #2c2c29;
+  --input: #242422;
+  --lift: #32322e;
+  --line: color-mix(in srgb, #f4f4f0 9%, transparent);
+  --line-strong: color-mix(in srgb, #f4f4f0 14%, transparent);
+  --fg: #f4f4f0;
+  --fg-2: color-mix(in srgb, #f4f4f0 84%, transparent);
+  --muted: #8c8b85;
+  --muted-2: color-mix(in srgb, #8c8b85 72%, transparent);
+  --accent: #5c99d6;
+  --success: #74b48a;
+  --warning: #d4b06a;
+  --danger: #e06b66;
+  --on-warning: #1c1c1a;
+  --shadow-1: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  --shadow-2: 0 18px 44px color-mix(in srgb, black 42%, transparent), 0 0 0 1px color-mix(in srgb, white 7%, transparent);
+  --shadow-composer: 0 10px 30px color-mix(in srgb, black 26%, transparent);
+}
+[data-theme="light"] {
+  --bg: #fbfbfa;
+  --sidebar: #f3f3f0;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --input: #ffffff;
+  --lift: #ebebe7;
+  --line: color-mix(in srgb, #1c1c1a 8%, transparent);
+  --line-strong: color-mix(in srgb, #1c1c1a 13%, transparent);
+  --fg: #1c1c1a;
+  --fg-2: color-mix(in srgb, #1c1c1a 84%, transparent);
+  --muted: #6f6e68;
+  --muted-2: color-mix(in srgb, #6f6e68 78%, transparent);
+  --accent: #0169cc;
+  --success: #1f7a45;
+  --warning: #a07a2a;
+  --danger: #c4453e;
+  --on-warning: #ffffff;
+  --shadow-1: 0 1px 0 color-mix(in srgb, #1c1c1a 4%, transparent);
+  --shadow-2: 0 18px 44px color-mix(in srgb, #1c1c1a 12%, transparent), 0 0 0 1px color-mix(in srgb, #1c1c1a 6%, transparent);
+  --shadow-composer: 0 10px 30px color-mix(in srgb, #1c1c1a 7%, transparent);
+}
+
+:root {
+  --font-sans: "Plus Jakarta Sans Variable", "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+svg { display: block; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+
+.app { display: grid; grid-template-columns: 64px minmax(0, 1fr) 400px; height: 100vh; }
+.app.settings { grid-template-columns: 64px 232px minmax(0, 1fr); }
+
+/* 导航轨 */
+.rail {
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0 10px;
+}
+.me { position: relative; width: 44px; height: 44px; display: grid; place-items: center; margin-bottom: 10px; border-radius: 12px; }
+.me .ring { position: absolute; inset: 4px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent); }
+.me .dot { position: absolute; right: 5px; bottom: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--warning); border: 2px solid var(--sidebar); }
+.sphere {
+  position: relative;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #fffdf6 0%, #f1e9d8 52%, #d9ccb2 100%);
+  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, .14);
+}
+.sphere::before, .sphere::after {
+  content: ""; position: absolute; top: 37%;
+  width: 3px; height: 8px; border-radius: 2px; background: #2b2a27;
+}
+.sphere::before { left: 34%; }
+.sphere::after { right: 34%; }
+.sphere.sm { width: 22px; height: 22px; }
+.sphere.sm::before, .sphere.sm::after { width: 2.5px; height: 6px; }
+.sphere.xs { width: 18px; height: 18px; }
+.sphere.xs::before, .sphere.xs::after { width: 2px; height: 5px; top: 36%; }
+
+.nav { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.nav-item { position: relative; width: 56px; padding: 6px 0 5px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted); }
+.nav-item .ic { width: 36px; height: 30px; border-radius: 9px; display: grid; place-items: center; }
+.nav-item .lb { font-size: 11px; line-height: 14px; }
+.nav-item.on { color: var(--fg); }
+.nav-item.on .ic { background: var(--lift); }
+.nav-item.on::before { content: ""; position: absolute; left: -4px; top: 12px; height: 18px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.nav-item .badge {
+  position: absolute; top: 2px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--warning); color: var(--on-warning);
+  font-size: 10px; line-height: 16px; font-weight: 600; text-align: center;
+}
+.rail .spacer { flex: 1; }
+
+/* 主舞台 */
+.stage { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+.topbar { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 24px; flex: none; }
+.topbar .title { font-size: 13px; font-weight: 500; }
+.topbar .sub { color: var(--muted); font-size: 12px; }
+.topbar .grow { flex: 1; }
+.kbd { height: 22px; padding: 0 7px; border-radius: 6px; background: var(--lift); border: 1px solid var(--line); font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.icon-btn { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+.icon-btn.on { background: var(--lift); color: var(--fg); }
+.win { display: flex; margin-left: 6px; }
+.win span { width: 38px; height: 32px; display: grid; place-items: center; color: var(--muted); }
+
+.thread { flex: 1; min-height: 0; overflow: hidden; }
+.col { width: min(100%, 736px); margin: 0 auto; padding: 4px 40px 0; }
+.daysep { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; margin: 6px 0 16px; }
+.daysep::before, .daysep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.event {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px 9px 10px; border-radius: 12px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-1);
+}
+.event .ic { width: 28px; height: 28px; border-radius: 8px; background: var(--lift); display: grid; place-items: center; color: var(--fg-2); flex: none; }
+.event .tx { min-width: 0; flex: 1; }
+.event .t { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event .d { font-size: 12px; line-height: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event .acts { display: flex; gap: 6px; flex: none; }
+.event.slim { padding: 7px 10px; }
+
+.user { display: flex; justify-content: flex-end; margin: 22px 0 0; }
+.user .b { max-width: 78%; background: var(--lift); border-radius: 18px; padding: 8px 14px; font-size: 14px; line-height: 22px; }
+.asst { display: flex; gap: 12px; margin-top: 18px; }
+.asst .stamp { flex: none; padding-top: 1px; }
+.asst .body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.proc { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.proc .gly { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-2); }
+.answer { font-size: 14px; line-height: 23px; color: var(--fg); }
+.answer p + p { margin-top: 6px; }
+.answer code { font-family: var(--font-mono); font-size: 12px; background: var(--lift); padding: 1px 5px; border-radius: 4px; font-variant-ligatures: none; }
+.receipt { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.receipt .u { color: var(--fg-2); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+
+.composer-wrap { flex: none; width: min(100%, 736px); margin: 0 auto; padding: 10px 40px 12px; }
+.composer {
+  background: var(--input); border: 1px solid var(--line-strong); border-radius: 16px;
+  padding: 12px 10px 8px 16px; box-shadow: var(--shadow-composer);
+}
+.composer.focus { border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent), var(--shadow-composer); }
+.composer .ph { color: var(--muted); font-size: 14px; line-height: 24px; }
+.composer .bar { display: flex; align-items: center; gap: 2px; margin-top: 10px; margin-left: -6px; }
+.chip { height: 28px; padding: 0 8px; border-radius: 8px; font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.chip.target { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--fg); }
+.send { width: 30px; height: 30px; border-radius: 50%; background: var(--fg); color: var(--bg); display: grid; place-items: center; margin-left: auto; }
+.send.dim { background: var(--lift); color: var(--muted); }
+.stats { display: flex; justify-content: center; gap: 12px; font-size: 11px; color: var(--muted-2); margin-top: 7px; }
+
+/* 右侧个人面板 */
+.panel { background: var(--sidebar); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; position: relative; }
+.panel-head { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 16px; flex: none; }
+.panel-head .who { min-width: 0; flex: 1; }
+.panel-head .name { font-size: 13px; font-weight: 600; line-height: 18px; }
+.panel-head .status { font-size: 12px; line-height: 16px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.live { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); flex: none; }
+.tabs { display: flex; gap: 22px; padding: 0 16px; border-bottom: 1px solid var(--line); flex: none; }
+.tab { height: 36px; display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); position: relative; }
+.tab.on { color: var(--fg); font-weight: 500; }
+.tab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1.5px; background: var(--fg); border-radius: 1px; }
+.tab .n { font-size: 11px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.tab .n.need { color: var(--warning); }
+.panel-body { flex: 1; min-height: 0; overflow: hidden; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 16px; }
+
+.datehead { display: flex; align-items: flex-start; gap: 8px; }
+.datehead .tx { flex: 1; }
+.date { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.date-sub { font-size: 12px; line-height: 18px; color: var(--muted); }
+
+.eyebrow { font-size: 12px; line-height: 18px; font-weight: 500; color: var(--fg-2); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.eyebrow .n { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.eyebrow .n.need { color: var(--warning); }
+.eyebrow .end { margin-left: auto; color: var(--muted); font-weight: 400; display: inline-flex; align-items: center; gap: 2px; }
+
+.list { border-radius: 12px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-1); overflow: hidden; }
+.row { display: flex; gap: 10px; padding: 10px 12px; align-items: flex-start; }
+.row + .row { border-top: 1px solid var(--line); }
+.row .lead { flex: none; width: 16px; height: 20px; display: grid; place-items: center; color: var(--muted); }
+.st { width: 8px; height: 8px; border-radius: 50%; }
+.st.need { background: var(--warning); }
+.st.live { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.st.done { background: var(--success); }
+.st.idle { background: transparent; border: 1.5px solid var(--muted-2); }
+.st.fail { background: var(--danger); }
+.row .main { min-width: 0; flex: 1; }
+.row .t { font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .d { font-size: 12px; line-height: 18px; color: var(--muted); }
+.row .d.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.row .m { font-size: 11px; line-height: 16px; color: var(--muted-2); margin-top: 2px; display: flex; gap: 6px; align-items: center; }
+.row .side { flex: none; display: flex; gap: 6px; align-items: center; }
+.row.hover { background: color-mix(in srgb, var(--lift) 55%, transparent); }
+
+.btn { height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn.primary { background: var(--fg); color: var(--bg); }
+.btn.secondary { background: var(--lift); color: var(--fg); }
+.btn.ghost { color: var(--muted); padding: 0 6px; }
+.btn.sm { height: 24px; padding: 0 8px; border-radius: 6px; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px; box-shadow: var(--shadow-1); position: relative; }
+.card .kicker { font-size: 12px; line-height: 18px; color: var(--accent); font-weight: 500; }
+.card .title { font-size: 15px; line-height: 22px; font-weight: 600; margin-top: 2px; letter-spacing: -0.01em; }
+.card .lede { font-size: 12px; line-height: 18px; color: var(--muted); margin-top: 2px; }
+.card .lines { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+.line { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; }
+.line .k { font-weight: 500; min-width: 64px; }
+.line .v { color: var(--muted); font-size: 12px; }
+.line .time { font-variant-numeric: tabular-nums; color: var(--fg-2); min-width: 40px; font-size: 12px; }
+.card .foot { display: flex; align-items: center; gap: 4px; margin-top: 12px; }
+.card .foot .grow { flex: 1; }
+.tag { height: 20px; padding: 0 6px; border-radius: 5px; background: var(--lift); color: var(--muted); font-size: 11px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tag.warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+
+.endline { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+
+.pop {
+  position: absolute; width: 300px; padding: 12px 14px; border-radius: 12px;
+  background: var(--popover); box-shadow: var(--shadow-2); z-index: 5; font-size: 12px; line-height: 18px;
+}
+.pop .h { font-size: 12px; font-weight: 600; color: var(--fg); margin-bottom: 6px; }
+.pop .r { display: flex; gap: 8px; color: var(--fg-2); }
+.pop .r + .r { margin-top: 6px; }
+.pop .r .k { color: var(--muted); min-width: 36px; }
+.pop .sep { height: 1px; background: var(--line); margin: 10px -14px; }
+.pop .menu { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
+.pop .menu span { padding: 5px 8px; border-radius: 6px; color: var(--fg-2); }
+.pop .menu span:first-child { background: var(--lift); color: var(--fg); }
+
+/* 任务会话（面板内） */
+.taskhead { display: flex; align-items: center; gap: 8px; padding: 0 12px 0 8px; height: 52px; flex: none; border-bottom: 1px solid var(--line); }
+.taskhead .tx { min-width: 0; flex: 1; }
+.taskhead .t { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 20px; }
+.taskhead .d { font-size: 11px; color: var(--muted); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { height: 22px; padding: 0 8px; border-radius: 11px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--fg); white-space: nowrap; }
+.steps { display: flex; flex-direction: column; gap: 0; margin-left: 4px; border-left: 1px solid var(--line); padding-left: 14px; }
+.step { position: relative; display: flex; gap: 8px; font-size: 12px; line-height: 18px; color: var(--muted); padding: 3px 0; }
+.step::before { content: ""; position: absolute; left: -18px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--sidebar); border: 1.5px solid var(--muted-2); }
+.step.ok::before { background: var(--muted-2); border-color: var(--muted-2); }
+.step.now { color: var(--fg); }
+.step.now::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.step code { font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); font-variant-ligatures: none; }
+.step .add { color: var(--success); font-family: var(--font-mono); font-size: 11px; }
+.step .del { color: var(--danger); font-family: var(--font-mono); font-size: 11px; }
+.shimmer { background: linear-gradient(90deg, var(--fg) 0%, var(--muted) 50%, var(--fg) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.handoff { font-size: 12px; line-height: 18px; color: var(--muted); padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--lift) 60%, transparent); }
+.handoff b { color: var(--fg-2); font-weight: 500; }
+.tbody { flex: 1; min-height: 0; overflow: hidden; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.tanswer { font-size: 13px; line-height: 21px; }
+.tcomposer { flex: none; margin: 0 12px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--input); padding: 8px 8px 8px 12px; }
+.tcomposer .lab { font-size: 11px; color: var(--muted); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.tcomposer .in { display: flex; align-items: center; gap: 6px; }
+.tcomposer .ph { flex: 1; color: var(--muted); font-size: 13px; }
+.tcomposer .send { width: 26px; height: 26px; }
+.qcard { border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); background: color-mix(in srgb, var(--warning) 8%, var(--card)); border-radius: 12px; padding: 10px 12px; }
+.qcard .q { font-size: 13px; font-weight: 500; line-height: 20px; }
+.qcard .opts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+/* 记忆 */
+.about { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow-1); }
+.about .h { display: flex; align-items: center; gap: 8px; }
+.about .h .t { font-size: 15px; font-weight: 600; flex: 1; }
+.about p { font-size: 13px; line-height: 21px; color: var(--fg-2); margin-top: 6px; }
+.about .m { font-size: 11px; color: var(--muted-2); margin-top: 6px; }
+.src { height: 18px; padding: 0 6px; border-radius: 5px; font-size: 11px; display: inline-flex; align-items: center; background: var(--lift); color: var(--muted); white-space: nowrap; }
+.src.you { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--fg-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips span { height: 24px; padding: 0 8px; border-radius: 6px; background: var(--card); border: 1px solid var(--line); font-size: 12px; display: inline-flex; align-items: center; color: var(--fg-2); }
+.rowacts { display: flex; gap: 2px; }
+.rowacts span { height: 22px; padding: 0 6px; border-radius: 5px; font-size: 11px; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px; }
+.rowacts span:hover, .rowacts span.on { background: var(--lift); }
+
+/* 设置 */
+.subnav { background: var(--sidebar); border-right: 1px solid var(--line); padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; }
+.subnav .search { height: 32px; border-radius: 8px; background: var(--lift); display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.subnav .it { height: 32px; border-radius: 8px; display: flex; align-items: center; gap: 10px; padding: 0 10px; color: var(--fg-2); font-size: 13px; }
+.subnav .it svg { color: var(--muted); }
+.subnav .it.on { background: var(--lift); color: var(--fg); font-weight: 500; }
+.subnav .it.on svg { color: var(--fg); }
+.subnav .it .n { margin-left: auto; font-size: 11px; color: var(--muted-2); }
+.subnav .group { font-size: 11px; color: var(--muted-2); padding: 12px 10px 4px; }
+.settings-main { overflow: hidden; display: flex; flex-direction: column; }
+.settings-col { width: min(100%, 720px); margin: 0 auto; padding: 8px 40px 40px; display: flex; flex-direction: column; gap: 22px; }
+.ph1 { font-size: 17px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em; }
+.ph1-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.form { background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-1); }
+.form-t { font-size: 12px; font-weight: 500; color: var(--fg-2); margin-bottom: 6px; }
+.frow { display: flex; align-items: center; gap: 12px; padding: 11px 14px; min-height: 52px; }
+.frow + .frow { border-top: 1px solid var(--line); }
+.frow .l { flex: 1; min-width: 0; }
+.frow .l .t { font-size: 13px; line-height: 20px; }
+.frow .l .d { font-size: 12px; line-height: 18px; color: var(--muted); }
+.switch { width: 36px; height: 22px; border-radius: 11px; background: var(--lift); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.switch.on { background: var(--success); }
+.switch.on::after { left: 17px; }
+.field { height: 30px; min-width: 76px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--input); display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; background: color-mix(in srgb, var(--lift) 85%, transparent); padding: 2px; border-radius: 9px; }
+.seg span { height: 26px; padding: 0 12px; border-radius: 7px; display: inline-flex; align-items: center; font-size: 12px; color: var(--muted); }
+.seg span.on { background: var(--card); color: var(--fg); box-shadow: var(--shadow-1), 0 1px 2px rgba(0,0,0,.18); font-weight: 500; }
+.link { color: var(--fg-2); font-size: 12px; display: inline-flex; align-items: center; gap: 2px; }
+
+/* 浏览用的切换条，截图时隐藏 */
+.switcher { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--popover); box-shadow: var(--shadow-2); z-index: 20; }
+.switcher a { padding: 5px 10px; border-radius: 8px; font-size: 12px; color: var(--muted); text-decoration: none; }
+.switcher a.on { background: var(--lift); color: var(--fg); }
+.shot .switcher { display: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const P = {
+  house: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  clapper: '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+  cap: '<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>',
+  blocks: '<rect width="7" height="7" x="14" y="3" rx="1"/><path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3"/>',
+  heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  flask: '<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>',
+  gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  panel: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  up: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  left: '<path d="m15 18-6-6 6-6"/>',
+  more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  cal: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
+  github: '<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>',
+  msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  minus: '<path d="M5 12h14"/>',
+  square: '<rect width="16" height="16" x="4" y="4" rx="2"/>',
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  undo: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  diff: '<path d="M12 3v14"/><path d="M5 10h14"/><path d="M5 21h14"/>',
+  expand: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
+  sliders: '<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
+  palette: '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+  bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
+  film: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  feishu: '<path d="M4 12c3-1 6 0 8 3 2-4 5-6 8-6"/><path d="M4 12l6 7c3 1 7-1 10-10"/>',
+};
+const i = (n, s = 16, sw = 1.75) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
+
+function rail(active) {
+  const items = [
+    ["home", "house", "主页", 3],
+    ["video", "clapper", "视频"],
+    ["learn", "cap", "学习"],
+    ["skills", "blocks", "技能"],
+    ["idol", "heart", "偶像"],
+    ["lab", "flask", "实验室"],
+  ];
+  const nav = items.map(([id, ic, lb, n]) => `
+    <div class="nav-item ${active === id ? "on" : ""}">
+      <div class="ic">${i(ic, 18)}</div><div class="lb">${lb}</div>
+      ${n ? `<span class="badge num">${n}</span>` : ""}
+    </div>`).join("");
+  return `<aside class="rail">
+    <div class="me" title="正在做 1 件 · 3 件等你"><div class="sphere"></div><span class="ring"></span><span class="dot"></span></div>
+    <nav class="nav">${nav}</nav>
+    <div class="spacer"></div>
+    <div class="nav-item ${active === "settings" ? "on" : ""}"><div class="ic">${i("gear", 18)}</div><div class="lb">设置</div></div>
+  </aside>`;
+}
+
+function topbar(title, sub, panelOn = true) {
+  return `<header class="topbar">
+    <span class="title">${title}</span>${sub ? `<span class="sub">· ${sub}</span>` : ""}
+    <span class="grow"></span>
+    <span class="kbd">${i("search", 12)}<span>Ctrl K</span></span>
+    <span class="icon-btn ${panelOn ? "on" : ""}" title="个人面板">${i("panel", 16)}</span>
+    <div class="win"><span>${i("minus", 14)}</span><span>${i("square", 12)}</span><span>${i("x", 14)}</span></div>
+  </header>`;
+}
+
+function conversation(opts = {}) {
+  return `<section class="stage">
+    ${topbar("主对话", "今天")}
+    <div class="thread"><div class="col">
+      <div class="daysep">今天 · 11月6日 周五</div>
+      <div class="event slim">
+        <span class="ic">${i("sun", 15)}</span>
+        <div class="tx"><div class="t">晨间简报 · 08:30</div><div class="d">2 件要你确认，3 条工程线里 1 条停在空文件</div></div>
+        <div class="acts"><span class="btn ghost">在面板查看 ${i("right", 13)}</span></div>
+      </div>
+
+      <div class="user"><div class="b">把 #162 的 CI 失败修一下，改完先别推。</div></div>
+      <div class="asst"><div class="stamp"><div class="sphere sm"></div></div><div class="body">
+        <div class="answer"><p>这件交给一个任务去做，改完先不推，结果回到这里。</p></div>
+        <div class="event">
+          <span class="ic">${i("github", 15)}</span>
+          <div class="tx"><div class="t">已交给任务 · 修复 #162 CI 失败</div><div class="d">正在跑 go test · 3 分钟 · 目录 ~/.yoyo/work/k1</div></div>
+          <div class="acts"><span class="btn secondary">查看</span></div>
+        </div>
+        <div class="receipt">${i("check", 13)}<span>已记住：改完代码先别推，等你看过。</span><span class="u">撤销</span></div>
+      </div></div>
+
+      <div class="user"><div class="b">周报第 3 节先不写 Harbor 的数据。</div></div>
+      <div class="asst"><div class="stamp"><div class="sphere sm"></div></div><div class="body">
+        <div class="proc"><span class="gly"></span>工作了 6 秒 · 读取 1 个文件 · 改了 1 处 ${i("right", 12)}</div>
+        <div class="answer"><p>已经转给「起草本周周报」，第 3 节改成只写进度和风险，不放 Harbor 的数据。</p><p>草稿在 <code>reports/week-45.md</code>，改完会在任务里等你看一眼。</p></div>
+      </div></div>
+    </div></div>
+    <div class="composer-wrap">
+      <div class="composer ${opts.focus ? "focus" : ""}">
+        <div class="ph">想做什么就说，/ 调用指令，@ 文件或对话</div>
+        <div class="bar">
+          <span class="chip">${i("plus", 15)}</span>
+          <span class="chip">询问后执行 ${i("down", 12)}</span>
+          <span class="chip">${i("folder", 13)} yoyo</span>
+          <span class="chip" style="margin-left:auto">DeepSeek V4 ${i("down", 12)}</span>
+          <span class="send dim" style="margin-left:4px">${i("up", 15, 2)}</span>
+        </div>
+      </div>
+      <div class="stats num"><span>3 轮 · 11 步</span><span>缓存 62%</span><span>上下文 18%</span></div>
+    </div>
+  </section>`;
+}
+
+function panelHead() {
+  return `<div class="panel-head">
+    <div class="sphere sm"></div>
+    <div class="who"><div class="name">yoyo</div><div class="status"><span class="live"></span>正在做 1 件 · 3 件等你</div></div>
+    <span class="icon-btn" title="主动程度、暂停、偏好">${i("more", 16)}</span>
+  </div>`;
+}
+
+function tabs(active) {
+  const t = [["now", "今天", 3, true], ["tasks", "任务", 1, false, true], ["memory", "记忆"]];
+  return `<div class="tabs">${t.map(([id, lb, n, need, waits]) => `<div class="tab ${active === id ? "on" : ""}">${lb}${n ? `<span class="n ${need ? "need" : ""}">${n}</span>` : ""}${waits ? `<span class="st need" style="width:6px;height:6px"></span>` : ""}</div>`).join("")}</div>`;
+}
+
+function today(withWhy) {
+  return `<aside class="panel">${panelHead()}${tabs("now")}
+    <div class="panel-body">
+      <div class="datehead"><div class="tx"><div class="date">11月6日 周五</div><div class="date-sub">晨间简报 · 08:30 写成 · 日历未连接，日程未核对</div></div><span class="icon-btn" title="简报偏好">${i("sliders", 15)}</span></div>
+
+      <div>
+        <div class="eyebrow">需要你<span class="n need">3</span></div>
+        <div class="list">
+          <div class="row"><span class="lead"><span class="st need"></span></span>
+            <div class="main"><div class="t">起草本周周报</div><div class="d">等你回答：第 3 节要不要写 Harbor 的数据？</div><div class="m">任务 · 12 分钟前</div></div>
+            <div class="side"><span class="btn primary">回答</span></div></div>
+          <div class="row"><span class="lead"><span class="st need"></span></span>
+            <div class="main"><div class="t">整理明早评审材料</div><div class="d">做完了，等你看一眼再发给王磊</div><div class="m">任务 · 飞书 · 20:31</div></div>
+            <div class="side"><span class="btn secondary">查看</span></div></div>
+          <div class="row"><span class="lead">${i("github", 14)}</span>
+            <div class="main"><div class="t">#163 Windows 构建失败</div><div class="d">alice 请你看一下为什么在 Windows 上挂了</div><div class="m">GitHub · 19:40</div></div>
+            <div class="side"><span class="btn secondary">接受</span><span class="btn ghost">忽略</span></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kicker">在做的事</div>
+        <div class="title">3 条工程线，1 条停在空文件</div>
+        <div class="lines">
+          <div class="line"><span class="st live"></span><span class="k">yoyo</span><span class="v">在动 · 今天 14 次提交</span></div>
+          <div class="line"><span class="st need"></span><span class="k">hypit</span><span class="v">停在空文件 notes.md · 3 天</span></div>
+          <div class="line"><span class="st idle"></span><span class="k">multica</span><span class="v">安静 · 上周</span></div>
+        </div>
+        <div class="foot"><span class="btn secondary">接着做 hypit</span><span class="grow"></span><span class="icon-btn" title="为什么给我看">${i("info", 15)}</span><span class="icon-btn" title="少提这一类">${i("more", 15)}</span></div>
+        ${withWhy ? `<div class="pop" style="right: 8px; top: 132px;">
+          <div class="h">为什么给你看这条</div>
+          <div class="r"><span class="k">依据</span><span>hypit 3 天没有提交，最近改动的 notes.md 是空文件</span></div>
+          <div class="r"><span class="k">来源</span><span>本机清点 · 今天 11:20</span></div>
+          <div class="r"><span class="k">记忆</span><span>「在做 hypit」· 你在 11-01 说过</span></div>
+          <div class="sep"></div>
+          <div class="menu"><span>这类先少提</span><span>今天别再提醒</span><span>事实不对</span></div>
+        </div>` : ""}
+      </div>
+
+      <div class="card">
+        <div class="kicker">接下来</div>
+        <div class="lines" style="margin-top:6px">
+          <div class="line"><span class="time">18:00</span><span>v0.8.3 发版截止</span><span class="tag">任务</span></div>
+          <div class="line"><span class="time">21:30</span><span>晚间收尾</span><span class="tag">${i("repeat", 11)} 定时</span></div>
+          <div class="line"><span class="time">明早</span><span>10:00 评审材料要发给王磊</span><span class="tag">飞书</span></div>
+        </div>
+      </div>
+
+      <div class="endline">就这些。还有 3 条可以等 ${i("right", 12)}</div>
+    </div>
+  </aside>`;
+}
+
+function tasks() {
+  return `<aside class="panel">${panelHead()}${tabs("tasks")}
+    <div class="panel-body" style="gap:14px">
+      <div style="display:flex; gap:8px; align-items:center">
+        <div style="flex:1; height:30px; border-radius:8px; background:var(--lift); display:flex; align-items:center; gap:8px; padding:0 10px; color:var(--muted); font-size:12px">${i("search", 13)}搜索任务和定时</div>
+        <span class="btn primary">${i("plus", 14)}新任务</span>
+      </div>
+      <div>
+        <div class="eyebrow">需要你<span class="n need">2</span></div>
+        <div class="list">
+          <div class="row"><span class="lead"><span class="st need"></span></span>
+            <div class="main"><div class="t">起草本周周报</div><div class="d">等你回答第 3 节要不要写 Harbor 的数据</div><div class="m">桌面 · 12 分钟前</div></div>
+            <div class="side muted">${i("right", 14)}</div></div>
+          <div class="row"><span class="lead"><span class="st need"></span></span>
+            <div class="main"><div class="t">整理明早评审材料</div><div class="d">做完了，等你看一眼再发给王磊</div><div class="m">飞书 · 王磊 · 20:31</div></div>
+            <div class="side muted">${i("right", 14)}</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow">进行中<span class="n">1</span></div>
+        <div class="list">
+          <div class="row hover"><span class="lead"><span class="st live"></span></span>
+            <div class="main"><div class="t">修复 #162 CI 失败</div><div class="d">正在跑 go test · 3 分钟</div><div class="m">GitHub · 主对话交来</div></div>
+            <div class="side muted">${i("right", 14)}</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow">定时<span class="n">2</span><span class="end">${i("plus", 12)}新建</span></div>
+        <div class="list">
+          <div class="row"><span class="lead">${i("repeat", 14)}</span>
+            <div class="main"><div class="t">晨间简报</div><div class="d">每天 08:30 · 下次明早 08:30</div></div>
+            <div class="side"><span class="btn ghost sm">试跑</span><span class="switch on"></span></div></div>
+          <div class="row"><span class="lead">${i("repeat", 14)}</span>
+            <div class="main"><div class="t">CI 失败先看日志</div><div class="d">GitHub CI 失败时 · 观察中，只记下本来会做的</div></div>
+            <div class="side"><span class="tag">观察</span><span class="switch"></span></div></div>
+        </div>
+      </div>
+      <div class="endline">已完成 · 最近 7 天 2 件 ${i("right", 12)}</div>
+    </div>
+  </aside>`;
+}
+
+function taskSession() {
+  return `<aside class="panel">
+    <div class="taskhead">
+      <span class="icon-btn">${i("left", 16)}</span>
+      <div class="tx"><div class="t">修复 #162 CI 失败</div><div class="d">GitHub · alice · ~/.yoyo/work/k1</div></div>
+      <span class="pill"><span class="live"></span>正在做 · 3 分钟</span>
+      <span class="icon-btn" title="在中间打开">${i("expand", 14)}</span>
+      <span class="icon-btn" title="停止、重试">${i("more", 16)}</span>
+    </div>
+    <div class="tbody">
+      <div class="handoff"><b>主对话交来</b> · 把 #162 的 CI 失败修一下，改完先别推。</div>
+      <div class="steps">
+        <div class="step ok">读取 CI 日志 <code>run 18432</code></div>
+        <div class="step ok">读取 <code>internal/app/desk_push.go</code></div>
+        <div class="step ok">修改 <code>desk_push.go</code> <span class="add">+14</span> <span class="del">−10</span></div>
+        <div class="step ok">新增 <code>TestDeskPushLocalDay</code></div>
+        <div class="step now"><span class="shimmer">正在运行</span> <code>go test ./internal/app/</code></div>
+      </div>
+      <div class="tanswer">失败来自同一天重复推送的判断：日期按 UTC 计算，北京时间 8 点前的推送会算成前一天。已改成按本地时区取日期，测试跑完就回报。</div>
+      <div class="qcard">
+        <div class="q">要不要顺手把 <code style="font-family:var(--font-mono);font-size:11px">brief_ledger.go</code> 里同样的写法一起改？</div>
+        <div class="opts"><span class="btn primary">一起改</span><span class="btn secondary">只修这一处</span><span class="btn ghost">我来说</span></div>
+      </div>
+    </div>
+    <div class="tcomposer">
+      <div class="lab">${i("msg", 11)}发给这件任务</div>
+      <div class="in"><span class="chip" style="height:24px;padding:0 4px">${i("plus", 14)}</span><span class="ph">接着说…</span><span class="send dim">${i("up", 13, 2)}</span></div>
+    </div>
+  </aside>`;
+}
+
+function memory() {
+  return `<aside class="panel">${panelHead()}${tabs("memory")}
+    <div class="panel-body" style="gap:14px">
+      <div class="about">
+        <div class="h"><span class="t">关于小沈</span><span class="icon-btn" style="width:26px;height:26px">${i("pencil", 13)}</span></div>
+        <p>在做一个本地优先的桌面 Agent，工作日多在 20:00–01:00 写代码。回复要中文、结论先行；周末不要推送工作提醒。</p>
+        <div class="m">由下面 9 条事实写成 · 更新于 11 小时前</div>
+      </div>
+      <div>
+        <div class="eyebrow">偏好<span class="n">2</span></div>
+        <div class="list">
+          <div class="row"><div class="main"><div class="t">回复用中文，结论先行</div><div class="m"><span class="src you">你说的</span>11-02</div></div></div>
+          <div class="row"><div class="main"><div class="t">周末不要推送工作提醒</div><div class="m"><span class="src you">你说的</span>11-03 · 用在：开口门</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow">工作与项目<span class="n">3</span></div>
+        <div class="list">
+          <div class="row hover"><div class="main"><div class="t">改完代码先别推，等你看过</div><div class="m"><span class="src">从对话记下</span>今天 21:02</div></div>
+            <div class="rowacts"><span>${i("pencil", 11)}编辑</span><span class="on">${i("x", 11)}忘掉</span><span>用在哪</span></div></div>
+          <div class="row"><div class="main"><div class="t">yoyo · 在动</div><div class="m"><span class="src">本机核对</span>今天 14 次提交</div></div></div>
+          <div class="row"><div class="main"><div class="t">hypit · 停在空文件 notes.md</div><div class="m"><span class="src">本机核对</span>3 天没有提交</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow">这台电脑<span class="n">5</span><span class="end">本机核对</span></div>
+        <div class="chips"><span>ThinkPad X1 Carbon</span><span>Windows 11</span><span>Asia/Shanghai</span><span>Git · Shenchangxin</span><span>20:00–01:00</span></div>
+      </div>
+      <div class="endline">连接了 GitHub、飞书 · 在设置里管理 ${i("right", 12)}</div>
+    </div>
+  </aside>`;
+}
+
+function settings() {
+  const items = [
+    ["sliders", "通用"], ["palette", "外观"], ["bell", "主动与通知", true], ["cpu", "模型"],
+    ["film", "生成"], ["link", "连接"], ["shield", "安全与隐私"], ["wrench", "高级"],
+  ];
+  return `<div class="app settings">
+    ${rail("settings")}
+    <nav class="subnav">
+      <div class="search">${i("search", 13)}搜索设置</div>
+      ${items.map(([ic, lb, on]) => `<div class="it ${on ? "on" : ""}">${i(ic, 15)}${lb}</div>`).join("")}
+    </nav>
+    <section class="stage settings-main">
+      ${topbar("设置", "主动与通知", false)}
+      <div class="settings-col">
+        <div><div class="ph1">主动与通知</div><div class="ph1-sub">Yoyo 什么时候开口，用什么方式告诉你。</div></div>
+        <div>
+          <div class="form-t">简报</div>
+          <div class="form">
+            <div class="frow"><div class="l"><div class="t">晨间简报</div><div class="d">拉开「今天」总能读到；只有需要你时才推到主对话。</div></div><span class="field">08:30</span><span class="switch on"></span></div>
+            <div class="frow"><div class="l"><div class="t">晚间收尾</div><div class="d">把没做完的滚到明天，只问一个决定。</div></div><span class="field">21:30</span><span class="switch on"></span></div>
+          </div>
+        </div>
+        <div>
+          <div class="form-t">主动程度</div>
+          <div class="form">
+            <div class="frow"><div class="l"><div class="t">多久开口一次</div><div class="d">适中：需要你决定、事情出错、在做的事有变化时开口。</div></div><div class="seg"><span>少一点</span><span class="on">适中</span><span>多一点</span></div></div>
+            <div class="frow"><div class="l"><div class="t">安静时段</div><div class="d">这段时间只记下，不推送。到期和出错仍在「今天」里。</div></div><span class="field">23:00 – 08:00</span></div>
+            <div class="frow"><div class="l"><div class="t">周末不推送工作提醒</div><div class="d">来自你的记忆：「周末不要推送工作提醒」。</div></div><span class="switch on"></span></div>
+          </div>
+        </div>
+        <div>
+          <div class="form-t">告诉你的方式</div>
+          <div class="form">
+            <div class="frow"><div class="l"><div class="t">系统通知</div><div class="d">只在需要你决定或出错时。</div></div><span class="switch on"></span></div>
+            <div class="frow"><div class="l"><div class="t">桌面伴侣气泡</div><div class="d">有进展时在伴侣身上冒一句，不抢焦点。</div></div><span class="switch on"></span></div>
+            <div class="frow"><div class="l"><div class="t">手机</div><div class="d">还没有配对手机。</div></div><span class="link">去配对 ${i("right", 12)}</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="form-t">自动接单</div>
+          <div class="form">
+            <div class="frow"><div class="l"><div class="t">新工作到来时</div><div class="d">观察：只记下本来会接的，不开工。规则在「任务 · 定时」里。</div></div><div class="seg"><span>关闭</span><span class="on">观察</span><span>自动</span></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
+
+const screens = {
+  home: () => `<div class="app">${rail("home")}${conversation()}${today(false)}</div>`,
+  why: () => `<div class="app">${rail("home")}${conversation()}${today(true)}</div>`,
+  tasks: () => `<div class="app">${rail("home")}${conversation()}${tasks()}</div>`,
+  task: () => `<div class="app">${rail("home")}${conversation({ focus: false })}${taskSession()}</div>`,
+  memory: () => `<div class="app">${rail("home")}${conversation()}${memory()}</div>`,
+  settings,
+};
+const labels = { home: "今天", why: "为什么", tasks: "任务", task: "任务会话", memory: "记忆", settings: "设置" };
+
+function render() {
+  const q = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = q.get("theme") === "light" ? "light" : "dark";
+  if (q.get("shot")) document.body.classList.add("shot");
+  const key = (location.hash || "#home").slice(1);
+  const name = screens[key] ? key : "home";
+  const theme = document.documentElement.dataset.theme;
+  const switcher = `<div class="switcher">${Object.keys(screens).map((k) => `<a href="#${k}" class="${k === name ? "on" : ""}">${labels[k]}</a>`).join("")}<a href="?theme=${theme === "dark" ? "light" : "dark"}#${name}">${theme === "dark" ? "浅色" : "深色"}</a></div>`;
+  document.getElementById("app").innerHTML = screens[name]() + switcher;
+}
+window.addEventListener("hashchange", render);
+render();
+</script>
+</body>
+</html>

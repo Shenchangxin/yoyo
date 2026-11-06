@@ -2,7 +2,7 @@
  * 本文件拥有成片台的简介、画幅、预览和去剪辑。不拥有剪辑时间线。
  * 保存简介、做画面、换床、分叉和交接都会改服务端。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import * as api from "../../lib/client";
@@ -11,6 +11,7 @@ import { playbackSrc } from "./playback-src";
 import { FilmStudio } from "./FilmStudio";
 import { castFromProject, castPayload, isFilmMode, sameCast, type FilmCast, type FilmMode } from "./film-cast";
 import { useFilmDesk, type FilmProject, type FilmWord } from "./film-desk";
+import { subscribeVideoEvents } from "./studio-events";
 
 const shapes = ["9:16", "16:9", "1:1"] as const;
 
@@ -50,6 +51,9 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const [busy, setBusy] = useState("");
   const [mediaBase, setMediaBase] = useState("");
   const [local, setLocal] = useState<FilmCast | null>(null);
+  // 换了画幅后旧画面就不对了，要重新做；同步锁挡住连点两下打出两次请求。
+  const [aspectStale, setAspectStale] = useState(false);
+  const running = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -69,7 +73,37 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
 
   useEffect(() => {
     setLocal(null);
+    setAspectStale(false);
   }, [project?.id]);
+
+  useEffect(() => {
+    /** Escape 和「回到创作」同一条路。没有打开成片时不动。 */
+    const onLeave = () => {
+      if (useFilmDesk.getState().project?.id) clear();
+    };
+    window.addEventListener("yoyo:leave-create-overlay", onLeave);
+    return () => window.removeEventListener("yoyo:leave-create-overlay", onLeave);
+  }, [clear]);
+
+  const building = !!project?.building;
+  useEffect(() => {
+    // 做画面在后台跑：服务端做完推 film_state，收到就重读；事件丢了也每 10 秒兜底重读一次。
+    const id = project?.id;
+    if (!id || !building) return;
+    const refresh = () => void api.video.filmGet(id).then(/** row 当成工程换上。 */ (row) => {
+      const next = row as FilmProject;
+      if (useFilmDesk.getState().project?.id === id) setProject(next);
+      if (!next?.building && next?.note) toast.message(next.note);
+    }).catch(() => {});
+    const off = subscribeVideoEvents(["film_state"], /** pushed 是推过来的片子编号，是这一部才重读。 */ (_kind, pushed) => {
+      if (pushed === id) refresh();
+    });
+    const t = window.setInterval(refresh, 10_000);
+    return () => {
+      off();
+      window.clearInterval(t);
+    };
+  }, [project?.id, building, setProject]);
 
   if (!project || !project.id) return null;
   const id = project.id;
@@ -85,42 +119,49 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const shapeLabel = aspect === "16:9" ? c.landscape : aspect === "1:1" ? c.square : c.portrait;
   const structure = project.structure === "ranking" ? c.ranking : project.structure === "podcast" ? c.podcast : project.structure === "interview" ? c.interview : c.title;
 
-  /** 跑一次成片请求，成功就换上返回的工程。label 写成忙碌标记。fn 执行，返回带 id 的工程就换上。 */
+  /** 跑一次成片请求，成功就换上返回的工程。已经有一个在跑就丢掉这次点击。label 写成忙碌标记。fn 执行，返回带 id 的工程就换上。 */
   async function run(label: string, fn: () => Promise<FilmProject>) {
+    if (running.current) return project;
+    running.current = true;
     setBusy(label);
     try {
       const next = await fn();
       if (next?.id) setProject(next);
+      if (label === "build") setAspectStale(false);
       return next;
     } catch (e) {
       toast.error(api.errMessage(e));
       return project;
     } finally {
+      running.current = false;
       setBusy("");
     }
   }
 
-  /** 简介字段没变就不提交。label 交给 run。body 和当前简介逐项比较，没变就不提交，变了就交给 filmSwap。 */
+  /** 简介字段没变就不提交。改了画幅时旧画面作废，要重新做。label 交给 run。body 和当前简介逐项比较，没变就不提交，变了就交给 filmSwap。 */
   function patch(label: string, body: Record<string, string>) {
     const current = project?.brief || {};
     const same = Object.entries(body).every(/** key 用来读当前简介。value 和现有值比较。 */ ([key, value]) => String((current as Record<string, string | undefined>)[key] || "") === value);
     if (same) return;
+    if ("aspect" in body && picture) setAspectStale(true);
     void run(label, async () => api.video.filmSwap(id, body) as Promise<FilmProject>);
   }
 
-  /** 记下主持人和产品后，把成片交成一条剪辑并打开它。 */
+  /** 记下主持人和产品后，把成片交成一条剪辑并打开它。成片台的工程留着，从剪辑台回来还在。 */
   async function openCut() {
+    if (running.current) return;
+    running.current = true;
     setBusy("handoff");
     try {
       await api.video.filmSwap(id, { host, product });
       const cut = await api.video.filmHandoff(id, project?.title || "");
       const next = cut as { id?: string };
       if (!next?.id) throw new Error(c.needPicture);
-      clear();
       props.onOpenCut(next.id);
     } catch (e) {
       toast.error(api.errMessage(e));
     } finally {
+      running.current = false;
       setBusy("");
     }
   }
@@ -129,7 +170,8 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const base = format ? castFromProject(project) : null;
   const cast = local ?? base;
   const dirty = !!cast && !!base && !sameCast(cast, base);
-  const rebuild = !pictureSrc || dirty;
+  const rebuild = !pictureSrc || dirty || aspectStale;
+  const needTitle: Record<string, string> = { image: c.needImage, speech: c.needSpeech, video: c.needVideo, matting: c.needMatting, music: c.needMusic };
 
   /** 画面已是最新就去剪。否则先把字写回，再做出画面。 */
   async function commitFormat() {
@@ -153,14 +195,14 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
         <FilmStudio
           mode={format}
           value={cast}
-          busy={!!busy}
-          commitLabel={rebuild ? c.makePicture : c.goEdit}
+          busy={!!busy || building}
+          commitLabel={building ? c.working : rebuild ? c.makePicture : c.goEdit}
           onChange={setLocal}
           onCommit={() => { void (rebuild ? commitFormat() : openCut()); }}
-          failed={failed?.error ? `${c.failedStep}：${failed.error}` : ""}
+          failed={failed?.error ? `${c.failedStep}：${failed.error}` : !building && project.note ? project.note : ""}
           picture={pictureSrc ? { src: pictureSrc, video: !!picture?.media_type?.startsWith("video/"), title: project.title || c.preview } : undefined}
-          needs={(project.needs || []).map(/** need 收成任务标题。 */ (need) => ({
-            title: need.kind || need.key || c.plan,
+          needs={(project.needs || []).map(/** need 收成任务标题，种类换成中文叫法。 */ (need) => ({
+            title: needTitle[need.kind || ""] || c.plan,
             detail: need.error || need.prompt,
           }))}
         />
@@ -193,7 +235,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
               }).then(/** next 有 id 才换上工程。 */ (next) => {
                 if (next?.id) setProject(next);
               }).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e))).finally(() => setBusy(""));
-            }}>{c.myVoice}</Button>
+            }}>{c.bed}</Button>
             <Button size="sm" variant="ghost" disabled={!!busy || !cast.subject.trim()} onClick={() => void run("fork", async () => api.video.filmFork(id, { host: cast.subject }) as Promise<FilmProject>)}>{c.another}</Button>
           </div>
         </details>
@@ -219,8 +261,9 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
         picture?.media_type?.startsWith("video/")
           ? <video className="creation-film-preview" src={pictureSrc} controls />
           : <img className="creation-film-preview" src={pictureSrc} alt={project.title || c.preview} />
-      ) : <p>{c.previewEmpty}</p>}
+      ) : <p>{building ? c.working : c.previewEmpty}</p>}
       {failed?.error ? <p>{c.failedStep}：{failed.error}</p> : null}
+      {!building && project.note ? <p data-testid="film-note">{project.note}</p> : null}
       <label>
         <span>{c.who}</span>
         <input value={host} onChange={/** ev 取出 target.value 写进主持人。 */ (ev) => setHost(ev.target.value)} />
@@ -230,13 +273,13 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
         <input value={product} onChange={/** ev 取出 target.value 写进产品。 */ (ev) => setProduct(ev.target.value)} />
       </label>
       <div className="creation-remake-actions">
-        {pictureSrc ? (
-          <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void openCut()}>{c.goEdit}</Button>
+        {pictureSrc && !building && !aspectStale ? (
+          <Button size="sm" variant="default" disabled={!!busy} onClick={() => void openCut()}>{c.goEdit}</Button>
         ) : (
-          <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void run("build", async () => {
+          <Button size="sm" variant="default" disabled={!!busy || building} onClick={() => void run("build", async () => {
             await api.video.filmSwap(id, { host, product });
             return api.video.filmBuild(id) as Promise<FilmProject>;
-          })}>{busy === "build" ? c.working : c.makePicture}</Button>
+          })}>{busy === "build" || building ? c.working : c.makePicture}</Button>
         )}
       </div>
       <details className="creation-more">
@@ -290,7 +333,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
             }).then(/** next 有 id 才换上工程。 */ (next) => {
               if (next?.id) setProject(next);
             }).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e))).finally(() => setBusy(""));
-          }}>{c.myVoice}</Button>
+          }}>{c.bed}</Button>
           <Button size="sm" variant="ghost" disabled={!!busy || !host.trim()} onClick={() => void run("fork", async () => api.video.filmFork(id, { host }) as Promise<FilmProject>)}>{c.another}</Button>
         </div>
       </details>

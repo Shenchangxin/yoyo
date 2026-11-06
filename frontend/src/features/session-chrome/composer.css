@@ -315,6 +315,22 @@
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
+/* 主输入框聚焦时一圈静态柔光；电流只在 Agent 干活时出现（ChatBorder）。 */
+.sc-root[data-primary="true"][data-focused="true"] .sc-card {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent), var(--shadow-composer);
+}
+
+/* 有审批在等时，边线变成静态琥珀色。 */
+.sc-root[data-asking="true"] .sc-card {
+  border-color: color-mix(in srgb, var(--status-needs) 55%, var(--border));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sc-card {
+    transition: border-color var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
+  }
+}
+
 .sc-card[data-workspace-trigger="true"] {
   cursor: pointer;
 }

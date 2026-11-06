@@ -68,14 +68,18 @@ export function visibleIncoming(rows: Trigger[]): Trigger[] {
   });
 }
 
-/** dueItems 是还在队列里、带了时间、但没有点名的日历。点过名的仍走待接受，不在这里重复。 */
-export function dueItems(rows: Trigger[]): Trigger[] {
-  return rows.filter((row) => row.queued && row.source === "calendar" && !!row.due && !row.addressed);
+/** dueItems 是还在队列里、前后两周内到期、没有点名的日历。点过名的仍走待接受，不在这里重复。更远的不算今天的事。 */
+export function dueItems(rows: Trigger[], now = new Date()): Trigger[] {
+  return rows.filter((row) => {
+    if (!row.queued || row.source !== "calendar" || !row.due || row.addressed) return false;
+    const delta = dayDelta(row.due, now);
+    return delta !== null && Math.abs(delta) <= 14;
+  });
 }
 
-/** wouldAccept 是观察模式下本来会接、但没有开工的决定。 */
+/** wouldAccept 是观察模式下本来会接、但没有开工的决定。新的在前，最多六条。 */
 export function wouldAccept(rows: Decision[]): Decision[] {
-  return rows.filter((row) => row.kind === "ignore" && row.reason === "observed" && !row.dismissed).slice(0, 6);
+  return rows.filter((row) => row.kind === "ignore" && row.reason === "observed" && !row.dismissed).slice(-6).reverse();
 }
 
 export type TaskListFilter = "all" | "open" | "ended" | "scheduled";
@@ -114,12 +118,73 @@ export function runningCount(tickets: Ticket[]): number {
   return tickets.filter((ticket) => ticket.stage === "working").length;
 }
 
-/** taskGroups 把还开着的和最近结束的分开。结束的只留八张。 */
+/** taskGroups 把还开着的和最近结束的分开。两组都按最近变化排，新的在前。结束的只留八张。 */
 export function taskGroups(tickets: Ticket[]): { open: Ticket[]; ended: Ticket[] } {
+  const sorted = [...tickets].sort(byRecent);
   return {
-    open: tickets.filter((ticket) => ticket.stage !== "ended"),
-    ended: tickets.filter((ticket) => ticket.stage === "ended").slice(0, 8),
+    open: sorted.filter((ticket) => ticket.stage !== "ended"),
+    ended: sorted.filter((ticket) => ticket.stage === "ended").slice(0, 8),
   };
+}
+
+export type TaskSection = "person" | "working" | "idle" | "ended";
+
+/** taskSection 说清一张工单在等谁。等人在前，然后是正在做、停着、已经结束。四组互不重叠。 */
+export function taskSection(ticket: Pick<Ticket, "stage" | "person">): TaskSection {
+  if (ticket.stage === "ended") return "ended";
+  if (ticket.person) return "person";
+  if (ticket.stage === "working") return "working";
+  return "idle";
+}
+
+/** taskSections 把工单分进四组，每组按最近变化排，新的在前。结束的只留八张。 */
+export function taskSections(tickets: Ticket[]): Record<TaskSection, Ticket[]> {
+  const out: Record<TaskSection, Ticket[]> = { person: [], working: [], idle: [], ended: [] };
+  for (const ticket of [...tickets].sort(byRecent)) out[taskSection(ticket)].push(ticket);
+  out.ended = out.ended.slice(0, 8);
+  return out;
+}
+
+/** tasksBadge 是任务标签上的数字。有工单等你时报等你的张数，person 为真；否则报正在做的张数。 */
+export function tasksBadge(tickets: Ticket[]): { count: number; person: boolean } {
+  const person = tickets.filter(needsPerson).length;
+  if (person > 0) return { count: person, person: true };
+  return { count: runningCount(tickets), person: false };
+}
+
+/** ticketLine 是工单名下面那一句。在等回答时是那个问题，其余是最近一份给人看的报告。没有时为空。 */
+export function ticketLine(ticket: Ticket): string {
+  if (ticket.stage !== "ended" && ticket.action === "answer" && ticket.attention?.trim()) return firstLine(ticket.attention);
+  if (ticket.deliveryError?.trim() && ticket.stage !== "ended") return firstLine(ticket.deliveryError);
+  const steps = ticket.assignments ?? [];
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const lines = steps[i].lines ?? [];
+    for (let j = lines.length - 1; j >= 0; j--) {
+      const text = lines[j].question?.trim() || lines[j].summary?.trim() || "";
+      if (text && text !== "pending" && text !== "running") return firstLine(text);
+    }
+    const summary = steps[i].summary?.trim() || "";
+    if (summary) return firstLine(summary);
+  }
+  return "";
+}
+
+/** ticketNumber 取出 tkt- 后面的序号。认不出时为 0。 */
+export function ticketNumber(id: string): number {
+  const matched = /^tkt-(\d+)$/.exec(id.trim());
+  return matched ? Number(matched[1]) : 0;
+}
+
+function byRecent(a: Ticket, b: Ticket): number {
+  const at = Date.parse(a.updatedAt || "") || 0;
+  const bt = Date.parse(b.updatedAt || "") || 0;
+  if (at !== bt) return bt - at;
+  return ticketNumber(b.id) - ticketNumber(a.id);
+}
+
+function firstLine(text: string): string {
+  const line = text.trim().split(/\r?\n/).find((part) => part.trim())?.trim() || "";
+  return line.length > 96 ? `${line.slice(0, 95)}…` : line;
 }
 
 const briefTitle = /简报|brief/i;
@@ -170,7 +235,10 @@ export type BriefStat = { label: string; value: string };
 /** BriefLayout 决定一张卡怎么排。letter 是手上有的和还没有的，rows 是几条线，stats 是数得出来的数量。 */
 export type BriefLayout = "checks" | "compare" | "evidence" | "chips" | "plain" | "letter" | "rows" | "stats";
 
-/** BriefCard 是简报里的一张决定。task 和 alt 是点按钮后放进输入框的任务，不直接发出。 */
+/** BriefRef 是一张卡依据的一条材料。kind 取 ticket、date、line、memory。target 是打开它用的编号。 */
+export type BriefRef = { id: string; kind: string; label: string; target?: string };
+
+/** BriefCard 是简报里的一张决定。task 和 alt 是点按钮后放进输入框的任务，不直接发出。refs 是这张卡依据的材料。 */
 export type BriefCard = {
   id: string;
   kicker: string;
@@ -188,7 +256,36 @@ export type BriefCard = {
   rightLabel?: string;
   note?: string;
   stats?: BriefStat[];
+  refs?: BriefRef[];
 };
+
+/** quietBrief 是确实没有值得写的事时的那封信。没核对的来源写出来，不用空列表假装今天没有事。 */
+export function quietBrief(labels: { kicker: string; title: string; lede: string; unchecked: string }, unchecked: string[]): MorningBrief {
+  const names = unchecked.filter(Boolean);
+  const sep = /[\u4e00-\u9fff]/.test(labels.title) ? "、" : ", ";
+  return {
+    cards: [{
+      id: "quiet",
+      layout: "plain",
+      kicker: labels.kicker,
+      title: labels.title,
+      lede: labels.lede,
+      items: [],
+      choices: [],
+      primary: "",
+      secondary: "",
+      note: names.length ? fill(labels.unchecked, { names: names.join(sep) }) : undefined,
+    }],
+    picked: {},
+    woven: true,
+  };
+}
+
+/** refStatus 是依据里那张工单现在的样子。工单已经结束时返回 ended，还开着返回空串。认不出时为空。 */
+export function refStatus(ref: BriefRef, tickets: Pick<Ticket, "id" | "stage">[]): "ended" | "" {
+  if (ref.kind !== "ticket" || !ref.target) return "";
+  return tickets.find((ticket) => ticket.id === ref.target)?.stage === "ended" ? "ended" : "";
+}
 
 /** MorningBrief 是一叠卡。picked 只记住点过哪一个按钮。 */
 export type MorningBrief = {
@@ -971,7 +1068,22 @@ export type MemoryRow = {
   evidence?: string;
   when?: string;
   created_at?: string;
+  updated_at?: string;
+  valid_until?: string;
+  seen?: number;
+  origin?: string;
+  history?: { text: string; at?: string; source?: string }[];
 };
+
+/** memoryTouched 是这一条最近一次记下、改过或又说了一遍的时刻。 */
+export function memoryTouched(row: Pick<MemoryRow, "created_at" | "updated_at">): string {
+  return row.updated_at || row.created_at || "";
+}
+
+/** memoryPast 在这一条说的是一段已经过去的安排时为真：它的最后一天早于今天。 */
+export function memoryPast(row: Pick<MemoryRow, "valid_until">, now = new Date()): boolean {
+  return !!row.valid_until && row.valid_until < briefDay(now);
+}
 
 export type MemoryPortrait = {
   name: string;
@@ -988,12 +1100,13 @@ export type MemoryPortrait = {
   preferences: string[];
 };
 
-/** memoryPortrait 把已经留下的条目分成设备、工作时间、工程线，以及当事人说过的话。本机事实不算当事人讲过。 */
+/** memoryPortrait 把已经留下的条目分成设备、工作时间、工程线，以及当事人说过的话。本机事实不算当事人讲过。
+ * 偏好只收当事人自己说的；模型记下的档案和偏好都在 noted，和模型读到的画像一样分。过去的安排不收。 */
 export function memoryPortrait(rows: MemoryRow[]): MemoryPortrait {
   const out: MemoryPortrait = { name: "", updated: "", device: "", host: "", os: "", zone: "", git: "", hours: "", lines: [], said: [], noted: [], preferences: [] };
   for (const row of rows) {
     const text = row.text.trim();
-    if (!text) continue;
+    if (!text || memoryPast(row)) continue;
     if (row.id === "machine:device") out.device = text;
     else if (row.id === "machine:host") out.host = text;
     else if (row.id === "machine:os") out.os = text;
@@ -1002,10 +1115,11 @@ export function memoryPortrait(rows: MemoryRow[]): MemoryPortrait {
     else if (row.id === "machine:hours" || (row.source === "machine" && row.project === "work")) out.hours = text;
     else if (row.kind === "project") out.lines.push({ name: text, state: row.state || "", evidence: row.evidence || "", when: row.when || "" });
     else if (row.kind === "profile" && operatorMemory(row.source)) out.said.push(text);
-    else if (row.kind === "profile") out.noted.push(text);
-    else if (row.kind === "semantic") out.preferences.push(text);
+    else if (row.kind === "semantic" && operatorMemory(row.source)) out.preferences.push(text);
+    else if (row.kind === "profile" || row.kind === "semantic") out.noted.push(text);
     else continue;
-    if (row.created_at && row.created_at > out.updated) out.updated = row.created_at;
+    const touched = memoryTouched(row);
+    if (touched && touched > out.updated) out.updated = touched;
   }
   out.name = out.said.find((text) => memoryName(text)) || "";
   return out;
@@ -1034,6 +1148,112 @@ function operatorMemory(source?: string): boolean {
 
 function memoryName(text: string): boolean {
   return [...text].length <= 16 && !/[\s\n。！？!?]/.test(text);
+}
+
+export type MemoryOrigin = "said" | "machine" | "task" | "noted" | "chat";
+
+/** memoryOrigin 说清一条记忆从哪来：本人说的、本机清点、工单结果、对话里模型记下的，或对话收拢的经历。 */
+export function memoryOrigin(row: Pick<MemoryRow, "id" | "kind" | "source">): MemoryOrigin {
+  const source = (row.source || "").trim();
+  if (source === "machine" || row.id.startsWith("machine:")) return "machine";
+  if (source === "worker" || row.id.startsWith("task:")) return "task";
+  if (source === "model") return "noted";
+  if (operatorMemory(source)) return row.kind === "episodic" ? "chat" : "said";
+  return "noted";
+}
+
+/** memoryForgettable 在这一条能从这里忘掉时为真。本机清点每一轮都会重写，忘掉没有用。 */
+export function memoryForgettable(row: Pick<MemoryRow, "id" | "kind" | "source">): boolean {
+  return memoryOrigin(row) !== "machine";
+}
+
+/** dueDelta 是到期日离今天几天。过去为负，认不出时为空。 */
+export function dueDelta(value: string, now = new Date()): number | null {
+  return dayDelta(value, now);
+}
+
+export type SpeakPhrases = {
+  due: string;
+  overdue: string;
+  changed: string;
+  repo: string;
+  repoBare: string;
+  repoBranch: string;
+  repoDirty: string;
+  repoClean: string;
+  source: string;
+  sourceBare: string;
+  power: string;
+  net: string;
+  lineMoving: string;
+  lineStalled: string;
+  lineQuiet: string;
+};
+
+/** speakPhrases 从界面文案里取出开口短讯的句式。 */
+export function speakPhrases(work: {
+  speakDue: string; speakOverdue: string; speakChanged: string; speakRepo: string; speakRepoBare: string;
+  speakBranch: string; speakDirty: string; speakClean: string; speakSource: string; speakSourceBare: string;
+  speakPower: string; speakNet: string; lineMoving: string; lineStalled: string; lineQuiet: string;
+}): SpeakPhrases {
+  return {
+    due: work.speakDue,
+    overdue: work.speakOverdue,
+    changed: work.speakChanged,
+    repo: work.speakRepo,
+    repoBare: work.speakRepoBare,
+    repoBranch: work.speakBranch,
+    repoDirty: work.speakDirty,
+    repoClean: work.speakClean,
+    source: work.speakSource,
+    sourceBare: work.speakSourceBare,
+    power: work.speakPower,
+    net: work.speakNet,
+    lineMoving: work.lineMoving,
+    lineStalled: work.lineStalled,
+    lineQuiet: work.lineQuiet,
+  };
+}
+
+/** speakClass 是一条开口短讯的类别。旧短讯没写类别时，从槽位推回：检索的槽位是链接编号，其余是类别本身。 */
+export function speakClass(payload: Record<string, unknown> | undefined): string {
+  const named = String(payload?.class || "").trim();
+  if (named) return named;
+  const slot = String(payload?.slot || "").trim();
+  return slot.startsWith("reach:") ? "reach" : slot;
+}
+
+/** speakSentence 按界面语言重写一条开口短讯，只用短讯里记下的名字、状态和细节。认不出这一类时用写下的原句。 */
+export function speakSentence(payload: Record<string, unknown> | undefined, text: string, p: SpeakPhrases): string {
+  const cls = String(payload?.class || "").trim();
+  const name = String(payload?.name || "").trim();
+  const detail = String(payload?.detail || "").trim();
+  const state = String(payload?.state || "").trim();
+  if (!cls || !name) return text;
+  const sep = /[\u4e00-\u9fff]/.test(p.due) ? "，" : ", ";
+  switch (cls) {
+    case "calendar":
+      return fill(state === "overdue" ? p.overdue : p.due, { name });
+    case "source":
+      return detail ? fill(p.source, { name, detail }) : fill(p.sourceBare, { name });
+    case "line": {
+      const word = state === "stalled" ? p.lineStalled : state === "quiet" ? p.lineQuiet : p.lineMoving;
+      return fill(p.changed, { name, state: [word, detail].filter(Boolean).join(sep) });
+    }
+    case "git": {
+      const parts = [
+        detail ? fill(p.repoBranch, { name: detail }) : "",
+        state === "dirty" ? p.repoDirty : state === "clean" ? p.repoClean : "",
+      ].filter(Boolean);
+      return parts.length ? fill(p.repo, { name, state: parts.join(sep) }) : fill(p.repoBare, { name });
+    }
+    case "power":
+      return fill(p.power, { name });
+    case "net":
+      return p.net;
+    default:
+      return text;
+  }
 }
 
 function dayDelta(value: string, now: Date): number | null {

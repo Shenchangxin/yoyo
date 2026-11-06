@@ -5,9 +5,9 @@ package cut
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -111,6 +111,36 @@ func CuesFromText(text string, dur float64) []Cue {
 	return cues
 }
 
+// MapCues 把源片时间轴上的字幕搬到按 cuts 依次拼出的成片时间轴上。略过的字幕和落在剪掉部分的字幕丢掉，跨过剪辑点的字幕按每段切开。结果按开始时间排好。
+// cues 是源片时间轴上的字幕。
+// cuts 是成片依次用到的源片区间。
+func MapCues(cues []Cue, cuts []Clip) []Cue {
+	var out []Cue
+	off := 0.0
+	for _, c := range cuts {
+		for _, q := range cues {
+			if q.Omit || strings.TrimSpace(q.Text) == "" {
+				continue
+			}
+			start := q.Start
+			if c.Start > start {
+				start = c.Start
+			}
+			end := q.End
+			if c.End < end {
+				end = c.End
+			}
+			if end-start < 0.05 {
+				continue
+			}
+			out = append(out, Cue{Start: start - c.Start + off, End: end - c.Start + off, Text: q.Text})
+		}
+		off += c.Dur()
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+	return out
+}
+
 // splitSentences 在中文句号、叹号、问号以及英文句点加空格处断开。
 func splitSentences(s string) []string {
 	s = strings.ReplaceAll(s, "。", "。\n")
@@ -183,20 +213,32 @@ func (b Bin) BurnCaptions(video, srtPath, outPath string) error {
 	return err
 }
 
-// Transcribe 在 whisper 路径非空时运行 whisper.cpp，参数是 -f、-otxt、-osrt 和 -of。读出 out.txt 与 out.srt。没有字幕但有文本时，用成片时长把文本切成字幕。路径为空时返回错误，提示设置 WHISPER_BIN 或安装 whisper.cpp。
-// src 传给 whisper 的 -f；没有字幕但有文本时再传给 Duration。
+// Transcribe 先用 ffmpeg 把音轨抽成 16 kHz 单声道 WAV，再运行 whisper.cpp：-m 模型、-l 语言（空着是 auto）、-otxt、-osrt、-of。whisper.cpp 默认只认 WAV，不带模型时会去找当前目录下的英文模型，所以两样都要给。
+// 读出 out.txt 与 out.srt。没有字幕但有文本时，用成片时长把文本切成字幕。whisper 或模型找不到时返回能照着做的错误。
+// src 是音频或视频文件，先抽成 WAV；没有字幕但有文本时再传给 Duration。
 // workDir 传给 MkdirAll，并与 out 拼成输出前缀。
 func (b Bin) Transcribe(src, workDir string) (cues []Cue, text string, err error) {
 	if strings.TrimSpace(b.Whisper) == "" {
-		return nil, "", fmt.Errorf("whisper is not available — set WHISPER_BIN or install whisper.cpp")
+		return nil, "", fmt.Errorf("本机没有 whisper.cpp。装好 whisper-cli 并设置 WHISPER_BIN，或贴上文案直接配音")
+	}
+	if strings.TrimSpace(b.WhisperModel) == "" {
+		return nil, "", fmt.Errorf("whisper.cpp 需要模型文件。把 ggml-base.bin 或更大的多语言模型放进 ~/.yoyo/video/models，或设置 WHISPER_MODEL")
 	}
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return nil, "", err
 	}
+	wav := filepath.Join(workDir, "speech.wav")
+	if _, err := b.run("-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav); err != nil {
+		return nil, "", fmt.Errorf("抽不出音轨：%v", err)
+	}
+	lang := strings.TrimSpace(b.WhisperLang)
+	if lang == "" {
+		lang = "auto"
+	}
 	out := filepath.Join(workDir, "out")
-	cmd := quiet(exec.Command(b.Whisper, "-f", src, "-otxt", "-osrt", "-of", out))
+	cmd := quiet(b.command(b.Whisper, "-m", b.WhisperModel, "-l", lang, "-f", wav, "-otxt", "-osrt", "-of", out))
 	if raw, runErr := cmd.CombinedOutput(); runErr != nil {
-		return nil, "", fmt.Errorf("whisper: %s", strings.TrimSpace(string(raw)))
+		return nil, "", fmt.Errorf("whisper: %s", ffmpegErr(raw, runErr))
 	}
 	txt, _ := os.ReadFile(out + ".txt")
 	text = strings.TrimSpace(string(txt))

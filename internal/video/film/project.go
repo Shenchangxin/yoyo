@@ -122,6 +122,8 @@ type Project struct {
 	Artifacts []Artifact `json:"artifacts,omitempty"`
 	Tasks     []Task     `json:"tasks,omitempty"`
 	Note      string     `json:"note,omitempty"`
+	// Building 是后台开始构建的时间。空着表示没在构建。
+	Building string `json:"building,omitempty"`
 }
 
 // Cue 是读参考片时的一句带时间的话，还没拆成词。

@@ -9,7 +9,9 @@ import {
   isCooling,
   linesOf,
   mmss,
+  pendingPhotos,
   snapOf,
+  tierProgress,
   type Idol,
 } from "./model.ts";
 
@@ -53,6 +55,22 @@ describe("idol transcript", () => {
     const lines = linesOf([{ id: "g", kind: "event", gift_id: "tea", segments: [{ subtitle: "收到了热茶" }], delta: 4 }]);
     assert.equal(lines.length, 1);
     assert.equal(lines[0].role, "event");
+    if (lines[0].role === "event") assert.equal(lines[0].event, "gift");
+  });
+
+  /** 她挂断电话成一行事件；照片还在拍时带上状态，并能找出要等的那几条。 */
+  it("shows a hang-up and a photo still being taken", () => {
+    const records = [
+      { id: "t", kind: "turn", user: "拍一张", segments: [{ subtitle: "等我一下" }], photo_state: "pending" },
+      { id: "h", kind: "event", event: "hung_up" },
+    ];
+    const lines = linesOf(records);
+    assert.equal(lines.length, 3);
+    const idol = lines[1];
+    assert.equal(idol.role === "idol" && idol.photoState, "pending");
+    const ev = lines[2];
+    assert.equal(ev.role === "event" && ev.event, "hung_up");
+    assert.deepEqual(pendingPhotos(records), ["t"]);
   });
 });
 
@@ -90,6 +108,12 @@ describe("idol desk helpers", () => {
     const snap = snapOf({ idols: [{ id: "a", name: "甲", pinned: true }], chat_ready: true, pinned: { id: "a", name: "甲" }, portrait: "abc" });
     assert.equal(snap.pinnedId, "a");
     assert.equal(snap.chatReady, true);
+    assert.equal(snap.bargeIn, true);
+    assert.equal(snapOf({ barge_in: false }).bargeIn, false);
+    assert.equal(tierProgress(50), 0.4);
+    assert.equal(tierProgress(85), 0);
+    assert.equal(tierProgress(100), 1);
+    assert.equal(idolError(new Error("too long"), { ...errors, tooLong: "太长" }), "太长");
     assert.equal(idolError(new Error("/api/idol: cooldown"), errors), "冷");
     assert.equal(idolError(new Error("configure a chat model in Settings"), errors), "模型");
     assert.equal(achievementLabel("close:a", { a: "甲" }, {}, "和{name}亲近", "和{name}亲密"), "和甲亲近");

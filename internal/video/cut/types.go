@@ -30,7 +30,12 @@ type Captions struct {
 	Cues     []Cue  `json:"cues,omitempty"`
 	SRTHash  string `json:"srt_hash,omitempty"`
 	VTTHash  string `json:"vtt_hash,omitempty"`
+	// Basis 说明字幕时间按哪条时间轴算：空或 source 是源片，result 是成片（比如照着配音文案铺的字幕）。烧字幕时源片字幕要先按剪辑表搬到成片上。
+	Basis string `json:"basis,omitempty"`
 }
+
+// BasisResult 表示字幕时间按成片算。
+const BasisResult = "result"
 
 // Silence 是一段静音的起止秒数。
 type Silence struct {

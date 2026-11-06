@@ -10,7 +10,7 @@ import { useUI } from "../../lib/store";
 import type { VideoMode } from "../../lib/protocol";
 
 const ghost =
-  "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
+  "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
 /** VideoModeSwitch 在短剧、画布、创作三种模式里切换。props 的 disabled 传给触发按钮，menuSide 缺省当 top，传给菜单弹出方向。 */
 export function VideoModeSwitch(props: { disabled?: boolean; menuSide?: "top" | "bottom" }) {
@@ -52,9 +52,9 @@ export function VideoModeSwitch(props: { disabled?: boolean; menuSide?: "top" | 
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex items-center gap-1.5">
                 {m.label}
-                {!m.ready ? <span className="text-[11px] font-normal text-muted/70">{copy.video.soon}</span> : null}
+                {!m.ready ? <span className="text-ui-caption font-normal text-muted/70">{copy.video.soon}</span> : null}
               </span>
-              <span className="text-[11px] text-muted">{m.hint}</span>
+              <span className="text-ui-caption text-muted">{m.hint}</span>
             </span>
             {mode === m.id ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
           </DropdownMenuItem>

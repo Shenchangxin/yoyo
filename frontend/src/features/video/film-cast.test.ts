@@ -81,4 +81,17 @@ describe("film commission", () => {
     assert.match(text, /Left: Her/);
     assert.match(text, /Reply: I do\. I'm still tired\./);
   });
+
+  /** 中文界面传进中文叫法，简报整段是中文，片型写名字不写内部 id。 */
+  it("writes the brief in the labels it is given", () => {
+    const text = filmCommission("ranking", cast, "前面的名次留在榜上。", {
+      intro: "按这个片型做一条短片。", format: "片型", relation: "要留住的关系", subject: "主题",
+      left: "一方", ask: "问", right: "另一方", reply: "答", speaker: "说话的人",
+      outro: "开一条短片，合成 mp4。用到生图或配音之前先问我。", modeName: "排行榜",
+    });
+    assert.match(text, /@skill:hypit/);
+    assert.match(text, /片型：排行榜/);
+    assert.match(text, /要留住的关系：前面的名次留在榜上。/);
+    assert.doesNotMatch(text, /Format|ranking/);
+  });
 });

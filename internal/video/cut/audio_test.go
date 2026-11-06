@@ -26,14 +26,25 @@ func TestMixGraphFadeDoesNotDropDuck(t *testing.T) {
 	}
 }
 
-// TestMixGraphSpeechReplace 确认只有口播且 ReplaceOrig 为真时滤镜为空，音频映射到 1:a:0。
+// TestMixGraphSpeechReplace 确认只有口播且 ReplaceOrig 为真时不碰原声，只把口播映射到 [a]；Pad 为真时补静音。
 func TestMixGraphSpeechReplace(t *testing.T) {
-	filter, maps := MixGraph(true, false, MixOpts{ReplaceOrig: true})
-	if filter != "" {
-		t.Fatalf("unexpected filter %s", filter)
+	filter, maps := MixGraph(true, false, MixOpts{ReplaceOrig: true, Pad: true})
+	if contains(filter, "[0:a]") {
+		t.Fatalf("replace should not use the original audio: %s", filter)
 	}
-	if maps[3] != "1:a:0" {
+	if !contains(filter, "[1:a]") || !contains(filter, "apad[a]") {
+		t.Fatalf("filter %s", filter)
+	}
+	if maps[3] != "[a]" {
 		t.Fatalf("maps %v", maps)
+	}
+}
+
+// TestMixGraphDubKeepsOriginalUnder 确认默认配音不替换原声，原声经 sidechaincompress 压在配音下面。
+func TestMixGraphDubKeepsOriginalUnder(t *testing.T) {
+	filter, _ := MixGraph(true, false, MixOpts{Duck: true})
+	if !contains(filter, "[0:a]volume") || !contains(filter, "sidechaincompress") || !contains(filter, "anull[a]") {
+		t.Fatalf("filter %s", filter)
 	}
 }
 

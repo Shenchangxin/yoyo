@@ -62,10 +62,8 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	a.attachStudioTools(tools, sessionID)
 	runtime.ApplyPackBootstrap(tools)
 	profile := ""
-	if a.Memory != nil {
-		if p := a.sessionProfile(sessionID); p == nil || p.Memory {
-			profile = a.Memory.ProfilePin(profilePinBytes)
-		}
+	if a.memoryOn(sessionID) {
+		profile = a.Memory.ProfilePin(profilePinBytes)
 	}
 	pageCtx := ""
 	if meta.PageID != "" && a.Pages != nil {

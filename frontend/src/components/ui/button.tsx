@@ -7,7 +7,7 @@ import { cn } from "../../lib/utils";
 
 // 按 variant 和 size 收成 class。缺省是 default / default。
 const buttonVariants = cva(
-  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg text-[13px] font-medium transition-[color,background-color,opacity,transform,box-shadow] duration-200 ease-[var(--ease-out)] disabled:pointer-events-none disabled:opacity-40 aria-busy:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-[0.98] [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg text-ui-body font-medium transition-[color,background-color,opacity,transform,box-shadow] duration-200 ease-[var(--ease-out)] disabled:pointer-events-none disabled:opacity-40 aria-busy:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-[0.98] [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -20,7 +20,8 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-8 px-3",
-        sm: "h-7 px-2.5 text-xs",
+        sm: "h-7 px-2.5 text-ui-footnote",
+        xs: "h-6 gap-1 rounded-md px-2 text-ui-caption [&_svg]:size-3.5",
         lg: "h-9 px-4",
         icon: "size-8 rounded-lg",
         send: "size-8 rounded-full",

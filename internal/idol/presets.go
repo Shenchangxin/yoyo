@@ -31,9 +31,10 @@ func voice(id, label string, models ...string) ServiceVoice {
 }
 
 // buildPresets 返回内置目录。下面的名字、端点和 id 是数据。
+// MiniMax 语音走 /v1/t2a_v2，千问语音和千问生图走百炼原生接口，千问识别走兼容模式的 chat/completions（见 app/idol_vendor.go）。
+// CosyVoice 的 HTTP 接口只开在业务空间地址上，这里不列。
 func buildPresets() []ServicePreset {
 	mini := []string{"gpt-4o-mini-tts"}
-	cosy := []string{"cosyvoice-v2"}
 	return []ServicePreset{
 		{
 			ID: "openai-speech", Name: "OpenAI", Kind: "speech", Vendor: "openai",
@@ -75,19 +76,16 @@ func buildPresets() []ServicePreset {
 		{
 			ID: "qwen-speech", Name: "通义千问 Qwen", Kind: "speech", Vendor: "aliyun",
 			Endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-			Models:   []string{"qwen3-tts-flash", "cosyvoice-v2"},
+			Models:   []string{"qwen3-tts-flash"},
 			Voices: []ServiceVoice{
-				voice("Cherry", "Cherry · 温柔", "qwen3-tts-flash"),
-				voice("Serena", "Serena · 活泼", "qwen3-tts-flash"),
-				voice("Ethan", "Ethan · 沉稳", "qwen3-tts-flash"),
-				voice("Chelsie", "Chelsie · 二次元", "qwen3-tts-flash"),
-				voice("longxiaochun_v2", "龙小淳", cosy...),
-				voice("longxiaoxia_v2", "龙小夏", cosy...),
-				voice("longyue_v2", "龙悦", cosy...),
-				voice("longwan_v2", "龙婉", cosy...),
-				voice("longcheng_v2", "龙橙", cosy...),
-				voice("longhua_v2", "龙华", cosy...),
-				voice("longshu_v2", "龙书", cosy...),
+				voice("Cherry", "芊悦 · 女声"),
+				voice("Jennifer", "詹妮弗 · 女声"),
+				voice("Sunny", "晴儿 · 四川话"),
+				voice("Jada", "阿珍 · 上海话"),
+				voice("Ethan", "晨煦 · 男声"),
+				voice("Ryan", "甜茶 · 男声"),
+				voice("Dylan", "晓东 · 北京话"),
+				voice("Rocky", "阿强 · 粤语"),
 			},
 		},
 		{
@@ -113,7 +111,7 @@ func buildPresets() []ServicePreset {
 		{
 			ID: "qwen-image", Name: "通义千问 Qwen", Kind: "image", Vendor: "aliyun",
 			Endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-			Models:   []string{"qwen-image-plus", "qwen-image"},
+			Models:   []string{"qwen-image-2.0", "qwen-image-2.0-pro", "qwen-image-plus"},
 		},
 		{
 			ID: "zhipu-image", Name: "智谱 CogView", Kind: "image", Vendor: "zhipu",

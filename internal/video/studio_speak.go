@@ -14,67 +14,75 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
-	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
 // SpeakStudio 给已锁定的口播配音，并把音频和字幕写上工程。正文空着就用工程里的口播。还没锁定就拒绝。
-// 声音空着用 alloy。语速被接口拒绝时按原速再试一次并记警告。字幕是估算的，或走了 edge-tts，也会记一条说明。配完把闸门改到画面，并尽量按音频重排镜头时长。重排失败仍返回已配好的工程。
+// 声音换成实际语音接口认得的声音，空着用那家的默认女声。接口对语速、模型有改动时记成警告，字幕是估算的也记一条。配完把闸门改到画面，并尽量按音频重排镜头时长。重排失败仍返回已配好的工程。
 // id 传给 GetStudioProject。
-// text 去掉首尾空白，空串时改用工程里的口播；仍为空则返回错误 no text to speak，否则传给 speakAudio 和 studioSRT。
+// text 去掉首尾空白，空串时改用工程里的口播；仍为空则返回「还没有口播可配」，否则传给 speakAudio 和 studioSRT。
 func (e *Engine) SpeakStudio(id, text string) (StudioProject, error) {
-	p, err := e.GetStudioProject(id)
+	snap, err := e.GetStudioProject(id)
 	if err != nil {
 		return StudioProject{}, err
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		text = strings.TrimSpace(p.Script)
+		text = strings.TrimSpace(snap.Script)
 	}
 	if text == "" {
-		return StudioProject{}, fmt.Errorf("no text to speak")
+		return StudioProject{}, fmt.Errorf("还没有口播可配")
 	}
-	if p.ScriptStatus != ScriptApproved {
-		return p, fmt.Errorf("approve the script before Speak")
+	if snap.ScriptStatus != ScriptApproved {
+		return snap, fmt.Errorf("先锁定口播再配音")
 	}
-	voice := strings.TrimSpace(p.Voice)
-	if voice == "" {
-		voice = "alloy"
-	}
-	raw, engine, speedIgnored, err := e.speakAudio(text, voice, p.VoiceSpeed)
+	out, err := e.speakAudio(text, strings.TrimSpace(snap.Voice), snap.VoiceSpeed)
 	if err != nil {
 		return StudioProject{}, err
 	}
-	hash, err := e.PutBytes(raw)
+	hash, err := e.PutBytes(out.Audio)
 	if err != nil {
 		return StudioProject{}, err
 	}
-	p.NarrationHash = hash
-	p.Storyboard.Narration = hash
-	p.VoiceEngine = engine
 	srt, estimated := e.studioSRT(text, hash)
-	p.SubtitleEstimated = estimated
-	if sh, err := e.PutBytes([]byte(srt)); err == nil {
-		p.SubtitleHash = sh
-		p.Storyboard.Subtitle = sh
+	subHash := ""
+	if strings.TrimSpace(srt) != "" {
+		if sh, err := e.PutBytes([]byte(srt)); err == nil {
+			subHash = sh
+		}
 	}
-	if estimated {
-		e.warnStudio(&p, GateAudio, "字幕按字数估算。本机装好 whisper.cpp 后会贴着口播走。")
-	}
-	if speedIgnored {
-		e.warnStudio(&p, GateAudio, "这个语音接口不接受语速，已按原速配音。")
-	}
-	if engine == "edge" {
-		e.noteStudio(&p, "speak", "本地 edge-tts · 晓晓")
-	}
-	p.SkipAudio = false
-	p.Gate = GateVisuals
-	e.noteStudio(&p, "speak", "narration ready")
-	saved, err := e.saveStudio(p)
+	saved, err := e.mutateStudio(id, func(p *StudioProject) error {
+		if p.ScriptStatus != ScriptApproved || strings.TrimSpace(p.Script) != strings.TrimSpace(snap.Script) {
+			return fmt.Errorf("口播在配音时改过了。锁定新口播后再配一次")
+		}
+		clearStudioIssues(p, GateAudio)
+		p.NarrationHash = hash
+		p.Storyboard.Narration = hash
+		p.VoiceEngine = out.Engine
+		p.SubtitleEstimated = estimated
+		if subHash != "" {
+			p.SubtitleHash = subHash
+			p.Storyboard.Subtitle = subHash
+		}
+		if estimated {
+			e.warnStudio(p, GateAudio, "字幕按字数估算，时间已按配音总长对齐。本机装好 whisper.cpp 后会逐句贴着口播走。")
+		}
+		for _, note := range out.Notes {
+			e.warnStudio(p, GateAudio, note)
+		}
+		e.noteStudio(p, "speak", out.Vendor+" · "+out.Voice.Name)
+		p.SkipAudio = false
+		if studioGateIndex(p.Gate) < studioGateIndex(GateVisuals) {
+			p.Gate = GateVisuals
+		}
+		e.noteStudio(p, "speak", "narration ready")
+		return nil
+	})
 	if err != nil {
-		return StudioProject{}, err
+		return saved, err
 	}
 	if timed, terr := e.ApplyStudioTiming(saved.ID); terr == nil {
 		return timed, nil
@@ -82,36 +90,45 @@ func (e *Engine) SpeakStudio(id, text string) (StudioProject, error) {
 	return saved, nil
 }
 
-// speakAudio 先用已启用且有密钥的语音连接。失败或没有连接时再试 edge-tts。两边都失败时，试过云端就返回云端的错误。
-// text 传给 ttsOpenAI，云端不成再传给 ttsEdge。
-// voice 传给 ttsOpenAI。
-// speed 传给 ttsOpenAI，云端不成再传给 ttsEdge。
-func (e *Engine) speakAudio(text, voice string, speed float64) (raw []byte, engine string, speedIgnored bool, err error) {
-	var cloudErr error
-	if e.Conn != nil {
-		if c, cerr := e.Conn.Active(connection.CapSpeech, ""); cerr == nil {
-			key, kerr := e.Conn.Lease(c)
-			if kerr == nil && strings.TrimSpace(key) != "" {
-				model := connection.ModelFor(c, connection.CapSpeech)
-				if model == "" {
-					model = "gpt-4o-mini-tts"
-				}
-				raw, speedIgnored, err = e.ttsOpenAI(c.Endpoint, key, model, text, voice, speed)
-				if err == nil {
-					return raw, "cloud", speedIgnored, nil
-				}
-				cloudErr = err
-			}
-		}
+// edgeTimeout 按字数放宽 edge-tts 的等待：45 秒起，每 4 个字再加 1 秒，最多 6 分钟。三分钟的口播也等得完。
+func edgeTimeout(text string) time.Duration {
+	d := 45*time.Second + time.Duration(utf8.RuneCountInString(text)/4)*time.Second
+	if d > 6*time.Minute {
+		d = 6 * time.Minute
 	}
-	raw, err = e.ttsEdge(text, speed)
+	return d
+}
+
+// edgeTTSAvailable 在 PATH 里能找到 edge-tts 时为真。
+func edgeTTSAvailable() bool {
+	_, err := exec.LookPath("edge-tts")
+	return err == nil
+}
+
+// speakAudio 先用已启用且有密钥的语音连接，按厂商走它自己的接口。失败或没有连接时再试本机 edge-tts。两边都失败时把两边的原因一起返回。
+// text 是口播。voice 是工程选的声音，会换成实际接口认得的声音。speed 是语速，1 是原速。
+func (e *Engine) speakAudio(text, voice string, speed float64) (speechOut, error) {
+	var cloudErr error
+	if c, key, ok := e.activeSpeech(); ok {
+		out, err := e.cloudSpeech(c, key, text, voice, speed)
+		if err == nil {
+			return out, nil
+		}
+		cloudErr = err
+	}
+	v := resolveSpeechVoice("edge", voice)
+	raw, err := e.ttsEdge(text, v.ID, speed)
 	if err == nil {
-		return raw, "edge", false, nil
+		return speechOut{Audio: raw, Engine: "edge", Vendor: speechVendorNames["edge"], Voice: v}, nil
+	}
+	edgeErr := err
+	if !edgeTTSAvailable() {
+		edgeErr = fmt.Errorf("本机没有 edge-tts（pip install edge-tts 后重开 Yoyo）")
 	}
 	if cloudErr != nil {
-		return nil, "", false, cloudErr
+		return speechOut{}, fmt.Errorf("语音账号配音失败：%v；%v", cloudErr, edgeErr)
 	}
-	return nil, "", false, fmt.Errorf("configure a speech adapter in Settings → Generation, or install edge-tts")
+	return speechOut{}, fmt.Errorf("到 设置 → 生成 里启用语音账号，或安装 edge-tts。%v", edgeErr)
 }
 
 // ttsOpenAI 按 OpenAI 语音接口要音频。带了语速且对方回 400 或 422 时，去掉语速再要一次，并标明语速被忽略。
@@ -204,10 +221,11 @@ func (e *Engine) ttsOpenAIOnce(endpoint, key string, payload map[string]any) ([]
 	return raw, nil
 }
 
-// ttsEdge 用本机 edge-tts，声音是 zh-CN-XiaoxiaoNeural。45 秒内没完成，或文件太短，都算失败。PATH 里没有 edge-tts 就返回查找错误。
+// ttsEdge 用本机 edge-tts。超过 edgeTimeout 没完成，或文件太短，都算失败。PATH 里没有 edge-tts 就返回查找错误。
 // text 放进 --text。
+// voice 放进 --voice，空着用 zh-CN-XiaoxiaoNeural。
 // speed 传给 edgeRate，结果放进 --rate。
-func (e *Engine) ttsEdge(text string, speed float64) ([]byte, error) {
+func (e *Engine) ttsEdge(text, voice string, speed float64) ([]byte, error) {
 	bin, err := exec.LookPath("edge-tts")
 	if err != nil {
 		return nil, err
@@ -223,8 +241,8 @@ func (e *Engine) ttsEdge(text string, speed float64) ([]byte, error) {
 	name := f.Name()
 	f.Close()
 	defer os.Remove(name)
-	args := []string{"--voice", "zh-CN-XiaoxiaoNeural", "--rate", edgeRate(speed), "--text", text, "--write-media", name}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	args := []string{"--voice", firstNonEmpty(strings.TrimSpace(voice), "zh-CN-XiaoxiaoNeural"), "--rate", edgeRate(speed), "--text", text, "--write-media", name}
+	ctx, cancel := context.WithTimeout(context.Background(), edgeTimeout(text))
 	defer cancel()
 	cmd := quiet(exec.CommandContext(ctx, bin, args...))
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -291,9 +309,11 @@ func simpleSRT(text string) string {
 }
 
 // splitSpeak 按句号、问号、叹号和换行把口播拆开。中英文标点都认。
-// text 把 \r\n 换成 \n，遇到句号、问号、叹号或换行就切开。
+// text 把 \r\n 换成 \n，遇到中文句号、问号、叹号或换行就切开。英文的 . ! ? 只在后面是空白、结尾、中文或右引号右括号时才切，
+// 所以 18.1、iOS 18.1、yoyo.app 不会断开；. 前面只是 1. a. 这种序号时也不切。
 func splitSpeak(text string) []string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
+	rs := []rune(text)
 	var parts []string
 	var cur strings.Builder
 	flush := func() {
@@ -303,14 +323,56 @@ func splitSpeak(text string) []string {
 		}
 		cur.Reset()
 	}
-	for _, r := range text {
+	for i, r := range rs {
 		cur.WriteRune(r)
-		if r == '。' || r == '！' || r == '？' || r == '\n' || r == '.' || r == '!' || r == '?' {
+		switch r {
+		case '。', '！', '？', '\n':
+			flush()
+		case '.', '!', '?':
+			if i+1 < len(rs) && !sentenceGap(rs[i+1]) {
+				continue
+			}
+			if r == '.' && listMarker(cur.String()) {
+				continue
+			}
 			flush()
 		}
 	}
 	flush()
 	return parts
+}
+
+// sentenceGap 判断英文句末标点后面这个字能不能算断句处：空白、中日韩文字或右引号右括号。
+func sentenceGap(r rune) bool {
+	if unicode.IsSpace(r) || strings.ContainsRune("\"'”’)）」』", r) {
+		return true
+	}
+	return unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r)
+}
+
+// listMarker 判断 seg 结尾的 . 是不是序号里的点：去掉末尾的点后，最后一段只有一到三位数字，或一个英文字母。
+// seg 按空白和中英文逗号、冒号、顿号、分号、左括号切段，只看最后一段。
+func listMarker(seg string) bool {
+	head := strings.TrimSuffix(strings.TrimSpace(seg), ".")
+	fields := strings.FieldsFunc(head, func(r rune) bool {
+		return unicode.IsSpace(r) || strings.ContainsRune("：:，,、；;（(", r)
+	})
+	if len(fields) == 0 {
+		return false
+	}
+	last := []rune(fields[len(fields)-1])
+	if len(last) == 1 && last[0] < utf8.RuneSelf && unicode.IsLetter(last[0]) {
+		return true
+	}
+	if len(last) > 3 {
+		return false
+	}
+	for _, r := range last {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // srtStamp 把秒写成 SRT 的时:分:秒,毫秒。负数当成 0。

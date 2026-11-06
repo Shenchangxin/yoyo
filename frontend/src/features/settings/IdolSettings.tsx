@@ -34,6 +34,7 @@ type Form = {
   phone_texture: boolean;
   work_enabled: boolean;
   work_profile_id: string;
+  no_barge_in: boolean;
   speech_key: string;
   asr_key: string;
   image_key: string;
@@ -69,13 +70,13 @@ const empty: Form = {
   speech_provider: "", speech_base_url: "", speech_model: "", speech_voice: "",
   asr_provider: "", asr_base_url: "", asr_model: "",
   image_provider: "", image_base_url: "", image_model: "",
-  reach_out: true, text_only: false, phone_texture: false, work_enabled: true, work_profile_id: "",
+  reach_out: true, text_only: false, phone_texture: false, work_enabled: true, work_profile_id: "", no_barge_in: false,
   speech_key: "", asr_key: "", image_key: "",
   address: "", gender: "", timezone: "", birthday: "",
   speech_key_hint: "", asr_key_hint: "", image_key_hint: "",
 };
 
-const fieldClass = "mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]";
+const fieldClass = "mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-ui-body";
 
 /** 把已存的设置收成表单。v 读取 user、chat_base_url、chat_model、judge_model、speech_provider、speech_base_url 等，为空时不读。 */
 function fromRaw(v: any): Form {
@@ -100,6 +101,7 @@ function fromRaw(v: any): Form {
     phone_texture: !!v?.phone_texture,
     work_enabled: v?.work_enabled !== false,
     work_profile_id: str(v?.work_profile_id),
+    no_barge_in: !!v?.no_barge_in,
     address: str(u.address),
     gender: str(u.gender),
     timezone: str(u.timezone),
@@ -342,6 +344,7 @@ export function IdolSettings() {
         phone_texture: form.phone_texture,
         work_enabled: form.work_enabled,
         work_profile_id: form.work_profile_id,
+        no_barge_in: form.no_barge_in,
         speech_key: form.speech_key,
         asr_key: form.asr_key,
         image_key: form.image_key,
@@ -378,7 +381,7 @@ export function IdolSettings() {
   return (
     <>
       <SettingSection id="idol-services" title={copy.settings.sections.idolServices} description={copy.settings.tabHints.idol} actions={saveButton}>
-        <label className="block text-[12px] text-muted">
+        <label className="block text-ui-footnote text-muted">
           {c.chatModel}
           <select className={fieldClass} value={form.chat_model} onChange={(e) => set({ chat_model: e.target.value })}>
             <option value="">{c.useSession}</option>
@@ -390,7 +393,7 @@ export function IdolSettings() {
             ))}
           </select>
         </label>
-        <label className="block text-[12px] text-muted">
+        <label className="block text-ui-footnote text-muted">
           {c.judgeModel}
           <select className={fieldClass} value={form.judge_model} onChange={(e) => set({ judge_model: e.target.value })}>
             <option value="">{c.sameAsChat}</option>
@@ -402,7 +405,7 @@ export function IdolSettings() {
             ))}
           </select>
         </label>
-        {groups.length === 0 ? <p className="text-[12px] leading-relaxed text-muted">{c.noTextModels}</p> : null}
+        {groups.length === 0 ? <p className="text-ui-footnote leading-relaxed text-muted">{c.noTextModels}</p> : null}
         <MediaFields
           title={c.speechBlock}
           kind="speech"
@@ -459,14 +462,15 @@ export function IdolSettings() {
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="lift" onClick={() => void ping("chat")}>{c.tryChat}</Button>
           <Button size="sm" variant="lift" onClick={() => void ping("speech")}>{c.trySpeech}</Button>
+          <Button size="sm" variant="lift" onClick={() => void ping("asr")}>{c.tryAsr}</Button>
           <Button size="sm" variant="lift" onClick={() => void ping("image")}>{c.tryImage}</Button>
         </div>
       </SettingSection>
-      <SettingSection id="idol-you" title={copy.settings.sections.idolYou}>
+      <SettingSection id="idol-you" title={copy.settings.sections.idolYou} actions={saveButton}>
         <Field label={c.name} value={form.address} onChange={(v) => set({ address: v })} />
-        <Field label="Gender" value={form.gender} onChange={(v) => set({ gender: v })} />
-        <Field label="Timezone" value={form.timezone} placeholder="Asia/Shanghai" onChange={(v) => set({ timezone: v })} />
-        <Field label="Birthday MM-DD" value={form.birthday} placeholder="03-21" onChange={(v) => set({ birthday: v })} />
+        <Field label={c.gender} value={form.gender} onChange={(v) => set({ gender: v })} />
+        <Field label={c.timezone} value={form.timezone} placeholder={Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai"} onChange={(v) => set({ timezone: v })} />
+        <Field label={c.birthday} value={form.birthday} placeholder="03-21" onChange={(v) => set({ birthday: v })} />
       </SettingSection>
       <SettingSection id="idol-work" title={copy.settings.sections.idolWork} description={c.workHint} actions={saveButton}>
         <SettingRow title={c.work}>
@@ -478,10 +482,13 @@ export function IdolSettings() {
         <SettingRow title={c.textOnly}>
           <Switch checked={form.text_only} onCheckedChange={(v) => set({ text_only: v })} />
         </SettingRow>
-        <SettingRow title={c.phone} border={false}>
+        <SettingRow title={c.phone}>
           <Switch checked={form.phone_texture} onCheckedChange={(v) => set({ phone_texture: v })} />
         </SettingRow>
-        <label className="block text-[12px] text-muted">
+        <SettingRow title={c.bargeIn} description={c.bargeInHint} border={false}>
+          <Switch checked={!form.no_barge_in} onCheckedChange={(v) => set({ no_barge_in: !v })} />
+        </SettingRow>
+        <label className="block text-ui-footnote text-muted">
           {c.workProfile}
           <select className={fieldClass} value={form.work_profile_id} onChange={(e) => set({ work_profile_id: e.target.value })}>
             <option value="">{c.profileDefault}</option>
@@ -522,7 +529,7 @@ function MediaFields(props: {
   return (
     <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
       <SettingsGroupLabel>{props.title}</SettingsGroupLabel>
-      <label className="block text-[12px] text-muted">
+      <label className="block text-ui-footnote text-muted">
         {c.mediaProvider}
         <select className={fieldClass} value={props.provider} onChange={(e) => props.onProvider(e.target.value)}>
           <option value="">{c.useGeneration}</option>
@@ -531,13 +538,13 @@ function MediaFields(props: {
         </select>
       </label>
       {props.provider === "" && (props.fallbackName || props.fallbackModel) ? (
-        <p className="text-[11px] text-muted">{c.generationNow}{props.fallbackName ? `：${props.fallbackName}` : ""}{props.fallbackModel ? ` · ${props.fallbackModel}` : ""}</p>
+        <p className="text-ui-caption text-muted">{c.generationNow}{props.fallbackName ? `：${props.fallbackName}` : ""}{props.fallbackModel ? ` · ${props.fallbackModel}` : ""}</p>
       ) : null}
       {props.provider === customProvider ? (
         <Field label={c.customProvider} value={props.base} onChange={props.onBase} />
       ) : null}
       {selected ? (
-        <label className="block text-[12px] text-muted">
+        <label className="block text-ui-footnote text-muted">
           {c.mediaModel}
           <select className={fieldClass} value={props.model} onChange={(e) => props.onModel(e.target.value)}>
             {props.model && !selected.models.includes(props.model) ? <option value={props.model}>{props.model}</option> : null}
@@ -555,7 +562,7 @@ function MediaFields(props: {
       {props.provider !== "" ? (
         <>
           <Field label={props.keyHint ? `${c.mediaKey} ${props.keyHint}` : c.mediaKey} value={props.keyValue} secret placeholder={c.mediaKeyPh} onChange={props.onKey} />
-          <p className="text-[11px] leading-relaxed text-muted">{c.mediaKeyHint}</p>
+          <p className="text-ui-caption leading-relaxed text-muted">{c.mediaKeyHint}</p>
         </>
       ) : null}
     </div>
@@ -567,7 +574,7 @@ function VoiceSelect(props: { voices: ServiceVoice[]; value: string; onChange: (
   const label = useCopy().idol.mediaVoice;
   const extra = props.value && !props.voices.some((v) => v.id === props.value);
   return (
-    <label className="block text-[12px] text-muted">
+    <label className="block text-ui-footnote text-muted">
       {label}
       <select className={fieldClass} value={props.value} onChange={(e) => props.onChange(e.target.value)}>
         {extra ? <option value={props.value}>{props.value}</option> : null}
@@ -580,10 +587,10 @@ function VoiceSelect(props: { voices: ServiceVoice[]; value: string; onChange: (
 /** 画一行输入，密钥可以遮住。props 读取 label、secret、value、placeholder，调用 onChange。 */
 function Field(props: { label: string; value: string; placeholder?: string; secret?: boolean; onChange: (v: string) => void }) {
   return (
-    <label className="block text-[12px] text-muted">
+    <label className="block text-ui-footnote text-muted">
       {props.label}
       <Input
-        className="mt-1 h-8 font-mono text-[12px]"
+        className="mt-1 h-8 font-mono text-ui-footnote"
         type={props.secret ? "password" : "text"}
         value={props.value}
         placeholder={props.placeholder}

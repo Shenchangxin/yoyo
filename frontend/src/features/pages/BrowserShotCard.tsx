@@ -32,9 +32,9 @@ export function BrowserShotCard(props: { call?: Item; result?: Item }) {
       {src ? (
         <img src={src} alt="" className="max-h-40 w-full object-cover" />
       ) : (
-        <div className="px-3 py-6 text-center text-[12px] text-muted">{copy.pages.browserShot}</div>
+        <div className="px-3 py-6 text-center text-ui-footnote text-muted">{copy.pages.browserShot}</div>
       )}
-      {path ? <div className="truncate px-2 py-1 text-[11px] text-muted">{path}</div> : null}
+      {path ? <div className="truncate px-2 py-1 text-ui-caption text-muted">{path}</div> : null}
     </button>
   );
 }

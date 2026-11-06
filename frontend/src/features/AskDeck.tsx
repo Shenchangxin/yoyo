@@ -69,18 +69,18 @@ export function AskDeck({
 
   return (
     <section
-      className="rounded-2xl border border-border bg-card px-3.5 py-3 shadow-[var(--shadow-card)]"
+      className="rounded-xl border border-border bg-card px-3.5 py-3 shadow-[var(--shadow-card)]"
       data-testid="ask-deck"
       role="region"
       aria-label={copy.transcript.askDeck}
       onPointerDownCapture={() => setHeld(true)}
       onKeyDownCapture={() => setHeld(true)}
     >
-      <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
+      <div className="flex items-center gap-2 text-ui-caption font-medium text-muted">
         <span>{form.title || copy.transcript.askDeck}</span>
         {many ? <span className="ml-auto tabular-nums">{progress}</span> : null}
       </div>
-      <p className="mt-1 text-[14px] font-medium tracking-tight text-foreground">{question.prompt}</p>
+      <p className="mt-1 text-ui-body-l font-medium tracking-tight text-foreground">{question.prompt}</p>
       {question.options.length ? (
         <div className="mt-2.5 grid gap-1.5" role="radiogroup" aria-label={question.prompt}>
           {question.options.map((opt) => {
@@ -92,14 +92,14 @@ export function AskDeck({
                 role="radio"
                 aria-checked={on}
                 className={cn(
-                  "flex w-full items-start gap-2 rounded-xl border px-3 py-2 text-left text-[13px] leading-snug transition-colors",
+                  "flex w-full items-start gap-2 rounded-xl border px-3 py-2 text-left text-ui-body leading-snug transition-colors",
                   on ? "border-foreground/25 bg-lift text-foreground" : "border-border/70 text-foreground/90 hover:bg-lift",
                 )}
                 onClick={() => setPicks((prev) => ({ ...prev, [question.id]: opt.id }))}
               >
                 <span className="min-w-0 flex-1">{opt.label}</span>
                 {opt.id === question.recommended ? (
-                  <span className="shrink-0 text-[11px] text-muted">{copy.transcript.askSuggested}</span>
+                  <span className="shrink-0 text-ui-caption text-muted">{copy.transcript.askSuggested}</span>
                 ) : null}
               </button>
             );
@@ -107,7 +107,7 @@ export function AskDeck({
         </div>
       ) : (
         <textarea
-          className="mt-2 min-h-[4.5rem] w-full resize-y rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 text-[13px] leading-[1.5] text-foreground outline-none focus:border-foreground/30"
+          className="mt-2 min-h-[4.5rem] w-full resize-y rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 text-ui-body leading-[1.5] text-foreground outline-none focus:border-foreground/30"
           value={free[question.id] || ""}
           placeholder={copy.transcript.answerPlaceholder}
           autoComplete="off"
@@ -120,7 +120,7 @@ export function AskDeck({
           <>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1.5 text-[12px] text-foreground disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1.5 text-ui-footnote text-foreground disabled:opacity-40"
               disabled={page === 0}
               onClick={() => setIndex((n) => Math.max(0, n - 1))}
             >
@@ -129,7 +129,7 @@ export function AskDeck({
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1.5 text-[12px] text-foreground disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1.5 text-ui-footnote text-foreground disabled:opacity-40"
               disabled={page >= form.questions.length - 1}
               onClick={() => setIndex((n) => Math.min(form.questions.length - 1, n + 1))}
             >
@@ -140,12 +140,12 @@ export function AskDeck({
         ) : null}
         <button
           type="button"
-          className="inline-flex items-center rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background hover:opacity-[0.92]"
+          className="inline-flex items-center rounded-full bg-foreground px-3 py-1.5 text-ui-footnote font-medium text-background hover:opacity-[0.92]"
           onClick={() => finish(chosenAnswer(form, picks, free))}
         >
           {copy.transcript.askContinue}
         </button>
-        <span className="ml-auto text-[11px] text-muted">
+        <span className="ml-auto text-ui-caption text-muted">
           {held ? copy.transcript.askHold : canIdle ? copy.transcript.askIdle.replace("{n}", String(seconds)) : ""}
         </span>
       </div>

@@ -195,7 +195,7 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
             style={{ background: `color-mix(in srgb, var(--background) ${dimPct}%, transparent)` }}
           />
         ) : (
-          <p className="absolute inset-0 grid place-items-center px-4 text-center text-[12px] text-muted">{copy.settings.skinEmpty}</p>
+          <p className="absolute inset-0 grid place-items-center px-4 text-center text-ui-footnote text-muted">{copy.settings.skinEmpty}</p>
         )}
       </div>
       <SettingRow title={copy.settings.skinWallpaper} description={copy.settings.skinWallpaperDesc} stack>

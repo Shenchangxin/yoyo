@@ -120,6 +120,7 @@ export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed"
 export type SettingsTab =
   | "general"
   | "appearance"
+  | "proactive"
   | "provider"
   | "generation"
   | "policy"
@@ -495,6 +496,22 @@ export type AppConfig = {
   searchUrl?: string;
   searchKey?: string;
   paused?: boolean;
+  /** 主动式的节奏：简报时间、主动程度和安静时段。 */
+  desk?: DeskConfig;
+};
+
+/**
+ * DeskConfig 是设置里「主动与通知」写下的节奏。
+ * briefMorning、briefEvening 是 HH:MM，off 表示关掉，空表示用默认。level 是 less、normal 或 more。
+ * quietStart、quietEnd 是 HH:MM，可以跨午夜，相等或为空表示没有安静时段。quietWeekend 为真时周末只推审批和出错。
+ */
+export type DeskConfig = {
+  briefMorning?: string;
+  briefEvening?: string;
+  level?: string;
+  quietStart?: string;
+  quietEnd?: string;
+  quietWeekend?: boolean;
 };
 
 /** Notice 一条通知。sessionId 指出它属于哪段对话。 */

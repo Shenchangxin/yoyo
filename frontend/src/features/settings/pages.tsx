@@ -34,7 +34,7 @@ import {
 } from "./SettingChrome";
 import { cn } from "../../lib/utils";
 import type { SettingsHost } from "./host";
-import { HandheldSettings } from "./HandheldPanel";
+import { openDesk } from "../superagent/needs";
 
 /** SettingsHost 从 host 再导出。 */
 export type { SettingsHost } from "./host";
@@ -43,11 +43,11 @@ export { ProviderSettings } from "./ProviderPanel";
 /** GenerationSettings 从生成设置再导出。 */
 export { GenerationSettings } from "./GenerationSettings";
 
-/** GeneralSettings 改工作区、通知和桌面行为。host 读取 cfg，调用 patch，调用 onBrowse，写到 ShortcutsSettings 的 host。 */
+/** GeneralSettings 改工作区、窗口与启动、语言和快捷键。通知在「主动与通知」。host 读取 cfg，调用 patch，调用 onBrowse，写到 ShortcutsSettings 的 host。 */
 export function GeneralSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const cfg = host.cfg;
-  const notifications = cfg.notificationsEnabled !== false;
+  const locale = (cfg.locale === "zh-CN" ? "zh-CN" : cfg.locale === "en" ? "en" : getLocale()) as Locale;
   return (
     <>
       <SettingSection
@@ -59,7 +59,7 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
           <div className="flex w-full items-center gap-2">
             <Input
               aria-label={copy.settings.workspace}
-              className="h-8 flex-1 font-mono text-[12px]"
+              className="h-8 flex-1 font-mono text-ui-footnote"
               value={cfg.workspace}
               onChange={(e) => void host.patch({ workspace: e.target.value })}
             />
@@ -80,7 +80,7 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
           <div className="flex w-full items-center gap-2">
             <Input
               aria-label={copy.settings.videoWorkspace}
-              className="h-8 flex-1 font-mono text-[12px]"
+              className="h-8 flex-1 font-mono text-ui-footnote"
               value={cfg.videoWorkspace || ""}
               onChange={(e) => void host.patch({ videoWorkspace: e.target.value })}
             />
@@ -96,19 +96,6 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
               {copy.settings.browse}
             </Button>
           </div>
-        </SettingRow>
-      </SettingSection>
-
-      <SettingSection id="general-notifications" title={copy.settings.sections.generalNotifications}>
-        <SettingRow title={copy.settings.notifications} description={copy.settings.notificationsDesc}>
-          <Switch checked={notifications} onCheckedChange={(v) => void host.patch({ notificationsEnabled: v })} />
-        </SettingRow>
-        <SettingRow title={copy.settings.notifyUnfocused} description={copy.settings.notifyUnfocusedDesc} border={false}>
-          <Switch
-            disabled={!notifications}
-            checked={!!cfg.notifyWhenUnfocusedOnly}
-            onCheckedChange={(v) => void host.patch({ notifyWhenUnfocusedOnly: v })}
-          />
         </SettingRow>
       </SettingSection>
 
@@ -133,19 +120,35 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
         </SettingRow>
       </SettingSection>}
 
+      <SettingSection id="general-language" title={copy.settings.sections.generalLanguage}>
+        <SettingRow title={copy.settings.language} description={copy.settings.languageDesc} border={false}>
+          <SettingSegmented
+            id="locale"
+            ariaLabel={copy.settings.language}
+            value={locale}
+            options={[
+              { value: "en" as Locale, label: copy.settings.english },
+              { value: "zh-CN" as Locale, label: copy.settings.chinese },
+            ]}
+            onChange={(next) => {
+              applyLocale(next);
+              void host.patch({ locale: next });
+            }}
+          />
+        </SettingRow>
+      </SettingSection>
+
       {browserSurface() ? null : <ShortcutsSettings host={host} />}
     </>
   );
 }
 
-/** AppearanceSettings 改主题、色板、语言和显示。host 读取 cfg，调用 patch，写到 SkinStudio 的 host。 */
+/** AppearanceSettings 改主题（明暗和色板）、壁纸和对话显示。host 读取 cfg，调用 patch，写到 SkinStudio 的 host。 */
 export function AppearanceSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
-  const showHarnessLab = useUI((s) => s.showHarnessLab);
-  const setShowHarnessLab = useUI((s) => s.setShowHarnessLab);
   const { pref, setPref, resolved, darkPalette, lightPalette, setDarkPalette, setLightPalette } = useTheme();
-  const locale = (host.cfg.locale === "zh-CN" ? "zh-CN" : host.cfg.locale === "en" ? "en" : getLocale()) as Locale;
   const scale = String(snapUiScale(host.cfg.uiScale)) as `${UiScale}`;
+  const view = host.cfg.transcriptView === "compact" ? "compact" : host.cfg.transcriptView === "detailed" || host.cfg.transcriptView === "verbose" ? "detailed" : "standard";
   const modes: { id: ThemePref; label: string }[] = [
     { id: "system", label: copy.settings.system },
     { id: "dark", label: copy.settings.dark },
@@ -177,7 +180,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                 }}
               >
                 <ThemePreview mode={m.id} dark={darkPalette} light={lightPalette} />
-                <div className="mt-2 flex items-center gap-1 text-[12px] font-medium text-foreground">
+                <div className="mt-2 flex items-center gap-1 text-ui-footnote font-medium text-foreground">
                   {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
                   {m.label}
                 </div>
@@ -185,18 +188,11 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
             );
           })}
         </div>
-      </SettingSection>
-
-      <SettingSection
-        id="appearance-palette"
-        title={copy.settings.sections.appearancePalette}
-        footnote={copy.settings.palettesDesc}
-        bare
-      >
         <PaletteGroup
           label={copy.settings.paletteGroupDark}
           ids={DARK_PALETTES}
           selected={darkPalette}
+          className="mt-5"
           onPick={(id) => {
             setDarkPalette(id);
             void host.patch({ paletteDark: id });
@@ -217,21 +213,6 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
       <SkinStudio host={host} />
 
       <SettingSection id="appearance-display" title={copy.settings.sections.appearanceDisplay}>
-        <SettingRow title={copy.settings.language} description={copy.settings.languageDesc}>
-          <SettingSegmented
-            id="locale"
-            ariaLabel={copy.settings.language}
-            value={locale}
-            options={[
-              { value: "en" as Locale, label: copy.settings.english },
-              { value: "zh-CN" as Locale, label: copy.settings.chinese },
-            ]}
-            onChange={(next) => {
-              applyLocale(next);
-              void host.patch({ locale: next });
-            }}
-          />
-        </SettingRow>
         <SettingRow title={copy.settings.uiScale} description={copy.settings.uiScaleDesc}>
           <SettingSegmented
             id="ui-scale"
@@ -255,41 +236,55 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
             onCheckedChange={(v) => void host.patch({ showThinking: v })}
           />
         </SettingRow>
-        <SettingRow title={copy.settings.workDetails} description={copy.settings.workDetailsDesc}>
+        <SettingRow title={copy.settings.workDetails} description={copy.settings.workDetailsDesc} border={false}>
           <SettingSegmented
             id="transcript-view"
             ariaLabel={copy.settings.workDetails}
-            value={(host.cfg.transcriptView === "compact" || host.cfg.transcriptView === "detailed" || host.cfg.transcriptView === "verbose") ? host.cfg.transcriptView : "standard"}
+            value={view}
             options={[
               { value: "compact", label: copy.settings.workCompact },
               { value: "standard", label: copy.settings.workStandard },
               { value: "detailed", label: copy.settings.workDetailed },
-              { value: "verbose", label: copy.settings.workVerbose },
             ]}
             onChange={(next) => void host.patch({ transcriptView: next })}
           />
         </SettingRow>
-        <SettingRow title={copy.settings.collapseTiming} description={copy.settings.collapseTimingDesc}>
-          <SettingSegmented
-            id="collapse-timing"
-            ariaLabel={copy.settings.collapseTiming}
-            value={host.cfg.collapseTiming === "next-input" ? "next-input" : "completion"}
-            options={[
-              { value: "completion", label: copy.settings.collapseCompletion },
-              { value: "next-input", label: copy.settings.collapseNextInput },
-            ]}
-            onChange={(next) => void host.patch({ collapseTiming: next })}
-          />
-        </SettingRow>
-        <SettingRow title={copy.settings.showHarnessLab} description={copy.settings.showHarnessLabDesc} border={false}>
-          <Switch
-            checked={showHarnessLab}
-            onCheckedChange={setShowHarnessLab}
-            aria-label={copy.settings.showHarnessLab}
-          />
-        </SettingRow>
       </SettingSection>
     </>
+  );
+}
+
+/** LabsSection 放给调试和实验用的显示开关：实验室细节、原始步骤、工作细节什么时候收起。 */
+export function LabsSection({ host }: { host: SettingsHost }) {
+  const copy = useCopy();
+  const showHarnessLab = useUI((s) => s.showHarnessLab);
+  const setShowHarnessLab = useUI((s) => s.setShowHarnessLab);
+  const verbose = host.cfg.transcriptView === "verbose";
+  return (
+    <SettingSection id="advanced-labs" title={copy.settings.sections.advancedLabs} description={copy.settings.labsDesc}>
+      <SettingRow title={copy.settings.showHarnessLab} description={copy.settings.showHarnessLabDesc}>
+        <Switch checked={showHarnessLab} onCheckedChange={setShowHarnessLab} aria-label={copy.settings.showHarnessLab} />
+      </SettingRow>
+      <SettingRow title={copy.settings.workVerbose} description={copy.settings.workVerboseDesc}>
+        <Switch
+          checked={verbose}
+          aria-label={copy.settings.workVerbose}
+          onCheckedChange={(on) => void host.patch({ transcriptView: on ? "verbose" : "detailed" })}
+        />
+      </SettingRow>
+      <SettingRow title={copy.settings.collapseTiming} description={copy.settings.collapseTimingDesc} border={false}>
+        <SettingSegmented
+          id="collapse-timing"
+          ariaLabel={copy.settings.collapseTiming}
+          value={host.cfg.collapseTiming === "next-input" ? "next-input" : "completion"}
+          options={[
+            { value: "completion", label: copy.settings.collapseCompletion },
+            { value: "next-input", label: copy.settings.collapseNextInput },
+          ]}
+          onChange={(next) => void host.patch({ collapseTiming: next })}
+        />
+      </SettingRow>
+    </SettingSection>
   );
 }
 
@@ -311,7 +306,7 @@ export function ShortcutsSettings({ host }: { host: SettingsHost }) {
             type="button"
             aria-label={id}
             className={cn(
-              "h-8 min-w-[7.5rem] rounded-md border px-3 text-[12px] tabular-nums transition-colors",
+              "h-8 min-w-[7.5rem] rounded-md border px-3 text-ui-footnote tabular-nums transition-colors",
               armed === id
                 ? "border-accent/70 bg-accent/10 text-foreground"
                 : "border-border bg-background text-foreground hover:bg-lift/60",
@@ -374,8 +369,6 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
         </SettingRow>
       </SettingSection>
 
-      <PwshSection />
-
       <SettingSection id="policy-budget" title={copy.settings.sections.policyBudget}>
         <SettingRow title={copy.settings.maxBudget}>
           <Input
@@ -398,6 +391,8 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
       </SettingSection>
 
       <IsolationSection host={host} />
+
+      <DataSection host={host} />
 
       <SettingsSaveBar
         open={dirty}
@@ -431,8 +426,8 @@ function pwshBusy(phase?: string) {
   return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
 }
 
-/** 显示 PowerShell 运行时的状态，并能安装。 */
-function PwshSection() {
+/** 显示 PowerShell 运行时的状态，并能安装。放在运行环境一块的末尾。 */
+function PwshRows() {
   const copy = useCopy();
   const [st, setSt] = useState<PwshInstall>({});
   /** 把状态收成对象。s 为真时才继续，用 typeof 看类型，作为分支结果。 */
@@ -454,15 +449,11 @@ function PwshSection() {
   const needed = st.needed !== false;
   const ready = !!st.ready;
   return (
-    <SettingSection
-      id="policy-shell"
-      title={copy.settings.sections.policyShell}
-      footnote={needed ? copy.settings.pwshHint : copy.settings.pwshNotNeeded}
-    >
-      <SettingRow title={copy.settings.pwsh} description={st.shell || st.bin || copy.settings.pwshFallback} list>
+    <div data-setting-section-highlight-target="policy-shell">
+      <SettingRow title={copy.settings.pwsh} description={`${st.shell || st.bin || copy.settings.pwshFallback} · ${needed ? copy.settings.pwshHint : copy.settings.pwshNotNeeded}`} list border={false}>
         <span
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium",
+            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-footnote font-medium",
             ready ? "bg-success/15 text-success" : working ? "bg-accent/15 text-accent" : "bg-danger/10 text-danger",
           )}
         >
@@ -498,9 +489,9 @@ function PwshSection() {
       </SettingRow>
       {working ? <ProgressHairline value={Number(st.percent) || 0} /> : null}
       {phase === "error" && !ready && st.error ? (
-        <p className="pb-2 text-[12px] leading-[1.45] text-danger">{String(st.error)}</p>
+        <p className="pb-2 text-ui-footnote leading-[1.45] text-danger">{String(st.error)}</p>
       ) : null}
-    </SettingSection>
+    </div>
   );
 }
 
@@ -532,9 +523,53 @@ function IsolationSection({ host }: { host: SettingsHost }) {
         mono
       />
       <SettingValueRow title={copy.settings.awakeRequired} value={copy.settings.yes} />
-      <SettingValueRow title={copy.settings.lidCloseStops} value={copy.settings.yes} border={false} />
+      <SettingValueRow title={copy.settings.lidCloseStops} value={copy.settings.yes} />
+      <PwshRows />
     </SettingSection>
   );
+}
+
+/** DataSection 是数据入口：记忆去今天栏的记忆页改，诊断包导出到本机。 */
+function DataSection({ host }: { host: SettingsHost }) {
+  const copy = useCopy();
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    void api.memoryList().then((rows) => setCount(Array.isArray(rows) ? rows.length : 0)).catch(() => setCount(null));
+  }, []);
+  return (
+    <SettingSection id="policy-data" title={copy.settings.sections.policyData} description={copy.settings.dataDesc}>
+      <SettingRow title={copy.settings.dataMemory} description={count === null ? copy.settings.dataMemoryDesc : `${copy.settings.dataMemoryDesc} ${copy.settings.dataMemoryCount.replace("{n}", String(count))}`}>
+        <Button size="sm" variant="lift" onClick={() => openMemoryPage()}>
+          {copy.settings.dataOpenMemory}
+        </Button>
+      </SettingRow>
+      {host.onExportDiagnostics ? (
+        <SettingRow title={copy.settings.exportBundle} description={copy.settings.dataExportDesc} border={false}>
+          <Button
+            size="sm"
+            variant="lift"
+            onClick={async () => {
+              try {
+                await host.onExportDiagnostics?.();
+                toast.success(copy.settings.exportedBundle);
+              } catch (e) {
+                toast.error(String(e));
+              }
+            }}
+          >
+            <Download aria-hidden />
+            {copy.settings.exportBundle}
+          </Button>
+        </SettingRow>
+      ) : null}
+    </SettingSection>
+  );
+}
+
+/** openMemoryPage 关掉设置回到会话，让今天栏翻到记忆。今天栏还没挂上时，等它挂上再翻。 */
+function openMemoryPage() {
+  useUI.getState().closeSettings();
+  openDesk({ tab: "memory" });
 }
 
 /** 画一颗成功或失败的状态。ok 为真时才继续。label 作为子节点渲染。 */
@@ -542,7 +577,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-footnote font-medium",
         ok ? "bg-success/15 text-success" : "bg-lift text-muted",
       )}
     >
@@ -749,34 +784,29 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
             {diagnostic || copy.settings.emptyLogs}
           </SettingCodePanel>
         </div>
-      </SettingSection>
-
-      <SettingSection
-        id="advanced-journal"
-        title={copy.settings.sections.advancedJournal}
-        footnote={copy.settings.journalHint}
-        actions={
-          host.onRevealJournal ? (
-            <Button size="sm" variant="ghost" onClick={() => void host.onRevealJournal?.()}>
-              {copy.settings.reveal}
-            </Button>
-          ) : null
-        }
-      >
-        <div data-testid="journal-tail">
-          <SettingCodePanel className="max-h-[240px] min-h-[72px]">
-            {journal || copy.settings.emptyJournal}
+        <div className="mt-4" data-setting-section-highlight-target="advanced-journal">
+          <div className="mb-1.5 flex items-center gap-2">
+            <h3 className="min-w-0 flex-1 text-ui-body font-medium text-foreground">{copy.settings.sections.advancedJournal}</h3>
+            {host.onRevealJournal ? (
+              <Button size="sm" variant="ghost" onClick={() => void host.onRevealJournal?.()}>
+                {copy.settings.reveal}
+              </Button>
+            ) : null}
+          </div>
+          <p className="mb-1.5 text-ui-footnote text-muted">{copy.settings.journalHint}</p>
+          <div data-testid="journal-tail">
+            <SettingCodePanel className="max-h-[240px] min-h-[72px]">
+              {journal || copy.settings.emptyJournal}
+            </SettingCodePanel>
+          </div>
+        </div>
+        <div className="mt-4" data-setting-section-highlight-target="advanced-doctor">
+          <h3 className="mb-1.5 text-ui-body font-medium text-foreground">{copy.settings.sections.advancedDoctor}</h3>
+          <SettingCodePanel className="max-h-64 min-h-[96px]">
+            {JSON.stringify(host.doctor || {}, null, 2).slice(0, 8000)}
           </SettingCodePanel>
         </div>
       </SettingSection>
-
-      <SettingSection id="advanced-doctor" title={copy.settings.sections.advancedDoctor}>
-        <SettingCodePanel className="max-h-64 min-h-[96px]">
-          {JSON.stringify(host.doctor || {}, null, 2).slice(0, 8000)}
-        </SettingCodePanel>
-      </SettingSection>
-
-      <HandheldSettings />
 
       <ConfirmDialog
         open={applyOpen}
@@ -823,7 +853,7 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
   const copy = useCopy();
   return (
     <div className={className}>
-      <div className="mb-2 px-1 text-[11px] font-medium text-muted">{label}</div>
+      <div className="mb-2 px-1 text-ui-caption font-medium text-muted">{label}</div>
       <div className="grid grid-cols-3 gap-3">
         {ids.map((id) => {
           const meta = paletteCopy(id, copy.settings.palettes);
@@ -835,7 +865,7 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
               aria-pressed={active}
               aria-label={`${meta.name}. ${meta.hint}`}
               className={cn(
-                "group cursor-pointer rounded-2xl border bg-card p-2 text-left transition-[background-color,border-color,transform] duration-200 ease-[var(--ease-out)]",
+                "group cursor-pointer rounded-xl border bg-card p-2 text-left transition-[background-color,border-color,transform] duration-200 ease-[var(--ease-out)]",
                 active ? "border-accent/70 bg-lift" : "border-transparent hover:bg-lift/70",
               )}
               onClick={() => onPick(id)}
@@ -843,11 +873,11 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
               <div className="h-[56px] overflow-hidden rounded-xl border border-border">
                 <PreviewPane palette={id} />
               </div>
-              <div className="mt-2 flex items-center gap-1 text-[12px] font-medium text-foreground">
+              <div className="mt-2 flex items-center gap-1 text-ui-footnote font-medium text-foreground">
                 {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
                 {meta.name}
               </div>
-              <p className="mt-0.5 text-left text-[11px] leading-[1.4] text-muted">{meta.hint}</p>
+              <p className="mt-0.5 text-left text-ui-caption leading-[1.4] text-muted">{meta.hint}</p>
             </button>
           );
         })}
@@ -890,7 +920,7 @@ function PreviewPane({ palette }: { palette: PaletteId }) {
       <div className="flex-1 space-y-[3px] p-[6px]">
         <div className="h-[3px] w-4/5 rounded-full" style={{ background: tokens["--muted"] }} />
         <div className="h-[3px] w-3/5 rounded-full" style={{ background: tokens["--muted"] }} />
-        <div className="mt-[5px] h-[14px] w-full rounded-[6px]" style={{ background: tokens["--card"], border: `1px solid ${tokens["--border"]}` }} />
+        <div className="mt-[5px] h-[14px] w-full rounded-sm" style={{ background: tokens["--card"], border: `1px solid ${tokens["--border"]}` }} />
         <div className="mt-[4px] h-[4px] w-8 rounded-full" style={{ background: tokens["--accent"] }} />
       </div>
     </div>

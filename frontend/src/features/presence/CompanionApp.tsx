@@ -30,6 +30,8 @@ import { cn } from "../../lib/utils";
 
 const KEEP = 80;
 const AWAKE_MS = 12_000;
+/** 她先开口的那句在气泡里留多久。 */
+const REACH_MS = 30 * 60_000;
 
 /** CompanionApp 投影置顶偶像、工作和脉搏，拖动窗口，并把通话交给 IdolCall。 */
 export function CompanionApp() {
@@ -43,7 +45,7 @@ export function CompanionApp() {
   const [pulse, setPulse] = useState<CompanionPulse | null>(null);
   const [spark, setSpark] = useState(0);
   const [inCall, setInCall] = useState(false);
-  const [reach, setReach] = useState("");
+  const [reach, setReach] = useState<{ line: string; idol: string; at: number } | null>(null);
   const [face, setFace] = useState("");
   const [pinnedID, setPinnedID] = useState("");
   const [idolKind, setIdolKind] = useState("");
@@ -112,11 +114,11 @@ export function CompanionApp() {
 
   useEffect(() => {
     if (inCall) return;
-    /** 问一句主动搭话，有字幕就留下。 */
+    /** 问一句主动搭话，有字幕就留下，并记住是哪一位说的。 */
     const tick = () => {
       void api.idolCall("reach", {}).then((r) => {
         const line = String(r?.caption || r?.speak || "").trim();
-        if (line) setReach(line);
+        if (line) setReach({ line, idol: String(r?.idol_id || ""), at: Date.now() });
       }).catch(() => {});
     };
     const id = window.setInterval(tick, 45000);
@@ -236,7 +238,8 @@ export function CompanionApp() {
 
   const idleMs = running ? 0 : now - idleAt.current;
   const activePulse = pulse && now < pulse.until ? pulse : null;
-  const reachPulse = !activePulse && reach ? { title: copy.idol.reach, body: reach, session: "", kind: "reach", until: now + 20000 } : null;
+  const reachLive = reach && now - reach.at < REACH_MS ? reach : null;
+  const reachPulse = !activePulse && reachLive ? { title: copy.idol.reach, body: reachLive.line, session: "", kind: "reach", until: now + 20000 } : null;
   const shownPulse = activePulse || reachPulse;
   const loading = showLoading(running, pulse, approvals, now);
   const busyMs = useBusyMs(running || loading, `${running}:${loading}`);
@@ -316,8 +319,13 @@ export function CompanionApp() {
   /** 松开时结束拖动。 */
   const dragEnd = () => { grab.current = null; };
 
-  /** 有会话就唤起它，否则唤起主窗。 */
+  /** 气泡里是她先开口的那句时，到主窗口的偶像页找她；否则有会话就唤起它，没有就唤起主窗。 */
   const open = () => {
+    if (!activePulse && reachLive) {
+      void api.idolCall("raise", { idol_id: reachLive.idol || pinnedID });
+      setReach(null);
+      return;
+    }
     const sid = activePulse?.session || sessionRef.current;
     if (sid) void api.raiseSession(sid);
     else void api.raiseWindow();

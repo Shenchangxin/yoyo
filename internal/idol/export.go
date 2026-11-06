@@ -26,14 +26,63 @@ func (st *State) ForceNew(idolID string, now time.Time) Conversation {
 }
 
 // MarkTask 按 kind 记下当天的说话、通话或送礼，并在首次完成时加一次奖励抽卡。
-// now 传给 markTask。
 func (st *State) MarkTask(now time.Time, kind string) {
-	st.markTask(now, st.User.Location(), kind)
+	st.markTask(now, kind)
 }
 
 // Unlock 按现有对话、礼物和好感补成就，返回这次新加上的 id。
-// now 传给 unlock。
-func (st *State) Unlock(now time.Time) { st.unlock(now) }
+func (st *State) Unlock(now time.Time) []string { return st.unlock(now) }
+
+// AffinityOf 返回这位偶像到 now 为止的好感，已补上回暖。
+func (st State) AffinityOf(idolID string, now time.Time) Affinity { return st.affinityOf(idolID, now) }
+
+// Affinities 返回每位有记录的偶像到 now 为止的好感。
+func (st State) Affinities(now time.Time) []Affinity {
+	out := make([]Affinity, 0, len(st.Affinity))
+	for _, a := range st.Affinity {
+		out = append(out, a.recovered(now))
+	}
+	return out
+}
+
+// HearingHint 是交给语音识别的热词：她的名字、读音表里的写法、用户希望被叫的称呼，用顿号连起来，最多 12 个。
+// 名字和专有名词靠它才不容易听错。没有这位偶像时只有称呼。
+func (st State) HearingHint(idolID string) string {
+	var words []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" || len(words) >= 12 {
+			return
+		}
+		for _, w := range words {
+			if w == s {
+				return
+			}
+		}
+		words = append(words, s)
+	}
+	if it, ok := st.idol(idolID); ok {
+		add(it.Name)
+		for _, ln := range strings.Split(it.Readings, "\n") {
+			ln = strings.TrimSpace(ln)
+			if ln == "" || strings.HasPrefix(ln, "#") {
+				continue
+			}
+			if i := strings.IndexAny(ln, "= "); i > 0 {
+				ln = ln[:i]
+			}
+			add(ln)
+		}
+	}
+	add(st.User.Address)
+	return strings.Join(words, "、")
+}
+
+// GiftUnanswered 判断这位偶像当前对话里有没有她还没回应的礼物。
+func (st State) GiftUnanswered(idolID string) bool {
+	c, ok := currentOf(&st, idolID)
+	return ok && !c.Ended && giftUnanswered(c.Records)
+}
 
 // MemoriesFor 返回记忆。idolID 为空时返回全部；否则返回这位偶像自己的，以及她所在圈子里的。
 func (st State) MemoriesFor(idolID string) []Memory {

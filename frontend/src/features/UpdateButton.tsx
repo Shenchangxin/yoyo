@@ -112,7 +112,7 @@ export function UpdateButton() {
         >
           <Download className="size-4" aria-hidden />
           {phase === "downloading" ? (
-            <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-[9px] text-background">{percent}%</span>
+            <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-ui-badge text-background">{percent}%</span>
           ) : ready ? (
             <span className="absolute right-1 top-1 size-1.5 rounded-full bg-foreground" aria-hidden />
           ) : null}

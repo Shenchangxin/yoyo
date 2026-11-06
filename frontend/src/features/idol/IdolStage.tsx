@@ -19,9 +19,10 @@ import { CallBar, CallSurface } from "./IdolCall";
 import { IdolChat } from "./IdolChat";
 import { IdolPanel, type IdolPanelKind } from "./IdolPanels";
 import {
-  affinityOf, blankIdol, groupIdols, historyOf, idolError, idolOf, imageURL, isCooling, linesOf, snapOf, whenLabel,
+  affinityOf, blankIdol, groupIdols, historyOf, idolError, idolOf, imageURL, isCooling, linesOf, pendingPhotos, snapOf, tierProgress, whenLabel,
   type History, type Idol, type Snap,
 } from "./model";
+import { takeIdolFocus } from "./focus";
 import { warmStand } from "./stand/StandView";
 import { primeCallAudio, useIdolCall } from "./useIdolCall";
 
@@ -90,6 +91,8 @@ export function IdolStage() {
   const [giftNames, setGiftNames] = useState<Record<string, string>>({});
   const [talkFor, setTalkFor] = useState("");
   const talkGen = useRef(0);
+  const selRef = useRef(sel);
+  selRef.current = sel;
   const faces = usePortraitURLs(snap?.idols || []);
 
   const current = snap?.idols.find((i) => i.id === sel) || null;
@@ -114,6 +117,7 @@ export function IdolStage() {
     work: callWork,
     textOnly: !!snap?.textOnly,
     phone: !!snap?.phone,
+    bargeIn: snap?.bargeIn !== false,
     /** 通话结束后关掉通话层，并刷新这段会话。 */
     onEnded: () => {
       setCallOn(false);
@@ -161,6 +165,34 @@ export function IdolStage() {
     // 只在第一次打开时拉快照。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    /** 陪伴窗点了她先开口的那句：切到那一位。 */
+    const focus = (id: string) => { if (id) { setSel(id); setPanel(null); } };
+    focus(takeIdolFocus());
+    const onFocus = () => focus(takeIdolFocus());
+    window.addEventListener("yoyo-idol-focus", onFocus);
+    return () => window.removeEventListener("yoyo-idol-focus", onFocus);
+  }, []);
+
+  /** 有照片还在拍时，等它拍完再刷新这段会话；离开再回来也接得上。 */
+  const waitingPhotos = pendingPhotos(history.current?.records || []).join("|");
+  useEffect(() => {
+    if (!waitingPhotos || !sel) return;
+    let stop = false;
+    const idolId = sel;
+    const ids = waitingPhotos.split("|");
+    void (async () => {
+      for (let round = 0; round < 8 && !stop; round++) {
+        const states = await Promise.all(ids.map((id) => api.idolCall("photo_wait", { record_id: id, wait_ms: 25000 }).catch(() => null)));
+        if (states.every((s) => str(s?.state) !== "pending")) break;
+      }
+      if (!stop) void refreshTalk(idolId);
+    })();
+    return () => { stop = true; };
+    // 只在等待的照片变化时重跑。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingPhotos, sel]);
 
   useEffect(() => {
     if (!sel) {
@@ -213,17 +245,18 @@ export function IdolStage() {
     }
   }
 
-  /** 把输入送成一个回合，失败时把文字放回输入框。 */
+  /** 把输入送成一个回合，失败时把文字放回输入框。她交出去的事办完时，她的转述会出现在对话里；她警告或换了档也如实说。 */
   async function send() {
     const body = text.trim();
     if (!body || !sel || sending || blocked) return;
+    const idolId = sel;
     setText("");
     setPending(body);
     setSending(true);
     setNotice("");
+    let res: any;
     try {
-      const res = await api.idolCall("turn", { idol_id: sel, text: body, work });
-      if (res?.work_session) toast.success(c.openWork);
+      res = await api.idolCall("turn", { idol_id: idolId, text: body, work });
     } catch (e) {
       setText(body);
       setNotice(idolError(e, c));
@@ -233,10 +266,34 @@ export function IdolStage() {
     }
     setPending("");
     setSending(false);
+    if (res?.warning) setNotice(c.warning);
+    if (res?.change?.tier_changed && res?.change?.tier) {
+      toast(c.tierNow.replace("{tier}", (c.tier as Record<string, string>)[str(res.change.tier)] || str(res.change.tier)));
+    }
+    if (res?.work_session && !res?.work_error) {
+      toast.success(c.workWaiting);
+      void followWork(idolId, str(res.work_session), str(res.record_id));
+    } else if (res?.work_error) {
+      setNotice(idolError(new Error(str(res.work_error)), c));
+    }
     try {
-      await refreshTalk(sel);
+      await refreshTalk(idolId);
     } catch (e) {
       setNotice(idolError(e, c));
+    }
+  }
+
+  /** 等她交给 Yoyo 的事办完，转述写进对话后刷新。离开这一页也没关系，服务端照样会写进去。 */
+  async function followWork(idolId: string, session: string, recordId: string) {
+    for (let i = 0; i < 180; i++) {
+      try {
+        const res = await api.idolCall("narrate", { idol_id: idolId, session, record_id: recordId, wait_ms: 20000 });
+        if (res?.pending) continue;
+      } catch {
+        return;
+      }
+      if (selRef.current === idolId) void refreshTalk(idolId);
+      return;
     }
   }
 
@@ -277,6 +334,11 @@ export function IdolStage() {
       setNotice(cooling ? c.cooldown : ended ? c.ended : c.readOnly);
       return;
     }
+    if (id && isCooling(affinityOf(snap?.affinities || [], target).cooldown_until)) {
+      if (target !== sel) setSel(target);
+      setNotice(c.cooldown);
+      return;
+    }
     if (target !== sel) setSel(target);
     primeCallAudio();
     setPanel(null);
@@ -299,13 +361,13 @@ export function IdolStage() {
 
   const roster = (
       <aside className={cn("flex min-h-0 shrink-0 flex-col", railSlot ? "h-full w-full" : "w-60 border-r border-border")}>
-        <div className="px-3 pb-1 pt-3 text-[13px] font-medium">{c.title}</div>
-        <p className="px-3 pb-2 text-[11px] leading-relaxed text-muted">{c.railHint}</p>
+        <div className="px-3 pb-1 pt-3 text-ui-body font-medium">{c.title}</div>
+        <p className="px-3 pb-2 text-ui-caption leading-relaxed text-muted">{c.railHint}</p>
         <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
           {groups.map((g) => (
             <div key={g.id || "loose"} className="mb-2">
               {(g.name || groups.length > 1) ? (
-                <div className="px-2 pb-1 pt-2 text-[11px] text-muted">{g.name || c.unassigned}</div>
+                <div className="px-2 pb-1 pt-2 text-ui-caption text-muted">{g.name || c.unassigned}</div>
               ) : null}
               {g.idols.map((i) => (
                 <div
@@ -320,10 +382,10 @@ export function IdolStage() {
                     <IdolMark idol={i} src={i.portrait ? faces.get(i.portrait) || "" : ""} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1">
-                        <span className="truncate text-[13px]">{i.name}</span>
-                        {i.pinned ? <span className="shrink-0 text-[10px] text-muted">{c.onDesktop}</span> : null}
+                        <span className="truncate text-ui-body">{i.name}</span>
+                        {i.pinned ? <span className="shrink-0 text-ui-badge text-muted">{c.onDesktop}</span> : null}
                       </span>
-                      {i.intro ? <span className="block truncate text-[11px] text-muted">{i.intro}</span> : null}
+                      {i.intro ? <span className="block truncate text-ui-caption text-muted">{i.intro}</span> : null}
                     </span>
                   </button>
                   <div className="flex shrink-0 items-center gap-0.5">
@@ -351,7 +413,7 @@ export function IdolStage() {
               ))}
             </div>
           ))}
-          {booted && !bootError && groups.length === 0 ? <p className="px-2 text-[12px] text-muted">{c.empty}</p> : null}
+          {booted && !bootError && groups.length === 0 ? <p className="px-2 text-ui-footnote text-muted">{c.empty}</p> : null}
         </div>
         <div className="flex gap-1 border-t border-border p-2">
           <Button size="sm" variant="lift" className="flex-1" onClick={() => openEdit()}>
@@ -366,7 +428,7 @@ export function IdolStage() {
     <div className="flex h-full min-h-0" data-testid="idol-stage">
       {railSlot ? createPortal(roster, railSlot) : roster}
       <section className="relative flex min-w-0 flex-1 flex-col">
-        {!booted ? <div className="grid flex-1 place-items-center text-[13px] text-muted">{c.loading}</div> : null}
+        {!booted ? <div className="grid flex-1 place-items-center text-ui-body text-muted">{c.loading}</div> : null}
         {booted && bootError ? (
           <div className="grid flex-1 place-items-center">
             <EmptyState title={c.callFailed} body={bootError} action={<Button size="sm" onClick={() => { setBootError(""); void load().catch((e) => setBootError(idolError(e, c))); }}>{c.retry}</Button>} />
@@ -378,11 +440,16 @@ export function IdolStage() {
               <IdolMark idol={current} src={current.portrait ? faces.get(current.portrait) || "" : ""} size={32} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h1 className="truncate text-[15px] font-medium">{current.name}</h1>
-                  <span className="shrink-0 text-[12px] text-muted">{tier} · {aff.score}</span>
-                  {current.pinned ? <span className="shrink-0 rounded-full bg-lift px-2 py-0.5 text-[10px] text-muted">{c.onDesktop}</span> : null}
+                  <h1 className="truncate text-ui-title-s font-medium">{current.name}</h1>
+                  <span className="flex shrink-0 items-center gap-1.5 text-ui-footnote text-muted" title={`${c.score} ${Math.round(aff.score)}`}>
+                    {tier}
+                    <span className="h-1 w-10 overflow-hidden rounded-full bg-lift" aria-hidden>
+                      <span className="block h-full rounded-full" style={{ width: `${Math.round(tierProgress(aff.score) * 100)}%`, background: current.color || "#c47b8a" }} />
+                    </span>
+                  </span>
+                  {current.pinned ? <span className="shrink-0 rounded-full bg-lift px-2 py-0.5 text-ui-badge text-muted">{c.onDesktop}</span> : null}
                 </div>
-                <p className="truncate text-[12px] text-muted">{viewed?.title || history.current?.title || current.intro}</p>
+                <p className="truncate text-ui-footnote text-muted">{viewed?.title || history.current?.title || current.intro}</p>
               </div>
               <Button size="sm" disabled={!callOn && blocked} title={callOn ? c.backToCall : cooling ? c.cooldown : viewed ? c.readOnly : ended ? c.ended : c.call} onClick={() => startCall()}>
                 <Phone className="size-3.5" />{callOn ? c.backToCall : c.call}
@@ -404,11 +471,13 @@ export function IdolStage() {
                   <DropdownMenuItem onSelect={() => setPanel("lore")}>{c.lore}</DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setPanel("stats")}>{c.stats}</DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setPanel("circles")}>{c.circlesTitle}</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => openSettings("idol")}>{c.openSettings}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </header>
             {snap && !snap.chatReady ? (
-              <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-[12px] text-warning">
+              <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-ui-footnote text-warning">
                 <span className="min-w-0 flex-1">{c.modelBanner}</span>
                 <Button size="sm" variant="lift" onClick={() => openSettings("idol")}>{c.openSettings}</Button>
               </div>

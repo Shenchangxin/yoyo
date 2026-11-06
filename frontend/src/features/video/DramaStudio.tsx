@@ -518,9 +518,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
 
   return (
     <div className="drama-studio flex h-full min-h-0 flex-col" data-testid="drama-studio" data-phase={pane}>
-      {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
+      {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-ui-footnote text-danger">{err}</div> : null}
       {showMissing ? (
-        <div className="flex items-center gap-2 border-b border-border/70 bg-lift/60 px-3 py-1.5 text-[12px] text-muted">
+        <div className="flex items-center gap-2 border-b border-border/70 bg-lift/60 px-3 py-1.5 text-ui-footnote text-muted">
           <span className="min-w-0 flex-1">{copy.video.missingProviders}</span>
           <button type="button" className="underline" onClick={() => openSettings("generation", "generation-image")}>{copy.video.openSettings}</button>
         </div>
@@ -538,7 +538,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         />
         {drama?.aspect_ratio ? (
           <Tooltip content={copy.video.ratioLocked}>
-            <span className="font-mono text-[10px] tabular-nums text-muted">{drama.aspect_ratio}</span>
+            <span className="font-mono text-ui-caption tabular-nums text-muted">{drama.aspect_ratio}</span>
           </Tooltip>
         ) : null}
         <nav className="drama-phase" aria-label={copy.video.desk}>
@@ -571,7 +571,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         ) : null}
         <button
           type="button"
-          className={cn("ml-auto inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium", tasksOpen ? "bg-lift text-foreground" : "text-muted hover:bg-lift hover:text-foreground")}
+          className={cn("ml-auto inline-flex h-7 items-center gap-1 rounded-md px-2 text-ui-caption font-medium", tasksOpen ? "bg-lift text-foreground" : "text-muted hover:bg-lift hover:text-foreground")}
           aria-pressed={tasksOpen}
           aria-label={copy.video.jobs}
           onClick={() => setTasksOpen(/** v 取反。 */ (v) => !v)}
@@ -668,9 +668,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             <aside className="drama-inspector">
               <div className="mb-3 grid gap-1.5">
                 <label className="grid gap-0.5">
-                  <span className="text-[11px] text-muted">{copy.video.seriesName}</span>
+                  <span className="text-ui-caption text-muted">{copy.video.seriesName}</span>
                   <Input
-                    className="h-7 text-[13px] font-medium"
+                    className="h-7 text-ui-body font-medium"
                     value={drama?.title || ""}
                     placeholder={copy.video.untitled}
                     aria-label={copy.video.seriesName}
@@ -686,9 +686,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   />
                 </label>
                 <label className="grid gap-0.5">
-                  <span className="text-[11px] text-muted">{copy.video.episodeName}</span>
+                  <span className="text-ui-caption text-muted">{copy.video.episodeName}</span>
                   <Input
-                    className="h-7 text-[13px]"
+                    className="h-7 text-ui-body"
                     value={ep?.title || ""}
                     placeholder={shownEpisodeTitle("", ep?.episode_number, copy.video.episodeN)}
                     aria-label={copy.video.episodeName}
@@ -707,7 +707,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
               {pane === "script" ? (
                 <button
                   type="button"
-                  className="h-6 self-start rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
+                  className="h-6 self-start rounded-md px-2 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground"
                   onClick={() => void run("skip", () => api.video.skipRewrite(episodeId))}
                   disabled={!(ep?.content || "").trim()}
                 >
@@ -726,7 +726,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   onDelete={() => setKillAsset({ kind: focusAsset.kind, id: lookAsset.id })}
                 />
               ) : pane === "cast" ? (
-                <p className="text-[12px] leading-5 text-muted">{copy.video.phaseHintCast}</p>
+                <p className="text-ui-footnote leading-5 text-muted">{copy.video.phaseHintCast}</p>
               ) : null}
               {pane === "board" && focused ? (
                 <BoardInspector
@@ -769,7 +769,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   onEpisode={/** patch 在已有集时展开写回，并重读这一集。 */ (patch) => { if (ep) void api.video.updateEpisode({ id: ep.id, ...patch }).then(() => loadBundle(ep.id)); }}
                 />
               ) : null}
-              <button type="button" className="mt-3 h-6 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground" onClick={() => setKillEp(true)}>
+              <button type="button" className="mt-3 h-6 rounded-md px-2 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground" onClick={() => setKillEp(true)}>
                 {copy.video.deleteEpisode}
               </button>
             </aside>
@@ -810,9 +810,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                       {s.poster_url || s.video_url ? (
                         <img src={s.poster_url || ""} alt={s.title || copy.video.shotN.replace("{n}", String(s.shot_number))} />
                       ) : (
-                        <span className="drama-shot-empty grid place-items-center text-[10px]">{String(s.shot_number).padStart(2, "0")}</span>
+                        <span className="drama-shot-empty grid place-items-center text-ui-caption">{String(s.shot_number).padStart(2, "0")}</span>
                       )}
-                      <span className="truncate font-mono text-[10px] tabular-nums">{String(s.shot_number).padStart(2, "0")} {s.title}</span>
+                      <span className="truncate font-mono text-ui-caption tabular-nums">{String(s.shot_number).padStart(2, "0")} {s.title}</span>
                     </button>
                     {pane === "cut" && s.video_url ? (
                       <button
@@ -851,16 +851,16 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         body={
           <span className="grid gap-2 pt-2">
             <label className="grid gap-1">
-              <span className="text-[11px] text-muted">{copy.video.createName}</span>
+              <span className="text-ui-caption text-muted">{copy.video.createName}</span>
               <Input autoFocus value={draftTitle} placeholder={copy.video.untitled} onChange={/** e 取出 target.value 交给 setDraftTitle。 */ (e) => setDraftTitle(e.target.value)} />
             </label>
-            <span className="flex rounded-[8px] bg-lift p-0.5">
+            <span className="flex rounded-md bg-lift p-0.5">
               {["9:16", "16:9", "1:1"].map(/** r 用来判断选中，点击时记成比例，并显示成文案。 */ (r) => (
                 <button
                   key={r}
                   type="button"
                   aria-pressed={ratio === r}
-                  className={cn("flex-1 rounded-[6px] px-1.5 py-1 font-mono text-[10px]", ratio === r ? "bg-card text-foreground" : "text-muted")}
+                  className={cn("flex-1 rounded-sm px-1.5 py-1 font-mono text-ui-caption", ratio === r ? "bg-card text-foreground" : "text-muted")}
                   onClick={() => setRatio(r)}
                 >
                   {r}
@@ -938,7 +938,7 @@ function ProjectMenu(props: {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="inline-flex h-7 max-w-[12rem] items-center gap-1 rounded-md px-1.5 text-[12px] font-medium hover:bg-lift" aria-label={props.copy.video.pickEpisode}>
+        <button type="button" className="inline-flex h-7 max-w-[12rem] items-center gap-1 rounded-md px-1.5 text-ui-footnote font-medium hover:bg-lift" aria-label={props.copy.video.pickEpisode}>
           <Film className="size-3 shrink-0 opacity-70" />
           <span className="truncate">{label}</span>
           <ChevronDown className="size-3 shrink-0 opacity-70" />
@@ -984,7 +984,7 @@ function DramaGroup(props: {
           {props.active === ep.id ? <Check className="size-3.5 shrink-0" /> : null}
         </DropdownMenuItem>
       )) : (
-        <div className="px-2.5 py-1 text-[11px] text-muted">{props.copy.video.untitledEp}</div>
+        <div className="px-2.5 py-1 text-ui-caption text-muted">{props.copy.video.untitledEp}</div>
       )}
     </>
   );

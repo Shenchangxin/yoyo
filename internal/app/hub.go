@@ -445,8 +445,8 @@ func KeepHubEvent(ev trace.Event) bool {
 	return keepUnderBackpressure(ev)
 }
 
-// keepUnderBackpressure 保留回合与步骤的起止、错误、审批、用户、注入、收件箱，以及来源是 update 的 system。带 delta 的增量不保留。
-// ev 用来读 Type、Payload 里的 kind 或 delta，以及 Source。
+// keepUnderBackpressure 保留回合与步骤的起止、错误、审批、用户、注入、收件箱，来源是 update 的 system，以及视频的 video_route、cut_state、studio_state、film_state 和 canvas_patch。带 delta 的增量不保留。
+// ev 用来读 Type、Payload 里的 kind 或 delta、Source 和 ItemKind。
 func keepUnderBackpressure(ev trace.Event) bool {
 	if ev.Type == trace.TypeAssistantStream {
 		kind, _ := ev.Payload["kind"].(string)
@@ -461,7 +461,15 @@ func keepUnderBackpressure(ev trace.Event) bool {
 	case trace.TypeTurnEnd, trace.TypeTurnStart, trace.TypeStepStart, trace.TypeStepEnd, trace.TypeError, trace.TypeApproval, trace.TypeUser, trace.TypeInject, trace.TypeInbox:
 		return true
 	case trace.TypeSystem:
-		return ev.Source == "update"
+		// 视频路由、剪辑状态、短片状态和画布补丁丢了，界面就停在旧窗格、旧画面、「配音中」和改动前的画布上。
+		if ev.Source != "video" {
+			return ev.Source == "update"
+		}
+		switch ev.ItemKind {
+		case "video_route", "cut_state", "studio_state", "film_state", "canvas_patch":
+			return true
+		}
+		return false
 	default:
 		return false
 	}

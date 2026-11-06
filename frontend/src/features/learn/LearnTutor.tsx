@@ -27,7 +27,7 @@ export function LearnTutor(props: {
       <div className="flex h-full w-11 shrink-0 flex-col border-l border-border/60" data-testid="learn-tutor">
         <button
           type="button"
-          className="flex h-full flex-col items-center gap-2 px-1 pt-3 text-[12px] text-muted hover:text-foreground"
+          className="flex h-full flex-col items-center gap-2 px-1 pt-3 text-ui-footnote text-muted hover:text-foreground"
           aria-expanded={false}
           aria-label={L.tutorShow}
           onClick={() => props.onOpen(true)}
@@ -46,8 +46,8 @@ export function LearnTutor(props: {
     >
       <div className="flex h-12 shrink-0 items-center gap-2 px-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] text-muted">{L.tutor}</p>
-          <p className="truncate text-[13px] font-medium tracking-[-0.02em]">{props.subject}</p>
+          <p className="text-ui-caption text-muted">{L.tutor}</p>
+          <p className="truncate text-ui-body font-medium tracking-[-0.02em]">{props.subject}</p>
         </div>
         <button
           type="button"
@@ -59,14 +59,14 @@ export function LearnTutor(props: {
           <ChevronRight className="size-4" aria-hidden />
         </button>
       </div>
-      <p className="px-3 pb-2 text-[12px] leading-relaxed text-muted">{props.about}</p>
+      <p className="px-3 pb-2 text-ui-footnote leading-relaxed text-muted">{props.about}</p>
       {prompts.length > 0 ? (
         <div className="flex flex-col px-2 pb-2">
           {prompts.map((prompt) => (
             <button
               key={prompt.id}
               type="button"
-              className={cn("truncate whitespace-nowrap rounded-md px-2 py-1.5 text-left text-[12px] text-muted hover:bg-lift hover:text-foreground")}
+              className={cn("truncate whitespace-nowrap rounded-md px-2 py-1.5 text-left text-ui-footnote text-muted hover:bg-lift hover:text-foreground")}
               onClick={() => props.onPrompt?.(prompt.text)}
             >
               {prompt.label}

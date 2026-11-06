@@ -84,7 +84,7 @@ func TestAssignFoldsShortReply(t *testing.T) {
 	if WaitsForPerson(&ticket) {
 		t.Fatal("still waiting")
 	}
-	body := assignmentText(ticket, "")
+	body := assignmentText(ticket, "", "")
 	if strings.Contains(body, "新建吧") || strings.Count(body, "gugu-mart") != 1 {
 		t.Fatal(body)
 	}

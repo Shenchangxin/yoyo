@@ -440,6 +440,7 @@ func (e *Engine) runFFmpegInstall(done chan struct{}) {
 }
 
 // setFFmpegProgress 更新阶段、百分比、已下载字节、总字节和压缩包名。百分比小于 0 时不改百分比。总字节和压缩包名只在非空时覆盖。
+// 阶段变了，或距上次推送已过一秒，就把快照推给界面。下载过程不再靠界面每秒来问。
 // phase 非空时写入阶段。
 // percent 小于 0 时不改百分比。
 // bytes 写入已下载字节。
@@ -447,6 +448,7 @@ func (e *Engine) runFFmpegInstall(done chan struct{}) {
 // archive 非空时写入压缩包名。
 func (e *Engine) setFFmpegProgress(phase string, percent int, bytes, total int64, archive string) {
 	e.ffMu.Lock()
+	prev := e.ffPhase
 	if phase != "" {
 		e.ffPhase = phase
 	}
@@ -460,7 +462,15 @@ func (e *Engine) setFFmpegProgress(phase string, percent int, bytes, total int64
 	if archive != "" {
 		e.ffArchive = archive
 	}
+	now := time.Now()
+	emit := (phase != "" && phase != prev) || now.Sub(e.ffPushed) >= time.Second
+	if emit {
+		e.ffPushed = now
+	}
 	e.ffMu.Unlock()
+	if emit {
+		e.hub("ffmpeg", e.FFmpegInstallSnapshot())
+	}
 }
 
 // installFFmpegBundle 列出仓库并挑选压缩包。体积为 0 或不少于 1 MiB 时才带上清单里的 SHA256。下载后解压到 bin，校验 ffmpeg -version，再刷新路径。

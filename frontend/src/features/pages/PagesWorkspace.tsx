@@ -212,13 +212,13 @@ export function PagesWorkspace(props: {
       <aside className="flex w-[17.5rem] shrink-0 flex-col border-r border-border/60 bg-sidebar/40">
         <div className="px-3 pb-2 pt-3">
           <div className="flex items-baseline justify-between gap-2 px-0.5">
-            <h2 className="text-[13px] font-semibold tracking-[-0.02em]">{copy.pages.library}</h2>
-            <span className="text-[11px] tabular-nums text-muted">{list.length ? countLabel : ""}</span>
+            <h2 className="text-ui-body font-semibold tracking-[-0.02em]">{copy.pages.library}</h2>
+            <span className="text-ui-caption tabular-nums text-muted">{list.length ? countLabel : ""}</span>
           </div>
           <div className="relative mt-2.5">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" />
             <Input
-              className="h-8 rounded-lg pl-8 text-[12px]"
+              className="h-8 rounded-lg pl-8 text-ui-footnote"
               value={q}
               placeholder={copy.pages.search}
               aria-label={copy.pages.search}
@@ -349,13 +349,13 @@ function PageRow(props: {
         )}
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => props.onOpen(props.node.id)}>
           <span className="flex items-center gap-1.5">
-            <span className="truncate text-[13px] font-medium tracking-[-0.016em]">{props.node.title || props.node.id}</span>
+            <span className="truncate text-ui-body font-medium tracking-[-0.016em]">{props.node.title || props.node.id}</span>
             {bound ? <span className="size-1.5 shrink-0 rounded-full bg-accent" /> : null}
           </span>
           {props.node.preview ? (
-            <span className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted">{props.node.preview}</span>
+            <span className="mt-0.5 line-clamp-2 text-ui-caption leading-4 text-muted">{props.node.preview}</span>
           ) : null}
-          {when ? <span className="mt-0.5 block text-[10px] tabular-nums text-muted/80">{when}</span> : null}
+          {when ? <span className="mt-0.5 block text-ui-badge tabular-nums text-muted/80">{when}</span> : null}
         </button>
       </div>
       {open ? props.node.children.map((c) => (

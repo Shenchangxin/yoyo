@@ -171,7 +171,7 @@ function TreeRow(props: {
         title={n.path}
         data-testid={`file-tree-${n.path}`}
         className={cn(
-          "flex h-7 w-full items-center gap-1 rounded-md pr-2 text-left text-[12px] transition-colors",
+          "flex h-7 w-full items-center gap-1 rounded-md pr-2 text-left text-ui-footnote transition-colors",
           on ? "bg-lift text-foreground" : "text-foreground/85 hover:bg-lift/50",
         )}
         style={{ paddingLeft: 8 + props.depth * 12 }}
@@ -188,7 +188,7 @@ function TreeRow(props: {
         <Icon className={cn("size-3.5 shrink-0", markClass(mark) || "text-muted/70")} aria-hidden />
         <span className={cn("min-w-0 flex-1 truncate", markClass(mark))}>{n.name}</span>
         {mark ? (
-          <span className={cn("shrink-0 font-mono text-[10px] font-semibold", markClass(mark))} aria-label={markLabel(mark)}>
+          <span className={cn("shrink-0 font-mono text-ui-badge font-semibold", markClass(mark))} aria-label={markLabel(mark)}>
             {mark}
           </span>
         ) : dirty ? (

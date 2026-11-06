@@ -299,6 +299,7 @@ func providerFromConn(c connection.Connection, cap string, defs connection.Defau
 		ID:          c.ID,
 		ServiceType: svc,
 		Provider:    c.Vendor,
+		Protocol:    c.Protocol,
 		Name:        c.Name,
 		BaseURL:     c.Endpoint,
 		VaultKey:    c.VaultKey,

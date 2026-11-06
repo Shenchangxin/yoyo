@@ -167,7 +167,7 @@ test("clicking a session leaves harness for that chat", async ({ page }) => {
     ],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByTestId("harness-workspace")).toBeVisible();
   await page.getByRole("button", { name: /Demo thread/ }).click();
   await expect(page.getByTestId("harness-workspace")).toHaveCount(0);
@@ -189,9 +189,9 @@ test("module docks toggle back to chat", async ({ page }) => {
   await page.getByRole("button", { name: "Skills", exact: true }).click();
   await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
   await expect(page.getByTestId("conversation-column")).toBeVisible();
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByTestId("harness-workspace")).toBeVisible();
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByTestId("harness-workspace")).toHaveCount(0);
   await expect(page.getByTestId("conversation-column")).toBeVisible();
 });
@@ -779,7 +779,7 @@ test("insert mention keeps the popup open and pins a file token", async ({ page 
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.click();
   await box.pressSequentially("@");
-  const list = page.getByRole("listbox", { name: "Trigger suggestions" });
+  const list = page.getByRole("listbox", { name: "Mention suggestions" });
   await expect(list).toBeVisible();
   await expect(list.getByText("Files & folders")).toBeVisible();
   await expect(list.getByRole("option", { name: /main\.go/ })).toBeVisible();
@@ -820,14 +820,14 @@ test("installed skills appear in @skill and keyboard highlight stays in view", a
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.click();
   await box.pressSequentially("/");
-  const slashList = page.getByRole("listbox", { name: "Trigger suggestions" });
+  const slashList = page.getByRole("listbox", { name: "Mention suggestions" });
   await expect(slashList.getByText("Skills", { exact: true })).toBeVisible();
   await expect(slashList.getByRole("option", { name: /arxiv-watcher|Arxiv Watcher/ })).toBeVisible();
   await box.fill("");
   await box.pressSequentially("@skill:");
   await expect(page.getByRole("option", { name: /arxiv-watcher|Arxiv Watcher/ })).toBeVisible();
   await box.pressSequentially("pack-17");
-  const list = page.getByRole("listbox", { name: "Trigger suggestions" });
+  const list = page.getByRole("listbox", { name: "Mention suggestions" });
   await expect(list.getByRole("option", { name: /pack-17/ })).toBeVisible();
   await box.fill("");
   await box.pressSequentially("@skill:");

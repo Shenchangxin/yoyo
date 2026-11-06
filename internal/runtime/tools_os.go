@@ -214,7 +214,7 @@ func (t *WorkspaceTools) rememberFact(text string) ToolResult {
 	if text == "" {
 		return ToolResult{Err: fmt.Errorf("empty fact")}
 	}
-	it := t.Memory.Write(memory.Item{Kind: memory.KindProfile, Text: text, Source: "User confirmed in chat"})
+	it := t.Memory.Write(memory.Item{Kind: memory.KindProfile, Text: text, Source: "User confirmed in chat", Origin: t.memoryOrigin()})
 	if it.ID == "" {
 		return ToolResult{Err: fmt.Errorf("fact not kept")}
 	}

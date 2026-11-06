@@ -13,7 +13,7 @@ import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./nor
 import { getLocale } from "./i18n";
 import { browserSurface } from "./chrome";
 import { snapUiScale } from "./scale";
-import type { AppConfig, Approval, Attachment, AuthMode, ChatProvider, ContextInventory, ContextObject, ContextUsage, FileHit, Health, Hunk, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import type { AppConfig, Approval, Attachment, AuthMode, ChatProvider, ContextInventory, ContextObject, ContextUsage, DeskConfig, FileHit, Health, Hunk, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 import { defaultMaterials, type SkinInfo, type SkinResolved, type TokenMap } from "./skin/schema";
 import { outlineOfRaw, type OutlineTurn } from "./turn-outline";
 
@@ -297,7 +297,43 @@ export function configOf(v: any): AppConfig {
     searchUrl: str(pick(v, "search_url", "SearchURL", "searchUrl")),
     searchKey: str(pick(v, "search_key", "SearchKey", "searchKey")),
     paused: bool(pick(v, "paused", "Paused")),
+    desk: deskConfigOf(pick(v, "desk", "Desk")),
   };
+}
+
+/** deskConfigOf 读出主动式的节奏。没有这一块时全是空，调用方用默认。 */
+function deskConfigOf(v: any): DeskConfig {
+  return {
+    briefMorning: str(pick(v, "brief_morning", "BriefMorning", "briefMorning")),
+    briefEvening: str(pick(v, "brief_evening", "BriefEvening", "briefEvening")),
+    level: str(pick(v, "level", "Level")),
+    quietStart: str(pick(v, "quiet_start", "QuietStart", "quietStart")),
+    quietEnd: str(pick(v, "quiet_end", "QuietEnd", "quietEnd")),
+    quietWeekend: bool(pick(v, "quiet_weekend", "QuietWeekend", "quietWeekend")),
+  };
+}
+
+/** deskBody 是主动式这一块写回宿主的样子。 */
+function deskBody(desk: DeskConfig) {
+  return {
+    brief_morning: desk.briefMorning || "",
+    brief_evening: desk.briefEvening || "",
+    level: desk.level || "",
+    quiet_start: desk.quietStart || "",
+    quiet_end: desk.quietEnd || "",
+    quiet_weekend: !!desk.quietWeekend,
+  };
+}
+
+/** setDeskConfig 只写主动式这一块，其余配置不动。 */
+export async function setDeskConfig(desk: DeskConfig): Promise<void> {
+  const body = { desk: deskBody(desk) };
+  const s = await wailsService();
+  if (s?.SetConfig) {
+    await s.SetConfig(body);
+    return;
+  }
+  await http("/api/config", { method: "POST", body: JSON.stringify(body) });
 }
 
 /** approvalOf 把一条待审批收成 Approval。v 用 pick 读取 request、id、session_id字段，作为后备值。 */
@@ -414,6 +450,7 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     crash_resume: cfg.crashResume !== false,
     search_url: cfg.searchUrl || "",
     search_key: cfg.searchKey || "",
+    ...(cfg.desk ? { desk: deskBody(cfg.desk) } : {}),
   };
   const s = await wailsService();
   if (s?.SetConfig) {
@@ -2207,6 +2244,8 @@ export type DeskNote = {
   text: string;
   chip: string;
   brief: string;
+  /** quiet 只用在简报上：写下来留档，但不往会话里放芯片。 */
+  quiet?: boolean;
 };
 
 export type PoiPoint = { id?: string; name: string; kind: string; weight?: number };
@@ -2303,13 +2342,41 @@ export async function poiRefresh(): Promise<PoiSnapshot> {
   return normalizePoi(raw);
 }
 
-/** deskFeedback 记下对某一类开口的反应。kind 取 used、ignore、later、wrong。 */
-export async function deskFeedback(className: string, kind: string, memoryId = ""): Promise<boolean> {
+/** deskCall 优先走桌面绑定，生成模块里还没有这个方法时改走 Call.ByName，浏览器门再走 /api。 */
+async function deskCall(method: string, args: any[], path: string, init?: RequestInit): Promise<any> {
   const s = await wailsService();
-  if (s?.DeskFeedback) return asBool(await s.DeskFeedback(className, kind, memoryId));
-  if (s) return false;
-  const r = await http<any>("/api/desk/feedback", { method: "POST", body: JSON.stringify({ className, kind, memoryId }) });
-  return asBool(pick(r, "ok", "Ok"));
+  const fn = svcMethod(s, method);
+  if (fn) return fn(...args);
+  if (nativeDesktop()) return namedDesktopService()[method](...args);
+  return http(path, init);
+}
+
+/** deskFeedback 记下对某一类开口的反应。kind 取 used、ignore、later、wrong、mute、unmute。 */
+export async function deskFeedback(className: string, kind: string, memoryId = ""): Promise<boolean> {
+  const r = await deskCall("DeskFeedback", [className, kind, memoryId], "/api/desk/feedback", {
+    method: "POST",
+    body: JSON.stringify({ className, kind, memoryId }),
+  });
+  return asBool(r && typeof r === "object" ? pick(r, "ok", "Ok") : r);
+}
+
+/** DeskMute 是一类被按住的开口。until 为 9999-12-31 表示要人打开。 */
+export type DeskMute = { class: string; until: string; ignores: number };
+/** DeskState 是开口门最近一轮判断，以及今天仍被按住的类别。 */
+export type DeskState = { briefing?: Initiative; mutes: DeskMute[]; at: string };
+
+/** deskState 读开口门最近一轮判断。宿主读不到时抛错，调用方留着上一次的。 */
+export async function deskState(): Promise<DeskState> {
+  const raw = await deskCall("DeskState", [], "/api/desk/state");
+  return {
+    briefing: normalizeInitiative(pick(raw, "briefing", "Briefing")),
+    mutes: asArray(pick(raw, "mutes", "Mutes")).map((row) => ({
+      class: str(pick(row, "class", "Class")),
+      until: str(pick(row, "until", "Until")),
+      ignores: num(pick(row, "ignores", "Ignores")),
+    })).filter((row) => row.class),
+    at: str(pick(raw, "at", "At")),
+  };
 }
 
 /** poiAck 记下这一版兴趣库已经推进过。 */
@@ -2417,6 +2484,12 @@ export async function memoryForget(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.MemoryForget) { await s.MemoryForget(id); return; }
   await http("/api/memory", { method: "POST", body: JSON.stringify({ op: "forget", id }) });
+}
+
+/** memoryEdit 把 id 这一条改成 text。本机清点和像密钥的文本不改，返回的 id 为空。 */
+export async function memoryEdit(id: string, text: string): Promise<{ id?: string; text?: string }> {
+  const raw = await deskCall("MemoryEdit", [id, text], "/api/memory", { method: "POST", body: JSON.stringify({ op: "edit", id, text }) });
+  return { id: str(pick(raw, "id", "ID")), text: str(pick(raw, "text", "Text")) };
 }
 
 /** memoryWrite 走 MemoryWrite 或 POST /api/memory。kind 传给 MemoryWrite，放进请求体。text 传给 MemoryWrite，放进请求体。project 传给 MemoryWrite，放进请求体。 */
@@ -3305,8 +3378,9 @@ export const video = {
   deleteTopic: (id: string) => videoCall("video.topic.delete", { id }),
   /** topicFromTrend 走 videoCall("video.topic.from_trend")。platform 写入字段 platform。title 写入字段 title。hot 写入字段 hot。 */
   topicFromTrend: (platform: string, title: string, hot = "") => videoCall("video.topic.from_trend", { platform, title, hot }),
-  /** scheduleTopic 走 videoCall("video.topic.schedule")。id 写入字段 id。sessionId 写入字段 session_id。aspect 写入字段 aspect。 */
-  scheduleTopic: (id: string, sessionId = "", aspect = "") => videoCall("video.topic.schedule", { id, session_id: sessionId, aspect }),
+  /** scheduleTopic 走 videoCall("video.topic.schedule")。id 写入字段 id。sessionId 写入字段 session_id。aspect 写入字段 aspect。when.at 是本机时间 YYYY-MM-DDTHH:mm，when.delayMinutes 是几分钟后，都不给时 10 分钟后。 */
+  scheduleTopic: (id: string, sessionId = "", aspect = "", when: { at?: string; delayMinutes?: number } = {}) =>
+    videoCall("video.topic.schedule", { id, session_id: sessionId, aspect, at: when.at || "", delay_minutes: when.delayMinutes || 0 }),
   /** unscheduleTopic 走 videoCall("video.topic.unschedule")。id 写入字段 id。 */
   unscheduleTopic: (id: string) => videoCall("video.topic.unschedule", { id }),
   /** listStudio 走 videoCall("video.studio.list")。 */
@@ -3333,8 +3407,12 @@ export const video = {
   useStudioBGM: (id: string, name = "random") => videoCall("video.studio.bgm.use", { id, name }),
   /** clearStudioBGM 走 videoCall("video.studio.bgm.clear")。id 写入字段 id。 */
   clearStudioBGM: (id: string) => videoCall("video.studio.bgm.clear", { id }),
-  /** speakStudio 走 videoCall("video.studio.speak")。id 写入字段 id。text 写入字段 text。 */
+  /** generateStudioBGM 走 videoCall("video.studio.bgm.generate")，在后台用配乐连接生成一段并配上。id 写入字段 id。prompt 空着按语气和标题写。 */
+  generateStudioBGM: (id: string, prompt = "") => videoCall("video.studio.bgm.generate", { id, prompt }),
+  /** speakStudio 走 videoCall("video.studio.speak")，在后台配音并马上返回带 task 的短片。id 写入字段 id。text 写入字段 text。 */
   speakStudio: (id: string, text = "") => videoCall("video.studio.speak", { id, text }),
+  /** previewStudioVoice 走 videoCall("video.studio.voice.preview")，用这个声音配一句试听，返回 url。voice 写入字段 voice。 */
+  previewStudioVoice: (voice: string) => videoCall("video.studio.voice.preview", { voice }),
   /** studioReframe 走 videoCall("video.studio.ops.reframe")。hash 写入字段 hash。aspect 写入字段 aspect。 */
   studioReframe: (hash: string, aspect = "9:16") => videoCall("video.studio.ops.reframe", { hash, aspect }),
   /** studioBurnin 走 videoCall("video.studio.ops.burnin")。hash 写入字段 hash。subtitleHash 写入字段 subtitle_hash。 */
@@ -3373,8 +3451,8 @@ export const video = {
   studioCatalog: () => videoCall("video.studio.catalog"),
   /** studioPreflight 走 videoCall("video.studio.preflight")。id 写入字段 id。gate 写入字段 gate。 */
   studioPreflight: (id: string, gate = "") => videoCall("video.studio.preflight", { id, gate }),
-  /** approveStudio 走 videoCall("video.studio.approve")。id 写入字段 id。 */
-  approveStudio: (id: string) => videoCall("video.studio.approve", { id }),
+  /** approveStudio 走 videoCall("video.studio.approve")。id 写入字段 id。script 非空时一起写入并锁定，不必等失焦保存先落地。 */
+  approveStudio: (id: string, script = "") => videoCall("video.studio.approve", { id, script }),
   /** skipStudioAudio 走 videoCall("video.studio.skip_audio")。id 写入字段 id。 */
   skipStudioAudio: (id: string) => videoCall("video.studio.skip_audio", { id }),
   /** applyStudioPreset 走 videoCall("video.studio.preset")。id 写入字段 id。presetId 写入字段 preset_id。 */
@@ -3464,8 +3542,8 @@ export const video = {
   cutExtract: (id: string) => videoCall("video.cut.extract", { id }),
   /** cutEnhance 走 videoCall("video.cut.enhance")。id 写入字段 id。preset 写入字段 preset。 */
   cutEnhance: (id: string, preset = "voice") => videoCall("video.cut.enhance", { id, preset }),
-  /** cutMix 走 videoCall("video.cut.mix")。id 写入字段 id。duck 写入字段 duck。 */
-  cutMix: (id: string, duck = true) => videoCall("video.cut.mix", { id, duck }),
+  /** cutMix 走 videoCall("video.cut.mix")。id 写入字段 id。duck 写入字段 duck。replace 为真时配音替换原声，否则原声垫在下面。 */
+  cutMix: (id: string, duck = true, replace = false) => videoCall("video.cut.mix", { id, duck, replace }),
   /** cutTranscribe 走 videoCall("video.cut.transcribe")。id 写入字段 id。 */
   cutTranscribe: (id: string) => videoCall("video.cut.transcribe", { id }),
   /** cutCaptions 走 videoCall("video.cut.captions")。id 写入字段 id。text 写入字段 text。language 写入字段 language。 */
@@ -3591,10 +3669,12 @@ export type TodayCard = {
   secondary?: string;
   task?: string;
   alt?: string;
+  refs?: { id: string; kind: string; label: string; target?: string }[];
 };
 
-/** composeToday 用画像、记忆、感知和最近对话写这一档简报。材料不够时 woven 为假。slot 取 morning 或 evening。 */
-export function composeToday(slot: string): Promise<{ cards?: TodayCard[]; woven?: boolean; pending?: boolean }> {
+/** composeToday 用画像、记忆、感知和最近对话写这一档简报。slot 取 morning 或 evening。
+ *  woven 为真时 cards 是正文；quiet 为真表示确实没有值得写的事；两者都为假表示这一次没写成，稍后再试。 */
+export function composeToday(slot: string): Promise<{ cards?: TodayCard[]; woven?: boolean; quiet?: boolean; pending?: boolean }> {
   return imCall("ComposeToday", [slot], "/api/today/brief", {
     method: "POST",
     body: JSON.stringify({ slot }),

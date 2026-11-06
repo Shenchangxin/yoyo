@@ -4,6 +4,7 @@
  */
 
 import { useState, useSyncExternalStore } from "react";
+import { Button } from "../../components/ui/button";
 import { useCopy } from "../../lib/i18n";
 import { briefDay, briefPrompt, briefStorageKey, parseStoredBrief, serializeStoredBrief, type BriefCard, type BriefSlot, type MorningBrief } from "./work-model";
 import { BriefStack } from "./WorkPane";
@@ -50,17 +51,31 @@ function BriefDialog(props: { open: OpenBrief; onClose: () => void; onDraft: (te
     if (text) props.onDraft(text);
     props.onClose();
   }
+  function mark(key: string, value: string) {
+    if (!brief) return;
+    const next = { ...brief, picked: { ...brief.picked, [key]: value } };
+    setBrief(next);
+    rememberPick(props.open, next);
+  }
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30 p-6" onClick={props.onClose}>
-      <section className="flex max-h-[min(720px,100%)] w-full max-w-xl flex-col overflow-hidden rounded-[28px] bg-background shadow-[var(--shadow-card)]" onClick={(event) => event.stopPropagation()}>
-        <div className="flex shrink-0 items-center justify-between px-5 py-4">
-          <h2 className="text-[16px] font-semibold">{props.open.chip || props.title}</h2>
-          <button type="button" className="h-8 rounded-full bg-card px-3 text-[12px] text-muted shadow-[var(--shadow-card)] hover:text-foreground" onClick={props.onClose}>
+      <section className="flex max-h-[min(720px,100%)] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-background shadow-[var(--shadow-card)]" onClick={(event) => event.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between px-4 py-3">
+          <h2 className="text-ui-title-s font-semibold">{props.open.chip || props.title}</h2>
+          <Button size="sm" variant="lift" onClick={props.onClose}>
             {props.closeLabel}
-          </button>
+          </Button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
-          {brief ? <BriefStack brief={brief} onUse={useCard} filledLabel={props.filledLabel} /> : null}
+          {brief ? (
+            <BriefStack
+              brief={brief}
+              onUse={useCard}
+              onMark={mark}
+              onDraft={(text) => { props.onDraft(text); props.onClose(); }}
+              filledLabel={props.filledLabel}
+            />
+          ) : null}
         </div>
       </section>
     </div>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Decision, Ticket, Trigger } from "./desk-model.ts";
-import { applySenses, auditBrief, briefDue, briefPrompt, clockMinute, compareEditions, composeBrief, defaultBriefPrefs, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryPortrait, nowTickets, offerSlot, parseStoredBrief, serializeStoredBrief, runningCount, shouldPush, slotDue, slotsCrossed, visibleSlot, stageKey, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels } from "./work-model.ts";
+import { applySenses, auditBrief, briefDay, briefDue, briefPrompt, clockMinute, compareEditions, composeBrief, defaultBriefPrefs, dueDelta, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, nowTickets, offerSlot, parseStoredBrief, quietBrief, refStatus, serializeStoredBrief, runningCount, shouldPush, slotDue, slotsCrossed, speakClass, speakSentence, visibleSlot, stageKey, taskGroups, taskSections, tasksBadge, ticketLine, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels, type SpeakPhrases } from "./work-model.ts";
 
 function ticket(partial: Partial<Ticket> & Pick<Ticket, "id" | "stage">): Ticket {
   return {
@@ -60,15 +60,18 @@ describe("work pane grouping", () => {
       { id: "2", triggerId: "x", kind: "ignore", reason: "chat", dismissed: true },
     ];
     assert.deepEqual(wouldAccept(decisions).map((row) => row.id), ["1"]);
+    const many: Decision[] = Array.from({ length: 8 }, (_, i) => ({ id: `o${i}`, triggerId: `t${i}`, kind: "ignore", reason: "observed" }));
+    assert.deepEqual(wouldAccept(many).map((row) => row.id), ["o7", "o6", "o5", "o4", "o3", "o2"]);
   });
 
-  /** 带时间的日历出现在到期里，普通邮件不会。 */
+  /** 两周内带时间的日历出现在到期里，更远的和普通邮件不会。 */
   it("lists dated calendar items", () => {
     const rows: Trigger[] = [
       { id: "c", source: "calendar", sender: "ada", text: "stand up", addressed: false, queued: true, due: "2026-11-03T01:00:00Z" },
+      { id: "far", source: "calendar", sender: "ada", text: "offsite", addressed: false, queued: true, due: "2026-12-20T01:00:00Z" },
       { id: "m", source: "mail", sender: "ada", text: "fyi", addressed: false, queued: true },
     ];
-    assert.deepEqual(dueItems(rows).map((row) => row.id), ["c"]);
+    assert.deepEqual(dueItems(rows, new Date(2026, 10, 3, 12)).map((row) => row.id), ["c"]);
   });
 
   /** 最近一份标题像简报的工单留在今天。已经写过的定时规则不再推荐。 */
@@ -282,6 +285,7 @@ describe("work pane grouping", () => {
       { id: "p1", kind: "profile", source: "user", text: "caca", created_at: "2026-10-02T00:00:00Z" },
       { id: "p2", kind: "profile", source: "model", text: "喜欢早上处理代码", created_at: "2026-10-03T00:00:00Z" },
       { id: "s1", kind: "semantic", source: "model", text: "回复要短", created_at: "2026-10-04T00:00:00Z" },
+      { id: "s2", kind: "semantic", source: "User confirmed in chat", text: "报告用中文", created_at: "2026-10-05T00:00:00Z" },
     ];
     const portrait = memoryPortrait(rows);
     assert.equal(portrait.name, "caca");
@@ -292,8 +296,8 @@ describe("work pane grouping", () => {
     assert.equal(portrait.hours, "08:30–17:40");
     assert.equal(portrait.lines[0]?.evidence, "main.go");
     assert.deepEqual(portrait.said, ["caca"]);
-    assert.deepEqual(portrait.noted, ["喜欢早上处理代码"]);
-    assert.deepEqual(portrait.preferences, ["回复要短"]);
+    assert.deepEqual(portrait.noted, ["喜欢早上处理代码", "回复要短"]);
+    assert.deepEqual(portrait.preferences, ["报告用中文"]);
     assert.equal(portrait.updated, "2026-10-10T00:00:00Z");
     assert.equal(memoryFolderRows(rows, "about").length, 2);
     assert.equal(memoryFolderRows(rows, "device").length, 3);
@@ -537,5 +541,125 @@ describe("initiative", () => {
     assert.equal(sense?.items[0]?.title, "net");
     assert.equal(JSON.stringify(next).includes("Cursor.exe"), false);
     assert.equal(JSON.stringify(next).includes("Adobe"), false);
+  });
+});
+
+describe("tasks say who they wait on", () => {
+  /** 等人在前，然后正在做、停着、最近结束。组内按最近变化排，最近结束只留八张，按序号从新到旧。 */
+  it("groups tickets and keeps the newest ended ones", () => {
+    const rows = [
+      ticket({ id: "tkt-2", stage: "working", updatedAt: "2026-11-06T08:00:00Z" }),
+      ticket({ id: "tkt-3", stage: "person", action: "answer", person: true, attention: "用哪个分支？\n其余细节", updatedAt: "2026-11-06T09:00:00Z" }),
+      ticket({ id: "tkt-4", stage: "working", updatedAt: "2026-11-06T10:00:00Z" }),
+      ticket({ id: "tkt-5", stage: "idle" }),
+      ...Array.from({ length: 10 }, (_, i) => ticket({ id: `tkt-${10 + i}`, stage: "ended", outcome: "completed" })),
+    ];
+    const sections = taskSections(rows);
+    assert.deepEqual(sections.person.map((row) => row.id), ["tkt-3"]);
+    assert.deepEqual(sections.working.map((row) => row.id), ["tkt-4", "tkt-2"]);
+    assert.deepEqual(sections.idle.map((row) => row.id), ["tkt-5"]);
+    assert.equal(sections.ended.length, 8);
+    assert.equal(sections.ended[0].id, "tkt-19");
+    assert.equal(taskGroups(rows).ended[0].id, "tkt-19");
+    assert.deepEqual(tasksBadge(rows), { count: 1, person: true });
+    assert.deepEqual(tasksBadge(rows.filter((row) => !row.person)), { count: 2, person: false });
+    assert.equal(ticketLine(rows[1]), "用哪个分支？");
+  });
+
+  /** 没在等回答时，下面那一句是最近一份报告。 */
+  it("shows the latest report under a ticket", () => {
+    const row = ticket({
+      id: "tkt-1",
+      stage: "idle",
+      assignments: [
+        { id: "asg-1", state: "ended", summary: "第一版", lines: [{ state: "ready", summary: "第一版" }] },
+        { id: "asg-2", state: "ended", summary: "", lines: [{ state: "waiting", summary: "等你确认格式" }] },
+      ],
+    });
+    assert.equal(ticketLine(row), "等你确认格式");
+    assert.equal(ticketLine(ticket({ id: "tkt-9", stage: "working" })), "");
+  });
+});
+
+describe("pushed notes and memory provenance", () => {
+  const phrases: SpeakPhrases = {
+    due: "「{name}」今天到期。",
+    overdue: "「{name}」已经过了那一天。",
+    changed: "「{name}」跟上一次看见的时候不一样了：{state}。",
+    repo: "仓库「{name}」跟上一次看见的时候不一样了：{state}。",
+    repoBare: "仓库「{name}」跟上一次看见的时候不一样了。",
+    repoBranch: "分支 {name}",
+    repoDirty: "有还没提交的改动",
+    repoClean: "已经干净",
+    source: "{name} 处于错误：{detail}",
+    sourceBare: "{name} 处于错误，从这里进来的工作会漏。",
+    power: "电量 {name}%，没在充电。",
+    net: "网络断了。",
+    lineMoving: "最近还在改",
+    lineStalled: "停在一段空文件",
+    lineQuiet: "这阵子没再动",
+  };
+
+  /** 短讯只用记下的名字、状态和细节重写。认不出的类别和检索便条用原句。 */
+  it("rewrites a pushed note from its own fields", () => {
+    assert.equal(speakSentence({ class: "calendar", name: "评审", state: "overdue" }, "x", phrases), "「评审」已经过了那一天。");
+    assert.equal(speakSentence({ class: "line", name: "yoyo", state: "stalled", detail: "blank.txt" }, "x", phrases), "「yoyo」跟上一次看见的时候不一样了：停在一段空文件，blank.txt。");
+    assert.equal(speakSentence({ class: "git", name: "yoyo", detail: "main", state: "dirty" }, "x", phrases), "仓库「yoyo」跟上一次看见的时候不一样了：分支 main，有还没提交的改动。");
+    assert.equal(speakSentence({ class: "git", name: "yoyo" }, "x", phrases), "仓库「yoyo」跟上一次看见的时候不一样了。");
+    assert.equal(speakSentence({ class: "source", name: "GitHub" }, "x", phrases), "GitHub 处于错误，从这里进来的工作会漏。");
+    assert.equal(speakSentence({ class: "reach", name: "标题" }, "便条原文", phrases), "便条原文");
+    assert.equal(speakSentence(undefined, "旧短讯", phrases), "旧短讯");
+    assert.equal(speakClass({ slot: "reach:abc" }), "reach");
+    assert.equal(speakClass({ slot: "calendar" }), "calendar");
+    assert.equal(speakClass({ class: "line", slot: "line:yoyo" }), "line");
+  });
+
+  /** 出处分清本人说的、本机清点、工单结果和对话里记下的。本机清点不能从这里忘掉。 */
+  it("says where a memory came from", () => {
+    assert.equal(memoryOrigin({ id: "machine:host", kind: "profile", source: "machine" }), "machine");
+    assert.equal(memoryOrigin({ id: "task:tkt-1", kind: "episodic", source: "worker" }), "task");
+    assert.equal(memoryOrigin({ id: "1", kind: "semantic", source: "model" }), "noted");
+    assert.equal(memoryOrigin({ id: "2", kind: "profile", source: "User confirmed in chat" }), "said");
+    assert.equal(memoryOrigin({ id: "3", kind: "episodic", source: "" }), "chat");
+    assert.equal(memoryForgettable({ id: "machine:host", kind: "profile", source: "machine" }), false);
+    assert.equal(memoryForgettable({ id: "2", kind: "profile", source: "user" }), true);
+  });
+
+  /** 过去的安排离开「关于你」，时间按最近一次记下或改过的算。 */
+  it("keeps past plans out of the portrait and dates rows by their last change", () => {
+    const today = new Date();
+    const day = (offset: number) => briefDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset, 12));
+    const past = { id: "p", kind: "profile", text: `去上海出差（${day(-1)}）`, source: "user", valid_until: day(-1), created_at: "2026-11-04T02:00:00Z" };
+    const live = { id: "l", kind: "profile", text: `去杭州（${day(5)}）`, source: "user", valid_until: day(5), created_at: "2026-11-05T02:00:00Z" };
+    assert.equal(memoryPast(past, today), true);
+    assert.equal(memoryPast(live, today), false);
+    assert.equal(memoryPast({ valid_until: day(0) }, today), false);
+    assert.equal(memoryPast({ valid_until: "" }, today), false);
+    assert.equal(memoryTouched({ created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-05T00:00:00Z" }), "2026-11-05T00:00:00Z");
+    assert.equal(memoryTouched({ created_at: "2026-11-01T00:00:00Z" }), "2026-11-01T00:00:00Z");
+    const portrait = memoryPortrait([past, live]);
+    assert.deepEqual(portrait.said, [live.text]);
+  });
+
+  /** 没有值得写的事时写一封安静的信，没核对的来源写出来。依据里的工单后来结束了要标出来。 */
+  it("writes an honest quiet letter and marks finished evidence", () => {
+    const labels = { kicker: "k", title: "今天没有必须先确认的事。", lede: "l", unchecked: "{names}还没连上，这封信没有核对它们。" };
+    const quiet = quietBrief(labels, ["邮箱", "日历"]);
+    assert.equal(quiet.cards.length, 1);
+    assert.equal(quiet.cards[0].id, "quiet");
+    assert.equal(quiet.cards[0].note, "邮箱、日历还没连上，这封信没有核对它们。");
+    assert.equal(quietBrief(labels, []).cards[0].note, undefined);
+    const tickets = [{ id: "tkt-3", stage: "ended" }, { id: "tkt-4", stage: "working" }];
+    assert.equal(refStatus({ id: "tkt-3", kind: "ticket", label: "写周报", target: "tkt-3" }, tickets), "ended");
+    assert.equal(refStatus({ id: "tkt-4", kind: "ticket", label: "改稿", target: "tkt-4" }, tickets), "");
+    assert.equal(refStatus({ id: "d1", kind: "date", label: "评审会" }, tickets), "");
+  });
+
+  /** 到期日按本地日期算差几天。 */
+  it("counts days to a due date", () => {
+    const now = new Date(2026, 10, 6, 9, 0, 0);
+    assert.equal(dueDelta("2026-11-05", now), -1);
+    assert.equal(dueDelta(new Date(2026, 10, 6, 23, 0, 0).toISOString(), now), 0);
+    assert.equal(dueDelta("not a date", now), null);
   });
 });

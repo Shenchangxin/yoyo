@@ -1,5 +1,5 @@
 /**
- * 拥有：侧栏底部的玻璃图标菜单。底板颜色读主题令牌，字色跟前景。
+ * 拥有：侧栏底部的玻璃图标菜单。底板颜色读主题令牌，字色跟前景。会话入口上的数字只数「需要你」。
  * 不拥有：切到哪一面。点下去只调用外面传入的回调。
  */
 import { useEffect, useRef, useState } from "react";
@@ -60,6 +60,8 @@ const DOCK_MAX = 44;
 const DOCK_MIN = 18;
 /** 间距大约是图标边长的这个比例，宽栏时图标到顶后间距继续拉开。 */
 const DOCK_GAP_RATIO = 0.28;
+/** DOCK_PAD 是 .rail-dock 左右内边距之和。 */
+const DOCK_PAD = 24;
 
 /** 按侧栏内容宽度算出同一行里的图标边长。间距交给两端对齐去分。 */
 function dockSize(width: number) {
@@ -70,27 +72,40 @@ function dockSize(width: number) {
   return size;
 }
 
-/** 侧栏一变宽就重算边长。 */
-function useRowSize() {
+/** 侧栏一变宽就重算边长。basis 是模块栏占窗口的百分比：给了就按模块栏的宽度排这一行并居中，
+ *  会话页的今天栏更宽时图标也和其他模块一样大。row 为 0 时铺满整栏。 */
+function useRowSize(basis?: number) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState(28);
+  const [row, setRow] = useState(0);
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const fit = () => setSize(dockSize(host.clientWidth));
+    const fit = () => {
+      const limit = basis ? Math.floor((window.innerWidth * basis) / 100) - DOCK_PAD : Infinity;
+      const width = Math.min(host.clientWidth, limit);
+      setRow(width < host.clientWidth ? width : 0);
+      setSize(dockSize(width));
+    };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
-  return { hostRef, size };
+    window.addEventListener("resize", fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [basis]);
+  return { hostRef, size, row };
 }
 
-/** RailDock 画出侧栏底部的七个入口。当前面加一圈强调色，Harness 有未提交改动时右上角加一点。 */
+/** RailDock 画出侧栏底部的七个入口。当前面加一圈强调色，Harness 有未提交改动时右上角加一点，会话入口带「需要你」的数字。 */
 export function RailDock(props: {
   copy: Copy;
   surface: Surface;
   mark?: boolean;
+  needs?: number;
+  basis?: number;
   onChats: () => void;
   onSkills: () => void;
   onVideo: () => void;
@@ -100,10 +115,11 @@ export function RailDock(props: {
   onSettings: () => void;
 }) {
   const { light, tokens } = useDockTokens();
-  const { hostRef, size } = useRowSize();
+  const { hostRef, size, row } = useRowSize(props.basis);
   const label = props.copy.rail;
+  const needs = props.needs || 0;
   const items = [
-    { id: "sessions", icon: <MessageSquare />, color: tokens.accent, label: label.sessions, onClick: props.onChats, current: props.surface === "agent" },
+    { id: "sessions", icon: <MessageSquare />, color: tokens.accent, label: label.sessions, onClick: props.onChats, current: props.surface === "agent", badge: needs, badgeLabel: label.needsBadge.replace("{n}", String(needs)) },
     { id: "skills", icon: <BookOpen />, color: tokens.mark, label: label.skills, onClick: props.onSkills, current: props.surface === "skills" },
     { id: "video", icon: <Clapperboard />, color: tokens.warning, label: label.video, onClick: props.onVideo, current: props.surface === "video" },
     { id: "pages", icon: <FileText />, color: tokens.muted, label: label.pages, onClick: props.onPages, current: props.surface === "pages" },
@@ -113,33 +129,35 @@ export function RailDock(props: {
   ];
   return (
     <div ref={hostRef} className="rail-glass-host">
-      <GlassIcons
-        className="rail-glass"
-        items={items.map((item) => ({
-          ...item,
-          className: [item.current ? "is-current" : "", "className" in item ? item.className : ""].filter(Boolean).join(" "),
-        }))}
-        size={size}
-        gap={0}
-        columns={DOCK_COUNT}
-        roundness={0.62}
-        refraction={0.45}
-        bevel={0.45}
-        dispersion={0}
-        frost={0.08}
-        shine={light ? 0.5 : 0.72}
-        tint={tokens.glass}
-        tintOpacity={light ? 0.55 : 0.28}
-        iconColor={tokens.ink}
-        plate="tilt"
-        tilt={8}
-        spread={0.18}
-        hover="press"
-        parallax={0.35}
-        labels="hover"
-        intro
-        theme={light ? "light" : "dark"}
-      />
+      <div style={row ? { width: row, marginInline: "auto" } : undefined}>
+        <GlassIcons
+          className="rail-glass"
+          items={items.map((item) => ({
+            ...item,
+            className: [item.current ? "is-current" : "", "className" in item ? item.className : ""].filter(Boolean).join(" "),
+          }))}
+          size={size}
+          gap={0}
+          columns={DOCK_COUNT}
+          roundness={0.62}
+          refraction={0.45}
+          bevel={0.45}
+          dispersion={0}
+          frost={0.08}
+          shine={light ? 0.5 : 0.72}
+          tint={tokens.glass}
+          tintOpacity={light ? 0.55 : 0.28}
+          iconColor={tokens.ink}
+          plate="tilt"
+          tilt={8}
+          spread={0.18}
+          hover="press"
+          parallax={0.35}
+          labels="hover"
+          intro
+          theme={light ? "light" : "dark"}
+        />
+      </div>
     </div>
   );
 }

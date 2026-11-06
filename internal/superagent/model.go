@@ -69,6 +69,8 @@ type Report struct {
 	Summary  string
 	Question string
 	Seq      int
+	// At 是这份报告记下的时刻。旧快照没有这一项时为零。
+	At time.Time `json:"At,omitempty"`
 }
 
 // Assignment 把工单绑到一次执行。State 取 pending、running、ended。
@@ -127,6 +129,8 @@ type Ticket struct {
 	Name      string
 	// Resume 为真时，下一次启动只接上已有日志，不再把工单说明重发一遍。
 	Resume bool
+	// Opened 是接单的时刻。旧快照没有这一项时为零，快照里用起点触发的到达时刻补上。
+	Opened time.Time `json:"Opened,omitempty"`
 }
 
 // Decision 是一次评估结果。Kind 为 accept、stop、ignore、unavailable。

@@ -10,12 +10,43 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
-// submitImage 按任务的图像供应商提交。openai、gemini、volcengine 各走自己的请求，其他供应商返回 unsupported image provider。
+// imageRoute 按连接协议挑生图实现，协议空着时再看厂商。openai-images 不论哪个厂商都走 OpenAI 兼容请求，所以通义万相、可图、CogView 这类兼容接口也能用。认不出时返回空串。
+// p 的 Protocol 优先，Provider 是厂商名。
+func imageRoute(p Provider) string {
+	switch strings.ToLower(strings.TrimSpace(p.Protocol)) {
+	case "openai-images":
+		return "openai"
+	case "google-gemini-image":
+		return "gemini"
+	case "volcengine-ark-seedream":
+		return "seedream"
+	case "volcengine-jimeng-image":
+		return "jimeng"
+	case "hunyuan-image":
+		return "hunyuan"
+	}
+	switch strings.ToLower(strings.TrimSpace(p.Provider)) {
+	case "openai":
+		return "openai"
+	case "gemini":
+		return "gemini"
+	case "volcengine":
+		return "seedream"
+	case "jimeng":
+		return "jimeng"
+	case "tencent", "hunyuan":
+		return "hunyuan"
+	}
+	return ""
+}
+
+// submitImage 按 imageRoute 提交生图。认不出的协议返回能照着做的提示，而不是只报厂商名。
 // ctx 传给 openaiImage、geminiImage 或 seedreamImage。
-// j 传给 providerForJob，Params 传给 parseParams，再按供应商把 j 传下去。
+// j 传给 providerForJob，Params 传给 parseParams，再按协议把 j 传下去。
 func (e *Engine) submitImage(ctx context.Context, j *Job) error {
 	p, err := e.providerForJob(*j, "image")
 	if err != nil {
@@ -26,19 +57,40 @@ func (e *Engine) submitImage(ctx context.Context, j *Job) error {
 		return err
 	}
 	params := parseParams(j.Params)
-	switch strings.ToLower(p.Provider) {
+	switch imageRoute(p) {
 	case "openai":
 		return e.openaiImage(ctx, p, key, j, params)
 	case "gemini":
 		return e.geminiImage(ctx, p, key, j, params)
-	case "volcengine":
+	case "seedream":
 		return e.seedreamImage(ctx, p, key, j, params)
+	case "jimeng":
+		return e.jimengImage(ctx, p, key, j, params)
+	case "hunyuan":
+		return e.hunyuanImage(ctx, p, key, j, params)
 	default:
-		return fmt.Errorf("unsupported image provider %s", p.Provider)
+		return fmt.Errorf("图像连接「%s」（%s）还不能用于短片和短剧生图。到 设置 → 生成 里启用 OpenAI 兼容图像接口、Gemini 图像、Seedream、即梦或混元", firstNonEmpty(p.Name, p.Provider), firstNonEmpty(p.Protocol, p.Provider))
 	}
 }
 
-// pollImage 用 GET /api/v3/images/generations/<远程标识> 查询。succeeded、completed、success 时下载地址并收成图片。failed 或 error 返回错误文本。其余把状态留在 polling。
+// versionTail 匹配以版本段结尾的地址，比如 /v1、/v1beta、/api/paas/v4。
+var versionTail = regexp.MustCompile(`/v\d+(beta\d*)?$`)
+
+// openAICompatURL 拼 OpenAI 兼容接口的地址。基础地址已经以版本段结尾时直接接上路径，否则先补 /v1。空地址用 api.openai.com。
+// base 去掉首尾空白和结尾斜杠。
+// suffix 以斜杠开头，接在最后。
+func openAICompatURL(base, suffix string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if base == "" {
+		base = "https://api.openai.com"
+	}
+	if !versionTail.MatchString(base) {
+		base += "/v1"
+	}
+	return base + suffix
+}
+
+// pollImage 查询异步生图任务。即梦走它自己的查询接口；其余用 GET /api/v3/images/generations/<远程标识> 查询。succeeded、completed、success 时下载地址并收成图片。failed 或 error 返回错误文本。其余把状态留在 polling。
 // ctx 传给请求的 WithContext。
 // j 传给 providerForJob，RemoteID 拼进查询地址；succeeded、completed 或 success 时传给 finishMedia，否则把 Status 写成 polling。
 func (e *Engine) pollImage(ctx context.Context, j *Job) error {
@@ -49,6 +101,9 @@ func (e *Engine) pollImage(ctx context.Context, j *Job) error {
 	key, err := e.leaseProvider(p)
 	if err != nil {
 		return err
+	}
+	if imageRoute(p) == "jimeng" {
+		return e.jimengPoll(ctx, p, key, j)
 	}
 	url := joinURL(p.BaseURL, "/api/v3", "/images/generations/"+j.RemoteID)
 	req, err := jsonReq(http.MethodGet, url, key, nil)
@@ -164,7 +219,7 @@ func (e *Engine) openaiImage(ctx context.Context, p Provider, key string, j *Job
 		return e.openaiEdit(ctx, p, key, j, params, model)
 	}
 	body := map[string]any{"model": model, "prompt": j.Prompt, "n": 1, "size": OpenAIImageSize(first(params.Size, "1024x1024"))}
-	req, err := jsonReq(http.MethodPost, joinURL(p.BaseURL, "/v1", "/images/generations"), key, body)
+	req, err := jsonReq(http.MethodPost, openAICompatURL(p.BaseURL, "/images/generations"), key, body)
 	if err != nil {
 		return err
 	}
@@ -199,7 +254,7 @@ func (e *Engine) openaiEdit(ctx context.Context, p Provider, key string, j *Job,
 		_, _ = part.Write(raw)
 	}
 	_ = w.Close()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(p.BaseURL, "/v1", "/images/edits"), &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAICompatURL(p.BaseURL, "/images/edits"), &buf)
 	if err != nil {
 		return err
 	}

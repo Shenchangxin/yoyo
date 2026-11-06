@@ -3,21 +3,24 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/idol"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+)
+
+const (
+	// idolSpeakTimeout、idolHearTimeout、idolPaintTimeout 是一句合成、一段识别和一张图最多等多久。
+	idolSpeakTimeout = 45 * time.Second
+	idolHearTimeout  = 60 * time.Second
+	idolPaintTimeout = 150 * time.Second
 )
 
 // idolMediaFallback 是设置页上语音、识别和图像的当前活动连接名称、模型和预设 id。
@@ -147,14 +150,14 @@ func keyHint(s string) string {
 	return "••••" + string(r[len(r)-4:])
 }
 
-// idolSnapshot 先 EnsureDaily 再返回钉住的偶像、立绘、好感、圈子和各媒体是否就绪。立绘优先用当前服装 blob，否则用肖像 blob，读出后做 base64。
+// idolSnapshot 先 EnsureDaily 再返回钉住的偶像、立绘、好感（补上回暖）、圈子和各媒体是否就绪。立绘优先用当前服装 blob，否则用肖像 blob，读出后做 base64。
 func (a *App) idolSnapshot() (string, error) {
-	st := a.Idols.View()
+	now := time.Now()
 	_ = a.Idols.Update(func(live *idol.State) error {
-		live.EnsureDaily(time.Now())
+		live.EnsureDaily(now)
 		return nil
 	})
-	st = a.Idols.View()
+	st := a.Idols.View()
 	pinned, ok := st.Pinned()
 	var portrait string
 	if ok {
@@ -169,14 +172,18 @@ func (a *App) idolSnapshot() (string, error) {
 		}
 	}
 	ready := a.idolSettingsView()
+	var aff any
+	if ok {
+		aff = st.AffinityOf(pinned.ID, now)
+	}
 	return idolJSON(map[string]any{
 		"pinned":       pinnedOrNil(ok, pinned),
 		"portrait":     portrait,
-		"affinity":     affinityOrNil(st, pinned.ID, ok),
+		"affinity":     aff,
 		"user":         st.User,
 		"idols":        st.Idols,
 		"circles":      st.Circles,
-		"affinities":   st.Affinity,
+		"affinities":   st.Affinities(now),
 		"lore":         st.Lore,
 		"chat_ready":   ready.ChatReady,
 		"speech_ready": ready.SpeechReady,
@@ -186,6 +193,7 @@ func (a *App) idolSnapshot() (string, error) {
 		"phone":        st.Services.PhoneTexture,
 		"reach_out":    st.Services.ReachOut,
 		"work":         st.Services.WorkEnabled,
+		"barge_in":     !st.Services.NoBargeIn,
 	})
 }
 
@@ -197,22 +205,6 @@ func pinnedOrNil(ok bool, it idol.Idol) any {
 		return nil
 	}
 	return it
-}
-
-// affinityOrNil 返回该偶像的好感并填上 Tier。没有记录时分数为 50，等级为 TierTrust。未钉住时返回 nil。
-// id 用来匹配 Affinity 的 IdolID，没有记录时写入返回值的 IdolID。
-// ok 为假时返回 nil。
-func affinityOrNil(st idol.State, id string, ok bool) any {
-	if !ok {
-		return nil
-	}
-	for _, a := range st.Affinity {
-		if a.IdolID == id {
-			a.Tier = idol.TierOf(a.Score)
-			return a
-		}
-	}
-	return idol.Affinity{IdolID: id, Score: 50, Tier: idol.TierTrust}
 }
 
 // idolSave 解析并保存一个偶像。
@@ -277,15 +269,18 @@ func (a *App) idolVoice(idolID string) string {
 // errNoChatConn 表示没有解析到会话聊天连接。错误文本含 chat model，方便偶像桌面指向设置。
 var errNoChatConn = errors.New("configure a chat model in Settings → Idol or Models")
 
-// idolClient 在 kind 为 judge 且 JudgeModel 非空时用裁判模型，否则用 ChatModel。先走 idolSessionClient。得到 errNoChatConn 且 ChatBaseURL 非空时改用旧端点，否则 idolConfigClient。
+// idolClient 在 kind 为 judge、memory 或 title（后台的活）且 JudgeModel 非空时用评判模型，否则用 ChatModel。先走 idolSessionClient。得到 errNoChatConn 且 ChatBaseURL 非空时改用旧端点，否则 idolConfigClient。
 func (a *App) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
 	if a == nil || a.Idols == nil {
 		return nil, "", fmt.Errorf("idol store missing")
 	}
 	svc := a.Idols.View().Services
 	picked := strings.TrimSpace(svc.ChatModel)
-	if kind == "judge" && strings.TrimSpace(svc.JudgeModel) != "" {
-		picked = strings.TrimSpace(svc.JudgeModel)
+	switch kind {
+	case "judge", "memory", "title":
+		if strings.TrimSpace(svc.JudgeModel) != "" {
+			picked = strings.TrimSpace(svc.JudgeModel)
+		}
 	}
 	client, model, err := a.idolSessionClient(picked)
 	if err == nil {
@@ -408,48 +403,28 @@ func (a *App) idolSpeechCreds(_ string) (base, key, model string, err error) {
 	return base, key, model, nil
 }
 
-// idolSpeak 把文本 POST 到音频 speech 地址。声音空则用 idolVoice。模型空则用 gpt-4o-mini-tts。响应体最多读 8 MiB。
-// text 先 TrimSpace，空串则返回错误，否则作为 input。
-// voice 传给 idolSpeechCreds；去掉空白后为空时改用 idolVoice 的空偶像 id。
-func (a *App) idolSpeak(text, voice string) ([]byte, string, error) {
+// idolSpeak 用这位偶像的音色把一句话念出来，返回音频和 Content-Type。读音表先换掉书面写法；语气提示 cue 交给认得它的厂商。
+// 按设置里的语音预设或地址认出厂商，各说各的协议。ctx 超时或取消时请求随之结束。
+func (a *App) idolSpeak(ctx context.Context, idolID, text, cue string) ([]byte, string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, "", fmt.Errorf("empty speech")
 	}
-	base, key, model, err := a.idolSpeechCreds(voice)
+	base, key, model, err := a.idolSpeechCreds("")
 	if err != nil {
 		return nil, "", err
 	}
-	if strings.TrimSpace(voice) == "" {
-		voice = a.idolVoice("")
+	st := a.Idols.View()
+	spokenLang := "zh"
+	if it, ok := st.Idol(idolID); ok {
+		text = idol.ApplyReadings(text, it.Readings)
+		spokenLang = it.SpokenLang
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"model": firstNonEmpty(model, "gpt-4o-mini-tts"),
-		"input": text,
-		"voice": voice,
+	provider := idol.NormalizeServices(st.Services).SpeechProvider
+	return synthesize(ctx, speechCall{
+		route: mediaRoute(provider, base), base: base, key: key, model: model,
+		voice: a.idolVoice(idolID), text: text, cue: cue, lang: spokenLang,
 	})
-	req, err := http.NewRequest(http.MethodPost, idol.MediaURL(base, "audio/speech"), bytes.NewReader(payload))
-	if err != nil {
-		return nil, "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("tts %s: %s", resp.Status, bytes.TrimSpace(b))
-	}
-	ctype := resp.Header.Get("Content-Type")
-	if ctype == "" {
-		ctype = "audio/mpeg"
-	}
-	return b, ctype, nil
 }
 
 // idolASRCreds 读取识别字段。地址为空时先找活动的 asr 连接，再退到 speechCreds。speechCreds 失败时错误为 speech recognition is not configured。
@@ -480,52 +455,23 @@ func (a *App) idolASRCreds() (base, key, model string, err error) {
 	return base, key, model, nil
 }
 
-// idolTranscribe 在暂停时返回 paused。模型空则用 gpt-4o-mini-transcribe。响应体最多读 1 MiB。JSON 没有 text 时返回正文本身。
-// filename 传给 firstNonEmpty，结果用作上传文件名。
-// audio 写入表单文件。
-func (a *App) idolTranscribe(filename string, audio []byte) (string, error) {
+// idolTranscribe 识别一段录音。暂停时返回 paused。按设置里的识别预设或地址认出厂商，各说各的协议；hint 是热词。
+func (a *App) idolTranscribe(ctx context.Context, filename string, audio []byte, hint string) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
+	}
+	if len(audio) == 0 {
+		return "", fmt.Errorf("empty audio")
 	}
 	base, key, model, err := a.idolASRCreds()
 	if err != nil {
 		return "", err
 	}
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	_ = w.WriteField("model", firstNonEmpty(model, "gpt-4o-mini-transcribe"))
-	fw, err := w.CreateFormFile("file", firstNonEmpty(filename, "audio.webm"))
-	if err != nil {
-		return "", err
-	}
-	if _, err := fw.Write(audio); err != nil {
-		return "", err
-	}
-	_ = w.Close()
-	req, err := http.NewRequest(http.MethodPost, idol.MediaURL(base, "audio/transcriptions"), &buf)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("stt %s: %s", resp.Status, bytes.TrimSpace(b))
-	}
-	var out struct {
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(b, &out) != nil {
-		return strings.TrimSpace(string(b)), nil
-	}
-	return strings.TrimSpace(out.Text), nil
+	provider := idol.NormalizeServices(a.Idols.View().Services).ASRProvider
+	return transcribe(ctx, transcribeCall{
+		route: mediaRoute(provider, base), base: base, key: key, model: model,
+		filename: firstNonEmpty(filename, "audio.webm"), audio: audio, hint: hint,
+	})
 }
 
 // idolImageCreds 读取图像字段。地址为空时用活动的 image 连接。仍没有地址则返回 image connection not configured。
@@ -552,61 +498,20 @@ func (a *App) idolImageCreds() (base, key, model string, err error) {
 	return base, key, model, nil
 }
 
-// idolPaint 请求 images/generations，默认模型 gpt-image-1，尺寸 1024x1024。优先用 b64_json，否则再 GET 返回的 URL。两段响应体上限分别是 8 MiB 和 6 MiB。
-// ctx 传给两次 NewRequestWithContext。
-// prompt 写入请求的 prompt。
+// idolPaint 按提示画一张图。按设置里的生图预设或地址认出厂商，各说各的协议；ctx 管整次请求和下载。
 func (a *App) idolPaint(ctx context.Context, prompt string) ([]byte, error) {
 	base, key, model, err := a.idolImageCreds()
 	if err != nil {
 		return nil, err
 	}
-	body, _ := json.Marshal(map[string]any{
-		"model":  firstNonEmpty(model, "gpt-image-1"),
-		"prompt": prompt,
-		"size":   "1024x1024",
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, idol.MediaURL(base, "images/generations"), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("image %s", resp.Status)
-	}
-	var out struct {
-		Data []struct {
-			B64 string `json:"b64_json"`
-			URL string `json:"url"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(b, &out) != nil || len(out.Data) == 0 {
-		return nil, fmt.Errorf("image response was not a picture")
-	}
-	if out.Data[0].B64 != "" {
-		return decodeIdolB64(out.Data[0].B64)
-	}
-	if out.Data[0].URL == "" {
-		return nil, fmt.Errorf("image response was empty")
-	}
-	ireq, err := http.NewRequestWithContext(ctx, http.MethodGet, out.Data[0].URL, nil)
-	if err != nil {
-		return nil, err
-	}
-	ires, err := http.DefaultClient.Do(ireq)
-	if err != nil {
-		return nil, err
-	}
-	defer ires.Body.Close()
-	return io.ReadAll(io.LimitReader(ires.Body, 6<<20))
+	provider := idol.NormalizeServices(a.Idols.View().Services).ImageProvider
+	return paint(ctx, paintCall{route: mediaRoute(provider, base), base: base, key: key, model: model, prompt: prompt})
+}
+
+// idolCanPaint 判断有没有配好能用的生图服务。没有时她会说现在发不了照片，而不是答应了却发不出来。
+func (a *App) idolCanPaint() bool {
+	_, _, _, err := a.idolImageCreds()
+	return err == nil
 }
 
 // idolMediaFields 按 speech、asr 或其他种类返回对应的地址、vault 密钥、模型和厂商。
@@ -739,19 +644,28 @@ func (a *App) activeMedia(cap string) (name, vendor, endpoint, model string) {
 	return name, c.Vendor, c.Endpoint, connection.ModelFor(c, cap)
 }
 
-// idolPing 用 40 秒超时试通。speech 朗读你好，image 画一只不带字的茶杯，其他种类让聊天只回复 OK。
+// idolPing 试通一项服务。speech 念一句你好，asr 识别一小段静音，image 画一只不带字的茶杯（最多等 150 秒），其他种类让聊天只回复 OK。
 // payload 解出 kind。
 func (a *App) idolPing(payload string) (string, error) {
 	var p struct {
 		Kind string `json:"kind"`
 	}
 	_ = json.Unmarshal([]byte(payload), &p)
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	timeout := 40 * time.Second
+	if p.Kind == "image" {
+		timeout = idolPaintTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	switch p.Kind {
 	case "speech":
-		_, _, err := a.idolSpeak("你好", "")
+		_, _, err := a.idolSpeak(ctx, "", "你好", "")
 		if err != nil {
+			return "", err
+		}
+		return idolJSON(map[string]any{"ok": true})
+	case "asr":
+		if _, err := a.idolTranscribe(ctx, "ping.wav", silentWAV(), ""); err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})

@@ -1,5 +1,5 @@
-// 本文件拥有 state.json 和 blobs/ 的读写、当前对话、记忆和每日任务。
-// Open 在读完状态后调用 ensurePresets。Update 在回调成功后整份写回。不调用模型。
+// 本文件拥有 state.json 和 blobs/ 的读写、当前对话和每日任务。
+// Open 在读完状态后灌预设、迁移旧格式。View 给一份深拷贝；Update 在拷贝上改，回调成功才换上并整份写回，失败时库里的那份不变。不调用模型。
 
 package idol
 
@@ -16,8 +16,14 @@ import (
 	"time"
 )
 
-// errf 用一句英文错误文本造 error。这些句子是返回给调用方的字面量。
-// msg 传给 errors.New。
+const (
+	// maxBlob 是一个 blob 最大多少字节。照片和头像存之前会压到远小于这个数。
+	maxBlob = 8 << 20
+	// maxDraws 是最多攒几次抽奖：一周的量。
+	maxDraws = 7
+)
+
+// errf 用一句英文错误文本造 error。这些句子是返回给调用方的字面量，前端按它们挑文案。
 func errf(msg string) error { return errors.New(msg) }
 
 // newID 返回 8 字节随机数的十六进制，用作偶像、对话、记录和图片的 id。
@@ -35,38 +41,60 @@ type Store struct {
 	state State
 }
 
-// Open 创建 blobs 目录并读 state.json。文件不存在或只有空白时用默认状态：主动开口和工作通道都打开。随后灌预设。
-// dir 用来创建 blobs 目录，并作为 state.json 的父目录。
+// Open 创建 blobs 目录并读 state.json。文件不存在或只有空白时用默认状态。
+// 文件坏了时先改名成 state.json.broken-<时间> 留底，再试写盘时留下的 state.json.tmp，都不行就从默认状态开始，不让整个偶像模块打不开。
+// 随后灌预设，并把旧格式的好感迁移到现在的刻度。
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "blobs"), 0o755); err != nil {
 		return nil, err
 	}
 	s := &Store{dir: dir, path: filepath.Join(dir, "state.json")}
 	b, err := os.ReadFile(s.path)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-		s.state = defaultState()
-	} else if len(strings.TrimSpace(string(b))) == 0 {
-		s.state = defaultState()
-	} else if err := json.Unmarshal(b, &s.state); err != nil {
+	switch {
+	case err != nil && !os.IsNotExist(err):
 		return nil, err
+	case err != nil || len(strings.TrimSpace(string(b))) == 0:
+		s.state = defaultState()
+	default:
+		if jerr := json.Unmarshal(b, &s.state); jerr != nil {
+			s.state = s.recover(b)
+		}
 	}
 	if err := s.ensurePresets(); err != nil {
 		return nil, err
 	}
+	if s.state.AffinityRev < affinityRevision {
+		s.mu.Lock()
+		s.state.migrateAffinity(time.Now())
+		err := s.saveLocked()
+		s.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
+	}
 	return s, nil
+}
+
+// recover 在 state.json 读不出时留底，并尽量从写盘的临时文件恢复。raw 是读不出的原文。
+func (s *Store) recover(raw []byte) State {
+	_ = os.WriteFile(fmt.Sprintf("%s.broken-%s", s.path, time.Now().Format("20060102-150405")), raw, 0o644)
+	if tmp, err := os.ReadFile(s.path + ".tmp"); err == nil {
+		var st State
+		if json.Unmarshal(tmp, &st) == nil {
+			return st
+		}
+	}
+	return defaultState()
 }
 
 // defaultState 是一份新桌面。ReachOut 和 WorkEnabled 都为真。
 func defaultState() State {
-	return State{Services: Services{ReachOut: true, WorkEnabled: true}}
+	return State{Services: Services{ReachOut: true, WorkEnabled: true}, AffinityRev: affinityRevision}
 }
 
-// saveLocked 把 state 缩进写成临时文件再改名。调用方须已持有 mu。
+// saveLocked 把 state 写成临时文件再改名。调用方须已持有 mu。
 func (s *Store) saveLocked() error {
-	b, err := json.MarshalIndent(s.state, "", "  ")
+	b, err := json.Marshal(s.state)
 	if err != nil {
 		return err
 	}
@@ -77,37 +105,74 @@ func (s *Store) saveLocked() error {
 	return os.Rename(tmp, s.path)
 }
 
-// View 返回状态的一份 JSON 往返副本，调用方改它不会改到库里的那份。
+// View 返回状态的一份深拷贝，调用方改它不会改到库里的那份。
 func (s *Store) View() State {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	b, _ := json.Marshal(s.state)
-	var out State
-	_ = json.Unmarshal(b, &out)
-	return out
+	return s.state.clone()
 }
 
-// Update 在锁内改状态。fn 返回错误则不写盘。
+// Update 在状态的拷贝上执行 fn。fn 返回错误时什么也不变；成功时换上拷贝并写盘。
 func (s *Store) Update(fn func(*State) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := fn(&s.state); err != nil {
+	next := s.state.clone()
+	if err := fn(&next); err != nil {
 		return err
 	}
-	return s.saveLocked()
+	prev := s.state
+	s.state = next
+	if err := s.saveLocked(); err != nil {
+		s.state = prev
+		return err
+	}
+	return nil
 }
 
-// SaveBlob 把图片字节写成 blobs 下的新 id。空字节拒绝；大于 2 MiB 拒绝。
+// clone 深拷贝一份状态。各个切片和切片里的切片都换成新的底层数组。
+func (st State) clone() State {
+	out := st
+	out.Idols = make([]Idol, len(st.Idols))
+	for i, it := range st.Idols {
+		it.Outfits = append([]Outfit(nil), it.Outfits...)
+		it.LikedGifts = append([]string(nil), it.LikedGifts...)
+		out.Idols[i] = it
+	}
+	out.Circles = make([]Circle, len(st.Circles))
+	for i, c := range st.Circles {
+		c.Members = append([]string(nil), c.Members...)
+		out.Circles[i] = c
+	}
+	out.Conversations = make([]Conversation, len(st.Conversations))
+	for i, c := range st.Conversations {
+		recs := make([]Record, len(c.Records))
+		for j, r := range c.Records {
+			r.Segments = append([]Segment(nil), r.Segments...)
+			recs[j] = r
+		}
+		c.Records = recs
+		out.Conversations[i] = c
+	}
+	out.Memories = append([]Memory(nil), st.Memories...)
+	out.Affinity = append([]Affinity(nil), st.Affinity...)
+	out.Inventory = append([]Stock(nil), st.Inventory...)
+	out.Lore = append([]Lore(nil), st.Lore...)
+	out.Calls = append([]CallLog(nil), st.Calls...)
+	out.Reaches = append([]ReachMark(nil), st.Reaches...)
+	out.Achievements = append([]string(nil), st.Achievements...)
+	return out
+}
+
+// SaveBlob 把图片字节写成 blobs 下的新 id。空字节和超过 maxBlob 的拒绝。
 func (s *Store) SaveBlob(b []byte) (string, error) {
 	if len(b) == 0 {
 		return "", errf("empty blob")
 	}
-	if len(b) > 2<<20 {
+	if len(b) > maxBlob {
 		return "", errf("image too large")
 	}
 	id := newID()
-	path := filepath.Join(s.dir, "blobs", id)
-	if err := os.WriteFile(path, b, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(s.dir, "blobs", id), b, 0o644); err != nil {
 		return "", err
 	}
 	return id, nil
@@ -115,11 +180,117 @@ func (s *Store) SaveBlob(b []byte) (string, error) {
 
 // ReadBlob 按 id 读 blobs 里的文件。id 含 .. 或斜杠时拒绝。
 func (s *Store) ReadBlob(id string) ([]byte, error) {
-	id = strings.TrimSpace(id)
-	if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, `/\`) {
+	if !safeBlobID(id) {
 		return nil, errf("bad blob")
 	}
-	return os.ReadFile(filepath.Join(s.dir, "blobs", id))
+	return os.ReadFile(filepath.Join(s.dir, "blobs", strings.TrimSpace(id)))
+}
+
+// removeBlob 删掉一个 blob 文件。预设头像（preset- 开头）留着，换一位同名偶像还能用。
+func (s *Store) removeBlob(id string) {
+	if !safeBlobID(id) || strings.HasPrefix(id, "preset-") {
+		return
+	}
+	_ = os.Remove(filepath.Join(s.dir, "blobs", strings.TrimSpace(id)))
+}
+
+// RemoveBlobs 删掉这些 blob 文件，比如删除一段对话时它里面的照片。
+func (s *Store) RemoveBlobs(ids []string) {
+	for _, id := range ids {
+		s.removeBlob(id)
+	}
+}
+
+// safeBlobID 判断 blob id 能不能安全地拼进路径。
+func safeBlobID(id string) bool {
+	id = strings.TrimSpace(id)
+	return id != "" && !strings.Contains(id, "..") && !strings.ContainsAny(id, `/\:`)
+}
+
+// DeleteIdol 删掉一位偶像和她的一切：对话、她那里记下的记忆、好感、材料、通话和先开口的记录，以及只属于她的图片。
+// 她正被放在桌面上时改放桌宠 Yoyo（如果还在）。找不到时返回 idol not found。
+func (s *Store) DeleteIdol(id string) error {
+	var blobs []string
+	err := s.Update(func(st *State) error {
+		gone, ok := st.idol(id)
+		if !ok {
+			return errf("idol not found")
+		}
+		blobs = append(blobs, gone.Portrait)
+		for _, o := range gone.Outfits {
+			blobs = append(blobs, o.Blob)
+		}
+		for _, c := range st.Conversations {
+			if c.IdolID != id {
+				continue
+			}
+			for _, r := range c.Records {
+				if r.PhotoID != "" {
+					blobs = append(blobs, r.PhotoID)
+				}
+			}
+		}
+		set := map[string]bool{id: true}
+		var idols []Idol
+		for _, it := range st.Idols {
+			if it.ID != id {
+				idols = append(idols, it)
+			}
+		}
+		st.Idols = idols
+		st.Conversations = filterConversations(st.Conversations, set)
+		st.Memories = relinkMemories(filterMemories(st.Memories, set))
+		st.Affinity = filterAffinity(st.Affinity, set)
+		st.Lore = filterLore(st.Lore, set)
+		st.Calls = filterCalls(st.Calls, set)
+		st.Reaches = filterReaches(st.Reaches, set)
+		for i := range st.Circles {
+			var keep []string
+			for _, m := range st.Circles[i].Members {
+				if m != id {
+					keep = append(keep, m)
+				}
+			}
+			st.Circles[i].Members = keep
+		}
+		if gone.Pinned {
+			for i := range st.Idols {
+				st.Idols[i].Pinned = st.Idols[i].ID == petIdolID
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, b := range blobs {
+		s.removeBlob(b)
+	}
+	return nil
+}
+
+// relinkMemories 让取代者已经不在的记忆重新成立，免得它们永远被一条不存在的记忆盖住。
+func relinkMemories(mems []Memory) []Memory {
+	have := map[string]bool{}
+	for _, m := range mems {
+		have[m.ID] = true
+	}
+	for i := range mems {
+		if mems[i].SupersededBy != "" && !have[mems[i].SupersededBy] {
+			mems[i].SupersededBy = ""
+		}
+	}
+	return mems
+}
+
+// DeleteMemory 删掉一条记忆，取代关系照 deleteMemory 接上。找不到时返回 memory not found。
+func (s *Store) DeleteMemory(id string) error {
+	return s.Update(func(st *State) error {
+		if !st.deleteMemory(id) {
+			return errf("memory not found")
+		}
+		return nil
+	})
 }
 
 // idol 按 id 在这份状态里找偶像。
@@ -143,9 +314,19 @@ func (st *State) putIdol(id Idol) {
 	st.Idols = append(st.Idols, id)
 }
 
+// record 按 id 找一条记录，返回指向状态里那条的指针，找不到时返回 nil。
+func (st *State) record(id string) *Record {
+	for i := range st.Conversations {
+		for j := range st.Conversations[i].Records {
+			if st.Conversations[i].Records[j].ID == id {
+				return &st.Conversations[i].Records[j]
+			}
+		}
+	}
+	return nil
+}
+
 // ensureCurrent 返回这位偶像当前的对话。没有就 forceNew 一段。
-// idolID 与对话的 IdolID 比较。Current 为真则返回该对话，否则和 now 一起传给 forceNew。
-// now 在没有当前对话时传给 forceNew。
 func (st *State) ensureCurrent(idolID string, now time.Time) Conversation {
 	for _, c := range st.Conversations {
 		if c.IdolID == idolID && c.Current {
@@ -155,9 +336,7 @@ func (st *State) ensureCurrent(idolID string, now time.Time) Conversation {
 	return st.forceNew(idolID, now)
 }
 
-// forceNew 把这位偶像当前对话的 Current 清掉。那段还没有任何记录就删掉。然后追加一段新的当前对话。
-// idolID 用来清掉这位偶像当前对话，并写入新对话的 IdolID。
-// now 写入新对话的 CreatedAt。
+// forceNew 把这位偶像当前对话的 Current 清掉，那段还没有任何记录就删掉，然后追加一段新的当前对话。
 func (st *State) forceNew(idolID string, now time.Time) Conversation {
 	for i := range st.Conversations {
 		if st.Conversations[i].IdolID == idolID && st.Conversations[i].Current {
@@ -174,21 +353,16 @@ func (st *State) forceNew(idolID string, now time.Time) Conversation {
 }
 
 // appendRecord 把一条记录接到指定对话末尾。找不到对话就什么也不做。
-// conID 与对话的 ID 比较，命中则把 rec 追加到 Records。
-// rec 追加到命中对话的 Records。
 func (st *State) appendRecord(conID string, rec Record) {
 	for i := range st.Conversations {
-		if st.Conversations[i].ID != conID {
-			continue
+		if st.Conversations[i].ID == conID {
+			st.Conversations[i].Records = append(st.Conversations[i].Records, rec)
+			return
 		}
-		st.Conversations[i].Records = append(st.Conversations[i].Records, rec)
-		return
 	}
 }
 
 // currentOf 返回这位偶像 Current 为真的对话。
-// st 的 Conversations 用来查找。
-// idolID 与对话的 IdolID 比较，且 Current 为真才返回。
 func currentOf(st *State, idolID string) (Conversation, bool) {
 	for _, c := range st.Conversations {
 		if c.IdolID == idolID && c.Current {
@@ -229,10 +403,7 @@ func (s *Store) Pin(id string) error {
 				found = true
 			}
 		}
-		if id == "" {
-			return nil
-		}
-		if !found {
+		if id != "" && !found {
 			return errf("idol not found")
 		}
 		return nil
@@ -240,8 +411,6 @@ func (s *Store) Pin(id string) error {
 }
 
 // SetWorkSession 写下这位偶像当前的工作会话 id。
-// idolID 传给 idol。
-// sessionID 写入 WorkSessionID。
 func (s *Store) SetWorkSession(idolID, sessionID string) error {
 	return s.Update(func(st *State) error {
 		idol, ok := st.idol(idolID)
@@ -255,50 +424,44 @@ func (s *Store) SetWorkSession(idolID, sessionID string) error {
 }
 
 // AttachWork 把工作会话 id 和错误写回指定记录。找不到记录也返回 nil。
-// recordID 与记录的 ID 比较。
-// sessionID 写入命中记录的 WorkSession。
-// workErr 写入命中记录的 WorkError。
 func (s *Store) AttachWork(recordID, sessionID, workErr string) error {
 	return s.Update(func(st *State) error {
-		for i := range st.Conversations {
-			for j := range st.Conversations[i].Records {
-				if st.Conversations[i].Records[j].ID == recordID {
-					st.Conversations[i].Records[j].WorkSession = sessionID
-					st.Conversations[i].Records[j].WorkError = workErr
-					return nil
-				}
-			}
+		if rec := st.record(recordID); rec != nil {
+			rec.WorkSession = sessionID
+			rec.WorkError = workErr
 		}
 		return nil
 	})
 }
 
-// Truncate 把指定记录的 Segments 截到 keep 条。keep 小于 0 当成 0，大于现有长度则不变。找不到记录返回错误。
-// recordID 与记录的 ID 比较。找不到返回 record not found。
+// Truncate 把指定记录的 Segments 截到 keep 条：通话里她被打断时，只留用户听到的那几段。keep 小于 1 时至少留 1 段，免得留下空回复。
 func (s *Store) Truncate(recordID string, keep int) error {
 	return s.Update(func(st *State) error {
-		for i := range st.Conversations {
-			for j := range st.Conversations[i].Records {
-				rec := &st.Conversations[i].Records[j]
-				if rec.ID != recordID {
-					continue
-				}
-				if keep < 0 {
-					keep = 0
-				}
-				if keep > len(rec.Segments) {
-					keep = len(rec.Segments)
-				}
-				rec.Segments = rec.Segments[:keep]
-				return nil
-			}
+		rec := st.record(recordID)
+		if rec == nil {
+			return errf("record not found")
 		}
-		return errf("record not found")
+		if keep < 1 {
+			keep = 1
+		}
+		if keep < len(rec.Segments) {
+			rec.Segments = rec.Segments[:keep]
+		}
+		return nil
 	})
 }
 
+// PhotoState 返回一条记录的照片 id 和状态（pending、failed 或空）。找不到时 ok 为假。
+func (s *Store) PhotoState(recordID string) (photoID, state string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if rec := s.state.record(recordID); rec != nil {
+		return rec.PhotoID, rec.PhotoState, true
+	}
+	return "", "", false
+}
+
 // pinnedOf 返回第一位钉选且未隐藏的偶像。
-// st 的 Idols 里，返回第一位 Pinned 为真且 Hidden 为假的。
 func pinnedOf(st State) (Idol, bool) {
 	for _, it := range st.Idols {
 		if it.Pinned && !it.Hidden {
@@ -308,93 +471,10 @@ func pinnedOf(st State) (Idol, bool) {
 	return Idol{}, false
 }
 
-// remember 追加一句记忆，最长 80 个字符。空白、NONE 丢掉。同一位偶像未盖过的旧句若互相包含且两边都至少 6 个字符，旧句标上 SupersededBy。
-// idol 的 ID 和 CircleID 写入新记忆，并用来找同一位未盖过的旧句。
-// text 去掉空白。为空或与 NONE 不区分大小写相等时直接返回。rune 数大于 80 时截到 80。
-// now 写入记忆的 At。
-func (st *State) remember(idol Idol, text string, now time.Time) {
-	text = strings.TrimSpace(text)
-	if text == "" || strings.EqualFold(text, "NONE") {
-		return
-	}
-	if len([]rune(text)) > 80 {
-		text = string([]rune(text)[:80])
-	}
-	mem := Memory{ID: newID(), Text: text, SourceIdol: idol.ID, CircleID: idol.CircleID, At: now}
-	for i := range st.Memories {
-		old := st.Memories[i]
-		if old.SupersededBy != "" || old.SourceIdol != idol.ID {
-			continue
-		}
-		if strings.Contains(old.Text, text) || strings.Contains(text, old.Text) {
-			if len([]rune(old.Text)) >= 6 && len([]rune(text)) >= 6 {
-				st.Memories[i].SupersededBy = mem.ID
-			}
-		}
-	}
-	st.Memories = append(st.Memories, mem)
-}
-
-// visibleMemories 返回这位偶像能用的记忆：她自己的，以及同一圈子里别人的。已盖过的跳过，最多留最后 8 条。
-// idol 的 ID 和 CircleID 用来挑选未盖过的记忆。结果多于 8 条时只留最后 8 条。
-func (st *State) visibleMemories(idol Idol) []Memory {
-	var out []Memory
-	names := map[string]string{}
-	for _, it := range st.Idols {
-		names[it.ID] = it.Name
-	}
-	_ = names
-	for _, m := range st.Memories {
-		if m.SupersededBy != "" {
-			continue
-		}
-		if m.SourceIdol == idol.ID {
-			out = append(out, m)
-			continue
-		}
-		if idol.CircleID != "" && m.CircleID == idol.CircleID {
-			out = append(out, m)
-		}
-	}
-	if len(out) > 8 {
-		out = out[len(out)-8:]
-	}
-	return out
-}
-
-// formatMemories 把可见记忆写成提示。别人转告的标明出处，不能说成用户亲口讲的。
-// st 传给 visibleMemories，并用 Idols 建名字表。
-// idol 传给 visibleMemories。SourceIdol 等于它或为空时写成用户亲口说的。
-func formatMemories(st *State, idol Idol) string {
-	mems := st.visibleMemories(idol)
-	if len(mems) == 0 {
-		return ""
-	}
-	names := map[string]string{}
-	for _, it := range st.Idols {
-		names[it.ID] = it.Name
-	}
-	var b strings.Builder
-	b.WriteString("你记得这些关于用户的事。别人告诉你的，只能用转述的口吻说：\n")
-	for _, m := range mems {
-		if m.SourceIdol == idol.ID || m.SourceIdol == "" {
-			fmt.Fprintf(&b, "- （用户亲口对你说的）%s\n", m.Text)
-			continue
-		}
-		name := names[m.SourceIdol]
-		if name == "" {
-			name = "另一位"
-		}
-		fmt.Fprintf(&b, "- （听%s说的，不是用户亲口告诉你的）%s\n", name, m.Text)
-	}
-	return b.String()
-}
-
 // Location 返回用户卡片上的时区。
 func (u UserCard) Location() *time.Location { return idolTZ(u) }
 
 // BirthdayToday 判断用户时区的今天是不是生日。生日必须是 MM-DD。非闰年的 02-29 按 02-28。
-// now 换到用户时区后格式化成 01-02，与生日比较。
 func (u UserCard) BirthdayToday(now time.Time) bool {
 	b := strings.TrimSpace(u.Birthday)
 	if len(b) != 5 || b[2] != '-' {
@@ -409,67 +489,65 @@ func (u UserCard) BirthdayToday(now time.Time) bool {
 }
 
 // leap 判断公历闰年。
-// y 能被 4 整除，且不能被 100 整除或能被 400 整除时返回 true。
 func leap(y int) bool {
 	return y%4 == 0 && (y%100 != 0 || y%400 == 0)
 }
 
-// Night 在用户时区的 23 点到次日 7 点之前返回真。reachDue 在这段时间不开口。
-// now 换到用户时区后取 Hour。大于等于 23 或小于 7 时返回 true。
+// Night 在用户时区的 22 点到次日 8 点之前返回真。她不在这段时间先开口。
 func (u UserCard) Night(now time.Time) bool {
 	h := now.In(u.Location()).Hour()
-	return h >= 23 || h < 7
+	return h >= nightStartHour || h < nightEndHour
 }
 
 // day 返回用户时区的日期，形如 2006-01-02。
-// now 换到用户时区后格式化成 2006-01-02。
 func (st *State) day(now time.Time) string {
 	return now.In(st.User.Location()).Format("2006-01-02")
 }
 
-// ensureDaily 在日期变化时把 Draws 补到最多 5，并换成当天的空任务。同一天重复调用什么也不做。
-// now 传给 day。得到的日期与 DrawDay 相同则返回。否则 Draws 小于 5 时加一，并把 DrawDay 和当天任务写成这个日期。
+// ensureDaily 在跨过用户时区的一天时补抽奖次数（每过一天一次，最多攒 maxDraws 次），并换成当天的空任务。同一天重复调用什么也不做。
 func (st *State) ensureDaily(now time.Time) {
 	day := st.day(now)
 	if st.DrawDay == day {
 		return
 	}
-	if st.Draws < 5 {
-		st.Draws++
+	gained := 1
+	if prev, err := time.ParseInLocation("2006-01-02", st.DrawDay, st.User.Location()); err == nil {
+		if cur, err := time.ParseInLocation("2006-01-02", day, st.User.Location()); err == nil && cur.After(prev) {
+			gained = int(cur.Sub(prev).Hours()/24 + 0.5)
+		}
+	}
+	if gained < 1 {
+		gained = 1
+	}
+	if st.Draws < maxDraws {
+		st.Draws += gained
+		if st.Draws > maxDraws {
+			st.Draws = maxDraws
+		}
 	}
 	st.DrawDay = day
 	st.Tasks = DayMark{Day: day}
 }
 
 // markTask 记下 talk、call 或 gift。每种当天第一次完成时 BonusDraws 加一。
-// now 传给 ensureDaily。
-// loc 没有被读取，只赋给空白标识符。
-// kind 为 talk、call 或 gift 时记下对应任务。当天第一次完成时 BonusDraws 加一。
-func (st *State) markTask(now time.Time, loc *time.Location, kind string) {
-	_ = loc
+func (st *State) markTask(now time.Time, kind string) {
 	st.ensureDaily(now)
 	switch kind {
 	case "talk":
-		if !st.Tasks.Talk {
-			st.Tasks.Talk = true
-		}
-		if st.Tasks.Talk && !st.Tasks.TalkRewarded {
+		st.Tasks.Talk = true
+		if !st.Tasks.TalkRewarded {
 			st.BonusDraws++
 			st.Tasks.TalkRewarded = true
 		}
 	case "call":
-		if !st.Tasks.Call {
-			st.Tasks.Call = true
-		}
-		if st.Tasks.Call && !st.Tasks.CallRewarded {
+		st.Tasks.Call = true
+		if !st.Tasks.CallRewarded {
 			st.BonusDraws++
 			st.Tasks.CallRewarded = true
 		}
 	case "gift":
-		if !st.Tasks.Gift {
-			st.Tasks.Gift = true
-		}
-		if st.Tasks.Gift && !st.Tasks.GiftRewarded {
+		st.Tasks.Gift = true
+		if !st.Tasks.GiftRewarded {
 			st.BonusDraws++
 			st.Tasks.GiftRewarded = true
 		}

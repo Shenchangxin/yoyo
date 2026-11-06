@@ -2,14 +2,15 @@
  * 本文件拥有剪辑台的预览、保留片段、找片段、出片、字幕和配音。
  * 不拥有创作入口。保留、提议、出片、转写、略过、配音、混音和烧录都会改服务端。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
+import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { cutClips, cutCues, useCutDesk, useCutReadiness, type CutClip, type CutProject } from "./cut-desk";
+import { cutClips, cutCues, ffmpegInstalling, useCutDesk, useCutReadiness, type CutClip, type CutProject } from "./cut-desk";
 import { playbackSrc } from "./playback-src";
 
 /** 把秒数收成一位小数的字符串。n 收成秒并保留一位小数，空的当 0。 */
@@ -17,15 +18,18 @@ function span(n?: number) {
   return Number(n || 0).toFixed(1);
 }
 
-/** 不足 60 秒显示秒，否则显示分和秒。无效时长返回空。n 转成秒，无效就返回空。 */
-function formatDuration(n: number | undefined) {
+/** 不足 60 秒按「12 秒」写，否则写成分和秒。无效时长返回空。n 转成秒，无效就返回空。secondsLabel 是带 {n} 的「秒」文案。 */
+function formatDuration(n: number | undefined, secondsLabel: string) {
   const s = Number(n || 0);
   if (!(s > 0) || !Number.isFinite(s)) return "";
-  if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
+  if (s < 60) return secondsLabel.replace("{n}", String(s < 10 ? Math.round(s * 10) / 10 : Math.round(s)));
   const m = Math.floor(s / 60);
   const r = Math.round(s - m * 60);
   return `${m}:${String(r).padStart(2, "0")}`;
 }
+
+/** LONG_STEPS 是要跑 ffmpeg、转写或配音的长操作，跑的时候显示进度条和在做什么。 */
+const LONG_STEPS = ["propose", "apply", "asr", "dub", "burn"] as const;
 
 /** CutStage 先出预览。没有保留片段时找 3 段、每段 15-30 秒；有了才做出片。props 的 onLeave 在点返回时调用。 */
 export function CutStage(props: { onLeave?: () => void }) {
@@ -43,6 +47,7 @@ export function CutStage(props: { onLeave?: () => void }) {
   const [pictureReady, setPictureReady] = useState(false);
   const [previewError, setPreviewError] = useState(false);
   const [armed, setArmed] = useState(false);
+  const running = useRef(false);
 
   const source = playbackSrc(project?.source_url);
   const result = playbackSrc(project?.result_url);
@@ -60,9 +65,10 @@ export function CutStage(props: { onLeave?: () => void }) {
     setArmed(false);
   }, [preview]);
 
-  /** 跑一次剪辑请求，返回了工程就写回桌子。label 写成忙碌标记。fn 执行，返回带 id 的工程就写回桌子。 */
+  /** 跑一次剪辑请求，返回了工程就写回桌子。已经有一个在跑就丢掉这次点击，连点两下不会打出两次。label 写成忙碌标记。fn 执行，返回带 id 的工程就写回桌子。 */
   async function run(label: string, fn: () => Promise<CutProject | void>) {
-    if (!project?.id) return;
+    if (!project?.id || running.current) return;
+    running.current = true;
     setBusy(label);
     try {
       const next = await fn();
@@ -70,6 +76,7 @@ export function CutStage(props: { onLeave?: () => void }) {
     } catch (e) {
       toast.error(api.errMessage(e));
     } finally {
+      running.current = false;
       setBusy("");
     }
   }
@@ -80,10 +87,15 @@ export function CutStage(props: { onLeave?: () => void }) {
   const cues = cutCues(project);
   const kept = new Set((project.edit_list?.cuts || []).map(/** clip 取出 id。 */ (clip) => clip.id).filter(Boolean) as string[]);
   const ffmpegReason = ready.loaded && !ready.ffmpeg ? c.needFfmpeg : "";
+  const installing = ffmpegInstalling(ready.install);
+  const installPercent = Math.max(0, Math.min(100, Math.round(Number(ready.install.percent) || 0)));
   const speechReason = ready.loaded && !ready.speech ? c.needSpeech : "";
   const whisperReason = ready.loaded && !ready.whisper ? c.needWhisper : "";
   const length = (project.duration && project.duration > 0) ? project.duration : mediaDuration;
-  const lengthLabel = formatDuration(length);
+  const seconds = copy.video.studio.filmSeconds;
+  const lengthLabel = formatDuration(length, seconds);
+  const stepLabel: Record<(typeof LONG_STEPS)[number], string> = { propose: c.stepFind, apply: c.stepMake, asr: c.stepHear, dub: c.stepDub, burn: c.stepBurn };
+  const longStep = (LONG_STEPS as readonly string[]).includes(busy) ? stepLabel[busy as (typeof LONG_STEPS)[number]] : "";
   const status = project.result_hash ? c.statusFilm : clips.length ? c.statusCut : c.statusIn;
 
   /** 从视频元素记下有限且大于 0 的时长。node 的 duration 有限且大于 0 时记下，并标成画面已就绪。 */
@@ -156,7 +168,16 @@ export function CutStage(props: { onLeave?: () => void }) {
           <button type="button" aria-pressed={which === "result"} onClick={() => setWhich("result")}>{c.resultFilm}</button>
         </div>
       ) : null}
-      {!ready.loaded ? <p className="cut-note">{c.checking}</p> : ffmpegReason ? <p className="cut-warn">{ffmpegReason}</p> : null}
+      {!ready.loaded ? <p className="cut-note">{c.checking}</p> : ffmpegReason ? (
+        <div className="cut-warn" data-testid="cut-ffmpeg">
+          <p>{installing ? `${copy.video.ffmpegInstalling} ${installPercent}%` : ready.install.phase === "error" ? [copy.video.ffmpegInstallFailed, ready.install.error].filter(Boolean).join(" · ") : `${c.needFfmpeg} ${copy.video.ffmpegHint}`}</p>
+          {installing ? <ProgressHairline className="mt-2" value={installPercent} /> : (
+            <Button size="sm" variant="default" className="mt-2" data-testid="cut-ffmpeg-install" onClick={() => {
+              void ready.installFFmpeg().catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
+            }}>{copy.video.ffmpegInstall}</Button>
+          )}
+        </div>
+      ) : null}
       {project.stale ? <p className="cut-warn">{c.stale}</p> : null}
       {clips.length ? (
         <ul className="cut-list">
@@ -171,21 +192,31 @@ export function CutStage(props: { onLeave?: () => void }) {
                 />
                 <span>{clip.title || `${c.clips} ${i + 1}`}</span>
               </label>
-              <span>{span(clip.start)}–{span(clip.end)}s</span>
+              <span>{seconds.replace("{n}", `${span(clip.start)}–${span(clip.end)}`)}</span>
             </li>
           ))}
         </ul>
       ) : null}
+      {longStep ? (
+        <div className="flex flex-col gap-1" data-testid="cut-progress">
+          <p className="cut-note">{longStep}</p>
+          <ProgressHairline indeterminate />
+        </div>
+      ) : null}
       <div className="cut-actions">
         {(project.edit_list?.cuts || []).length === 0 ? (
-          <Button size="sm" variant="lift" disabled={!!busy || !!ffmpegReason} onClick={() => void run("propose", async () => api.video.cutPropose(id, 3, "15-30") as Promise<CutProject>)}>{busy === "propose" ? c.checking : c.nextFind}</Button>
+          <Button size="sm" variant="default" disabled={!!busy || !!ffmpegReason} onClick={() => void run("propose", async () => api.video.cutPropose(id, 3, "15-30") as Promise<CutProject>)}>{c.nextFind}</Button>
         ) : (
-          <Button size="sm" variant="lift" disabled={!!busy || !!ffmpegReason} onClick={() => setConfirm("apply")}>{busy === "apply" ? c.checking : c.nextMake}</Button>
+          <>
+            <Button size="sm" variant="default" disabled={!!busy || !!ffmpegReason} onClick={() => setConfirm("apply")}>{c.nextMake}</Button>
+            <Button size="sm" variant="ghost" disabled={!!busy || !!ffmpegReason} onClick={() => void run("propose", async () => api.video.cutPropose(id, 3, "15-30") as Promise<CutProject>)}>{c.refind}</Button>
+          </>
         )}
       </div>
 
       <details className="creation-more">
         <summary>{c.captionsDub}</summary>
+        {whisperReason ? <p className="cut-block-hint">{whisperReason}</p> : null}
         <div className="cut-actions">
           <Button size="sm" variant="ghost" disabled={!!busy || !!whisperReason} title={whisperReason} onClick={() => void run("asr", async () => api.video.cutTranscribe(id) as Promise<CutProject>)}>{c.hearLines}</Button>
         </div>
@@ -214,7 +245,9 @@ export function CutStage(props: { onLeave?: () => void }) {
         <div className="cut-actions">
           <Button size="sm" variant="ghost" disabled={!!busy || !!speechReason || !dubText.trim()} title={speechReason} onClick={() => void run("dub", async () => {
             await api.video.cutDub(id, dubText);
-            return api.video.cutMix(id, true) as Promise<CutProject>;
+            const mixed = await api.video.cutMix(id, true) as CutProject;
+            toast.success(c.dubDone);
+            return mixed;
           })}>{c.makeVoice}</Button>
           <Button size="sm" variant="ghost" disabled={!!busy || !!ffmpegReason || cues.length === 0} onClick={() => setConfirm("burn")}>{c.writeOn}</Button>
         </div>
@@ -229,7 +262,7 @@ export function CutStage(props: { onLeave?: () => void }) {
         open={confirm === "apply"}
         title={c.confirmApplyTitle}
         body={c.confirmApply}
-        confirmLabel={c.apply}
+        confirmLabel={c.nextMake}
         onCancel={() => setConfirm("")}
         onConfirm={() => {
           setConfirm("");

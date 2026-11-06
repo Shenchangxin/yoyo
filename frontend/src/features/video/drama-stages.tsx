@@ -36,7 +36,7 @@ import {
 type CopyT = ReturnType<typeof useCopy>;
 
 const field =
-  "no-drag h-8 rounded-lg border border-border bg-background px-2 text-[13px] text-foreground outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15";
+  "no-drag h-8 rounded-lg border border-border bg-background px-2 text-ui-body text-foreground outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15";
 
 /** 按镜头关联的角色、场景和道具列出可 @ 的名字。一个都没有就列出全部。 s 用 character_ids、prop_ids 和 scene_id 决定留下哪些。bundle 从 characters、scenes 和 props 里取有名字的项，一个都没对上就改列全部。 */
 function shotMentions(s: Shot, bundle: Bundle): MentionAsset[] {
@@ -132,7 +132,7 @@ export function GenerationSettings(props: {
   const ep = props.ep;
   return (
     <details className="drama-gen-fold mt-3">
-      <summary className="text-[11px] font-medium text-muted">{c.genSettings}</summary>
+      <summary className="text-ui-caption font-medium text-muted">{c.genSettings}</summary>
       <div className="mt-2 grid gap-1.5">
         <DramaStylePicker
           value={props.dramaStyle || "3d"}
@@ -173,9 +173,9 @@ export function ScriptStage(props: { ep: Episode; copy: CopyT; plan?: Bundle["pl
         <p className="drama-script-plan">{plan.chars} {c.chars} · {plan.target_seconds} {c.seconds} · {plan.segment_count} {c.segments}</p>
       ) : null}
       <label className="drama-script-col block">
-        <div className="mb-1.5 text-[11px] text-muted">{c.novel}</div>
+        <div className="mb-1.5 text-ui-caption text-muted">{c.novel}</div>
         <Textarea
-          className="min-h-[calc(100%-1.5rem)] rounded-[10px] border border-border bg-card px-3 py-2 text-[13px] leading-6"
+          className="min-h-[calc(100%-1.5rem)] rounded-lg border border-border bg-card px-3 py-2 text-ui-body leading-6"
           value={content}
           placeholder={c.needSource}
           onChange={/** e 取出 target.value 交给 setContent。 */ (e) => setContent(e.target.value)}
@@ -183,9 +183,9 @@ export function ScriptStage(props: { ep: Episode; copy: CopyT; plan?: Bundle["pl
         />
       </label>
       <label className="drama-script-col block">
-        <div className="mb-1.5 text-[11px] text-muted">{c.screenplay}</div>
+        <div className="mb-1.5 text-ui-caption text-muted">{c.screenplay}</div>
         <Textarea
-          className="min-h-[calc(100%-1.5rem)] rounded-[10px] border border-border bg-card px-3 py-2 font-mono text-[13px] leading-6"
+          className="min-h-[calc(100%-1.5rem)] rounded-lg border border-border bg-card px-3 py-2 font-mono text-ui-body leading-6"
           value={script}
           placeholder={c.screenplay}
           onChange={/** e 取出 target.value 交给 setScript。 */ (e) => setScript(e.target.value)}
@@ -236,8 +236,8 @@ function LookGroup(props: {
   return (
     <section>
       <div className="mb-2 flex items-baseline justify-between px-3">
-        <span className="text-[11px] font-medium text-muted">{props.title}</span>
-        <button type="button" className="text-[11px] text-muted hover:text-foreground" onClick={() => setAdding(true)}>{props.create}</button>
+        <span className="text-ui-caption font-medium text-muted">{props.title}</span>
+        <button type="button" className="text-ui-caption text-muted hover:text-foreground" onClick={() => setAdding(true)}>{props.create}</button>
       </div>
       {adding ? (
         <form
@@ -251,12 +251,12 @@ function LookGroup(props: {
             setAdding(false);
           }}
         >
-          <Input className="h-7 text-[12px]" autoFocus value={name} placeholder={c.addPlaceholder} onChange={/** e 取出 target.value 交给 setName。 */ (e) => setName(e.target.value)} onBlur={() => { if (!name.trim()) setAdding(false); }} />
+          <Input className="h-7 text-ui-footnote" autoFocus value={name} placeholder={c.addPlaceholder} onChange={/** e 取出 target.value 交给 setName。 */ (e) => setName(e.target.value)} onBlur={() => { if (!name.trim()) setAdding(false); }} />
           <Button size="sm" type="submit">{props.create}</Button>
         </form>
       ) : null}
       {props.items.length === 0 ? (
-        <p className="px-3 py-2 text-[12px] text-muted">{c.noStills}</p>
+        <p className="px-3 py-2 text-ui-footnote text-muted">{c.noStills}</p>
       ) : (
         <div className="drama-look-grid">
           {props.items.map(/** a 判断是不是旁白，用 id 标出选中，有图就显示，点击把 id 交给 onFocus，并显示名字。 */ (a) => {
@@ -269,8 +269,8 @@ function LookGroup(props: {
                 aria-pressed={props.focusId === a.id}
                 onClick={() => props.onFocus(props.kind, a.id)}
               >
-                {a.image_url ? <img src={a.image_url} alt={assetName(a, props.kind)} /> : <span className="drama-look-empty grid place-items-center text-[11px]">{narrator ? c.narrator : "—"}</span>}
-                <span className="truncate text-[12px] font-medium">{assetName(a, props.kind)}</span>
+                {a.image_url ? <img src={a.image_url} alt={assetName(a, props.kind)} /> : <span className="drama-look-empty grid place-items-center text-ui-caption">{narrator ? c.narrator : "—"}</span>}
+                <span className="truncate text-ui-footnote font-medium">{assetName(a, props.kind)}</span>
               </button>
             );
           })}
@@ -295,21 +295,21 @@ export function CastInspector(props: {
   const a = props.asset;
   return (
     <div className="grid gap-2">
-      <div className="text-[13px] font-medium">{assetName(a, props.kind)}</div>
-      {narrator ? <p className="text-[12px] text-muted">{c.narrator}</p> : null}
+      <div className="text-ui-body font-medium">{assetName(a, props.kind)}</div>
+      {narrator ? <p className="text-ui-footnote text-muted">{c.narrator}</p> : null}
       {props.kind === "character" ? (
         <>
-          <Input className="h-7 text-[12px]" defaultValue={a.appearance || ""} placeholder={c.appearance} onBlur={/** e 取出 target.value，作为 appearance 交给 onSave。 */ (e) => props.onSave({ appearance: e.target.value })} />
-          <Input className="h-7 text-[12px]" defaultValue={a.styling || ""} placeholder={c.styling} onBlur={/** e 取出 target.value，作为 styling 交给 onSave。 */ (e) => props.onSave({ styling: e.target.value })} />
+          <Input className="h-7 text-ui-footnote" defaultValue={a.appearance || ""} placeholder={c.appearance} onBlur={/** e 取出 target.value，作为 appearance 交给 onSave。 */ (e) => props.onSave({ appearance: e.target.value })} />
+          <Input className="h-7 text-ui-footnote" defaultValue={a.styling || ""} placeholder={c.styling} onBlur={/** e 取出 target.value，作为 styling 交给 onSave。 */ (e) => props.onSave({ styling: e.target.value })} />
         </>
       ) : null}
       {props.kind === "scene" ? (
-        <Input className="h-7 text-[12px]" defaultValue={a.lighting || ""} placeholder={c.lighting} onBlur={/** e 取出 target.value，作为 lighting 交给 onSave。 */ (e) => props.onSave({ lighting: e.target.value })} />
+        <Input className="h-7 text-ui-footnote" defaultValue={a.lighting || ""} placeholder={c.lighting} onBlur={/** e 取出 target.value，作为 lighting 交给 onSave。 */ (e) => props.onSave({ lighting: e.target.value })} />
       ) : null}
       {props.kind === "prop" ? (
-        <Input className="h-7 text-[12px]" defaultValue={a.description || ""} placeholder={c.finalPrompt} onBlur={/** e 取出 target.value，作为 description 交给 onSave。 */ (e) => props.onSave({ description: e.target.value })} />
+        <Input className="h-7 text-ui-footnote" defaultValue={a.description || ""} placeholder={c.finalPrompt} onBlur={/** e 取出 target.value，作为 description 交给 onSave。 */ (e) => props.onSave({ description: e.target.value })} />
       ) : null}
-      <Textarea className="min-h-[72px] rounded-lg border border-border bg-card px-2 py-1.5 text-[12px]" defaultValue={a.final_prompt || ""} placeholder={c.finalPrompt} onBlur={/** e 取出 target.value，作为 final_prompt 交给 onSave。 */ (e) => props.onSave({ final_prompt: e.target.value })} />
+      <Textarea className="min-h-[72px] rounded-lg border border-border bg-card px-2 py-1.5 text-ui-footnote" defaultValue={a.final_prompt || ""} placeholder={c.finalPrompt} onBlur={/** e 取出 target.value，作为 final_prompt 交给 onSave。 */ (e) => props.onSave({ final_prompt: e.target.value })} />
       <div className="flex flex-wrap items-center gap-1.5">
         <label className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground" title={c.upload} aria-label={c.upload}>
           <ImagePlus className="size-3.5" />
@@ -322,7 +322,7 @@ export function CastInspector(props: {
           }} />
         </label>
         {narrator ? null : <Button size="sm" variant="lift" onClick={props.onGen}>{c.generate}</Button>}
-        <button type="button" className="ml-auto text-[11px] text-danger" onClick={props.onDelete}>{c.delete}</button>
+        <button type="button" className="ml-auto text-ui-caption text-danger" onClick={props.onDelete}>{c.delete}</button>
       </div>
     </div>
   );
@@ -345,20 +345,20 @@ export function BoardInspector(props: {
   return (
     <div className="grid gap-2">
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[11px] tabular-nums text-muted">{String(s.shot_number).padStart(2, "0")}</span>
-        <Input className="h-7 flex-1 text-[13px]" defaultValue={s.title} onBlur={/** e 取出 target.value 作为标题交给 onPatch。 */ (e) => props.onPatch({ id: s.id, title: e.target.value })} />
-        <Input className="h-7 w-14 font-mono text-[12px] tabular-nums" type="number" min={2} max={30} defaultValue={s.duration} aria-label={c.durationLabel} onBlur={/** e 取出 target.value 转成时长，转不成就留原来的 duration。 */ (e) => props.onPatch({ id: s.id, duration: Number(e.target.value) || s.duration })} />
-        <span className="text-[11px] text-muted">{c.seconds}</span>
+        <span className="font-mono text-ui-caption tabular-nums text-muted">{String(s.shot_number).padStart(2, "0")}</span>
+        <Input className="h-7 flex-1 text-ui-body" defaultValue={s.title} onBlur={/** e 取出 target.value 作为标题交给 onPatch。 */ (e) => props.onPatch({ id: s.id, title: e.target.value })} />
+        <Input className="h-7 w-14 font-mono text-ui-footnote tabular-nums" type="number" min={2} max={30} defaultValue={s.duration} aria-label={c.durationLabel} onBlur={/** e 取出 target.value 转成时长，转不成就留原来的 duration。 */ (e) => props.onPatch({ id: s.id, duration: Number(e.target.value) || s.duration })} />
+        <span className="text-ui-caption text-muted">{c.seconds}</span>
       </div>
-      <p className="text-[13px] leading-5 text-muted">{s.description}</p>
-      {!hasCast ? <p className="text-[12px] text-muted">{c.missingCast}</p> : null}
+      <p className="text-ui-body leading-5 text-muted">{s.description}</p>
+      {!hasCast ? <p className="text-ui-footnote text-muted">{c.missingCast}</p> : null}
       <DramaMentionField
         assets={mentions}
         defaultValue={s.video_prompt}
         placeholder={mentions.map(/** a 取出 name，前面加上 @。 */ (a) => `@${a.name}`).join(" ") || c.mention}
         onBlur={/** e 取出 target.value 作为视频提示交给 onPatch。 */ (e) => props.onPatch({ id: s.id, video_prompt: e.target.value })}
       />
-      <label className="flex items-center gap-2 text-[12px]">
+      <label className="flex items-center gap-2 text-ui-footnote">
         <span className="w-16 text-muted">{c.scenes}</span>
         <select className={cn(field, "h-7 flex-1")} value={s.scene_id || ""} onChange={/** e 取出 target.value 作为 scene_id 交给 onPatch。 */ (e) => props.onPatch({ id: s.id, scene_id: e.target.value })}>
           <option value="">{c.unbind}</option>
@@ -366,7 +366,7 @@ export function BoardInspector(props: {
         </select>
       </label>
       <div>
-        <div className="mb-1 text-[11px] text-muted">{c.characters}</div>
+        <div className="mb-1 text-ui-caption text-muted">{c.characters}</div>
         <div className="flex flex-wrap gap-1.5">
           {(props.bundle.characters || []).filter(/** ch 留下仍关联且不是旁白的角色。 */ (ch) => ch.linked !== false && !isNarrator(ch)).map(/** ch 用 id 判断是否已绑定，点击就加进或移出 character_ids，并显示 name。 */ (ch) => {
             const on = (s.character_ids || []).includes(ch.id);
@@ -375,7 +375,7 @@ export function BoardInspector(props: {
                 key={ch.id}
                 type="button"
                 aria-pressed={on}
-                className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-foreground text-background" : "bg-lift text-muted")}
+                className={cn("rounded-full px-2 py-0.5 text-ui-caption", on ? "bg-foreground text-background" : "bg-lift text-muted")}
                 onClick={() => {
                   const next = on ? (s.character_ids || []).filter(/** id 和这个角色的 id 不同才留下。 */ (id) => id !== ch.id) : [...(s.character_ids || []), ch.id];
                   props.onPatch({ id: s.id, character_ids: next });
@@ -386,7 +386,7 @@ export function BoardInspector(props: {
         </div>
       </div>
       <div>
-        <div className="mb-1 text-[11px] text-muted">{c.props}</div>
+        <div className="mb-1 text-ui-caption text-muted">{c.props}</div>
         <div className="flex flex-wrap gap-1.5">
           {(props.bundle.props || []).filter(/** p 留下 linked 不是 false 的道具。 */ (p) => p.linked !== false).map(/** p 用 id 判断是否已绑定，点击就加进或移出 prop_ids，并显示 name。 */ (p) => {
             const on = (s.prop_ids || []).includes(p.id);
@@ -395,7 +395,7 @@ export function BoardInspector(props: {
                 key={p.id}
                 type="button"
                 aria-pressed={on}
-                className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-foreground text-background" : "bg-lift text-muted")}
+                className={cn("rounded-full px-2 py-0.5 text-ui-caption", on ? "bg-foreground text-background" : "bg-lift text-muted")}
                 onClick={() => {
                   const next = on ? (s.prop_ids || []).filter(/** id 和这个道具的 id 不同才留下。 */ (id) => id !== p.id) : [...(s.prop_ids || []), p.id];
                   props.onPatch({ id: s.id, prop_ids: next });
@@ -406,7 +406,7 @@ export function BoardInspector(props: {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {s.video_url ? <a className="text-[11px] underline" href={s.video_url} download>{c.download}</a> : null}
+        {s.video_url ? <a className="text-ui-caption underline" href={s.video_url} download>{c.download}</a> : null}
         <Button size="sm" variant="lift" onClick={props.onGen}>{c.anotherTake}</Button>
         {s.video_hash ? (
           <Button size="sm" variant="ghost" data-testid="drama-shot-send-to-cut" onClick={() => requestSendToCut({ hash: s.video_hash, title: s.title || c.conductor.cutTitle })}>
@@ -415,13 +415,13 @@ export function BoardInspector(props: {
         ) : null}
       </div>
       <div>
-        <div className="mb-1 text-[11px] text-muted">{c.history}</div>
-        {takes.length === 0 ? <p className="text-[11px] text-muted">{c.noHistory}</p> : (
+        <div className="mb-1 text-ui-caption text-muted">{c.history}</div>
+        {takes.length === 0 ? <p className="text-ui-caption text-muted">{c.noHistory}</p> : (
           <div className="flex flex-wrap gap-2">
             {takes.map(/** j 用 id 交给 onApply，有 poster_url 就显示成图。 */ (j) => (
               <button key={j.id} type="button" className="w-[72px] text-left" onClick={() => props.onApply(j.id)}>
                 {j.poster_url ? <img src={j.poster_url} alt="" className="h-12 w-full rounded object-cover" /> : <div className="h-12 rounded bg-lift" />}
-                <span className="text-[10px] text-muted">{c.setMain}</span>
+                <span className="text-ui-caption text-muted">{c.setMain}</span>
               </button>
             ))}
           </div>
@@ -454,12 +454,12 @@ export function CutInspector(props: {
   return (
     <div>
       {!props.ffmpeg ? (
-        <p className="mb-3 text-[13px] text-danger">
+        <p className="mb-3 text-ui-body text-danger">
           {installing ? `${c.ffmpegInstalling} ${Math.max(0, Math.min(100, Math.round(Number(props.ffmpegInstall?.percent) || 0)))}%` : phase === "error" ? c.ffmpegInstallFailed : c.ffmpegMissing}
         </p>
       ) : null}
       {installing ? <ProgressHairline className="mb-3" value={Number(props.ffmpegInstall?.percent) || 0} /> : null}
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-ui-footnote text-muted">
         <span className="tabular-nums">{n} {c.clipCount}</span>
         <button type="button" className="underline" onClick={() => {
           const next: Record<string, boolean> = {};
@@ -515,7 +515,7 @@ export function JobDrawer(props: { jobs: Job[]; bundle: Bundle | null; episodes?
           {g.jobs.map(/** j 用 status 判断是否在动或失败并显示文案，有 error 就显示，失败时把 id 交给 onRetry，在动时把 id 交给 onCancel。 */ (j) => {
             const moving = jobMoving(j.status);
             return (
-              <div key={j.id} className="relative flex items-center gap-2 rounded-lg bg-lift px-2 py-1.5 pb-2 text-[11px]">
+              <div key={j.id} className="relative flex items-center gap-2 rounded-lg bg-lift px-2 py-1.5 pb-2 text-ui-caption">
                 {moving ? <span className="pulse-dot" /> : null}
                 <span className={j.status === "failed" ? "text-danger" : "text-muted"}>{label[j.status] || j.status}</span>
                 {j.error ? <span className="min-w-0 truncate text-danger">{j.error}</span> : null}

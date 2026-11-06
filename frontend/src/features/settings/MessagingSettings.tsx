@@ -316,19 +316,19 @@ export function MessagingSettings() {
 
   return (
     <div className="flex w-full min-w-0 flex-col">
-      {error ? <p className="mb-3 text-[13px] text-danger" role="alert">{error}</p> : null}
+      {error ? <p className="mb-3 text-ui-body text-danger" role="alert">{error}</p> : null}
       <section className="mb-6 w-full min-w-0" data-setting-section-highlight-target="messaging-accounts">
         <div className="mb-3 flex items-end justify-between gap-3">
           <div className="min-w-0">
-            <h2 id="messaging-accounts" className="text-[13px] font-medium text-foreground">{copy.settings.sections.messagingAccounts}</h2>
-            <p className="mt-1 max-w-2xl text-[12px] leading-[1.55] text-muted">{t.intro}</p>
+            <h2 id="messaging-accounts" className="text-ui-body font-medium text-foreground">{copy.settings.sections.messagingAccounts}</h2>
+            <p className="mt-1 max-w-2xl text-ui-footnote leading-[1.55] text-muted">{t.intro}</p>
           </div>
         </div>
         <div className="flex h-[min(36rem,calc(100dvh-10rem))] min-h-[22rem] overflow-hidden rounded-xl border border-border bg-card">
           {showList ? (
             <aside className={cn("flex min-h-0 min-w-0 flex-col", showMain ? "w-[15.5rem] shrink-0 border-r border-border" : "flex-1")}>
               <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                <span className="text-[12px] font-medium text-muted">{t.listTitle}</span>
+                <span className="text-ui-footnote font-medium text-muted">{t.listTitle}</span>
                 <Button type="button" size="sm" variant="ghost" disabled={!catalog.length} onClick={() => { setPicking(true); setQuery(""); }}>
                   <Plus />
                   {t.add}
@@ -336,7 +336,7 @@ export function MessagingSettings() {
               </div>
               {rows.length === 0 ? (
                 <div className="flex flex-1 flex-col items-start justify-center gap-3 px-4 pb-8">
-                  <p className="text-[13px] leading-5 text-muted">{t.noAccounts}</p>
+                  <p className="text-ui-body leading-5 text-muted">{t.noAccounts}</p>
                   <Button type="button" size="sm" disabled={!catalog.length} onClick={() => setPicking(true)}>{t.add}</Button>
                 </div>
               ) : (
@@ -363,8 +363,8 @@ export function MessagingSettings() {
                       >
                         <Mark name={platformName} id={account.platform} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-medium text-foreground">{name}</span>
-                          <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                          <span className="block truncate text-ui-body font-medium text-foreground">{name}</span>
+                          <span className="mt-0.5 flex items-center gap-1.5 text-ui-caption text-muted">
                             <StatusDot kind={kind} />
                             <span className="truncate">{account.label ? `${statusLine} · ${platformName}` : statusLine}</span>
                           </span>
@@ -381,7 +381,7 @@ export function MessagingSettings() {
               {narrow ? (
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 px-4 pt-3 text-[12px] text-muted hover:text-foreground"
+                  className="flex items-center gap-1.5 px-4 pt-3 text-ui-footnote text-muted hover:text-foreground"
                   onClick={() => {
                     if (picking && draft) {
                       setPicking(false);
@@ -427,7 +427,7 @@ export function MessagingSettings() {
                 />
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-                  <p className="text-[13px] text-muted">{accounts.length ? t.selectHint : t.pickHint}</p>
+                  <p className="text-ui-body text-muted">{accounts.length ? t.selectHint : t.pickHint}</p>
                 </div>
               )}
             </div>
@@ -524,7 +524,7 @@ function StatusDot({ kind }: { kind: "running" | "error" | "stopped" | "unsaved"
 
 function Mark({ name, id }: { name: string; id: string }) {
   return (
-    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-lift text-[12px] font-medium text-foreground">
+    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-lift text-ui-footnote font-medium text-foreground">
       {markLetter(name, id)}
     </span>
   );
@@ -541,13 +541,13 @@ function PlatformPicker(props: {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-4 pt-4">
-        <h3 className="text-[15px] font-medium tracking-[-0.01em] text-foreground">{t.pickTitle}</h3>
-        <p className="mt-1 text-[12px] leading-5 text-muted">{t.pickHint}</p>
+        <h3 className="text-ui-title-s font-medium tracking-[-0.01em] text-foreground">{t.pickTitle}</h3>
+        <p className="mt-1 text-ui-footnote leading-5 text-muted">{t.pickHint}</p>
         <Input className="mt-3" value={props.query} placeholder={t.searchPlatforms} onChange={(e) => props.onQuery(e.target.value)} autoFocus />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {props.platforms.length === 0 ? (
-          <p className="py-8 text-[13px] text-muted">{t.noMatch}</p>
+          <p className="py-8 text-ui-body text-muted">{t.noMatch}</p>
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {props.platforms.map((p) => (
@@ -560,10 +560,10 @@ function PlatformPicker(props: {
                 <Mark name={phrase(p.name)} id={p.id} />
                 <span className="min-w-0">
                   <span className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-medium text-foreground">{phrase(p.name)}</span>
-                    <span className="shrink-0 text-[11px] text-muted">{transportLabel(t, p.transport)}</span>
+                    <span className="truncate text-ui-body font-medium text-foreground">{phrase(p.name)}</span>
+                    <span className="shrink-0 text-ui-caption text-muted">{transportLabel(t, p.transport)}</span>
                   </span>
-                  <span className="mt-1 block text-[12px] leading-5 text-muted">{phrase(p.summary)}</span>
+                  <span className="mt-1 block text-ui-footnote leading-5 text-muted">{phrase(p.summary)}</span>
                 </span>
               </button>
             ))}
@@ -601,11 +601,11 @@ function AccountEditor(props: {
       <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
         <Mark name={platformName} id={platform.id} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[15px] font-medium tracking-[-0.01em] text-foreground">{title}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted">
+          <div className="truncate text-ui-title-s font-medium tracking-[-0.01em] text-foreground">{title}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-ui-footnote text-muted">
             {draft.label ? <span className="truncate">{platformName}</span> : null}
             <span className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+              "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-caption font-medium",
               kind === "running" && "bg-success/15 text-success",
               kind === "error" && "bg-danger/10 text-danger",
               kind === "stopped" && "bg-lift text-muted",
@@ -616,15 +616,15 @@ function AccountEditor(props: {
             </span>
           </div>
         </div>
-        <label className="flex shrink-0 items-center gap-2 text-[12px] text-muted">
+        <label className="flex shrink-0 items-center gap-2 text-ui-footnote text-muted">
           {t.enabled}
           <Switch checked={draft.enabled} onCheckedChange={(v) => props.onChange({ ...draft, enabled: v })} />
         </label>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <p className="text-[12px] leading-5 text-muted">{phrase(platform.summary)}</p>
+        <p className="text-ui-footnote leading-5 text-muted">{phrase(platform.summary)}</p>
         {props.status?.state === "error" && props.status.detail ? (
-          <p className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-[12px] leading-5 text-danger">{props.status.detail}</p>
+          <p className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-ui-footnote leading-5 text-danger">{props.status.detail}</p>
         ) : null}
         <div className="mt-4 flex flex-col gap-3">
           <FieldLabel title={t.label}>
@@ -635,19 +635,19 @@ function AccountEditor(props: {
           ))}
           {props.hook ? (
             <div className="rounded-lg bg-lift px-3 py-2.5">
-              <div className="text-[12px] font-medium text-foreground">{t.hook}</div>
+              <div className="text-ui-footnote font-medium text-foreground">{t.hook}</div>
               <div className="mt-1.5 flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted">{props.hook}</code>
+                <code className="min-w-0 flex-1 truncate font-mono text-ui-footnote text-muted">{props.hook}</code>
                 <Button type="button" size="sm" variant="outline" onClick={props.onCopy}>{t.copy}</Button>
               </div>
             </div>
           ) : needsHook(platform, draft.config) && !draft.id ? (
-            <p className="text-[12px] leading-5 text-muted">{t.hookAfterSave}</p>
+            <p className="text-ui-footnote leading-5 text-muted">{t.hookAfterSave}</p>
           ) : null}
           {draft.id ? (
             <details className="rounded-lg border border-border px-3 py-2">
-              <summary className="cursor-pointer text-[12px] font-medium text-foreground">{t.testSend}</summary>
-              <p className="mt-1 text-[12px] leading-5 text-muted">{t.testHint}</p>
+              <summary className="cursor-pointer text-ui-footnote font-medium text-foreground">{t.testSend}</summary>
+              <p className="mt-1 text-ui-footnote leading-5 text-muted">{t.testHint}</p>
               <div className="mt-2 flex flex-col gap-2">
                 <FieldLabel title={t.testChat}>
                   <Input value={props.testChat} onChange={(e) => props.onTestChat(e.target.value)} />
@@ -700,7 +700,7 @@ function ConfigField(props: {
                 aria-checked={on}
                 onClick={() => props.onChange({ ...draft, config: { ...draft.config, [field.key]: mode } })}
                 className={cn(
-                  "h-7 flex-1 rounded-md text-[12px]",
+                  "h-7 flex-1 rounded-md text-ui-footnote",
                   on ? "bg-background text-foreground shadow-[var(--shadow-card)]" : "text-muted hover:text-foreground",
                 )}
               >
@@ -730,8 +730,8 @@ function ConfigField(props: {
 function FieldLabel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[12px] font-medium text-foreground">{title}</span>
-      {hint ? <span className="text-[12px] leading-5 text-muted">{hint}</span> : null}
+      <span className="text-ui-footnote font-medium text-foreground">{title}</span>
+      {hint ? <span className="text-ui-footnote leading-5 text-muted">{hint}</span> : null}
       {children}
     </div>
   );

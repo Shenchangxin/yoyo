@@ -223,9 +223,9 @@ func init() {
 	hostFns["memory_search"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.memorySearch(str(args["query"]), str(args["kind"]))
 	}
-	// memory_write 按 kind、text、project 调用 memoryWrite。
+	// memory_write 按 kind、text、project、replaces 调用 memoryWrite。
 	hostFns["memory_write"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.memoryWrite(str(args["kind"]), str(args["text"]), str(args["project"]))
+		return t.memoryWrite(str(args["kind"]), str(args["text"]), str(args["project"]), str(args["replaces"]))
 	}
 	// memory_forget 按 id 调用 memoryForget。
 	hostFns["memory_forget"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {

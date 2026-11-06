@@ -3,7 +3,10 @@
 
 package video
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // StudioCharacter 是短片目录里的一种出镜角色。
 type StudioCharacter struct {
@@ -183,7 +186,62 @@ func StudioCatalog() map[string]any {
 	}
 }
 
-// StudioVoices 返回可选的语音名字。
+// speechCatalogRoute 返回现在配音会用的声音目录和厂商名。有语音连接时是它的目录；没有连接但本机装了 edge-tts 时是 edge；都没有返回空串。
+func (e *Engine) speechCatalogRoute() (string, string) {
+	if c, key, ok := e.activeSpeech(); ok {
+		call, _ := prepareSpeechCall(c, key, "", 1)
+		return call.Catalog, speechVendorNames[call.Catalog]
+	}
+	if edgeTTSAvailable() {
+		return "edge", speechVendorNames["edge"]
+	}
+	return "", ""
+}
+
+// StudioCatalogLive 是 StudioCatalog 加上现在配音真能用的声音：voices 换成当前语音接口的目录，speech 写明会用哪家。
+// 还没有任何语音时 voices 保持默认目录，speech 的 route 为空，界面据此提示去设置。
+func (e *Engine) StudioCatalogLive() map[string]any {
+	cat := StudioCatalog()
+	route, vendor := e.speechCatalogRoute()
+	if route != "" {
+		cat["voices"] = speechVoiceRows(route)
+	}
+	cat["speech"] = map[string]any{"route": route, "vendor": vendor}
+	return cat
+}
+
+// voicePreviewLine 是试听用的一句话。
+const voicePreviewLine = "你好，我来给这条短片配音。听听这个声音合不合适。"
+
+// PreviewVoice 用这个声音配一句试听，返回音频地址、实际用的声音和厂商。同一家同一个声音试听过就直接用上次的，不再花钱。
+// voice 是界面上选的声音 id，会换成当前语音接口认得的声音。
+func (e *Engine) PreviewVoice(voice string) (map[string]any, error) {
+	route, _ := e.speechCatalogRoute()
+	if route == "" {
+		return nil, fmt.Errorf("还没有能用的语音。到 设置 → 生成 里启用语音账号，或安装 edge-tts")
+	}
+	v := resolveSpeechVoice(route, voice)
+	cacheKey := route + "|" + v.ID
+	if h, ok := e.voicePreviews.Load(cacheKey); ok {
+		if hash, _ := h.(string); hash != "" && e.casFile(hash) != "" {
+			return map[string]any{"hash": hash, "url": e.MediaURL(hash), "voice": v.ID, "name": v.Name, "vendor": speechVendorNames[route]}, nil
+		}
+	}
+	out, err := e.speakAudio(voicePreviewLine, v.ID, 1)
+	if err != nil {
+		return nil, err
+	}
+	hash, err := e.PutBytes(out.Audio)
+	if err != nil {
+		return nil, err
+	}
+	if out.Engine == "cloud" || route == "edge" {
+		e.voicePreviews.Store(cacheKey, hash)
+	}
+	return map[string]any{"hash": hash, "url": e.MediaURL(hash), "voice": out.Voice.ID, "name": out.Voice.Name, "vendor": out.Vendor}, nil
+}
+
+// StudioVoices 返回还没有语音接口时的默认声音名字。
 func StudioVoices() []map[string]string {
 	return []map[string]string{
 		{"id": "alloy", "name": "Alloy"},

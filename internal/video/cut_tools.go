@@ -3,6 +3,7 @@
 package video
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -26,6 +27,8 @@ func ConductorToolNames() []string {
 func CutToolSpecs() []ToolSpec {
 	str := map[string]any{"type": "string"}
 	num := map[string]any{"type": "number"}
+	boolean := map[string]any{"type": "boolean"}
+	arr := map[string]any{"type": "array", "items": str}
 	obj := func(props map[string]any, req ...string) map[string]any {
 		m := map[string]any{"type": "object", "properties": props}
 		if len(req) > 0 {
@@ -38,17 +41,19 @@ func CutToolSpecs() []ToolSpec {
 		{Name: "cut_get", ReadOnly: true, Desc: "Read the bound footage project, or pass id.", Params: obj(map[string]any{"id": str})},
 		{Name: "cut_ingest", Desc: "Attach a CAS video hash as the source. Analyze after ingest.", Params: obj(map[string]any{"id": str, "hash": str, "title": str}, "hash")},
 		{Name: "cut_analyze", Desc: "Scene-detect and silencedetect the source. Does not spend a vendor key.", Params: obj(map[string]any{"id": str})},
-		{Name: "cut_propose", Desc: "Score highlight windows from scene+speech energy and extract clips WITH audio. count default 3. window 15-30 or 60-90.", Params: obj(map[string]any{"id": str, "count": num, "window": str})},
-		{Name: "cut_apply", Desc: "Concatenate the proposed (or edit_list) clips into a result mp4, keeping audio.", Params: obj(map[string]any{"id": str})},
-		{Name: "cut_extract", Desc: "Dump the soundtrack of the source or result onto the original stem.", Params: obj(map[string]any{"id": str})},
-		{Name: "cut_enhance", Desc: "Denoise/loudnorm a stem. preset: voice, denoise, loudnorm.", Params: obj(map[string]any{"id": str, "preset": str})},
-		{Name: "cut_mix", Desc: "Mix dub/voice and music onto the picture. Duck music under speech when duck is true.", Params: obj(map[string]any{"id": str, "duck": map[string]any{"type": "boolean"}})},
-		{Name: "cut_transcribe", Desc: "Local whisper.cpp to cues + SRT. Requires WHISPER_BIN.", Params: obj(map[string]any{"id": str})},
-		{Name: "cut_captions", Desc: "Set caption text (or keep cues) and store SRT/VTT hashes.", Params: obj(map[string]any{"id": str, "text": str, "language": str})},
-		{Name: "cut_burnin", Desc: "Burn stored SRT onto the result video.", Params: obj(map[string]any{"id": str})},
-		{Name: "cut_dub", Desc: "TTS via the enabled speech connection in Settings. Writes the dub stem. Does not invent keys.", Params: obj(map[string]any{"id": str, "text": str, "voice": str})},
-		{Name: "cut_grade", Desc: "FFmpeg color preset: warm, cool, contrast, fade.", Params: obj(map[string]any{"id": str, "preset": str})},
-		{Name: "cut_set_stem", Desc: "Attach a CAS hash as music/sfx/voice/dub/original.", Params: obj(map[string]any{"id": str, "kind": str, "hash": str}, "kind", "hash")},
+		{Name: "cut_propose", Desc: "Score highlight windows from scene+speech energy and extract clips WITH audio. count default 3. window 15-30 or 60-90. The edit list becomes these clips.", Params: obj(map[string]any{"id": str, "count": num, "window": str})},
+		{Name: "cut_keep", Desc: "Keep only these proposed clip ids in the edit list. Call cut_apply afterwards.", Params: obj(map[string]any{"id": str, "clip_ids": arr}, "clip_ids")},
+		{Name: "cut_omit", Desc: "Toggle skipping one caption cue by index. A source cue cuts its span out of the edit list. Call cut_apply afterwards.", Params: obj(map[string]any{"id": str, "index": num}, "index")},
+		{Name: "cut_apply", Desc: "Render the film from the edit list (or the proposed clips), keeping audio. Grade, enhance, burned captions, and dub are redone from the source on every render, so nothing stacks.", Params: obj(map[string]any{"id": str})},
+		{Name: "cut_extract", Desc: "Dump the soundtrack of the result or source onto the original stem for download.", Params: obj(map[string]any{"id": str})},
+		{Name: "cut_enhance", Desc: "Set the voice cleanup preset (voice, denoise, loudnorm; none clears) and re-render.", Params: obj(map[string]any{"id": str, "preset": str})},
+		{Name: "cut_mix", Desc: "Put the dub (or voice) and music stems on the film and re-render. By default the original audio stays under the dub, ducked; replace=true drops it. duck=false keeps levels flat. The film keeps the picture length.", Params: obj(map[string]any{"id": str, "duck": boolean, "replace": boolean})},
+		{Name: "cut_transcribe", Desc: "Local whisper.cpp transcript of the source (needs whisper-cli and a ggml model). Cue times are on the source timeline.", Params: obj(map[string]any{"id": str})},
+		{Name: "cut_captions", Desc: "Lay caption text over the film timeline (or only set language) and store SRT/VTT hashes.", Params: obj(map[string]any{"id": str, "text": str, "language": str})},
+		{Name: "cut_burnin", Desc: "Turn on burned captions and re-render. Source captions follow the edit list; burning twice does not stack.", Params: obj(map[string]any{"id": str})},
+		{Name: "cut_dub", Desc: "TTS via the enabled speech connection in Settings, or local edge-tts. Writes the dub stem only; call cut_mix to put it on the film. Does not invent keys.", Params: obj(map[string]any{"id": str, "text": str, "voice": str})},
+		{Name: "cut_grade", Desc: "Set a color preset (warm, cool, contrast, fade; none clears) and re-render from the source. Grades never stack.", Params: obj(map[string]any{"id": str, "preset": str})},
+		{Name: "cut_set_stem", Desc: "Attach a CAS hash as music/sfx/voice/dub/original. Call cut_mix to hear it on the film.", Params: obj(map[string]any{"id": str, "kind": str, "hash": str}, "kind", "hash")},
 	}
 }
 
@@ -82,6 +87,12 @@ func (e *Engine) CutTool(sessionID, name string, args map[string]any) (string, e
 	}
 	switch name {
 	case "cut_create":
+		// 会话已经绑着一条有源片的工程、又没给新源片时就用那一条，不另开空工程把绑定抢走。
+		if strAnyMap(args, "hash") == "" && id != "" {
+			if cur, err := e.GetCutProject(id); err == nil && cur.SourceHash != "" {
+				return marshalJSON(cur), nil
+			}
+		}
 		p, err := e.CreateCutProject(CutProject{Title: strAnyMap(args, "title")})
 		if err != nil {
 			return "", err
@@ -123,6 +134,21 @@ func (e *Engine) CutTool(sessionID, name string, args map[string]any) (string, e
 			return "", err
 		}
 		return marshalJSON(p), nil
+	case "cut_keep":
+		var ids []string
+		b, _ := json.Marshal(args["clip_ids"])
+		_ = json.Unmarshal(b, &ids)
+		p, err := e.CutKeep(id, ids)
+		if err != nil {
+			return "", err
+		}
+		return marshalJSON(p), nil
+	case "cut_omit":
+		p, err := e.CutOmitCue(id, intAny(args["index"]))
+		if err != nil {
+			return "", err
+		}
+		return marshalJSON(p), nil
 	case "cut_apply":
 		p, err := e.CutApply(id)
 		if err != nil {
@@ -151,7 +177,14 @@ func (e *Engine) CutTool(sessionID, name string, args map[string]any) (string, e
 				duck = t != "0" && !strings.EqualFold(t, "false")
 			}
 		}
-		p, err := e.CutMix(id, duck)
+		replace := false
+		switch t := args["replace"].(type) {
+		case bool:
+			replace = t
+		case string:
+			replace = t == "1" || strings.EqualFold(t, "true")
+		}
+		p, err := e.CutMix(id, duck, replace)
 		if err != nil {
 			return "", err
 		}

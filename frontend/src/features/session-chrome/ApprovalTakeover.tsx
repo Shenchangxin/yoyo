@@ -68,9 +68,9 @@ export function ApprovalTakeover(props: {
           {copy.transcript.needsApproval}
         </div>
         <div tabIndex={0} role="group" aria-label={copy.transcript.needsApproval}>
-          <div className="text-[14px] font-medium tracking-tight text-foreground">{item.action || "action"}</div>
+          <div className="text-ui-body-l font-medium tracking-tight text-foreground">{item.action || "action"}</div>
           {subject ? (
-            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[12px] leading-[1.5] text-foreground/85">
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-ui-footnote leading-[1.5] text-foreground/85">
               {subject}
             </pre>
           ) : null}

@@ -55,7 +55,7 @@ export function PageEditor(props: {
       Placeholder.configure({ placeholder: copy.pages.bodyPh }),
     ],
     content: mdToHtml(props.content),
-    editorProps: { attributes: { class: "page-editor min-h-[52vh] w-full max-w-3xl px-1 py-1 text-[16px] leading-7 focus:outline-none" } },
+    editorProps: { attributes: { class: "page-editor min-h-[52vh] w-full max-w-3xl px-1 py-1 text-ui-title-s leading-7 focus:outline-none" } },
     /** 不是内部回写时，把 HTML 收成 Markdown 交给外面。ed 调用 getHTML。 */
     onUpdate: ({ editor: ed }) => {
       if (skip.current) return;
@@ -141,7 +141,7 @@ export function PageEditor(props: {
             {copy.pages.bindChat}
           </Button>
         ) : null}
-        <span className="ml-auto text-[11px] tabular-nums text-muted" data-testid="page-save-state">
+        <span className="ml-auto text-ui-caption tabular-nums text-muted" data-testid="page-save-state">
           {props.state === "saved" ? copy.pages.saved
             : props.state === "saving" ? copy.pages.saving
               : props.state === "dirty" ? copy.pages.dirty
@@ -182,11 +182,11 @@ export function PageEditor(props: {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {props.error ? <div className="px-5 py-1.5 text-[12px] text-danger">{props.error}</div> : null}
+      {props.error ? <div className="px-5 py-1.5 text-ui-footnote text-danger">{props.error}</div> : null}
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-3xl px-6 pb-16 pt-8 sm:px-10">
           <Input
-            className="h-auto border-0 bg-transparent px-0 text-[28px] font-semibold leading-tight tracking-[-0.038em] shadow-none placeholder:text-muted/50"
+            className="h-auto border-0 bg-transparent px-0 text-ui-display font-semibold leading-tight tracking-[-0.038em] shadow-none placeholder:text-muted/50"
             value={localTitle}
             aria-label={copy.pages.title}
             placeholder={copy.pages.untitled}

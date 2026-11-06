@@ -83,6 +83,52 @@ func TestFollowStaysInSessionAndDoesNotIsolate(t *testing.T) {
 	}
 }
 
+// TestCronFollowsTheLocalClock 锁住按本地时刻排的写法：工作日和周五不在别的日子跑，创建之前已过的时刻不补，
+// 睡过头六小时内补一次，跑过之后同一时刻不再跑，旧写法 daily 仍是本地 18:00。
+func TestCronFollowsTheLocalClock(t *testing.T) {
+	at := func(day, hour, minute int) time.Time {
+		return time.Date(2026, 11, day, hour, minute, 0, 0, time.Local)
+	}
+	created := at(1, 7, 0) // 2026-11-01 是周日
+	cases := []struct {
+		spec string
+		last time.Time
+		now  time.Time
+		want bool
+	}{
+		{"weekdays@09:00", time.Time{}, at(2, 9, 0), true},
+		{"weekdays@09:00", time.Time{}, at(7, 9, 30), false},
+		{"0 18 * * 5", time.Time{}, at(6, 18, 1), true},
+		{"0 18 * * 5", time.Time{}, at(5, 18, 1), false},
+		{"weekday-1800", time.Time{}, at(7, 18, 1), false},
+		{"weekday-1800", time.Time{}, at(6, 18, 1), true},
+		{"daily", time.Time{}, at(3, 18, 2), true},
+		{"daily", time.Time{}, at(3, 2, 0), false},
+		{"daily@08:30", at(3, 8, 31), at(3, 8, 40), false},
+		{"daily@08:30", at(3, 8, 31), at(4, 10, 0), true},
+		{"daily@08:30", at(3, 8, 31), at(4, 15, 0), false},
+		{"weekly@1@08:00", time.Time{}, at(2, 8, 5), true},
+		{"weekly@1@08:00", time.Time{}, at(3, 8, 5), false},
+		{"*/15 9-10 * * *", time.Time{}, at(2, 10, 47), true},
+		{"0 9 1 * 1", time.Time{}, at(2, 9, 5), true},
+		{"0 9 */2 * 1", time.Time{}, at(2, 9, 5), false},
+		{"0 9 */2 * 2", time.Time{}, at(3, 9, 5), true},
+		{"daily@25:00", time.Time{}, at(2, 10, 0), false},
+		{"61 * * * *", time.Time{}, at(2, 10, 0), false},
+	}
+	for _, c := range cases {
+		if got := cronDue(c.spec, c.last, created, c.now.UTC()); got != c.want {
+			t.Fatalf("%s last=%v now=%v: got %v", c.spec, c.last, c.now, got)
+		}
+	}
+	if cronDue("daily@06:00", time.Time{}, at(2, 7, 0), at(2, 7, 30)) {
+		t.Fatal("a time that passed before the job existed must not fire")
+	}
+	if !cronDue("hourly", at(2, 7, 0), created, at(2, 8, 0)) || cronDue("30m", at(2, 7, 50), created, at(2, 8, 0)) {
+		t.Fatal("interval specs keep their meaning")
+	}
+}
+
 // TestWebhookIsNotTimeDueButTriggerWorks 确认 webhook 不会出现在 Due 里，但能按 ID 和 Spec 触发。
 func TestWebhookIsNotTimeDueButTriggerWorks(t *testing.T) {
 	s, err := Open(t.TempDir())

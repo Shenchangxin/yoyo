@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -282,7 +284,7 @@ func (a *App) conductorLane(sessionID string) bool {
 	return true
 }
 
-// attachCutTools 在绑定了短片、短剧、画布，或本身是视频频道时挂上剪辑工具。cut_dub 和 cut_ingest 以 Network 且 ForceAsk 检查能力。
+// attachCutTools 在绑定了短片、短剧、画布，或本身是视频频道时挂上剪辑工具。cut_dub 以 Network 且 ForceAsk 检查能力。
 // tools 为 nil 时返回，否则写入 Extra 和 ExtraEnabled。
 // sessionID 传给 StudioSessionBind、SessionBind、CanvasSessionBind、videoChannel 和 CutTool，并写入能力请求的 SessionID。
 func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
@@ -298,7 +300,8 @@ func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
 	if tools.Extra == nil {
 		tools.Extra = map[string]runtime.ExtraTool{}
 	}
-	askNet := map[string]bool{"cut_dub": true, "cut_ingest": true}
+	// cut_ingest 只挂本地内容库里的哈希，不花外部额度，不必每次确认。
+	askNet := map[string]bool{"cut_dub": true}
 	for _, spec := range video.CutToolSpecs() {
 		spec := spec
 		tools.Extra[spec.Name] = runtime.ExtraTool{
@@ -340,17 +343,25 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 	}
 	for _, spec := range video.ConductorToolSpecs() {
 		spec := spec
+		route := spec.Name == "video_route"
 		tools.Extra[spec.Name] = runtime.ExtraTool{
 			JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
 				"name": spec.Name, "description": spec.Desc, "parameters": spec.Params,
 			}},
 			ReadOnly: spec.ReadOnly,
+			// 路由会改写这一轮的工具表，不能和别的工具并发。
+			Exclusive: route,
 			Call: func(argsJSON string) runtime.ToolResult {
 				var args map[string]any
 				if argsJSON != "" {
 					_ = json.Unmarshal([]byte(argsJSON), &args)
 				}
 				out, err := a.Video.CutTool(sessionID, spec.Name, args)
+				if err == nil && route {
+					if note := a.attachRoutedWorkshop(tools, sessionID); note != "" {
+						out += "\n" + note
+					}
+				}
 				return runtime.ToolResult{Content: out, Err: err}
 			},
 		}
@@ -364,6 +375,33 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 			_, _ = a.SetSessionPinnedSkills(sessionID, next)
 		}
 	}
+}
+
+// attachRoutedWorkshop 在 video_route 绑好车间之后，把短剧、画布或短片的工具挂进这一轮。工具表每一步都会重读，所以模型下一步就能接着做，不必等操作者再发一句。返回给模型的说明列出新挂上的工具；没有新工具时返回空串。
+// tools 为 nil 时返回空串，否则传给 attachDramaTools、attachCanvasTools 和 attachStudioTools。
+// sessionID 传给这三个挂载函数。
+func (a *App) attachRoutedWorkshop(tools *runtime.WorkspaceTools, sessionID string) string {
+	if tools == nil {
+		return ""
+	}
+	before := make(map[string]bool, len(tools.Extra))
+	for name := range tools.Extra {
+		before[name] = true
+	}
+	a.attachDramaTools(tools, sessionID)
+	a.attachCanvasTools(tools, sessionID)
+	a.attachStudioTools(tools, sessionID)
+	var added []string
+	for name := range tools.Extra {
+		if !before[name] {
+			added = append(added, name)
+		}
+	}
+	if len(added) == 0 {
+		return ""
+	}
+	sort.Strings(added)
+	return "Workshop tools are live on this turn: " + strings.Join(added, ", ") + ". Continue the operator's request with them now."
 }
 
 // attachStudioTools 只在已绑定短片时挂上短片工具。配音、热点、安装、生图和选题扩展以 Network 且 ForceAsk 检查。打开发布页以 Browser 且 ForceAsk 检查，并调用 OpenStudioPublish。创建人设调用 CreateStudioPersona。然后钉住短片技能并 pinStudioLane。
@@ -383,6 +421,7 @@ func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string)
 		"studio_speak": true, "trends_fetch": true, "studio_remotion_install": true,
 		"studio_generate_shot": true, "studio_generate_missing": true, "studio_cover": true,
 		"studio_ingest": true, "studio_autoclip": true, "studio_copy": true, "studio_expand_topic": true,
+		"studio_auto": true, "studio_auto_topics": true, "studio_bgm_generate": true,
 	}
 	askBrowser := map[string]bool{"studio_publish_open": true, "studio_publish_analytics": true}
 	for _, spec := range video.StudioToolSpecs() {
@@ -883,6 +922,10 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if job, ok := a.pendingTopicJob(t.ID); ok {
 			return map[string]any{"ok": true, "job": job, "topic": t, "duplicate": true}, nil
 		}
+		runAt, err := topicRunAt(str("at"), params["delay_minutes"], time.Now())
+		if err != nil {
+			return nil, err
+		}
 		t.Status = video.TopicScheduled
 		t, err = eng.SaveTopic(t)
 		if err != nil {
@@ -890,7 +933,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		}
 		job := a.ScheduleCreate(schedule.Job{
 			Kind:      schedule.KindOnce,
-			Spec:      time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339),
+			Spec:      runAt.UTC().Format(time.RFC3339),
 			Prompt:    studioJobPrompt(t, video.StudioProject{}),
 			Workspace: a.VideoWorkspace(),
 			Channel:   session.ChannelVideo,
@@ -898,7 +941,11 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			TopicID:   t.ID,
 			Aspect:    str("aspect"),
 		})
-		return map[string]any{"ok": true, "job": job, "topic": t}, nil
+		out := map[string]any{"ok": true, "job": job, "topic": t, "run_at": runAt.Format(time.RFC3339)}
+		if !a.scheduleAllowed() {
+			out["paused"] = true
+		}
+		return out, nil
 	case "video.topic.unschedule":
 		t, err := eng.GetTopic(str("id"))
 		if err != nil {
@@ -962,21 +1009,10 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			sb, _ := json.Marshal(shots)
 			_ = json.Unmarshal(sb, &p.Storyboard.Shots)
 		}
-		out, err := eng.UpdateStudioProject(p)
+		_, scriptSet := params["script"].(string)
+		out, err := eng.UpdateStudioProjectWith(p, scriptSet)
 		if err != nil {
 			return nil, err
-		}
-		if _, ok := params["script"]; ok {
-			out.Script = str("script")
-			if strings.TrimSpace(out.Script) == "" {
-				out.ScriptHash = ""
-			} else if h, herr := eng.PutBytes([]byte(out.Script)); herr == nil {
-				out.ScriptHash = h
-			}
-			out.UpdatedAt = video.Now()
-			if err := eng.PutStudioProject(out); err != nil {
-				return nil, err
-			}
 		}
 		return a.enrichStudio(out), nil
 	case "video.studio.delete":
@@ -984,7 +1020,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.studio.bind":
 		return map[string]any{"ok": true}, eng.BindStudioSession(str("session_id"), firstNonEmptyApp(str("project_id"), str("id")))
 	case "video.studio.assemble":
-		p, err := eng.AssembleStudio(str("id"))
+		p, err := eng.StartStudioAssemble(str("id"))
 		if err != nil {
 			return a.enrichStudio(p), err
 		}
@@ -1016,8 +1052,14 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			return a.enrichStudio(p), err
 		}
 		return a.enrichStudio(p), nil
+	case "video.studio.bgm.generate":
+		p, err := eng.StartStudioBGM(str("id"), str("prompt"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
 	case "video.studio.speak":
-		p, err := eng.SpeakStudio(str("id"), str("text"))
+		p, err := eng.StartStudioSpeak(str("id"), str("text"))
 		if err != nil {
 			return nil, err
 		}
@@ -1141,11 +1183,13 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.studio.persona.create":
 		return a.CreateStudioPersona(firstNonEmptyApp(str("name"), str("title")), str("topic_id"))
 	case "video.studio.catalog":
-		return video.StudioCatalog(), nil
+		return eng.StudioCatalogLive(), nil
+	case "video.studio.voice.preview":
+		return eng.PreviewVoice(str("voice"))
 	case "video.studio.preflight":
 		return eng.StudioPreflight(str("id"), str("gate"))
 	case "video.studio.approve":
-		p, err := eng.ApproveStudioScript(str("id"))
+		p, err := eng.ApproveStudioScriptText(str("id"), str("script"))
 		if err != nil {
 			return a.enrichStudio(p), err
 		}
@@ -1302,7 +1346,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.film.plan":
 		return eng.PlanFilm(str("id"))
 	case "video.film.build":
-		return eng.BuildFilm(str("id"))
+		return eng.StartFilmBuild(str("id"))
 	case "video.film.shape":
 		return eng.ShapeFilm(str("id"), film.Cast{
 			Subject: str("subject"),
@@ -1394,7 +1438,8 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if params["duck"] == false || str("duck") == "0" {
 			duck = false
 		}
-		p, err := eng.CutMix(str("id"), duck)
+		replace := params["replace"] == true || str("replace") == "1" || strings.EqualFold(str("replace"), "true")
+		p, err := eng.CutMix(str("id"), duck, replace)
 		if err != nil {
 			return nil, err
 		}
@@ -1664,6 +1709,52 @@ func studioJobPrompt(t video.Topic, p video.StudioProject) string {
 	}
 	b.WriteString("先 studio_get，再把口播稿写入 studio_update 的 script，然后 studio_approve_script。没有镜头素材时用 studio_generate_shot，不要编造 CAS hash。若图像适配器未配置，停下来让操作者上传静帧。\n")
 	return b.String()
+}
+
+// topicRunAt 算出排期选题开拍的时间。at 是 RFC3339，或本机时间的 2006-01-02T15:04、2006-01-02 15:04；
+// at 空着时按 delay 分钟（1 分钟到 14 天）往后排；两个都没给、或 delay 不是正数时 10 分钟后。at 早于一分钟后时拒绝。
+// now 是现在。
+func topicRunAt(at string, delay any, now time.Time) (time.Time, error) {
+	at = strings.TrimSpace(at)
+	if at != "" {
+		var t time.Time
+		var err error
+		if t, err = time.Parse(time.RFC3339, at); err != nil {
+			for _, layout := range []string{"2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02T15:04:05"} {
+				if t, err = time.ParseInLocation(layout, at, time.Local); err == nil {
+					break
+				}
+			}
+		}
+		if err != nil {
+			return time.Time{}, fmt.Errorf("排期时间看不懂：%s", at)
+		}
+		if t.Before(now.Add(time.Minute)) {
+			return time.Time{}, fmt.Errorf("排期时间要晚于现在")
+		}
+		return t, nil
+	}
+	minutes := 0.0
+	switch v := delay.(type) {
+	case float64:
+		minutes = v
+	case int:
+		minutes = float64(v)
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			minutes = f
+		}
+	}
+	if minutes <= 0 {
+		minutes = 10
+	}
+	if minutes < 1 {
+		minutes = 1
+	}
+	if minutes > 14*24*60 {
+		minutes = 14 * 24 * 60
+	}
+	return now.Add(time.Duration(minutes * float64(time.Minute))), nil
 }
 
 // pendingTopicJob 查找该选题上已启用、且 LastRun 为零的短片日程。没有则返回 false。

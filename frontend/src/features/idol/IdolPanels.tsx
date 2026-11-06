@@ -59,7 +59,7 @@ export function IdolPanel(props: {
   return (
     <aside className="absolute inset-y-0 right-0 z-20 flex w-[min(420px,100%)] flex-col border-l border-border bg-background shadow-[var(--shadow-popover)]">
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <h2 className="min-w-0 flex-1 truncate text-[14px] font-medium">{title}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-ui-body-l font-medium">{title}</h2>
         <button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-lift" aria-label={c.close} onClick={props.onClose}>
           <X className="size-4" />
         </button>
@@ -118,7 +118,7 @@ function Editor(props: {
   }, [i.portrait]);
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[12px] leading-relaxed text-muted">{c.editorHint}</p>
+      <p className="text-ui-footnote leading-relaxed text-muted">{c.editorHint}</p>
       <Field label={c.name} value={i.name} onChange={(name) => set({ name })} />
       <Field label={c.intro} value={i.intro} onChange={(intro) => set({ intro })} />
       <Area label={c.sheet} value={i.sheet} onChange={(sheet) => set({ sheet })} />
@@ -128,7 +128,7 @@ function Editor(props: {
         <Lang label={c.spoken} value={i.spoken_lang} onChange={(spoken_lang) => set({ spoken_lang })} />
         <Lang label={c.subtitle} value={i.subtitle_lang} onChange={(subtitle_lang) => set({ subtitle_lang })} />
       </div>
-      <label className="block text-[12px] text-muted">
+      <label className="block text-ui-footnote text-muted">
         {c.color}
         <span className="mt-1 flex items-center gap-2">
           <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(i.color) ? i.color : "#c47b8a"} onChange={(e) => set({ color: e.target.value })} />
@@ -136,54 +136,54 @@ function Editor(props: {
         </span>
       </label>
       {voices.length > 0 ? (
-        <label className="block text-[12px] text-muted">
+        <label className="block text-ui-footnote text-muted">
           {c.voice}
-          <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]" value={i.voice_id} onChange={(e) => set({ voice_id: e.target.value })}>
+          <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-ui-body" value={i.voice_id} onChange={(e) => set({ voice_id: e.target.value })}>
             <option value="">{c.voiceDefault}</option>
             {voices.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
             {i.voice_id && !voices.some((v) => v.id === i.voice_id) ? <option value={i.voice_id}>{i.voice_id}</option> : null}
           </select>
         </label>
       ) : <Field label={c.voice} value={i.voice_id} onChange={(voice_id) => set({ voice_id })} />}
-      <label className="block text-[12px] text-muted">
+      <label className="block text-ui-footnote text-muted">
         {c.circle}
-        <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]" value={i.circle_id} onChange={(e) => set({ circle_id: e.target.value })}>
+        <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-ui-body" value={i.circle_id} onChange={(e) => set({ circle_id: e.target.value })}>
           <option value="">{c.noCircle}</option>
           {props.circles.map((cir) => <option key={cir.id} value={cir.id}>{cir.name}</option>)}
         </select>
       </label>
-      <label className="block text-[12px] text-muted">
+      <label className="block text-ui-footnote text-muted">
         {c.workProfile}
-        <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]" value={i.work_profile_id} onChange={(e) => set({ work_profile_id: e.target.value })}>
+        <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-ui-body" value={i.work_profile_id} onChange={(e) => set({ work_profile_id: e.target.value })}>
           <option value="">{c.profileDefault}</option>
           {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </label>
-      <label className="flex items-center gap-2 text-[12px] text-muted">
+      <label className="flex items-center gap-2 text-ui-footnote text-muted">
         <input type="checkbox" checked={i.work_enabled} onChange={(e) => set({ work_enabled: e.target.checked })} />
         {c.work}
       </label>
-      <label className="flex items-center gap-2 text-[12px] text-muted">
+      <label className="flex items-center gap-2 text-ui-footnote text-muted">
         <input type="checkbox" checked={i.hidden} onChange={(e) => set({ hidden: e.target.checked })} />
         {c.hidden}
       </label>
-      <label className="text-[12px] text-muted">
+      <label className="text-ui-footnote text-muted">
         {c.portrait}
         {preview ? <img alt="" src={preview} className="mt-2 size-20 rounded-full object-cover" /> : null}
-        <input className="mt-1 block text-[12px]" type="file" accept="image/*" onChange={(e) => {
+        <input className="mt-1 block text-ui-footnote" type="file" accept="image/*" onChange={(e) => {
           const file = e.target.files?.[0];
+          e.target.value = "";
           if (!file) return;
-          const r = new FileReader();
-          r.onload = () => {
-            void api.idolCall("save_blob", { data: String(r.result || "") }).then((out) => set({ portrait: str(out?.id) })).catch((err) => toast.error(idolError(err, c)));
-          };
-          r.readAsDataURL(file);
+          void shrinkPortrait(file)
+            .then((data) => api.idolCall("save_blob", { data }))
+            .then((out) => set({ portrait: str(out?.id) }))
+            .catch((err) => toast.error(/too large|decode|image/i.test(String(err?.message || err)) ? c.portraitTooBig : idolError(err, c)));
         }} />
       </label>
       <Button disabled={props.saving || !i.name.trim()} onClick={() => props.onSave(i)}>{c.save}</Button>
       {props.idol?.id ? (
         askDelete ? (
-          <div className="rounded-xl border border-border p-3 text-[12px]">
+          <div className="rounded-xl border border-border p-3 text-ui-footnote">
             <p className="text-muted">{c.deleteIdolBody}</p>
             <div className="mt-2 flex gap-2">
               <Button size="sm" variant="danger" onClick={() => props.onDelete(props.idol!.id)}>{c.deleteIdol}</Button>
@@ -207,17 +207,17 @@ function Memories(props: { idol: Idol | null; names: Record<string, string>; onC
     setRows(asArray(m?.memories));
   }
   useEffect(() => { void load().catch((e) => toast.error(idolError(e, c))); }, [props.idol?.id]);
-  if (!props.idol) return <p className="text-[13px] text-muted">{c.empty}</p>;
-  if (!rows.length) return <p className="text-[13px] text-muted">{c.memoryEmpty}</p>;
+  if (!props.idol) return <p className="text-ui-body text-muted">{c.empty}</p>;
+  if (!rows.length) return <p className="text-ui-body text-muted">{c.memoryEmpty}</p>;
   return (
     <ul className="space-y-2">
       {rows.map((m) => {
         const from = str(m.source_idol);
         const shared = from && from !== props.idol?.id;
         return (
-          <li key={str(m.id)} className="rounded-xl border border-border px-3 py-2 text-[13px]">
+          <li key={str(m.id)} className="rounded-xl border border-border px-3 py-2 text-ui-body">
             <p className={m.superseded_by ? "text-muted line-through" : ""}>{str(m.text)}</p>
-            <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted">
+            <div className="mt-1 flex items-center justify-between gap-2 text-ui-caption text-muted">
               <span>{shared ? c.memoryFrom.replace("{name}", props.names[from] || from) : ""} {clock(str(m.at))}</span>
               <button type="button" onClick={() => void api.idolCall("delete_memory", { id: m.id }).then(() => { props.onChanged(); return load(); })}>{c.deleteMemory}</button>
             </div>
@@ -238,15 +238,22 @@ function Gifts(props: { idol: Idol | null; onChanged: () => void; onSave: (i: Id
     setGifts(await api.idolCall("gifts"));
   }
   useEffect(() => { void load().catch((e) => toast.error(idolError(e, c))); }, []);
-  /** 执行抽卡、送礼或重置，再刷新目录。op 与 draw、give、reset 比较是否相等，传给 api.idolCall。extra 传给 api.idolCall。 */
+  /** 执行抽卡、送礼或重置，再刷新目录。送礼之后她会当场回应一次，回应写进对话。 */
   async function act(op: string, extra?: Record<string, unknown>) {
     setNote("");
     try {
       const res = await api.idolCall(op, extra);
       if (op === "draw") setNote(res?.reset_card ? c.drewReset : c.drawn.replace("{name}", str(res?.gift?.name || "")));
       if (op === "give") {
-        setNote(c.giftSent);
         props.onChanged();
+        const idolId = str(extra?.idol_id);
+        setNote(c.reacting);
+        void api.idolCall("react", { idol_id: idolId })
+          .catch(() => null)
+          .then(() => {
+            setNote(c.giftSent);
+            props.onChanged();
+          });
       }
       if (op === "reset") setNote(c.reset);
       await load();
@@ -256,13 +263,13 @@ function Gifts(props: { idol: Idol | null; onChanged: () => void; onSave: (i: Id
   }
   const liked = new Set(props.idol?.liked_gifts || []);
   return (
-    <div className="space-y-3 text-[13px]">
+    <div className="space-y-3 text-ui-body">
       <div className="flex flex-wrap items-center gap-2">
         <span>{c.draws}: {gifts?.draws ?? 0}</span>
         <Button size="sm" variant="lift" onClick={() => void act("draw")}>{c.draw}</Button>
         <Button size="sm" variant="lift" onClick={() => void act("reset")}>{c.reset} · {gifts?.reset_cards ?? 0}</Button>
       </div>
-      {note ? <p className="text-[12px] text-muted">{note}</p> : null}
+      {note ? <p className="text-ui-footnote text-muted">{note}</p> : null}
       <div className="grid grid-cols-2 gap-2">
         {asArray(gifts?.catalog).map((g: any) => {
           const held = num(asArray(gifts?.inventory).find((s: any) => s.gift_id === g.id)?.count, 0);
@@ -270,7 +277,7 @@ function Gifts(props: { idol: Idol | null; onChanged: () => void; onSave: (i: Id
           return (
             <div key={g.id} className="rounded-xl border border-border p-3">
               <div className="font-medium">{g.name}</div>
-              <div className="mt-1 text-[11px] text-muted">{(c.rarity as any)[g.rarity] || g.rarity} · {c.held} {held}</div>
+              <div className="mt-1 text-ui-caption text-muted">{(c.rarity as any)[g.rarity] || g.rarity} · {c.held} {held}</div>
               <div className="mt-2 flex gap-1">
                 <Button size="sm" variant="lift" disabled={!held || !props.idol} onClick={() => void act("give", { idol_id: props.idol?.id, gift_id: g.id })}>{c.give}</Button>
                 {props.idol ? (
@@ -294,18 +301,18 @@ function LorePanel(props: { idol: Idol | null; lore: Lore[]; onChanged: () => vo
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const rows = props.lore.filter((d) => d.idol_id === props.idol?.id);
-  if (!props.idol) return <p className="text-[13px] text-muted">{c.empty}</p>;
+  if (!props.idol) return <p className="text-ui-body text-muted">{c.empty}</p>;
   return (
     <div className="space-y-3">
       {rows.map((d) => (
         <article key={d.id} className="rounded-xl border border-border p-3">
-          <div className="text-[13px] font-medium">{d.title}</div>
-          <p className="mt-1 whitespace-pre-wrap text-[12px] text-muted">{d.body}</p>
-          <button type="button" className="mt-2 text-[12px] text-muted" onClick={() => void api.idolCall("delete_lore", { id: d.id }).then(props.onChanged)}>{c.delete}</button>
+          <div className="text-ui-body font-medium">{d.title}</div>
+          <p className="mt-1 whitespace-pre-wrap text-ui-footnote text-muted">{d.body}</p>
+          <button type="button" className="mt-2 text-ui-footnote text-muted" onClick={() => void api.idolCall("delete_lore", { id: d.id }).then(props.onChanged)}>{c.delete}</button>
         </article>
       ))}
       <Input value={title} placeholder={c.loreTitle} onChange={(e) => setTitle(e.target.value)} />
-      <textarea className="min-h-24 w-full rounded-md border border-border bg-background p-2 text-[13px]" value={body} placeholder={c.loreBody} onChange={(e) => setBody(e.target.value)} />
+      <textarea className="min-h-24 w-full rounded-md border border-border bg-background p-2 text-ui-body" value={body} placeholder={c.loreBody} onChange={(e) => setBody(e.target.value)} />
       <Button size="sm" disabled={!title.trim() && !body.trim()} onClick={() => void api.idolCall("save_lore", { idol_id: props.idol!.id, title, body }).then(() => { setTitle(""); setBody(""); props.onChanged(); })}>{c.addLore}</Button>
     </div>
   );
@@ -316,13 +323,13 @@ function Stats(props: { names: Record<string, string>; idol: Idol | null }) {
   const c = useCopy().idol;
   const [stats, setStats] = useState<any>(null);
   useEffect(() => { void api.idolCall("stats").then(setStats).catch((e) => toast.error(idolError(e, c))); }, []);
-  if (!stats) return <p className="text-[13px] text-muted">{c.loading}</p>;
+  if (!stats) return <p className="text-ui-body text-muted">{c.loading}</p>;
   const tasks = stats.tasks || {};
   const ach = asArray(stats.achievements).map((id) => achievementLabel(str(id), props.names, c.ach as unknown as Record<string, string>, c.achClose, c.achIntimate));
   return (
-    <div className="space-y-4 text-[13px]">
+    <div className="space-y-4 text-ui-body">
       <section>
-        <h3 className="mb-2 text-[12px] text-muted">{c.today}</h3>
+        <h3 className="mb-2 text-ui-footnote text-muted">{c.today}</h3>
         <ul className="space-y-1">
           <li>{tasks.talk ? "✓" : "·"} {c.taskTalk}</li>
           <li>{tasks.call ? "✓" : "·"} {c.taskCall}</li>
@@ -330,10 +337,10 @@ function Stats(props: { names: Record<string, string>; idol: Idol | null }) {
         </ul>
       </section>
       <section>
-        <h3 className="mb-2 text-[12px] text-muted">{c.statsAll}</h3>
+        <h3 className="mb-2 text-ui-footnote text-muted">{c.statsAll}</h3>
         <div className="grid grid-cols-2 gap-2">
           <Stat label={c.turns} value={stats.turns} />
-          <Stat label={c.callTime} value={`${stats.call_sec || 0}s · ${stats.calls || 0}`} />
+          <Stat label={c.callTime} value={`${duration(num(stats.call_sec, 0))} · ${num(stats.calls, 0)}`} />
           <Stat label={c.giftsGiven} value={stats.gifts} />
           <Stat label={c.memories} value={stats.memories} />
           <Stat label={c.draws} value={stats.draws_left} />
@@ -341,7 +348,7 @@ function Stats(props: { names: Record<string, string>; idol: Idol | null }) {
         </div>
       </section>
       <section>
-        <h3 className="mb-2 text-[12px] text-muted">{c.achievements}</h3>
+        <h3 className="mb-2 text-ui-footnote text-muted">{c.achievements}</h3>
         {ach.length ? <ul className="space-y-1">{ach.map((a) => <li key={a}>{a}</li>)}</ul> : <p className="text-muted">—</p>}
       </section>
     </div>
@@ -352,7 +359,7 @@ function Stats(props: { names: Record<string, string>; idol: Idol | null }) {
 function Stat(props: { label: string; value: string | number }) {
   return (
     <div className="rounded-xl bg-lift px-3 py-2">
-      <div className="text-[11px] text-muted">{props.label}</div>
+      <div className="text-ui-caption text-muted">{props.label}</div>
       <div className="tabular-nums">{props.value ?? "—"}</div>
     </div>
   );
@@ -380,7 +387,7 @@ function Circles(props: {
     props.onChanged();
   }
   return (
-    <div className="space-y-3 text-[13px]">
+    <div className="space-y-3 text-ui-body">
       <p className="leading-relaxed text-muted">{c.circleHint}</p>
       {props.circles.length === 0 ? <p className="text-muted">{c.circleEmpty}</p> : null}
       {props.circles.map((cir) => {
@@ -394,7 +401,7 @@ function Circles(props: {
                 <Button size="sm" type="submit">{c.save}</Button>
               </form>
             ) : <div className="font-medium">{cir.name}</div>}
-            <p className="mt-1 text-[12px] text-muted">{c.members.replace("{n}", String(members.length))}{members.length ? ` · ${members.map((m) => m.name).join("、")}` : ""}</p>
+            <p className="mt-1 text-ui-footnote text-muted">{c.members.replace("{n}", String(members.length))}{members.length ? ` · ${members.map((m) => m.name).join("、")}` : ""}</p>
             <div className="mt-2 flex flex-wrap gap-1">
               {props.idol ? (
                 <Button size="sm" variant={here ? "default" : "lift"} onClick={() => props.onSave({ ...props.idol!, circle_id: here ? "" : cir.id })}>
@@ -427,17 +434,17 @@ function HistoryList(props: {
 }) {
   const c = useCopy().idol;
   const rows = props.history.past;
-  if (!rows.length) return <p className="text-[13px] text-muted">{c.pastEmpty}</p>;
+  if (!rows.length) return <p className="text-ui-body text-muted">{c.pastEmpty}</p>;
   return (
     <ul className="space-y-2">
       {rows.map((p) => (
         <li key={p.id} className="rounded-xl border border-border p-3">
           <button type="button" className="block w-full text-left" onClick={() => { props.onView(p.id); props.onClose(); }}>
-            <div className="text-[13px] font-medium">{p.title || whenLabel(p.created_at)}</div>
-            <div className="text-[11px] text-muted">{whenLabel(p.created_at)} · {p.records.length}</div>
+            <div className="text-ui-body font-medium">{p.title || whenLabel(p.created_at)}</div>
+            <div className="text-ui-caption text-muted">{whenLabel(p.created_at)} · {p.records.length}</div>
           </button>
-          <button type="button" className="mt-2 text-[12px] text-muted" onClick={() => props.onDeleteChat(p.id)}>{c.deleteChat}</button>
-          {props.viewing === p.id ? <div className="mt-1 text-[11px] text-muted">{c.readOnly}</div> : null}
+          <button type="button" className="mt-2 text-ui-footnote text-muted" onClick={() => props.onDeleteChat(p.id)}>{c.deleteChat}</button>
+          {props.viewing === p.id ? <div className="mt-1 text-ui-caption text-muted">{c.readOnly}</div> : null}
         </li>
       ))}
     </ul>
@@ -447,7 +454,7 @@ function HistoryList(props: {
 /** 画一行单行输入。props 读取 label、value，调用 onChange。 */
 function Field(props: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label className="block text-[12px] text-muted">
+    <label className="block text-ui-footnote text-muted">
       {props.label}
       <Input className="mt-1 h-8" value={props.value} onChange={(e) => props.onChange(e.target.value)} />
     </label>
@@ -457,9 +464,9 @@ function Field(props: { label: string; value: string; onChange: (v: string) => v
 /** 画一块多行输入。props 读取 label、value，调用 onChange。 */
 function Area(props: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label className="block text-[12px] text-muted">
+    <label className="block text-ui-footnote text-muted">
       {props.label}
-      <textarea className="mt-1 min-h-20 w-full rounded-md border border-border bg-background p-2 text-[13px]" value={props.value} onChange={(e) => props.onChange(e.target.value)} />
+      <textarea className="mt-1 min-h-20 w-full rounded-md border border-border bg-background p-2 text-ui-body" value={props.value} onChange={(e) => props.onChange(e.target.value)} />
     </label>
   );
 }
@@ -469,9 +476,9 @@ function Lang(props: { label: string; value: string; onChange: (v: string) => vo
   const options = ["zh", "en", "ja"];
   const extra = props.value && !options.includes(props.value) ? [props.value] : [];
   return (
-    <label className="block text-[12px] text-muted">
+    <label className="block text-ui-footnote text-muted">
       {props.label}
-      <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]" value={props.value} onChange={(e) => props.onChange(e.target.value)}>
+      <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-ui-body" value={props.value} onChange={(e) => props.onChange(e.target.value)}>
         {[...options, ...extra].map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     </label>
@@ -481,4 +488,46 @@ function Lang(props: { label: string; value: string; onChange: (v: string) => vo
 /** emptyDraft 交回一份空白偶像草稿。 */
 export function emptyDraft() {
   return blankIdol();
+}
+
+/** duration 把秒数写成 时:分:秒，不到一小时写成 分:秒。 */
+function duration(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/** shrinkPortrait 在本地把头像缩到长边 768 像素，存成 WebP（保留透明），手机照片也不会超过上传上限。读不出的图原样交出去，由服务端判断。 */
+function shrinkPortrait(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const raw = String(reader.result || "");
+      const img = new Image();
+      img.onerror = () => resolve(raw);
+      img.onload = () => {
+        const side = 768;
+        const scale = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
+        if (scale === 1 && file.size <= 512 * 1024) {
+          resolve(raw);
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(raw);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/webp", 0.9));
+      };
+      img.src = raw;
+    };
+    reader.readAsDataURL(file);
+  });
 }

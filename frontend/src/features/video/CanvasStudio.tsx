@@ -22,7 +22,7 @@ const YingceApp = lazy(() =>
 function CanvasCrash(props: { message: string }) {
   const copy = useCopy();
   return (
-    <div className="flex h-full items-center justify-center p-6 text-center text-[13px] text-muted" data-testid="canvas-studio-error">
+    <div className="flex h-full items-center justify-center p-6 text-center text-ui-body text-muted" data-testid="canvas-studio-error">
       {copy.video.failed}{props.message ? ` · ${props.message}` : ""}
     </div>
   );

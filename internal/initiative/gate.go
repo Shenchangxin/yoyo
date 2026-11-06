@@ -1,5 +1,6 @@
 // Package initiative 决定要不要开口，并把感知收成一条条带证据的信号。
-// 拥有：沉默、预判和反馈的计数。不拥有：工单、模型回合、文件正文。
+// 拥有：沉默、预判和反馈的计数。判断和记账分开：Assess 只判断，Deliver 在话真正送到之后才记下。
+// 不拥有：工单、模型回合、文件正文。
 package initiative
 
 import (
@@ -23,6 +24,7 @@ type Fact struct {
 }
 
 // Signal 是给人看的一条感知。Speak 为真才推进主会话。Held 为真表示本来会说，这一轮按住了。
+// 今天已经送到过的同一条既不 Speak 也不 Held。
 type Signal struct {
 	ID       string `json:"id"`
 	Code     string `json:"code"`
@@ -35,6 +37,8 @@ type Signal struct {
 	Held     bool   `json:"held"`
 	Priority int    `json:"priority"`
 	MemoryID string `json:"memoryId,omitempty"`
+	// Sig 是这一轮的签名。送到之后由 Deliver 记成上一次告诉人的样子。不发给界面。
+	Sig string `json:"-"`
 }
 
 // Commitment 是引擎能读到的一条承诺。Until 是 YYYY-MM-DD，过了那天就不再留。
@@ -53,6 +57,9 @@ type Mute struct {
 	Until   string `json:"until,omitempty"`
 }
 
+// Forever 是一直按住的那一天。要人在偏好里打开。
+const Forever = "9999-12-31"
+
 // ReachQuota 记下公开检索一天说了几次、上次是什么时候。一天最多三次，两次至少隔三小时。
 type ReachQuota struct {
 	Day string `json:"day,omitempty"`
@@ -60,10 +67,13 @@ type ReachQuota struct {
 	At  string `json:"at,omitempty"`
 }
 
-// Book 是开口的记忆。Seen 是上次签名，Spoken 是某一类上次开口的日期。
+// Book 是开口的记忆。
+// Seen 是变化比较的基线：第一次见到时记下；会开口的变化要等送到之后才换，没送到就一直算变化。
+// Spoken 是某一类上次开口的日期。Told 是某一条上次送到的日期，同一天不再开口，也不算按住。
 type Book struct {
 	Seen   map[string]string `json:"seen,omitempty"`
 	Spoken map[string]string `json:"spoken,omitempty"`
+	Told   map[string]string `json:"told,omitempty"`
 	Mute   map[string]Mute   `json:"mute,omitempty"`
 	Open   []Commitment      `json:"open,omitempty"`
 	Reach  ReachQuota        `json:"reach,omitempty"`
@@ -86,27 +96,26 @@ type Input struct {
 	Book    Book
 }
 
-// Assess 写出这一轮该说什么。第一次见到的工程线只建立基线，不开口。
-// 日历到期、等人、卡住、来源错误、低电量和断网可以在第一次就开口。
+// Assess 写出这一轮该说什么。它不记账：同一条在 Deliver 之前，每一轮都还会开口。
+// 第一次见到的工程线只建立基线，不开口。会开口的变化在送到之前保留原来的基线。
+// 日历到期、来源错误、低电量和断网可以在第一次就开口。同一轮里同一类只让排在最前的一条开口。
 func Assess(in Input) (Briefing, Book) {
 	now := in.Now
 	if now.IsZero() {
 		now = time.Now()
 	}
 	day := now.Format("2006-01-02")
-	book := in.Book
-	if book.Seen == nil {
-		book.Seen = map[string]string{}
-	}
-	if book.Spoken == nil {
-		book.Spoken = map[string]string{}
-	}
-	if book.Mute == nil {
-		book.Mute = map[string]Mute{}
+	book := cloneBook(in.Book)
+	for id, at := range book.Told {
+		if at < day {
+			delete(book.Told, id)
+		}
 	}
 	facts := append([]Fact(nil), in.Facts...)
 	sortFacts(facts)
 	idleHold := in.Idle >= 20*time.Minute
+	claimed := map[string]bool{}
+	reachClaimed := false
 	var signals []Signal
 	for _, fact := range facts {
 		if strings.TrimSpace(fact.ID) == "" || strings.TrimSpace(fact.Name) == "" {
@@ -118,21 +127,22 @@ func Assess(in Input) (Briefing, Book) {
 		}
 		prev, seen := book.Seen[fact.ID]
 		changed := seen && prev != sig
-		if fact.Code != "reach" {
+		pending := fact.Eligible && changeCode(fact.Code)
+		if fact.Code != "reach" && (!seen || !pending) {
 			book.Seen[fact.ID] = sig
 		}
 		want := false
 		why := ""
 		if fact.Eligible {
-			switch fact.Code {
-			case "line", "git", "poi":
+			switch {
+			case changeCode(fact.Code):
 				want = changed
 				why = "changed"
-			case "reach":
+			case fact.Code == "reach":
 				want = !seen || changed
 				why = "match"
 			default:
-				want = true
+				want = book.Told[fact.ID] != day
 				why = fact.State
 			}
 		}
@@ -142,20 +152,17 @@ func Assess(in Input) (Briefing, Book) {
 			speak = false
 			held = true
 		}
-		if speak && book.Spoken[fact.Class] == day && fact.Class != "reach" {
+		if speak && fact.Class != "reach" && (book.Spoken[fact.Class] == day || claimed[fact.Class]) {
 			speak = false
 			held = true
 		}
-		if speak && fact.Class == "reach" && !reachRoom(book.Reach, now) {
+		if speak && fact.Class == "reach" && (reachClaimed || !reachRoom(book.Reach, now)) {
 			speak = false
 			held = true
 		}
 		if speak && idleHold && (fact.Class == "line" || fact.Class == "git") {
 			speak = false
 			held = true
-			if why == "" {
-				why = "changed"
-			}
 		}
 		if !want && !awareness(fact.Code) {
 			continue
@@ -179,12 +186,13 @@ func Assess(in Input) (Briefing, Book) {
 			Held:     held,
 			Priority: fact.Rank,
 			MemoryID: fact.MemoryID,
+			Sig:      sig,
 		})
 		if speak {
-			book.Spoken[fact.Class] = day
-			if fact.Code == "reach" {
-				book.Seen[fact.ID] = sig
-				book.Reach = markReach(book.Reach, now)
+			if fact.Class == "reach" {
+				reachClaimed = true
+			} else {
+				claimed[fact.Class] = true
 			}
 		}
 	}
@@ -192,23 +200,46 @@ func Assess(in Input) (Briefing, Book) {
 		signals = append(signals, Signal{
 			ID: "welcome", Code: "welcome", Class: "welcome", Name: "welcome", Why: "welcome", Speak: true,
 		})
-		book.Spoken["welcome"] = day
 	}
 	book.Open = mergeOpen(book.Open, signals, day)
 	speak := anySpeak(signals)
 	return Briefing{Day: day, Speak: speak, Signals: signals, Open: book.Open}, book
 }
 
+// Deliver 记下 signals 里已经送到的话。那一类今天开过口，那一条今天说过。
+// 会开口的变化换成送到时的签名，公开检索记进当天的配额。没有 Speak 的条目不记。
+func Deliver(book Book, signals []Signal, now time.Time) Book {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	day := now.Format("2006-01-02")
+	book = cloneBook(book)
+	for _, signal := range signals {
+		if !signal.Speak || strings.TrimSpace(signal.ID) == "" {
+			continue
+		}
+		if signal.Class != "" {
+			book.Spoken[signal.Class] = day
+		}
+		book.Told[signal.ID] = day
+		if signal.Sig != "" {
+			book.Seen[signal.ID] = signal.Sig
+		}
+		if signal.Code == "reach" {
+			book.Reach = markReach(book.Reach, now)
+		}
+	}
+	return book
+}
+
 // Feedback 记下人对某一类的反应。wrong 返回要忘掉的记忆编号，没有则返回空串。
-// kind 取 used、ignore、later、wrong。
+// kind 取 used、ignore、later、wrong、mute、unmute。mute 一直按住，unmute 打开。
 func Feedback(book Book, className, memoryID, kind, day string) (Book, string) {
 	className = strings.TrimSpace(className)
 	if className == "" {
 		return book, ""
 	}
-	if book.Mute == nil {
-		book.Mute = map[string]Mute{}
-	}
+	book = cloneBook(book)
 	switch kind {
 	case "used":
 		delete(book.Mute, className)
@@ -217,23 +248,43 @@ func Feedback(book Book, className, memoryID, kind, day string) (Book, string) {
 		mute := book.Mute[className]
 		mute.Ignores++
 		if mute.Ignores >= 3 {
-			mute.Until = "9999-12-31"
+			mute.Until = Forever
 		}
 		book.Mute[className] = mute
 		book.Open = dropClass(book.Open, className)
 	case "later":
 		mute := book.Mute[className]
-		mute.Until = day
+		if mute.Until < day {
+			mute.Until = day
+		}
 		book.Mute[className] = mute
 		book.Open = dropClass(book.Open, className)
+	case "mute":
+		mute := book.Mute[className]
+		mute.Until = Forever
+		book.Mute[className] = mute
+		book.Open = dropClass(book.Open, className)
+	case "unmute":
+		delete(book.Mute, className)
 	case "wrong":
 		mute := book.Mute[className]
-		mute.Until = "9999-12-31"
+		mute.Until = Forever
 		book.Mute[className] = mute
 		book.Open = dropClass(book.Open, className)
 		return book, strings.TrimSpace(memoryID)
 	}
 	return book, ""
+}
+
+// Quiet 列出 day 这一天仍被按住的类别。
+func Quiet(book Book, day string) map[string]Mute {
+	out := map[string]Mute{}
+	for name, mute := range book.Mute {
+		if muteOn(mute, day) {
+			out[name] = mute
+		}
+	}
+	return out
 }
 
 // NoteSchedule 把一条人写过的日程记成承诺。它不开口。
@@ -257,6 +308,40 @@ func NoteSchedule(book Book, id, title, day string) Book {
 // AllowSchedule 在编排台明确关掉时不跑日程。空模式仍算人写过的日程，可以跑。
 func AllowSchedule(mode string) bool {
 	return strings.TrimSpace(mode) != "off"
+}
+
+// changeCode 在这种感知只因为变化才开口时为真。
+func changeCode(code string) bool {
+	switch code {
+	case "line", "git", "poi":
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneBook(in Book) Book {
+	out := Book{
+		Seen:   make(map[string]string, len(in.Seen)),
+		Spoken: make(map[string]string, len(in.Spoken)),
+		Told:   make(map[string]string, len(in.Told)),
+		Mute:   make(map[string]Mute, len(in.Mute)),
+		Open:   append([]Commitment(nil), in.Open...),
+		Reach:  in.Reach,
+	}
+	for k, v := range in.Seen {
+		out.Seen[k] = v
+	}
+	for k, v := range in.Spoken {
+		out.Spoken[k] = v
+	}
+	for k, v := range in.Told {
+		out.Told[k] = v
+	}
+	for k, v := range in.Mute {
+		out.Mute[k] = v
+	}
+	return out
 }
 
 func reachRoom(q ReachQuota, now time.Time) bool {

@@ -2,7 +2,10 @@
 
 package cut
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // GradeFilter 返回 warm、cool、contrast、fade 对应的 ffmpeg 滤镜。其他预设用默认的对比度和饱和度。
 // preset 去掉空白并转小写后匹配 warm、cool、contrast、fade，其余走 default。
@@ -19,6 +22,36 @@ func GradeFilter(preset string) string {
 	default:
 		return "eq=contrast=1.06:saturation=1.04"
 	}
+}
+
+// Look 一次重编码套上画面滤镜和音频滤镜。vf 空着时画面直接复制，af 空着时音频直接复制；两个都空时什么都不做。源片没有音轨时不处理音频。
+// src 作为 -i。
+// outPath 是输出。
+// vf 是逗号连起来的画面滤镜。
+// af 是音频滤镜。
+func (b Bin) Look(src, outPath, vf, af string) error {
+	if err := b.ok(); err != nil {
+		return err
+	}
+	if vf == "" && af == "" {
+		return fmt.Errorf("nothing to apply")
+	}
+	args := []string{"-y", "-i", src}
+	if vf != "" {
+		args = append(args, "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p")
+	} else {
+		args = append(args, "-c:v", "copy")
+	}
+	switch {
+	case !b.HasAudio(src):
+		args = append(args, "-an")
+	case af != "":
+		args = append(args, "-af", af, "-c:a", "aac", "-ar", "48000", "-b:a", "192k")
+	default:
+		args = append(args, "-c:a", "copy")
+	}
+	_, err := b.run(append(args, "-movflags", "+faststart", outPath)...)
+	return err
 }
 
 // Grade 用 GradeFilter 重编码画面并复制音频。复制音频失败时改为不带音频再跑一次。

@@ -369,7 +369,7 @@ export function PresenceModuleLoading(props: { label?: string; className?: strin
       <div className="presence-module-shell">
         <PresenceAnchor id="module" size={props.size ?? MODULE_PRESENCE_SIZE} />
       </div>
-      {props.label ? <p className="text-[13px] text-muted">{props.label}</p> : null}
+      {props.label ? <p className="text-ui-body text-muted">{props.label}</p> : null}
     </div>
   );
 }

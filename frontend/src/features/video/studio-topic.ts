@@ -91,3 +91,31 @@ export function trendMatchesQuery(item: { title?: string; hot?: string }, q: str
   if (!needle) return true;
   return hay([item.title, item.hot]).includes(needle);
 }
+
+/** ScheduleSlot 是选题卡上能挑的开拍时间。 */
+export type ScheduleSlot = "soon" | "hour" | "tonight" | "morning";
+
+/** SCHEDULE_SLOTS 按从近到远排好。 */
+export const SCHEDULE_SLOTS: ScheduleSlot[] = ["soon", "hour", "tonight", "morning"];
+
+/** localStamp 把时间写成本机时间的 YYYY-MM-DDTHH:mm。d 是要写的时间。 */
+function localStamp(d: Date) {
+  const pad = /** n 补成两位。 */ (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** scheduleWhen 把开拍时间换成服务端认的参数：十分钟后、一小时后按分钟算；今晚 8 点已经过了（或不到十分钟）就排到明晚；明早是明天 9 点。slot 是挑的时间。now 是现在。 */
+export function scheduleWhen(slot: ScheduleSlot, now = new Date()): { at?: string; delayMinutes?: number } {
+  if (slot === "soon") return { delayMinutes: 10 };
+  if (slot === "hour") return { delayMinutes: 60 };
+  const d = new Date(now);
+  d.setSeconds(0, 0);
+  if (slot === "tonight") {
+    d.setHours(20, 0);
+    if (d.getTime() - now.getTime() < 10 * 60_000) d.setDate(d.getDate() + 1);
+    return { at: localStamp(d) };
+  }
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0);
+  return { at: localStamp(d) };
+}

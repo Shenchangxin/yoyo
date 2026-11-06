@@ -23,10 +23,8 @@ export function FilmStudio(props: {
 }) {
   const copy = useCopy();
   const film = copy.video.film;
-  const [view, setView] = useState<"studio" | "comments">("studio");
   const [library, setLibrary] = useState<"source" | "tasks" | "artifacts">("source");
   const [beat, setBeat] = useState(0);
-  const [notes, setNotes] = useState<Record<number, string>>({});
   const beats = filmReading(props.mode, props.value);
   const at = Math.min(beat, Math.max(0, beats.length - 1));
   const lines = scriptOf(props.mode, props.value);
@@ -34,7 +32,7 @@ export function FilmStudio(props: {
   const watch = props.commitLabel === film.goEdit ? film.watchReady : film.watchStale;
 
   return (
-    <section className="film-studio" data-mode={props.mode} data-view={view} data-testid={props.testId} aria-label={name}>
+    <section className="film-studio" data-mode={props.mode} data-view="studio" data-testid={props.testId} aria-label={name}>
       <header className="film-studio-top">
         <p className="film-studio-title">{name}</p>
         {props.onCommit ? (
@@ -48,10 +46,6 @@ export function FilmStudio(props: {
             {props.commitLabel}
           </button>
         ) : null}
-        <div className="film-studio-views" role="tablist" aria-label={film.studioView}>
-          <button type="button" role="tab" aria-selected={view === "studio"} onClick={() => setView("studio")}>{film.studioView}</button>
-          <button type="button" role="tab" aria-selected={view === "comments"} onClick={() => setView("comments")}>{film.commentsView}</button>
-        </div>
       </header>
       <div className="film-studio-body">
         <aside className="film-studio-library">
@@ -102,44 +96,28 @@ export function FilmStudio(props: {
           {props.picture?.src ? <p className="film-kicker">{watch}</p> : null}
           {props.failed ? <p className="film-studio-empty">{props.failed}</p> : null}
         </div>
-        {view === "comments" ? (
-          <aside className="film-studio-inspector film-studio-comments">
-            <label>
-              <span>{film.noteLabel}</span>
-              <textarea
-                aria-label={film.noteLabel}
-                placeholder={film.noteHold}
-                value={notes[at] || ""}
-                onChange={/** ev 把这段话记在当前这一拍上。 */ (ev) => setNotes({ ...notes, [at]: ev.target.value })}
-              />
-            </label>
-          </aside>
-        ) : (
-          <aside className="film-studio-inspector" aria-label={film.properties}>
-            <h2>{film.properties}</h2>
-            <FilmStage
-              mode={props.mode}
-              value={props.value}
-              beat={at}
-              hideReading
-              onChange={props.onChange}
-            />
-          </aside>
-        )}
+        <aside className="film-studio-inspector" aria-label={film.properties}>
+          <h2>{film.properties}</h2>
+          <FilmStage
+            mode={props.mode}
+            value={props.value}
+            beat={at}
+            hideReading
+            onChange={props.onChange}
+          />
+        </aside>
       </div>
-      {view === "studio" ? (
-        <ol className="film-studio-timeline" aria-label={film.reading}>
-          {beats.map(/** item 是时间上的一拍。index 选中后，画面和右边的字都换成这一拍。 */ (item, index) => (
-            <li key={index}>
-              <button type="button" aria-pressed={index === at} onClick={() => setBeat(index)}>
-                {item.lines.map(/** line 拼进这一拍。lineIndex 只用来做键。 */ (line, lineIndex) => (
-                  <span key={lineIndex} data-fresh={line.fresh ? "true" : "false"}>{line.text}</span>
-                ))}
-              </button>
-            </li>
-          ))}
-        </ol>
-      ) : null}
+      <ol className="film-studio-timeline" aria-label={film.reading}>
+        {beats.map(/** item 是时间上的一拍。index 选中后，画面和右边的字都换成这一拍。 */ (item, index) => (
+          <li key={index}>
+            <button type="button" aria-pressed={index === at} onClick={() => setBeat(index)}>
+              {item.lines.map(/** line 拼进这一拍。lineIndex 只用来做键。 */ (line, lineIndex) => (
+                <span key={lineIndex} data-fresh={line.fresh ? "true" : "false"}>{line.text}</span>
+              ))}
+            </button>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

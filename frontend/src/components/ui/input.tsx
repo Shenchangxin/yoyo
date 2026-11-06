@@ -21,7 +21,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       autoComplete={autoComplete}
       spellCheck={spellCheck}
       className={cn(
-        "no-drag h-8 w-full rounded-lg border border-border bg-background px-2.5 text-[13px] text-foreground placeholder:text-muted/70",
+        "no-drag h-8 w-full rounded-lg border border-border bg-background px-2.5 text-ui-body text-foreground placeholder:text-muted/70",
         "outline-none transition-[border-color,box-shadow,background-color] duration-200 ease-[var(--ease-out)]",
         "focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20",
         "disabled:cursor-default disabled:opacity-40",
@@ -41,7 +41,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
     <textarea
       ref={ref}
       className={cn(
-        "no-drag w-full resize-none bg-transparent text-[15px] leading-6 text-foreground placeholder:text-muted",
+        "no-drag w-full resize-none bg-transparent text-ui-title-s leading-6 text-foreground placeholder:text-muted",
         "outline-none focus:outline-none focus-visible:outline-none",
         className,
       )}

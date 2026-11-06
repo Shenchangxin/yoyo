@@ -221,6 +221,59 @@ func TestOpenCutReturnsConductorLane(t *testing.T) {
 	}
 }
 
+// TestVideoRouteAttachesStudioToolsOnSameTurn 锁住指挥席调用 video_route dest=studio 之后，studio_get 就在这一轮可调用、可广告，结果里写明新挂上的工具，不必等下一轮。
+func TestVideoRouteAttachesStudioToolsOnSameTurn(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if a.Video == nil {
+		t.Skip("video engine missing")
+	}
+	sess, err := a.NewSessionOn("", session.ChannelVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := &runtime.WorkspaceTools{
+		SessionID:   sess.ID,
+		Advertised:  append([]string(nil), runtime.ChatCoreTools...),
+		ChatOverlay: true,
+	}
+	a.attachCutTools(tools, sess.ID)
+	a.attachStudioTools(tools, sess.ID)
+	a.attachConductorTools(tools, sess.ID)
+	if _, ok := tools.Extra["studio_get"]; ok {
+		t.Fatal("studio tools attached before the route")
+	}
+	res := tools.Call("video_route", `{"dest":"studio","title":"通勤穿搭"}`)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if !strings.Contains(res.Content, "studio_get") {
+		t.Fatalf("route result should name the live tools: %s", res.Content)
+	}
+	if _, ok := a.Video.StudioSessionBind(sess.ID); !ok {
+		t.Fatal("route did not bind the short")
+	}
+	advertised := false
+	for _, j := range runtime.AllToolJSON(tools) {
+		if name, _ := j.Function["name"].(string); name == "studio_get" {
+			advertised = true
+		}
+	}
+	if !advertised {
+		t.Fatal("studio_get is not advertised on the same turn")
+	}
+	got := tools.Call("studio_get", `{}`)
+	if got.Err != nil {
+		t.Fatalf("studio_get on the routed turn: %v", got.Err)
+	}
+	if !strings.Contains(got.Content, "通勤穿搭") {
+		t.Fatalf("studio_get read the wrong short: %s", got.Content)
+	}
+}
+
 // TestStudioTitleFromLegacyPrompt 锁住做成短片：后面的标题被 studioTitleFromPrompt 留下。
 func TestStudioTitleFromLegacyPrompt(t *testing.T) {
 	if got := studioTitleFromPrompt("做成短片：爱用洗衣凝珠的人天塌了"); got != "爱用洗衣凝珠的人天塌了" {

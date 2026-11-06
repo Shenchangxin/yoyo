@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { nodFor, petFace, standMood } from "./stand.ts";
+import { cueMood, nodFor, petFace, standMood } from "./stand.ts";
 
 describe("call stand", () => {
   /** 断言七种情绪保留原样，无法识别的收到平静。 */
@@ -26,5 +26,15 @@ describe("call stand", () => {
     assert.equal(petFace("listening", "sad"), "12");
     assert.equal(petFace("dialing", "calm"), "35");
     assert.equal(petFace("off", "happy"), "02");
+  });
+
+  /** 断言语气提示归到立绘情绪，和服务端同一张表；认不出时为空，立绘保持原来的心情。 */
+  it("reads her delivery cue as a mood", () => {
+    assert.equal(cueMood("shyly"), "shy");
+    assert.equal(cueMood("laughing nervously"), "happy");
+    assert.equal(cueMood("trying to hide her disappointment"), "sad");
+    assert.equal(cueMood("surprised"), "surprised");
+    assert.equal(cueMood(""), "");
+    assert.equal(cueMood("robotic"), "");
   });
 });

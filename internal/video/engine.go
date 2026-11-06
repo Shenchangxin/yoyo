@@ -62,6 +62,14 @@ type Engine struct {
 	binds    map[string]Bind
 	inflight sync.Map
 	uploads  sync.Map
+	// docLocks 按「集合/编号」放互斥锁，串行化同一份工程的读改写。长任务不在锁里跑。
+	docLocks sync.Map
+	// bindMu 串行化短剧、画布、短片和剪辑会话绑定表的读改写。
+	bindMu sync.Mutex
+	// voicePreviews 按「声音目录|声音」记住试听音频的哈希，同一个声音不重复花钱试听。
+	voicePreviews sync.Map
+	// filmBuilds 记着正在后台构建的片子编号，同一部不重复开跑。
+	filmBuilds sync.Map
 
 	filmMu      sync.Mutex
 	filmPending []string
@@ -97,6 +105,7 @@ type Engine struct {
 	ffArchive  string
 	ffErr      string
 	ffWait     chan struct{}
+	ffPushed   time.Time
 
 	rmMu      sync.Mutex
 	rmPhase   string
@@ -168,6 +177,8 @@ func OpenWith(dir string, cas Blobs, secrets Secrets, conn *connection.Registry)
 	e.ctx = ctx
 	e.cancel = cancel
 	e.resumeJobs()
+	e.recoverStudioAuto()
+	e.recoverFilmBuilds()
 	go e.loop(ctx)
 	return e, nil
 }
@@ -266,9 +277,12 @@ func (e *Engine) BindSessionDrama(sessionID, dramaID string) error {
 // putBind 把绑定写入文档并放进内存表。
 // b 按 SessionID 写入文档和内存表。
 func (e *Engine) putBind(b Bind) error {
+	e.bindMu.Lock()
 	m := e.loadBinds()
 	m[b.SessionID] = b
-	if err := e.saveBinds(m); err != nil {
+	err := e.saveBinds(m)
+	e.bindMu.Unlock()
+	if err != nil {
 		return err
 	}
 	e.mu.Lock()
@@ -284,6 +298,8 @@ func (e *Engine) ReleaseWorkshopBinds(sessionID string) {
 	if sessionID == "" {
 		return
 	}
+	e.bindMu.Lock()
+	defer e.bindMu.Unlock()
 	sm := e.loadStudioBinds()
 	if _, ok := sm[sessionID]; ok {
 		delete(sm, sessionID)

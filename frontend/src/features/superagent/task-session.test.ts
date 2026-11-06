@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Ticket } from "./desk-model.ts";
-import { taskSessionItems, type TaskLine } from "./task-session.ts";
+import { taskFiles, taskSessionItems, type TaskLine } from "./task-session.ts";
+
+describe("task files", () => {
+  /** 验收时列出的文件只来自写成功的工具回报，最近改的在前；命令行输出、失败和没改动的都不算。 */
+  it("lists what the worker actually changed, newest first", () => {
+    const lines: TaskLine[] = [
+      { id: "1", role: "tool_result", name: "write_file", text: "wrote report.md" },
+      { id: "2", role: "tool_result", name: "str_replace", text: "replaced 2 occurrence(s) in src/app.ts" },
+      { id: "3", role: "tool_result", name: "shell", text: "wrote fake.txt" },
+      { id: "4", role: "tool_result", name: "write_file", text: "wrote broken.md", error: true },
+      { id: "5", role: "tool_result", name: "write_file", text: "unchanged same.md" },
+      { id: "6", role: "tool_result", name: "write_file", text: "wrote D:\\proj\\out.html\nThis overwrote an existing page." },
+      { id: "7", role: "tool_result", name: "apply_patch", text: "updated report.md" },
+      { id: "8", role: "tool_call", name: "write_file", text: "{\"path\":\"draft.md\"}" },
+    ];
+    assert.deepEqual(taskFiles(lines), ["report.md", "D:\\proj\\out.html", "src/app.ts"]);
+  });
+});
 
 function ticket(inputs: { id: string; text: string }[]): Ticket {
   return {

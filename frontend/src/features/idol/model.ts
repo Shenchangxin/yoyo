@@ -32,9 +32,9 @@ export type Circle = { id: string; name: string };
 export type Affinity = { idol_id: string; score: number; tier: string; cooldown_until: string };
 /** Lore 是挂在某个偶像上的一条设定。 */
 export type Lore = { id: string; idol_id: string; title: string; body: string };
-/** Segment 一轮回复里的口播和字幕。 */
-export type Segment = { spoken?: string; subtitle?: string };
-/** Rec 会话里的一条记录：用户原文、分段、工作会话、礼物、照片和分数变化。 */
+/** Segment 一轮回复里的口播、字幕和语气提示。 */
+export type Segment = { spoken?: string; subtitle?: string; cue?: string };
+/** Rec 会话里的一条记录：用户原文、分段、工作会话、礼物、照片和分数变化。event 是事件的种类（gift、hung_up、ended），photo_state 为 pending 时照片还在拍，为 failed 时没发出去。 */
 export type Rec = {
   id: string;
   kind: string;
@@ -44,6 +44,8 @@ export type Rec = {
   work_session?: string;
   gift_id?: string;
   photo_id?: string;
+  photo_state?: string;
+  event?: string;
   delta?: number;
 };
 /** Conversation 一段会话及其记录。current 表示当前段，ended 表示已结束。 */
@@ -58,7 +60,7 @@ export type Conversation = {
 };
 /** History 把当前会话和过去的会话分开。 */
 export type History = { current: Conversation | null; past: Conversation[] };
-/** Snap 一次快照：偶像、圈子、好感、设定、钉住的人和头像，以及能否聊天、仅文字、电话音和能否工作。 */
+/** Snap 一次快照：偶像、圈子、好感、设定、钉住的人和头像，以及能否聊天、仅文字、电话音、能否工作和通话里能否开口打断她。 */
 export type Snap = {
   idols: Idol[];
   circles: Circle[];
@@ -70,15 +72,16 @@ export type Snap = {
   textOnly: boolean;
   phone: boolean;
   work: boolean;
+  bargeIn: boolean;
 };
 
-/** Line 是画进对话里的一行，角色是用户、偶像或事件。 */
+/** Line 是画进对话里的一行，角色是用户、偶像或事件。photo 是照片的状态：pending 还在拍，failed 没发出去。event 是事件的种类。 */
 export type Line =
   | { id: string; role: "user"; text: string; at?: string }
-  | { id: string; role: "idol"; text: string; at?: string; photo?: string; work?: string; delta?: number }
-  | { id: string; role: "event"; text: string; gift?: string; delta?: number };
+  | { id: string; role: "idol"; text: string; at?: string; photo?: string; photoState?: string; work?: string; delta?: number }
+  | { id: string; role: "event"; text: string; gift?: string; event?: string; delta?: number };
 
-/** IdolErrors 是偶像错误码对应的界面文案。 */
+/** IdolErrors 是偶像错误码对应的界面文案。tooLong 和 timedOut 可以缺，缺时退回原文。 */
 export type IdolErrors = {
   cooldown: string;
   ended: string;
@@ -90,6 +93,8 @@ export type IdolErrors = {
   paused: string;
   emptyReply: string;
   missing: string;
+  tooLong?: string;
+  timedOut?: string;
 };
 
 /** blankIdol 一份空白偶像。颜色和语言有默认，工作默认开。 */
@@ -186,6 +191,8 @@ function recOf(v: any): Rec {
     work_session: str(pick(v, "work_session", "WorkSession")),
     gift_id: str(pick(v, "gift_id", "GiftID")),
     photo_id: str(pick(v, "photo_id", "PhotoID")),
+    photo_state: str(pick(v, "photo_state", "PhotoState")),
+    event: str(pick(v, "event", "Event")),
     delta: num(pick(v, "delta", "Delta"), 0),
   };
 }
@@ -238,32 +245,41 @@ export function snapOf(v: any): Snap {
     textOnly: !!(v?.text_only ?? v?.TextOnly),
     phone: !!(v?.phone ?? v?.Phone),
     work: (v?.work ?? v?.Work) !== false,
+    bargeIn: (v?.barge_in ?? v?.BargeIn) !== false,
   };
 }
 
-/** linesOf 把记录收成对话行。事件或礼物单独成行。没有字幕、照片和工作会话的偶像轮次不出现。records 用来遍历。 */
+/** linesOf 把记录收成对话行。礼物、挂断和结束单独成事件行；照片还在拍或没发出去时带上状态。没有字幕、照片和工作会话的偶像轮次不出现。 */
 export function linesOf(records: Rec[]): Line[] {
   const out: Line[] = [];
   for (const r of records) {
     const text = (r.segments || []).map((s) => (s.subtitle || s.spoken || "").trim()).filter(Boolean).join("\n");
     if (r.user) out.push({ id: `${r.id}:u`, role: "user", text: r.user, at: r.at });
     if (r.kind === "event" || r.gift_id) {
-      if (text || r.gift_id) out.push({ id: r.id, role: "event", text: text || r.gift_id || "", gift: r.gift_id, delta: r.delta });
+      const event = r.event || (r.gift_id ? "gift" : "");
+      if (text || r.gift_id || event) out.push({ id: r.id, role: "event", text: text || r.gift_id || "", gift: r.gift_id, event, delta: r.delta });
       continue;
     }
-    if (text || r.photo_id || r.work_session) {
+    const photoState = r.photo_state === "pending" || r.photo_state === "failed" ? r.photo_state : undefined;
+    if (text || r.photo_id || r.work_session || photoState) {
       out.push({
         id: r.id,
         role: "idol",
         text,
         at: r.at,
         photo: r.photo_id || undefined,
+        photoState,
         work: r.work_session || undefined,
         delta: r.delta || undefined,
       });
     }
   }
   return out;
+}
+
+/** pendingPhotos 返回还在拍照的那些记录 id，界面等它们拍完再刷新。 */
+export function pendingPhotos(records: Rec[]): string[] {
+  return records.filter((r) => r.photo_state === "pending").map((r) => r.id);
 }
 
 /** groupIdols 按圈子分组可见偶像。钉住的排在组内和组间前面。没有圈子或圈子不存在的归到无名组。idols 做过滤。circles 做映射。 */
@@ -353,7 +369,21 @@ export function idolError(err: unknown, copy: IdolErrors): string {
   if (low.includes("paused")) return copy.paused;
   if (low.includes("empty reply") || low === "empty" || low.endsWith(": empty")) return copy.emptyReply;
   if (low.includes("idol not found")) return copy.missing;
+  if (low.includes("too long") && copy.tooLong) return copy.tooLong;
+  if ((low.includes("timed out") || low.includes("deadline exceeded")) && copy.timedOut) return copy.timedOut;
   return msg.replace(/^\/api\/idol:\s*/i, "") || copy.emptyReply;
+}
+
+/** tierProgress 是分数在它这一档里走了多少（0 到 1），给好感条用。档位起点和服务端一致：0、20、40、65、85。 */
+export function tierProgress(score: number): number {
+  const starts = [0, 20, 40, 65, 85, 100];
+  const s = Math.max(0, Math.min(100, Number.isFinite(score) ? score : 50));
+  for (let i = 0; i < starts.length - 1; i++) {
+    if (s < starts[i + 1] || i === starts.length - 2) {
+      return Math.max(0, Math.min(1, (s - starts[i]) / (starts[i + 1] - starts[i])));
+    }
+  }
+  return 1;
 }
 
 /** achievementLabel 亲密和亲近成就套上名字，其余查表，没有则用 id。names 按下标读取。ach 按下标读取。closeTpl 做替换。intimateTpl 做替换。 */

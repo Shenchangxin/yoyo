@@ -46,12 +46,12 @@ export function FormDialog(props: {
         role="dialog"
         aria-modal="true"
         aria-labelledby="yoyo-form-title"
-        className="dialog-sheet max-h-[min(640px,calc(100%-2rem))] w-[min(440px,calc(100%-2rem))] overflow-y-auto rounded-2xl border border-border bg-popover p-6 shadow-[var(--shadow-popover)]"
+        className="dialog-sheet max-h-[min(640px,calc(100%-2rem))] w-[min(440px,calc(100%-2rem))] overflow-y-auto rounded-xl border border-border bg-popover p-6 shadow-[var(--shadow-popover)]"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <h2 id="yoyo-form-title" className="text-[15px] font-semibold">{props.title}</h2>
-        {props.description ? <p className="text-[13px] leading-[1.55] text-muted">{props.description}</p> : null}
+        <h2 id="yoyo-form-title" className="text-ui-title-s font-semibold">{props.title}</h2>
+        {props.description ? <p className="text-ui-body leading-[1.55] text-muted">{props.description}</p> : null}
         {props.children}
       </div>
     </div>,

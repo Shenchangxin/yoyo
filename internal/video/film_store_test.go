@@ -5,6 +5,7 @@ package video
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/video/film"
 )
@@ -120,6 +121,38 @@ func TestForkLeavesTheOriginalAndLanguageWaitsForChat(t *testing.T) {
 	}
 	if !strings.Contains(film.LineTexts(noted)[0].Text, "剪辑台") {
 		t.Fatal(film.LineTexts(noted))
+	}
+}
+
+// TestStartFilmBuildRunsInBackground 确认后台构建马上返回带标记的工程，做完清掉标记；没有 ffmpeg 时备注写明为什么只有静帧。
+func TestStartFilmBuildRunsInBackground(t *testing.T) {
+	e := testEngine(t)
+	e.FFMPEG = ""
+	p, err := e.DescribeFilm("podcast", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := e.StartFilmBuild(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Building == "" {
+		t.Fatal("build should be marked")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var got film.Project
+	for {
+		got, _ = e.GetFilm(p.ID)
+		if got.Building == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("build never finished")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(got.Note, "ffmpeg") {
+		t.Fatalf("note should explain the missing ffmpeg: %q", got.Note)
 	}
 }
 

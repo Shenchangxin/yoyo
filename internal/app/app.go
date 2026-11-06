@@ -27,6 +27,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/idol"
 	"github.com/Shenchangxin/yoyo/internal/im"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
+	"github.com/Shenchangxin/yoyo/internal/initiative"
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/learn"
@@ -113,6 +114,7 @@ type Config struct {
 	Skills               SkillsConfig        `yaml:"skills,omitempty" json:"skills,omitempty"`
 	Log                  LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
 	Paused               bool                `yaml:"paused" json:"paused"`
+	Desk                 DeskConfig          `yaml:"desk,omitempty" json:"desk,omitempty"`
 }
 
 // SkillsConfig 是技能自动调用的可选设置。AutoInvoke 取 off、hint 或 on，默认 on。
@@ -166,6 +168,17 @@ type App struct {
 	briefBusy   bool
 
 	reachMu sync.Mutex
+
+	bookMu     sync.Mutex
+	book       *initiative.Store
+	deskOnce   sync.Once
+	deskStop   chan struct{}
+	deskSeen   initiative.Briefing
+	deskSeenAt time.Time
+
+	// words 是每条主会话里当事人最近亲手写的几句话。路由记忆时拿它核对：不出自这几句的，不算当事人说的。
+	wordsMu sync.Mutex
+	words   map[string][]string
 
 	shapeMu   sync.Mutex
 	lastShape map[string]runtime.ShapeReport
@@ -680,6 +693,7 @@ func (a *App) SaveConfig() error {
 // Close 停掉调度和更新循环，关闭视频、MCP、WASM 和日志，再卸下内核。
 func (a *App) Close() error {
 	a.stopOrchestrator()
+	a.stopDeskLoop()
 	if a.schedStop != nil {
 		select {
 		case <-a.schedStop:

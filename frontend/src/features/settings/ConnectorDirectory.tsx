@@ -68,7 +68,7 @@ export function ConnectorDirectory(props: {
           onChange={(event) => setQuery(event.target.value)}
           placeholder={copy.settings.appsSearch}
           aria-label={copy.settings.appsSearch}
-          className="h-8 w-40 rounded-full border border-border bg-background px-3 text-[12px] outline-none"
+          className="h-8 w-40 rounded-full border border-border bg-background px-3 text-ui-footnote outline-none"
         />
       </div>
       <div role="tablist" aria-label={copy.settings.appsTitle} className="mt-3 flex flex-wrap gap-1">
@@ -78,7 +78,7 @@ export function ConnectorDirectory(props: {
             type="button"
             role="tab"
             aria-selected={tab === item}
-            className={cn("h-7 rounded-full px-3 text-[12px]", tab === item ? "bg-foreground text-background" : "text-muted hover:text-foreground")}
+            className={cn("h-7 rounded-full px-3 text-ui-footnote", tab === item ? "bg-foreground text-background" : "text-muted hover:text-foreground")}
             onClick={() => setTab(item)}
           >
             {item === current ? copy.settings.appsCurrent.replace("{name}", names[item]) : names[item]}
@@ -95,14 +95,14 @@ export function ConnectorDirectory(props: {
             <button
               key={row.provider}
               type="button"
-              className="flex min-w-0 items-start justify-between gap-3 rounded-[16px] border border-border bg-background px-3 py-3 text-left hover:border-foreground/20"
+              className="flex min-w-0 items-start justify-between gap-3 rounded-xl border border-border bg-background px-3 py-3 text-left hover:border-foreground/20"
               onClick={() => props.onPick(row)}
             >
               <span className="min-w-0">
-                <span className="block truncate text-[13px] font-medium">{connectorName(row.provider, row.label, locale)}</span>
-                <span className="mt-1 block text-[12px] leading-5 text-muted">{blurb}</span>
+                <span className="block truncate text-ui-body font-medium">{connectorName(row.provider, row.label, locale)}</span>
+                <span className="mt-1 block text-ui-footnote leading-5 text-muted">{blurb}</span>
               </span>
-              <span className="max-w-16 shrink-0 text-right text-[11px] leading-4 text-muted">{here ? copy.settings.appsThisMachine : on ? copy.rail.connected : "+"}</span>
+              <span className="max-w-16 shrink-0 text-right text-ui-caption leading-4 text-muted">{here ? copy.settings.appsThisMachine : on ? copy.rail.connected : "+"}</span>
             </button>
           );
         })}

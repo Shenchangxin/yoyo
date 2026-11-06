@@ -20,7 +20,7 @@ export function SessionHeader(props: {
   return (
     <div className="flex h-9 shrink-0 items-center gap-3 border-b border-border/40 px-4" data-testid="session-header">
       {props.crumb || props.trail ? (
-        <span className="flex min-w-0 items-center gap-1 text-[12px] text-muted">
+        <span className="flex min-w-0 items-center gap-1 text-ui-footnote text-muted">
           {props.crumb ? (
             <span className="min-w-0 truncate" title={props.crumb}>{props.crumb}</span>
           ) : null}
@@ -33,7 +33,7 @@ export function SessionHeader(props: {
       <div className="ml-auto flex items-center gap-0.5 rounded-lg bg-lift/70 p-0.5">
         <button
           type="button"
-          className={cn("h-6 rounded-md px-2 text-[11px] font-medium", props.view === "chat" ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground")}
+          className={cn("h-6 rounded-md px-2 text-ui-caption font-medium", props.view === "chat" ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground")}
           aria-pressed={props.view === "chat"}
           data-testid="session-view-chat"
           onClick={() => props.onView("chat")}
@@ -42,7 +42,7 @@ export function SessionHeader(props: {
         </button>
         <button
           type="button"
-          className={cn("h-6 rounded-md px-2 text-[11px] font-medium", props.view === "trajectory" ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground")}
+          className={cn("h-6 rounded-md px-2 text-ui-caption font-medium", props.view === "trajectory" ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground")}
           aria-pressed={props.view === "trajectory"}
           data-testid="session-view-trajectory"
           onClick={() => props.onView("trajectory")}

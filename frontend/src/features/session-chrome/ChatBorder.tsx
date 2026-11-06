@@ -1,5 +1,6 @@
 /**
  * 拥有：对话输入框外圈的电流。颜色读文档根上的 --accent，明暗跟当前主题。
+ * 电流只表示"正在干活"：调用方在运行时传 active。窗口失焦 30 秒后停下，回到窗口再接上。
  * 不拥有：框里的草稿和发送。WebGL 起不来时只留下原来的输入框。
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -8,6 +9,31 @@ import { useTheme } from "../../lib/theme";
 
 const PAD = 3;
 const FALLBACK = { dark: "#5c99d6", light: "#0169cc" };
+const IDLE_AFTER_BLUR_MS = 30_000;
+
+/** 窗口在前台，或者离开还不到 30 秒。 */
+function useWindowAttention(): boolean {
+  const [attentive, setAttentive] = useState(true);
+  useEffect(() => {
+    let timer = 0;
+    const onFocus = () => {
+      window.clearTimeout(timer);
+      setAttentive(true);
+    };
+    const onBlur = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setAttentive(false), IDLE_AFTER_BLUR_MS);
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+  return attentive;
+}
 
 /** 读文档根上的强调色。皮肤和调色板改到根上，这里跟着变。 */
 function useAccent(fallback: string) {
@@ -59,7 +85,7 @@ function useCorner(explicit: number | undefined) {
   return { fitRef, radius };
 }
 
-/** ChatBorder 包住一个对话输入框。tone 只在画面本身是暗的（通话层）时盖过页面主题。 */
+/** ChatBorder 包住一个对话输入框。active 为假时只剩输入框自己的细线。tone 只在画面本身是暗的（通话层）时盖过页面主题。 */
 export function ChatBorder(props: {
   children: ReactNode;
   active?: boolean;
@@ -71,6 +97,7 @@ export function ChatBorder(props: {
   const light = (props.tone ?? resolved) === "light";
   const color = useAccent(light ? FALLBACK.light : FALLBACK.dark);
   const { fitRef, radius } = useCorner(props.radius);
+  const attentive = useWindowAttention();
   return (
     <ElectricBorder
       className={props.className || ""}
@@ -87,7 +114,7 @@ export function ChatBorder(props: {
       arcs={0.35}
       flicker={0.25}
       offset={2}
-      active={props.active ?? true}
+      active={!!props.active && attentive}
       intro
       interactive
       cursorRadius={72}

@@ -82,7 +82,7 @@ export function Inspector(props: {
               aria-label={t.count ? `${t.label} ${t.count}` : t.label}
               title={t.label}
               className={cn(
-                "relative flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-1.5 text-[12px] font-medium transition-colors duration-200 ease-[var(--ease-out)]",
+                "relative flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-1.5 text-ui-footnote font-medium transition-colors duration-200 ease-[var(--ease-out)]",
                 on ? "text-foreground" : "text-muted hover:text-foreground",
               )}
               onClick={() => props.onTab(t.id)}
@@ -90,7 +90,7 @@ export function Inspector(props: {
               <Icon className="size-3.5 shrink-0" aria-hidden />
               <span className="truncate">{t.label}</span>
               {t.count ? (
-                <span className={cn("tabular-nums text-[11px]", on ? "text-muted" : "text-muted/70")}>{t.count}</span>
+                <span className={cn("tabular-nums text-ui-caption", on ? "text-muted" : "text-muted/70")}>{t.count}</span>
               ) : null}
               <span
                 className={cn(
@@ -137,8 +137,8 @@ export function PaneEmpty({ title, hint, icon }: { title: string; hint?: string;
   return (
     <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center">
       {icon ? <span className="mark-well mb-3 text-muted" aria-hidden>{icon}</span> : null}
-      <p className="text-[13px] font-medium text-foreground/85">{title}</p>
-      {hint ? <p className="mt-1 max-w-[22rem] text-[12px] leading-[1.55] text-muted">{hint}</p> : null}
+      <p className="text-ui-body font-medium text-foreground/85">{title}</p>
+      {hint ? <p className="mt-1 max-w-[22rem] text-ui-footnote leading-[1.55] text-muted">{hint}</p> : null}
     </div>
   );
 }
@@ -168,7 +168,7 @@ function TextAction({ children, onClick, tone }: { children: ReactNode; onClick:
     <button
       type="button"
       className={cn(
-        "h-6 rounded-md px-2 text-[11px] font-medium transition-colors",
+        "h-6 rounded-md px-2 text-ui-caption font-medium transition-colors",
         tone === "primary" && "bg-foreground text-background hover:opacity-90",
         tone === "danger" && "text-muted hover:bg-danger/10 hover:text-danger",
         (!tone || tone === "ghost") && "text-muted hover:bg-lift hover:text-foreground",
@@ -281,7 +281,7 @@ function FilesPane(props: FilesPaneProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="review-files">
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 pl-3 pr-1.5 text-[12px] text-muted">
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 pl-3 pr-1.5 text-ui-footnote text-muted">
         <span className="min-w-0 flex-1 truncate tabular-nums">
           {shown
             ? shown.replace(/\\/g, "/").split("/").pop()
@@ -290,7 +290,7 @@ function FilesPane(props: FilesPaneProps) {
               : copy.review.files}
         </span>
         {mark ? (
-          <span className={cn("shrink-0 font-mono text-[10px] font-semibold", mark === "A" ? "text-emerald-500" : mark === "D" ? "text-red-400" : "text-amber-500")}>
+          <span className={cn("shrink-0 font-mono text-ui-badge font-semibold", mark === "A" ? "text-emerald-500" : mark === "D" ? "text-red-400" : "text-amber-500")}>
             {mark}
           </span>
         ) : null}

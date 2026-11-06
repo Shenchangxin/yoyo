@@ -112,9 +112,9 @@ const EFFECTS: Record<"fade" | "blur" | "rise", Effect> = {
 };
 
 const SHAPES: Record<"bar" | "block" | "underscore", string> = {
-  bar: "ml-[0.06em] inline-block h-[1.1em] w-[max(2px,0.07em)] rounded-[1px] bg-current align-[-0.2em]",
+  bar: "ml-[0.06em] inline-block h-[1.1em] w-[max(2px,0.07em)] rounded-full bg-current align-[-0.2em]",
   block: "ml-[0.06em] inline-block h-[1.1em] w-[0.56em] rounded-[0.06em] bg-current align-[-0.2em]",
-  underscore: "ml-[0.06em] inline-block h-[max(2px,0.075em)] w-[0.56em] rounded-[1px] bg-current align-[-0.12em]",
+  underscore: "ml-[0.06em] inline-block h-[max(2px,0.075em)] w-[0.56em] rounded-full bg-current align-[-0.12em]",
 };
 
 type GraphemeSegmenter = { segment: (input: string) => Iterable<{ segment: string }> };

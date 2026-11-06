@@ -30,15 +30,15 @@ func (e *Engine) StartStudioAuto(id string) (StudioProject, error) {
 	if _, loaded := e.inflight.LoadOrStore(key, true); loaded {
 		return e.GetStudioProject(id)
 	}
-	p, err := e.GetStudioProject(id)
-	if err != nil {
-		e.inflight.Delete(key)
-		return StudioProject{}, err
-	}
-	p.AutoPhase = "script"
-	p.AutoError = ""
-	e.noteStudio(&p, "auto", "started")
-	saved, err := e.saveStudio(p)
+	saved, err := e.mutateStudio(id, func(p *StudioProject) error {
+		if p.Task != nil && p.Task.Kind != "" {
+			return fmt.Errorf("这条短片正在%s，等它做完再一键成片", studioTaskLabel[p.Task.Kind])
+		}
+		p.AutoPhase = "script"
+		p.AutoError = ""
+		e.noteStudio(p, "auto", "started")
+		return nil
+	})
 	if err != nil {
 		e.inflight.Delete(key)
 		return StudioProject{}, err
@@ -62,11 +62,10 @@ func (e *Engine) runStudioAuto(id string) {
 	}
 	e.markAuto(id, "voice")
 	if _, err := e.SpeakStudio(id, ""); err != nil {
-		p, gerr := e.GetStudioProject(id)
-		if gerr == nil {
-			e.warnStudio(&p, GateAudio, "配音没成功，这一版先不配音。"+err.Error())
-			_, _ = e.saveStudio(p)
-		}
+		_, _ = e.mutateStudio(id, func(p *StudioProject) error {
+			e.warnStudio(p, GateAudio, "配音没成功，这一版先不配音。"+err.Error())
+			return nil
+		})
 		if _, serr := e.SkipStudioAudio(id); serr != nil {
 			e.finishAuto(id, "failed", err.Error())
 			return
@@ -78,6 +77,7 @@ func (e *Engine) runStudioAuto(id string) {
 		return
 	}
 	e.markAuto(id, "compose")
+	e.autoStudioBGM(id)
 	if _, err := e.AssembleStudio(id); err != nil {
 		e.finishAuto(id, "failed", err.Error())
 		return
@@ -92,62 +92,18 @@ func (e *Engine) autoScript(id string) error {
 	if err != nil {
 		return err
 	}
+	drafted := ""
 	if strings.TrimSpace(p.Script) == "" {
 		text, derr := e.draftStudioScript(p)
 		if derr != nil {
 			return derr
 		}
-		p.Script = text
-		p.ScriptStatus = ScriptNeedsReview
+		drafted = text
 	}
-	e.syncShotsToScript(&p)
-	if _, err := e.saveStudio(p); err != nil {
-		return err
-	}
-	if _, err := e.ApproveStudioScript(id); err != nil {
+	if _, err := e.ApproveStudioScriptText(id, drafted); err != nil {
 		return fmt.Errorf("口播还锁不上：%s", err.Error())
 	}
 	return nil
-}
-
-// syncShotsToScript 按口播重写分段和镜头。字幕对得上、且原来有图或视频的镜头，会把画面、运镜和过期标记抄回来。第一段写成钩子，最后一段写成收束。
-func (e *Engine) syncShotsToScript(p *StudioProject) {
-	if p == nil || strings.TrimSpace(p.Script) == "" {
-		return
-	}
-	old := p.Storyboard.Shots
-	p.Segments = parseSpokenSegments(p.Script, p.TargetDuration)
-	next := shotsFromSegments(p.Segments)
-	for i := range next {
-		for _, o := range old {
-			if strings.TrimSpace(o.Caption) != strings.TrimSpace(next[i].Caption) {
-				continue
-			}
-			if o.ImageHash == "" && o.VideoHash == "" {
-				continue
-			}
-			next[i].ImageHash = o.ImageHash
-			next[i].VideoHash = o.VideoHash
-			next[i].Motion = firstNonEmpty(o.Motion, next[i].Motion)
-			next[i].Fit = o.Fit
-			next[i].Stale = o.Stale
-			if strings.TrimSpace(o.Visual) != "" {
-				next[i].Visual = o.Visual
-			}
-			if strings.TrimSpace(o.Prompt) != "" {
-				next[i].Prompt = o.Prompt
-			}
-			break
-		}
-	}
-	p.Storyboard.Shots = next
-	if p.Storyboard.ImageMotion == "" {
-		p.Storyboard.ImageMotion = "ken-burns"
-	}
-	if len(p.Segments) > 0 {
-		p.Hook = p.Segments[0].Narration
-		p.CTA = p.Segments[len(p.Segments)-1].Narration
-	}
 }
 
 // autoVisuals 给缺画面的镜头排队生图，然后等到它们回来。画面已经齐就直接返回。排队失败且一镜都没有时返回错误。
@@ -370,13 +326,12 @@ func (e *Engine) chatComplete(endpoint, key, model, system, user string) (string
 // id 传给 GetStudioProject。
 // phase 写入 AutoPhase。
 func (e *Engine) markAuto(id, phase string) {
-	p, err := e.GetStudioProject(id)
-	if err != nil {
-		return
-	}
-	p.AutoPhase = phase
-	p.AutoError = ""
-	_, _ = e.saveStudio(p)
+	p, _ := e.mutateStudio(id, func(p *StudioProject) error {
+		p.AutoPhase = phase
+		p.AutoError = ""
+		return nil
+	})
+	e.emitStudio(p)
 }
 
 // finishAuto 写下结束阶段。成功时先打交付包，包打不上就记警告，阶段仍是 done，闸门改到交付。挂了选题且已有成片时，把选题标成完成。失败时只记下原因。
@@ -390,26 +345,29 @@ func (e *Engine) finishAuto(id, phase, errMsg string) {
 			packErr = fmt.Errorf("成片好了，交付包没打上：%s", packErr.Error())
 		}
 	}
-	p, err := e.GetStudioProject(id)
-	if err != nil {
-		return
-	}
-	p.AutoPhase = phase
-	p.AutoError = errMsg
-	if errMsg != "" {
-		e.noteStudio(&p, "auto", errMsg)
-	} else {
-		e.noteStudio(&p, "auto", "ready")
+	topicDone := ""
+	finished, _ := e.mutateStudio(id, func(p *StudioProject) error {
+		p.AutoPhase = phase
+		p.AutoError = errMsg
+		if errMsg != "" {
+			e.noteStudio(p, "auto", errMsg)
+			return nil
+		}
+		e.noteStudio(p, "auto", "ready")
 		p.Gate = GateDelivery
 		if packErr != nil {
-			e.warnStudio(&p, GateDelivery, packErr.Error())
+			e.warnStudio(p, GateDelivery, packErr.Error())
 		}
 		if p.TopicID != "" && p.ResultHash != "" {
-			if t, terr := e.GetTopic(p.TopicID); terr == nil {
-				t.Status = TopicDone
-				_, _ = e.SaveTopic(t)
-			}
+			topicDone = p.TopicID
+		}
+		return nil
+	})
+	e.emitStudio(finished)
+	if topicDone != "" {
+		if t, terr := e.GetTopic(topicDone); terr == nil {
+			t.Status = TopicDone
+			_, _ = e.SaveTopic(t)
 		}
 	}
-	_, _ = e.saveStudio(p)
 }

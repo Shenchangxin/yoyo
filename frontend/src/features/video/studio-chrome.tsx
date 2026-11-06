@@ -35,7 +35,7 @@ export function CreateShortField(props: {
 
   return (
     <form className="flex flex-col gap-1.5" onSubmit={go} data-testid={`${props.testId}-form`}>
-      {props.hint ? <p className="text-[12px] leading-[1.45] text-muted">{props.hint}</p> : null}
+      {props.hint ? <p className="text-ui-footnote leading-[1.45] text-muted">{props.hint}</p> : null}
       <div className="flex gap-2">
         <Input
           className="h-8 min-w-0 flex-1"
@@ -69,32 +69,31 @@ export function StudioIdChip(props: {
     if (ok) toast.success(props.copiedLabel);
   }
   if (!props.projectId) return null;
+  // 编号只给排查问题时复制用，平时不摊在标题下面；完整编号放在悬停提示里。
   return (
-    <div className="flex min-w-0 flex-col gap-0.5" data-testid="studio-id-chip">
+    <div className="flex min-w-0 flex-wrap items-center gap-1" data-testid="studio-id-chip">
       <button
         type="button"
-        className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left hover:bg-lift/70"
-        title={props.inspectHint}
+        className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-ui-caption text-muted hover:bg-lift/70 hover:text-foreground"
+        title={`${props.inspectHint}\n${props.projectId}`}
         aria-label={props.copyLabel}
         data-testid="studio-copy-id"
         onClick={() => void copy(props.projectId)}
       >
-        <span className="shrink-0 text-[11px] text-muted">{props.projectLabel}</span>
-        <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">{props.projectId}</code>
         <Copy className="size-3 shrink-0 opacity-60" aria-hidden />
+        {props.projectLabel}
       </button>
       {props.sessionId ? (
         <button
           type="button"
-          className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left hover:bg-lift/70"
-          title={props.inspectHint}
+          className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-ui-caption text-muted hover:bg-lift/70 hover:text-foreground"
+          title={`${props.inspectHint}\n${props.sessionId}`}
           aria-label={props.sessionLabel}
           data-testid="studio-copy-session"
           onClick={() => void copy(props.sessionId || "")}
         >
-          <span className="shrink-0 text-[11px] text-muted">{props.sessionLabel}</span>
-          <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">{props.sessionId}</code>
           <Copy className="size-3 shrink-0 opacity-60" aria-hidden />
+          {props.sessionLabel}
         </button>
       ) : null}
     </div>
@@ -117,7 +116,7 @@ export function TopicScoreSheet(props: {
     <div className="mt-1.5">
       <button
         type="button"
-        className="flex w-full items-center gap-2 rounded-md py-0.5 text-left text-[12px] text-muted hover:text-foreground"
+        className="flex w-full items-center gap-2 rounded-md py-0.5 text-left text-ui-footnote text-muted hover:text-foreground"
         aria-expanded={open}
         data-testid="studio-topic-scores"
         onClick={() => setOpen(/** v 取反。 */ (v) => !v)}
@@ -132,12 +131,12 @@ export function TopicScoreSheet(props: {
       </button>
       {open ? (
         <div className="mt-1.5 space-y-1">
-          <p className="text-[11px] leading-[1.45] text-muted">{props.hint}</p>
+          <p className="text-ui-caption leading-[1.45] text-muted">{props.hint}</p>
           {SCORE_KEYS.map(/** key 取当前分和标签。 */ (key) => {
             const n = props.scores?.[key] || 0;
             return (
               <div key={key} className="flex items-center gap-2" data-testid={`studio-topic-score-${key}`}>
-                <span className="w-[4.5rem] shrink-0 text-[12px] text-muted">{props.labels[key]}</span>
+                <span className="w-[4.5rem] shrink-0 text-ui-footnote text-muted">{props.labels[key]}</span>
                 <div className="flex gap-0.5" role="radiogroup" aria-label={props.labels[key]}>
                   {[1, 2, 3, 4, 5].map(/** tick 和当前分比较，点了就连同 key 交给 onChange。 */ (tick) => {
                     const on = n === tick;
@@ -150,7 +149,7 @@ export function TopicScoreSheet(props: {
                         disabled={props.disabled}
                         data-testid={`studio-topic-score-${key}-${tick}`}
                         className={cn(
-                          "grid size-6 place-items-center rounded-md text-[11px] tabular-nums",
+                          "grid size-6 place-items-center rounded-md text-ui-caption tabular-nums",
                           on ? "bg-foreground text-background" : "text-muted hover:bg-lift/70 hover:text-foreground",
                         )}
                         onClick={() => props.onChange(setScore(props.scores, key, tick))}

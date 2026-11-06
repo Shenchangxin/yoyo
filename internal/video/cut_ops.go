@@ -1,9 +1,13 @@
-// cut_ops.go 对剪辑工程做摄入、拆条、混音、字幕、配音和路由。
+// cut_ops.go 对剪辑工程做摄入、拆条、字幕、配音和路由，并按配方从源片渲染成片。
+// 成片不在上一版成片上叠加：剪辑表、调色、原声增强、烧字幕和混音都记在工程上，每次从源片重做。ffmpeg 和网络调用都在工程锁外做，做完再在锁里写结果。
 
 package video
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,8 +20,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
-// CutIngest 把源哈希写入工程。标识为空时新建。能出封面就写入。场景分析留到后面，这里先读时长，避免桌面把 0 秒当成导入失败。
-// id 去掉空白后为空时用 title 和 hash 调用 CreateCutProject，否则传给 GetCutProject。
+// CutIngest 把源哈希写入工程。标识为空时新建。能出封面就写入。场景分析留到后面，这里先读时长，避免桌面把 0 秒当成导入失败。换了源片时，旧的成片、片段和剪辑表一起清掉。封面和时长在锁外读。
+// id 去掉空白后为空时用 title 和 hash 调用 CreateCutProject，否则按它读取工程。
 // hash 去掉空白后为空则返回 source hash required，否则写入 SourceHash 和 Stems.Original，并传给 posterFromHash 和 probeCutDuration。
 // title 非空时写入 Title；新建工程时也传给 CreateCutProject。
 func (e *Engine) CutIngest(id, hash, title string) (CutProject, error) {
@@ -25,48 +29,50 @@ func (e *Engine) CutIngest(id, hash, title string) (CutProject, error) {
 	if hash == "" {
 		return CutProject{}, fmt.Errorf("source hash required")
 	}
-	var p CutProject
-	var err error
 	if strings.TrimSpace(id) == "" {
-		p, err = e.CreateCutProject(CutProject{Title: title, SourceHash: hash})
-	} else {
-		p, err = e.GetCutProject(id)
-	}
-	if err != nil {
+		p, err := e.CreateCutProject(CutProject{Title: title, SourceHash: hash})
+		if err != nil {
+			return CutProject{}, err
+		}
+		id = p.ID
+	} else if _, err := e.GetCutProject(id); err != nil {
 		return CutProject{}, err
 	}
-	p.SourceHash = hash
-	p.Stems.Original = hash
-	if title != "" {
-		p.Title = title
-	}
-	if poster, perr := e.posterFromHash(hash); perr == nil {
-		p.PosterHash = poster
-	}
-	if d := e.probeCutDuration(hash); d > 0 {
-		p.Duration = d
-	}
-	return e.saveCut(p)
+	poster, _ := e.posterFromHash(hash)
+	dur := e.probeCutDuration(hash)
+	return e.mutateCut(id, func(p *CutProject) error {
+		if p.SourceHash != "" && p.SourceHash != hash {
+			p.ResultHash = ""
+			p.Stale = false
+			p.UseCuts = false
+			p.Breakdown = cut.Breakdown{}
+			p.EditList = cut.EditList{}
+		}
+		p.SourceHash = hash
+		p.Stems.Original = hash
+		if title != "" {
+			p.Title = title
+		}
+		if poster != "" {
+			p.PosterHash = poster
+		}
+		if dur > 0 {
+			p.Duration = dur
+		}
+		return nil
+	})
 }
 
-// probeCutDuration 先读内容寻址文件，没有文件时再物化一份。优先用 probeDurationFast。文件超过 64 MiB 就不再跑 ffmpeg -i。时长不在 0 到 24 小时之间时返回 0。
-// hash 传给 casFile，没有文件时再传给 materialize；文件大于 64<<20，或时长小于等于 0、大于 24*60*60 时返回 0。
+// probeCutDuration 读源片时长。内容库有磁盘文件就直接探，不再抄一份。先用 ffprobe，没有就解析 ffmpeg -i 的 Duration 行；后者只读文件头，大文件也快。时长不在 0 到 24 小时之间时返回 0。
+// hash 传给 mediaPath。
 func (e *Engine) probeCutDuration(hash string) float64 {
-	path := e.casFile(hash)
-	if path == "" {
-		src, err := e.materialize(hash, ".mp4")
-		if err != nil {
-			return 0
-		}
-		defer os.Remove(src)
-		path = src
+	path, cleanup, err := e.mediaPath(hash, ".mp4")
+	if err != nil {
+		return 0
 	}
+	defer cleanup()
 	if d := e.probeDurationFast(path); d > 0 {
 		return d
-	}
-	st, err := os.Stat(path)
-	if err != nil || st.Size() > 64<<20 {
-		return 0
 	}
 	d, err := e.cutBin().Duration(path)
 	if err != nil || d <= 0 || d > 24*60*60 {
@@ -75,14 +81,11 @@ func (e *Engine) probeCutDuration(hash string) float64 {
 	return d
 }
 
-// probeDurationFast 用 ffprobe，没有就用 ffmpeg，6 秒超时读取 format duration。
-// path 作为 ffprobe 或 ffmpeg 命令的最后一个参数；读出的时长小于等于 0 或大于 24*60*60 时返回 0。
+// probeDurationFast 用单独的 ffprobe 在 6 秒内读 format duration。没有 ffprobe 时返回 0，交给 ffmpeg -i 去解析。
+// path 作为 ffprobe 的最后一个参数；读出的时长小于等于 0 或大于 24*60*60 时返回 0。
 func (e *Engine) probeDurationFast(path string) float64 {
 	bin := strings.TrimSpace(e.FFProbe)
-	if bin == "" {
-		bin = strings.TrimSpace(e.FFMPEG)
-	}
-	if bin == "" {
+	if bin == "" || strings.Contains(strings.ToLower(filepath.Base(bin)), "ffmpeg") {
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
@@ -103,35 +106,90 @@ func (e *Engine) probeDurationFast(path string) float64 {
 	return d
 }
 
-// CutAnalyze 确保 ffmpeg 后对源片做场景分析，并写回时长和拆解。
-// id 传给 GetCutProject。
+// mediaSeconds 读一份媒体的秒数。读不出时返回 0。
+// hash 传给 mediaPath。
+func (e *Engine) mediaSeconds(hash string) float64 {
+	path, cleanup, err := e.mediaPath(hash, ".bin")
+	if err != nil {
+		return 0
+	}
+	defer cleanup()
+	if d := e.probeDurationFast(path); d > 0 {
+		return d
+	}
+	d, _ := e.cutBin().Duration(path)
+	return d
+}
+
+// mediaPath 返回能交给 ffmpeg 读的文件。内容库有磁盘文件就直接用，不再抄一份；只在内存里时写成临时文件，由 cleanup 删掉。
+// hash 传给 casFile，没有磁盘文件时再传给 materialize。
+// ext 是临时文件的后缀。
+func (e *Engine) mediaPath(hash, ext string) (string, func(), error) {
+	if path := e.casFile(hash); path != "" {
+		return path, func() {}, nil
+	}
+	tmp, err := e.materialize(hash, ext)
+	if err != nil {
+		return "", func() {}, err
+	}
+	return tmp, func() { _ = os.Remove(tmp) }, nil
+}
+
+// runCtx 返回引擎的上下文，引擎关闭时跟着取消。没有时用 Background。
+func (e *Engine) runCtx() context.Context {
+	if e.ctx != nil {
+		return e.ctx
+	}
+	return context.Background()
+}
+
+// CutAnalyze 确保 ffmpeg 后对源片做场景和静音分析，写回时长和拆解。已经切出的片段留着。分析在锁外做。
+// id 传给 GetCutProject 和 mutateCut。
 func (e *Engine) CutAnalyze(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
 		return CutProject{}, err
 	}
-	if p.SourceHash == "" {
-		return p, fmt.Errorf("ingest a source first")
-	}
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
-		return p, err
-	}
-	src, err := e.materialize(p.SourceHash, ".mp4")
+	bd, err := e.analyzeCutSource(p)
 	if err != nil {
 		return p, err
 	}
-	defer os.Remove(src)
-	bd, err := e.cutBin().Analyze(src)
-	if err != nil {
-		return p, err
-	}
-	p.Duration = bd.Duration
-	p.Breakdown = bd
-	return e.saveCut(p)
+	return e.mutateCut(id, func(cur *CutProject) error {
+		if cur.SourceHash != p.SourceHash {
+			return fmt.Errorf("source changed while analyzing")
+		}
+		applyBreakdown(cur, bd)
+		return nil
+	})
 }
 
-// CutPropose 在还没有时长时先分析，再按窗口切出片段写入内容寻址。已有成片时把工程标成过期。
-// id 传给 GetCutProject，时长还没有时再传给 CutAnalyze。
+// analyzeCutSource 读源片的时长、场景切点和静音区间。没有源片就拒绝。
+// p 的 SourceHash 交给 mediaPath。
+func (e *Engine) analyzeCutSource(p CutProject) (cut.Breakdown, error) {
+	if p.SourceHash == "" {
+		return cut.Breakdown{}, fmt.Errorf("ingest a source first")
+	}
+	if err := e.EnsureFFmpeg(e.runCtx()); err != nil {
+		return cut.Breakdown{}, err
+	}
+	src, cleanup, err := e.mediaPath(p.SourceHash, ".mp4")
+	if err != nil {
+		return cut.Breakdown{}, err
+	}
+	defer cleanup()
+	return e.cutBin().Analyze(src)
+}
+
+// applyBreakdown 写上时长、场景和静音。已经切出的片段留着。
+func applyBreakdown(p *CutProject, bd cut.Breakdown) {
+	p.Duration = bd.Duration
+	p.Breakdown.Duration = bd.Duration
+	p.Breakdown.Scenes = bd.Scenes
+	p.Breakdown.Silences = bd.Silences
+}
+
+// CutPropose 在还没有拆解时先分析，再按窗口打分挑出片段，带音轨抽出来写入内容库，剪辑表换成这些片段。已有成片时把工程标成过期。分析和抽片在锁外做。
+// id 传给 GetCutProject 和 mutateCut。
 // count 传给 cut.Propose。
 // window 传给 windowSeconds。
 func (e *Engine) CutPropose(id string, count int, window string) (CutProject, error) {
@@ -139,22 +197,24 @@ func (e *Engine) CutPropose(id string, count int, window string) (CutProject, er
 	if err != nil {
 		return CutProject{}, err
 	}
-	if p.Breakdown.Duration <= 0 {
-		p, err = e.CutAnalyze(id)
-		if err != nil {
+	if p.SourceHash == "" {
+		return p, fmt.Errorf("ingest a source first")
+	}
+	bd := p.Breakdown
+	if bd.Duration <= 0 {
+		if bd, err = e.analyzeCutSource(p); err != nil {
 			return p, err
 		}
 	}
-	span := windowSeconds(window)
-	clips := cut.Propose(p.Duration, p.Breakdown.Scenes, p.Breakdown.Silences, count, span)
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
+	clips := cut.Propose(bd.Duration, bd.Scenes, bd.Silences, count, windowSeconds(window))
+	if err := e.EnsureFFmpeg(e.runCtx()); err != nil {
 		return p, err
 	}
-	src, err := e.materialize(p.SourceHash, ".mp4")
+	src, cleanup, err := e.mediaPath(p.SourceHash, ".mp4")
 	if err != nil {
 		return p, err
 	}
-	defer os.Remove(src)
+	defer cleanup()
 	tmp, err := os.MkdirTemp(e.Dir, "cut-prop-*")
 	if err != nil {
 		return p, err
@@ -166,11 +226,7 @@ func (e *Engine) CutPropose(id string, count int, window string) (CutProject, er
 		if err := e.cutBin().Extract(src, c.Start, c.Dur(), path); err != nil {
 			return p, err
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return p, err
-		}
-		h, err := e.PutBytes(raw)
+		h, _, err := e.PutPath(path)
 		if err != nil {
 			return p, err
 		}
@@ -178,83 +234,42 @@ func (e *Engine) CutPropose(id string, count int, window string) (CutProject, er
 		c.Hash = h
 		out = append(out, c)
 	}
-	p.Breakdown.Clips = out
-	p.EditList.Cuts = out
-	if p.ResultHash != "" {
-		p.Stale = true
-	}
-	return e.saveCut(p)
+	return e.mutateCut(id, func(cur *CutProject) error {
+		if cur.SourceHash != p.SourceHash {
+			return fmt.Errorf("source changed while proposing")
+		}
+		if cur.Breakdown.Duration <= 0 {
+			applyBreakdown(cur, bd)
+		}
+		cur.Breakdown.Clips = out
+		cur.EditList.Cuts = out
+		if cur.ResultHash != "" {
+			cur.Stale = true
+		}
+		return nil
+	})
 }
 
-// CutApply 按剪辑表拼接，没有剪辑表时用拆解片段。有哈希就用字节，否则从源片截取。结果写入 ResultHash 并清掉过期标记。
-// id 传给 GetCutProject。
+// CutApply 按剪辑表合成成片，剪辑表空着时用拆出的片段。合成过之后成片一直按剪辑表来，调色、字幕和配音都在剪好的片子上重做。
+// id 传给 mutateCut 和 renderCut。
 func (e *Engine) CutApply(id string) (CutProject, error) {
-	p, err := e.GetCutProject(id)
-	if err != nil {
+	if _, err := e.mutateCut(id, func(p *CutProject) error {
+		if len(p.EditList.Cuts) == 0 && len(p.Breakdown.Clips) == 0 {
+			return fmt.Errorf("no cuts to apply")
+		}
+		if p.UseCuts {
+			return errUnchanged
+		}
+		p.UseCuts = true
+		return nil
+	}); err != nil {
 		return CutProject{}, err
 	}
-	cuts := p.EditList.Cuts
-	if len(cuts) == 0 {
-		cuts = p.Breakdown.Clips
-	}
-	if len(cuts) == 0 {
-		return p, fmt.Errorf("no cuts to apply")
-	}
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
-		return p, err
-	}
-	tmp, err := os.MkdirTemp(e.Dir, "cut-apply-*")
-	if err != nil {
-		return p, err
-	}
-	defer os.RemoveAll(tmp)
-	var paths []string
-	src := ""
-	if p.SourceHash != "" {
-		src, err = e.materialize(p.SourceHash, ".mp4")
-		if err != nil {
-			return p, err
-		}
-		defer os.Remove(src)
-	}
-	for i, c := range cuts {
-		path := filepath.Join(tmp, fmt.Sprintf("s%d.mp4", i))
-		if c.Hash != "" {
-			raw, err := e.GetBytes(c.Hash)
-			if err != nil {
-				return p, err
-			}
-			if err := os.WriteFile(path, raw, 0o600); err != nil {
-				return p, err
-			}
-		} else if src != "" {
-			if err := e.cutBin().Extract(src, c.Start, c.Dur(), path); err != nil {
-				return p, err
-			}
-		} else {
-			return p, fmt.Errorf("cut %d has no media", i)
-		}
-		paths = append(paths, path)
-	}
-	out := filepath.Join(tmp, "out.mp4")
-	if err := e.cutBin().ConcatKeepAudio(paths, out); err != nil {
-		return p, err
-	}
-	raw, err := os.ReadFile(out)
-	if err != nil {
-		return p, err
-	}
-	h, err := e.PutBytes(raw)
-	if err != nil {
-		return p, err
-	}
-	p.ResultHash = h
-	p.Stale = false
-	return e.saveCut(p)
+	return e.renderCut(id)
 }
 
-// CutExtractAudio 从成片或源片抽出音轨，写入 Stems.Original。
-// id 传给 GetCutProject。
+// CutExtractAudio 把成片或源片的音轨抽出来写进 Stems.Original，方便下载或另作他用。不改成片。抽取在锁外做。
+// id 传给 GetCutProject 和 mutateCut。
 func (e *Engine) CutExtractAudio(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -264,155 +279,96 @@ func (e *Engine) CutExtractAudio(id string) (CutProject, error) {
 	if hash == "" {
 		return p, fmt.Errorf("no video")
 	}
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
+	if err := e.EnsureFFmpeg(e.runCtx()); err != nil {
 		return p, err
 	}
-	src, err := e.materialize(hash, ".mp4")
+	src, cleanup, err := e.mediaPath(hash, ".mp4")
 	if err != nil {
 		return p, err
 	}
-	defer os.Remove(src)
-	out := src + ".m4a"
-	defer os.Remove(out)
+	defer cleanup()
+	tmp, err := os.MkdirTemp(e.Dir, "cut-audio-*")
+	if err != nil {
+		return p, err
+	}
+	defer os.RemoveAll(tmp)
+	out := filepath.Join(tmp, "audio.m4a")
 	if err := e.cutBin().ExtractAudio(src, out); err != nil {
 		return p, err
 	}
-	raw, err := os.ReadFile(out)
+	h, _, err := e.PutPath(out)
 	if err != nil {
 		return p, err
 	}
-	h, err := e.PutBytes(raw)
-	if err != nil {
-		return p, err
-	}
-	p.Stems.Original = h
-	return e.saveCut(p)
+	return e.mutateCut(id, func(cur *CutProject) error {
+		cur.Stems.Original = h
+		return nil
+	})
 }
 
-// CutEnhance 按预设增强人声、原声、成片或源片，结果写入 Stems.Voice。
-// id 传给 GetCutProject。
-// preset 传给 EnhanceAudio。
+// CutEnhance 记下原声增强预设（voice、denoise、loudnorm；none 清掉，空着按 voice），再按配方重做成片。增强每次都从源片的原声算起，不会叠加。
+// id 传给 mutateCut 和 renderCut。
+// preset 去掉空白并转成小写后写进配方。
 func (e *Engine) CutEnhance(id, preset string) (CutProject, error) {
-	p, err := e.GetCutProject(id)
-	if err != nil {
+	preset = strings.ToLower(strings.TrimSpace(preset))
+	if preset == "" {
+		preset = "voice"
+	}
+	if _, err := e.mutateCut(id, func(p *CutProject) error {
+		if p.SourceHash == "" {
+			return fmt.Errorf("no audio")
+		}
+		if preset == "none" {
+			p.Enhance = ""
+		} else {
+			p.Enhance = preset
+		}
+		return nil
+	}); err != nil {
 		return CutProject{}, err
 	}
-	hash := firstNonEmpty(p.Stems.Voice, p.Stems.Original, p.ResultHash, p.SourceHash)
-	if hash == "" {
-		return p, fmt.Errorf("no audio")
-	}
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
-		return p, err
-	}
-	src, err := e.materialize(hash, ".m4a")
-	if err != nil {
-		return p, err
-	}
-	defer os.Remove(src)
-	out := src + ".enh.m4a"
-	defer os.Remove(out)
-	if err := e.cutBin().EnhanceAudio(src, out, preset); err != nil {
-		return p, err
-	}
-	raw, err := os.ReadFile(out)
-	if err != nil {
-		return p, err
-	}
-	h, err := e.PutBytes(raw)
-	if err != nil {
-		return p, err
-	}
-	p.Stems.Voice = h
-	return e.saveCut(p)
+	return e.renderCut(id)
 }
 
-// CutMix 把配音或人声，以及音乐，混进成片或源片。有人声时替换原声。
-// id 传给 GetCutProject。
-// duck 传给 mixHashes。
-func (e *Engine) CutMix(id string, duck bool) (CutProject, error) {
-	p, err := e.GetCutProject(id)
-	if err != nil {
+// CutMix 把配音（或人声）和音乐混进成片，再按配方重做。默认原声压低垫在配音下面；replace 为真时配音替换原声。duck 为真时人声下面的原声和音乐会压低。成片长度跟着画面走，配音短也不会把片子剪短。
+// id 传给 mutateCut 和 renderCut。
+// duck 写成配方的 DuckOff 取反。
+// replace 写成配方的 DubReplace。
+func (e *Engine) CutMix(id string, duck, replace bool) (CutProject, error) {
+	if _, err := e.mutateCut(id, func(p *CutProject) error {
+		if firstNonEmpty(p.ResultHash, p.SourceHash) == "" {
+			return fmt.Errorf("no video to mix")
+		}
+		if firstNonEmpty(p.Stems.Dub, p.Stems.Voice) == "" && p.Stems.Music == "" {
+			return fmt.Errorf("no speech or music stem")
+		}
+		p.DuckOff = !duck
+		p.DubReplace = replace
+		return nil
+	}); err != nil {
 		return CutProject{}, err
 	}
-	videoHash := firstNonEmpty(p.ResultHash, p.SourceHash)
-	if videoHash == "" {
-		return p, fmt.Errorf("no video to mix")
-	}
-	speech := firstNonEmpty(p.Stems.Dub, p.Stems.Voice)
-	music := p.Stems.Music
-	if speech == "" && music == "" {
-		return p, fmt.Errorf("no speech or music stem")
-	}
-	h, err := e.mixHashes(videoHash, speech, music, duck, speech != "")
-	if err != nil {
-		return p, err
-	}
-	p.ResultHash = h
-	return e.saveCut(p)
+	return e.renderCut(id)
 }
 
-// mixHashes 物化视频、语音和音乐后调用 Mix，再把成片放进内容寻址。
-// videoHash 传给 materialize，后缀是 .mp4。
-// speechHash 非空时传给 materialize，后缀是 .mp3。
-// musicHash 非空时传给 materialize，后缀是 .mp3。
-// duck 写入 MixOpts 的 Duck。
-// replaceOrig 写入 MixOpts 的 ReplaceOrig。
-func (e *Engine) mixHashes(videoHash, speechHash, musicHash string, duck, replaceOrig bool) (string, error) {
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
-		return "", err
-	}
-	tmp, err := os.MkdirTemp(e.Dir, "cut-mix-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(tmp)
-	video, err := e.materialize(videoHash, ".mp4")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(video)
-	var speech, music string
-	if speechHash != "" {
-		speech, err = e.materialize(speechHash, ".mp3")
-		if err != nil {
-			return "", err
-		}
-		defer os.Remove(speech)
-	}
-	if musicHash != "" {
-		music, err = e.materialize(musicHash, ".mp3")
-		if err != nil {
-			return "", err
-		}
-		defer os.Remove(music)
-	}
-	out := filepath.Join(tmp, "mix.mp4")
-	if err := e.cutBin().Mix(video, speech, music, out, cut.MixOpts{Duck: duck, ReplaceOrig: replaceOrig}); err != nil {
-		return "", err
-	}
-	raw, err := os.ReadFile(out)
-	if err != nil {
-		return "", err
-	}
-	return e.PutBytes(raw)
-}
-
-// CutTranscribe 对成片或源片转写。没有时间轴但有文本时按时长铺开。SRT 和 VTT 分别入库，文本写入 Note。
-// id 传给 GetCutProject。
+// CutTranscribe 用本机 whisper.cpp 听写源片。字幕时间按源片算，略过字幕时才能准确挖掉对应区间，烧字幕时再按剪辑表搬到成片上。没有时间轴但有文本时按时长铺开。SRT 和 VTT 分别入库，文本写入 Note。听写在锁外做。
+// id 传给 GetCutProject 和 mutateCut。
 func (e *Engine) CutTranscribe(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
 		return CutProject{}, err
 	}
-	hash := firstNonEmpty(p.ResultHash, p.SourceHash)
-	if hash == "" {
+	if p.SourceHash == "" {
 		return p, fmt.Errorf("no video")
 	}
-	src, err := e.materialize(hash, ".mp4")
+	if err := e.EnsureFFmpeg(e.runCtx()); err != nil {
+		return p, err
+	}
+	src, cleanup, err := e.mediaPath(p.SourceHash, ".mp4")
 	if err != nil {
 		return p, err
 	}
-	defer os.Remove(src)
+	defer cleanup()
 	tmp, err := os.MkdirTemp(e.Dir, "cut-asr-*")
 	if err != nil {
 		return p, err
@@ -425,101 +381,92 @@ func (e *Engine) CutTranscribe(id string) (CutProject, error) {
 	if len(cues) == 0 && text != "" {
 		cues = cut.CuesFromText(text, p.Duration)
 	}
-	p.Captions.Cues = cues
-	if srt := cut.EncodeSRT(cues); srt != "" {
-		if h, err := e.PutBytes([]byte(srt)); err == nil {
-			p.Captions.SRTHash = h
+	srtHash, vttHash := e.storeCaptions(cues)
+	return e.mutateCut(id, func(cur *CutProject) error {
+		if cur.SourceHash != p.SourceHash {
+			return fmt.Errorf("source changed while transcribing")
 		}
-	}
-	if vtt := cut.EncodeVTT(cues); vtt != "" {
-		if h, err := e.PutBytes([]byte(vtt)); err == nil {
-			p.Captions.VTTHash = h
+		cur.Captions.Cues = cues
+		cur.Captions.Basis = ""
+		cur.Captions.SRTHash = srtHash
+		cur.Captions.VTTHash = vttHash
+		if text != "" {
+			cur.Note = text
 		}
-	}
-	if text != "" {
-		p.Note = text
-	}
-	return e.saveCut(p)
+		if cur.Burn && cur.ResultHash != "" {
+			cur.Stale = true
+		}
+		return nil
+	})
 }
 
-// CutCaptions 用传入文本重铺时间轴，并按语言字段更新。非空字幕会重写 SRT 和 VTT。
-// id 传给 GetCutProject。
+// storeCaptions 把字幕编成 SRT 和 VTT 放进内容库。没有字幕时两个都是空串。
+func (e *Engine) storeCaptions(cues []cut.Cue) (srtHash, vttHash string) {
+	if len(cues) == 0 {
+		return "", ""
+	}
+	if srt := cut.EncodeSRT(cues); srt != "" {
+		if h, err := e.PutBytes([]byte(srt)); err == nil {
+			srtHash = h
+		}
+	}
+	if h, err := e.PutBytes([]byte(cut.EncodeVTT(cues))); err == nil {
+		vttHash = h
+	}
+	return srtHash, vttHash
+}
+
+// CutCaptions 用传入文本按成片时长重铺字幕，时间按成片算；text 空着时只改语言。非空字幕会重写 SRT 和 VTT。烧着字幕的成片标成过期。
+// id 传给 mutateCut。
 // text 去掉空白后非空时传给 CuesFromText。
 // lang 非空时写入 Captions.Language。
 func (e *Engine) CutCaptions(id, text, lang string) (CutProject, error) {
-	p, err := e.GetCutProject(id)
-	if err != nil {
-		return CutProject{}, err
-	}
 	text = strings.TrimSpace(text)
-	if text != "" {
-		p.Captions.Cues = cut.CuesFromText(text, p.Duration)
-	}
-	if lang != "" {
-		p.Captions.Language = lang
-	}
-	if srt := cut.EncodeSRT(p.Captions.Cues); srt != "" {
-		if h, err := e.PutBytes([]byte(srt)); err == nil {
-			p.Captions.SRTHash = h
+	return e.mutateCut(id, func(p *CutProject) error {
+		if text != "" {
+			p.Captions.Cues = cut.CuesFromText(text, outputDuration(*p))
+			p.Captions.Basis = cut.BasisResult
+			if p.Burn && p.ResultHash != "" {
+				p.Stale = true
+			}
 		}
-	}
-	if vtt := cut.EncodeVTT(p.Captions.Cues); vtt != "" {
-		if h, err := e.PutBytes([]byte(vtt)); err == nil {
-			p.Captions.VTTHash = h
+		if lang != "" {
+			p.Captions.Language = lang
 		}
-	}
-	return e.saveCut(p)
+		p.Captions.SRTHash, p.Captions.VTTHash = e.storeCaptions(p.Captions.Cues)
+		return nil
+	})
 }
 
-// CutBurnin 把已有 SRT 烧进成片或源片，结果写入 ResultHash。
-// id 传给 GetCutProject。
+// CutBurnin 打开烧字幕，再按配方重做成片。字幕用中文字体排成 ASS，源片字幕先按剪辑表搬到成片时间上。重复点不会烧两层；已经烧好且没过期时直接返回。
+// id 传给 mutateCut 和 renderCut。
 func (e *Engine) CutBurnin(id string) (CutProject, error) {
-	p, err := e.GetCutProject(id)
+	fresh := false
+	cur, err := e.mutateCut(id, func(p *CutProject) error {
+		if firstNonEmpty(p.ResultHash, p.SourceHash) == "" || len(burnCues(*p)) == 0 {
+			return fmt.Errorf("need video and captions — transcribe or set caption text first")
+		}
+		if p.Burn && p.ResultHash != "" && !p.Stale {
+			fresh = true
+			return errUnchanged
+		}
+		p.Burn = true
+		return nil
+	})
 	if err != nil {
 		return CutProject{}, err
 	}
-	videoHash := firstNonEmpty(p.ResultHash, p.SourceHash)
-	if videoHash == "" || p.Captions.SRTHash == "" {
-		return p, fmt.Errorf("need video and SRT")
+	if fresh {
+		return cur, nil
 	}
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
-		return p, err
-	}
-	tmp, err := os.MkdirTemp(e.Dir, "cut-burn-*")
-	if err != nil {
-		return p, err
-	}
-	defer os.RemoveAll(tmp)
-	video, err := e.materialize(videoHash, ".mp4")
-	if err != nil {
-		return p, err
-	}
-	defer os.Remove(video)
-	srt, err := e.materialize(p.Captions.SRTHash, ".srt")
-	if err != nil {
-		return p, err
-	}
-	defer os.Remove(srt)
-	out := filepath.Join(tmp, "burn.mp4")
-	if err := e.cutBin().BurnCaptions(video, srt, out); err != nil {
-		return p, err
-	}
-	raw, err := os.ReadFile(out)
-	if err != nil {
-		return p, err
-	}
-	h, err := e.PutBytes(raw)
-	if err != nil {
-		return p, err
-	}
-	p.ResultHash = h
-	return e.saveCut(p)
+	return e.renderCut(id)
 }
 
-// CutDub 用文本、备注或字幕拼出配音稿，走当前语音适配器。模型空着时用 gpt-4o-mini-tts，音色空着时用 alloy。结果同时写入配音和人声。还没有字幕时按文本铺一条 SRT。
-// id 传给 GetCutProject。
-// text 去掉空白后为空时改用 Note，仍空则拼接字幕文本，再传给 ttsOpenAI。
-// voice 为空时写成 alloy，再传给 ttsOpenAI。
+// CutDub 用文本、备注或字幕拼出配音稿，走设置里启用的语音账号，没有时用本机 edge-tts。配音写进 Dub 音轨；要混进成片再调 CutMix。
+// 还没有字幕，或字幕本来就是照文案铺的，就按配音时长重铺一份，时间按成片算。已有成片时标成过期。配音在锁外做。
+// id 传给 GetCutProject 和 mutateCut。
+// text 去掉空白后为空时改用 Note，仍空则拼接字幕文本。
+// voice 为空时写成 alloy，再传给 speakAudio。
 func (e *Engine) CutDub(id, text, voice string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -532,7 +479,7 @@ func (e *Engine) CutDub(id, text, voice string) (CutProject, error) {
 	if text == "" && len(p.Captions.Cues) > 0 {
 		var b strings.Builder
 		for _, c := range p.Captions.Cues {
-			if c.Text != "" {
+			if c.Text != "" && !c.Omit {
 				b.WriteString(c.Text)
 				b.WriteByte(' ')
 			}
@@ -542,107 +489,85 @@ func (e *Engine) CutDub(id, text, voice string) (CutProject, error) {
 	if text == "" {
 		return p, fmt.Errorf("no dub text — transcribe or pass text")
 	}
-	if e.Conn == nil {
-		return p, fmt.Errorf("configure a speech adapter in Settings → Generation")
-	}
-	c, err := e.Conn.Active(connection.CapSpeech, "")
-	if err != nil {
-		return p, fmt.Errorf("configure a speech adapter in Settings → Generation")
-	}
-	key, err := e.Conn.Lease(c)
-	if err != nil || strings.TrimSpace(key) == "" {
-		return p, fmt.Errorf("speech adapter has no API key")
-	}
-	model := connection.ModelFor(c, connection.CapSpeech)
-	if model == "" {
-		model = "gpt-4o-mini-tts"
-	}
-	if voice == "" {
-		voice = "alloy"
-	}
-	raw, _, err := e.ttsOpenAI(c.Endpoint, key, model, text, voice, 0)
+	spoken, err := e.speakAudio(text, voice, 0)
 	if err != nil {
 		return p, err
 	}
-	h, err := e.PutBytes(raw)
+	h, err := e.PutBytes(spoken.Audio)
 	if err != nil {
 		return p, err
 	}
-	p.Stems.Dub = h
-	p.Stems.Voice = h
-	if len(p.Captions.Cues) == 0 {
-		p.Captions.Cues = cut.CuesFromText(text, p.Duration)
-		if srt := cut.EncodeSRT(p.Captions.Cues); srt != "" {
-			if sh, err := e.PutBytes([]byte(srt)); err == nil {
-				p.Captions.SRTHash = sh
+	dur := e.mediaSeconds(h)
+	return e.mutateCut(id, func(cur *CutProject) error {
+		cur.Stems.Dub = h
+		if len(cur.Captions.Cues) == 0 || cur.Captions.Basis == cut.BasisResult {
+			span := dur
+			if span <= 0 {
+				span = outputDuration(*cur)
 			}
+			cur.Captions.Cues = cut.CuesFromText(text, span)
+			cur.Captions.Basis = cut.BasisResult
+			cur.Captions.SRTHash, cur.Captions.VTTHash = e.storeCaptions(cur.Captions.Cues)
 		}
-	}
-	return e.saveCut(p)
+		if cur.ResultHash != "" {
+			cur.Stale = true
+		}
+		return nil
+	})
 }
 
-// CutGrade 按预设给成片或源片调色，结果写入 ResultHash。
-// id 传给 GetCutProject。
-// preset 传给 Grade。
+// CutGrade 记下调色预设（warm、cool、contrast、fade；空着用默认的轻微提亮，none 清掉），再按配方从源片重做成片。重复调色不会叠加。
+// id 传给 mutateCut 和 renderCut。
+// preset 去掉空白并转成小写后写进配方。
 func (e *Engine) CutGrade(id, preset string) (CutProject, error) {
-	p, err := e.GetCutProject(id)
-	if err != nil {
+	preset = strings.ToLower(strings.TrimSpace(preset))
+	if preset == "" {
+		preset = "default"
+	}
+	if _, err := e.mutateCut(id, func(p *CutProject) error {
+		if p.SourceHash == "" {
+			return fmt.Errorf("no video")
+		}
+		if preset == "none" {
+			p.Grade = ""
+		} else {
+			p.Grade = preset
+		}
+		return nil
+	}); err != nil {
 		return CutProject{}, err
 	}
-	hash := firstNonEmpty(p.ResultHash, p.SourceHash)
-	if hash == "" {
-		return p, fmt.Errorf("no video")
-	}
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
-		return p, err
-	}
-	src, err := e.materialize(hash, ".mp4")
-	if err != nil {
-		return p, err
-	}
-	defer os.Remove(src)
-	out := src + ".grade.mp4"
-	defer os.Remove(out)
-	if err := e.cutBin().Grade(src, out, preset); err != nil {
-		return p, err
-	}
-	raw, err := os.ReadFile(out)
-	if err != nil {
-		return p, err
-	}
-	h, err := e.PutBytes(raw)
-	if err != nil {
-		return p, err
-	}
-	p.ResultHash = h
-	return e.saveCut(p)
+	return e.renderCut(id)
 }
 
-// CutSetStem 按 music、sfx、voice、dub、original 写入对应音轨。其他种类返回 unknown stem。
-// id 传给 GetCutProject。
+// CutSetStem 按 music、sfx、voice、dub、original 写入对应音轨。其他种类返回 unknown stem。已有成片且换的是会混进去的音轨时标成过期。
+// id 传给 mutateCut。
 // kind 去掉空白并转成小写后选择 music、sfx、voice、dub 或 original，其他值返回 unknown stem。
 // hash 去掉空白后写入对应音轨。
 func (e *Engine) CutSetStem(id, kind, hash string) (CutProject, error) {
-	p, err := e.GetCutProject(id)
-	if err != nil {
-		return CutProject{}, err
-	}
 	hash = strings.TrimSpace(hash)
-	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case "music":
-		p.Stems.Music = hash
-	case "sfx":
-		p.Stems.SFX = hash
-	case "voice":
-		p.Stems.Voice = hash
-	case "dub":
-		p.Stems.Dub = hash
-	case "original":
-		p.Stems.Original = hash
-	default:
-		return p, fmt.Errorf("unknown stem %s", kind)
-	}
-	return e.saveCut(p)
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	return e.mutateCut(id, func(p *CutProject) error {
+		switch kind {
+		case "music":
+			p.Stems.Music = hash
+		case "sfx":
+			p.Stems.SFX = hash
+		case "voice":
+			p.Stems.Voice = hash
+		case "dub":
+			p.Stems.Dub = hash
+		case "original":
+			p.Stems.Original = hash
+			return nil
+		default:
+			return fmt.Errorf("unknown stem %s", kind)
+		}
+		if p.ResultHash != "" {
+			p.Stale = true
+		}
+		return nil
+	})
 }
 
 // posterFromHash 从内容寻址文件或临时物化文件抽出一帧封面并入库。
@@ -667,72 +592,265 @@ func (e *Engine) posterFromHash(hash string) (string, error) {
 	return e.PutBytes(jpg)
 }
 
-// CutKeep 只留下指定片段，再按已省略的字幕挖掉对应区间。已有成片时标成过期。
-// id 传给 GetCutProject。
+// CutKeep 只留下指定片段，再按已省略的源片字幕挖掉对应区间。已有成片时标成过期。
+// id 传给 mutateCut。
 // clipIDs 去掉空白后非空的值收成保留集合，只留下 ID 在其中的拆解片段。
 func (e *Engine) CutKeep(id string, clipIDs []string) (CutProject, error) {
-	p, err := e.GetCutProject(id)
-	if err != nil {
-		return CutProject{}, err
-	}
 	want := map[string]bool{}
 	for _, clipID := range clipIDs {
-		clipID = strings.TrimSpace(clipID)
-		if clipID != "" {
+		if clipID = strings.TrimSpace(clipID); clipID != "" {
 			want[clipID] = true
 		}
 	}
-	var kept []cut.Clip
-	for _, c := range p.Breakdown.Clips {
-		if want[c.ID] {
-			kept = append(kept, c)
+	return e.mutateCut(id, func(p *CutProject) error {
+		var kept []cut.Clip
+		for _, c := range p.Breakdown.Clips {
+			if want[c.ID] {
+				kept = append(kept, c)
+			}
 		}
-	}
-	for _, cue := range p.Captions.Cues {
-		if cue.Omit {
-			kept = cut.Punch(kept, cue.Start, cue.End)
+		if p.Captions.Basis != cut.BasisResult {
+			for _, cue := range p.Captions.Cues {
+				if cue.Omit {
+					kept = cut.Punch(kept, cue.Start, cue.End)
+				}
+			}
 		}
-	}
-	if kept == nil {
-		kept = []cut.Clip{}
-	}
-	p.EditList.Cuts = kept
-	if p.ResultHash != "" {
-		p.Stale = true
-	}
-	return e.saveCut(p)
+		if kept == nil {
+			kept = []cut.Clip{}
+		}
+		p.EditList.Cuts = kept
+		if p.ResultHash != "" {
+			p.Stale = true
+		}
+		return nil
+	})
 }
 
-// CutOmitCue 切换一条字幕的省略状态。没有剪辑表时先铺整段或复制拆解片段，省略时挖掉区间，恢复时插回。已有成片时标成过期。
-// id 传给 GetCutProject。
+// CutOmitCue 切换一条字幕的略过状态。源片字幕会改剪辑表：没有剪辑表时先铺整段或复制拆解片段，略过时挖掉区间，恢复时插回。照文案铺的字幕只影响烧进画面的字。已有成片时标成过期。
+// id 传给 mutateCut。
 // index 小于 0 或大于等于字幕条数时返回 cue not found，否则用来切换该条的 Omit。
 func (e *Engine) CutOmitCue(id string, index int) (CutProject, error) {
+	return e.mutateCut(id, func(p *CutProject) error {
+		if index < 0 || index >= len(p.Captions.Cues) {
+			return fmt.Errorf("cue not found")
+		}
+		cue := p.Captions.Cues[index]
+		cue.Omit = !cue.Omit
+		p.Captions.Cues[index] = cue
+		if p.Captions.Basis != cut.BasisResult {
+			if len(p.EditList.Cuts) == 0 {
+				if p.Duration > 0 {
+					p.EditList.Cuts = []cut.Clip{{Start: 0, End: p.Duration, Title: "source"}}
+				} else if len(p.Breakdown.Clips) > 0 {
+					p.EditList.Cuts = append([]cut.Clip{}, p.Breakdown.Clips...)
+				}
+			}
+			if cue.Omit {
+				p.EditList.Cuts = cut.Punch(p.EditList.Cuts, cue.Start, cue.End)
+			} else {
+				p.EditList.Cuts = cut.InsertSpan(p.EditList.Cuts, cue.Start, cue.End)
+			}
+		}
+		if p.ResultHash != "" {
+			p.Stale = true
+		}
+		return nil
+	})
+}
+
+// cutsInUse 返回成片要用的剪辑表：合成过（UseCuts），或旧工程已经有成片和剪辑表时用剪辑表，剪辑表空着时用拆出的片段。返回 nil 表示整条源片。
+func cutsInUse(p CutProject) []cut.Clip {
+	if !p.UseCuts && !(p.ResultHash != "" && len(p.EditList.Cuts) > 0) {
+		return nil
+	}
+	if len(p.EditList.Cuts) > 0 {
+		return p.EditList.Cuts
+	}
+	return p.Breakdown.Clips
+}
+
+// outputDuration 是成片的秒数：用剪辑表时是各段之和，否则是源片时长。
+func outputDuration(p CutProject) float64 {
+	cuts := cutsInUse(p)
+	if len(cuts) == 0 {
+		return p.Duration
+	}
+	var d float64
+	for _, c := range cuts {
+		d += c.Dur()
+	}
+	return d
+}
+
+// burnCues 返回要烧进成片的字幕，时间按成片算。略过的不要；源片字幕按剪辑表搬到成片上。
+func burnCues(p CutProject) []cut.Cue {
+	var cues []cut.Cue
+	for _, c := range p.Captions.Cues {
+		if !c.Omit && strings.TrimSpace(c.Text) != "" {
+			cues = append(cues, c)
+		}
+	}
+	if p.Captions.Basis == cut.BasisResult {
+		return cues
+	}
+	if cuts := cutsInUse(p); len(cuts) > 0 {
+		return cut.MapCues(cues, cuts)
+	}
+	return cues
+}
+
+// cutRecipeKey 给成片配方算一个摘要。渲染期间配方又变了，写回时就把成片标成过期。
+func cutRecipeKey(p CutProject) string {
+	type span struct {
+		Start, End float64
+		Hash       string
+	}
+	var cuts []span
+	for _, c := range cutsInUse(p) {
+		cuts = append(cuts, span{c.Start, c.End, c.Hash})
+	}
+	var cues []cut.Cue
+	if p.Burn {
+		cues = burnCues(p)
+	}
+	raw, _ := json.Marshal(struct {
+		Source, Grade, Enhance, Dub, Voice, Music string
+		Burn, Replace, DuckOff                    bool
+		Cuts                                      []span
+		Cues                                      []cut.Cue
+	}{p.SourceHash, p.Grade, p.Enhance, p.Stems.Dub, p.Stems.Voice, p.Stems.Music, p.Burn, p.DubReplace, p.DuckOff, cuts, cues})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// renderCut 按配方从源片重新做成片：剪辑表拼接，调色和烧字幕，原声增强，再混配音和音乐。每一步都从源片算起，重复调色或烧字幕不会叠加，重新合成也不会丢掉配音和调色。
+// 配方什么都没有时成片就是源片，成片编号清空。长活在锁外做，做完在锁里写成片；做的过程中配方又变了，就把成片标成过期。
+// id 传给 GetCutProject 和 mutateCut。
+func (e *Engine) renderCut(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
 		return CutProject{}, err
 	}
-	if index < 0 || index >= len(p.Captions.Cues) {
-		return p, fmt.Errorf("cue not found")
+	if strings.TrimSpace(p.SourceHash) == "" {
+		return p, fmt.Errorf("ingest a source first")
 	}
-	cue := p.Captions.Cues[index]
-	cue.Omit = !cue.Omit
-	p.Captions.Cues[index] = cue
-	if len(p.EditList.Cuts) == 0 {
-		if p.Duration > 0 {
-			p.EditList.Cuts = []cut.Clip{{Start: 0, End: p.Duration, Title: "source"}}
-		} else if len(p.Breakdown.Clips) > 0 {
-			p.EditList.Cuts = append([]cut.Clip{}, p.Breakdown.Clips...)
+	if err := e.EnsureFFmpeg(e.runCtx()); err != nil {
+		return p, err
+	}
+	key := cutRecipeKey(p)
+	bin := e.cutBin()
+	tmp, err := os.MkdirTemp(e.Dir, "cut-render-*")
+	if err != nil {
+		return p, err
+	}
+	defer os.RemoveAll(tmp)
+	src, cleanup, err := e.mediaPath(p.SourceHash, ".mp4")
+	if err != nil {
+		return p, err
+	}
+	defer cleanup()
+
+	stage := src
+	if cuts := cutsInUse(p); len(cuts) > 0 {
+		parts := make([]string, 0, len(cuts))
+		for i, c := range cuts {
+			if c.Hash != "" {
+				if path := e.casFile(c.Hash); path != "" {
+					parts = append(parts, path)
+					continue
+				}
+			}
+			part := filepath.Join(tmp, fmt.Sprintf("s%d.mp4", i))
+			if err := bin.Extract(src, c.Start, c.Dur(), part); err != nil {
+				return p, err
+			}
+			parts = append(parts, part)
+		}
+		stage = filepath.Join(tmp, "cut.mp4")
+		if err := bin.ConcatKeepAudio(parts, stage); err != nil {
+			return p, err
 		}
 	}
-	if cue.Omit {
-		p.EditList.Cuts = cut.Punch(p.EditList.Cuts, cue.Start, cue.End)
-	} else {
-		p.EditList.Cuts = cut.InsertSpan(p.EditList.Cuts, cue.Start, cue.End)
+
+	var vf []string
+	if g := strings.TrimSpace(p.Grade); g != "" {
+		vf = append(vf, cut.GradeFilter(g))
 	}
-	if p.ResultHash != "" {
-		p.Stale = true
+	if p.Burn {
+		if cues := burnCues(p); len(cues) > 0 {
+			subPath, err := e.writeBurnSubs(tmp, stage, cues)
+			if err != nil {
+				return p, err
+			}
+			vf = append(vf, subtitleFilter(subPath))
+		}
 	}
-	return e.saveCut(p)
+	af := ""
+	if en := strings.TrimSpace(p.Enhance); en != "" {
+		af = cut.EnhanceFilter(en)
+	}
+	if len(vf) > 0 || af != "" {
+		out := filepath.Join(tmp, "look.mp4")
+		if err := bin.Look(stage, out, strings.Join(vf, ","), af); err != nil {
+			return p, err
+		}
+		stage = out
+	}
+
+	if speech, music := firstNonEmpty(p.Stems.Dub, p.Stems.Voice), p.Stems.Music; speech != "" || music != "" {
+		var sp, mu string
+		if speech != "" {
+			path, done, err := e.mediaPath(speech, ".m4a")
+			if err != nil {
+				return p, err
+			}
+			defer done()
+			sp = path
+		}
+		if music != "" {
+			path, done, err := e.mediaPath(music, ".mp3")
+			if err != nil {
+				return p, err
+			}
+			defer done()
+			mu = path
+		}
+		out := filepath.Join(tmp, "mix.mp4")
+		// 人声音轨（没有配音时）就是原声的替身，替换原声；配音默认垫着原声。
+		replace := p.DubReplace || (p.Stems.Dub == "" && p.Stems.Voice != "")
+		if err := bin.Mix(stage, sp, mu, out, cut.MixOpts{Duck: !p.DuckOff, ReplaceOrig: replace}); err != nil {
+			return p, err
+		}
+		stage = out
+	}
+
+	hash := ""
+	if stage != src {
+		if hash, _, err = e.PutPath(stage); err != nil {
+			return p, err
+		}
+	}
+	return e.mutateCut(id, func(cur *CutProject) error {
+		cur.ResultHash = hash
+		cur.Stale = cutRecipeKey(*cur) != key
+		return nil
+	})
+}
+
+// writeBurnSubs 把要烧的字幕写成文件。能排成 ASS 就用 ASS，带上中文字体和按画面大小算的字号，否则写 SRT。
+// tmp 是放字幕文件的目录。
+// video 用来探画面宽高。
+// cues 是按成片时间算好的字幕。
+func (e *Engine) writeBurnSubs(tmp, video string, cues []cut.Cue) (string, error) {
+	srt := cut.EncodeSRT(cues)
+	w, h := e.probeFrame(video)
+	if ass := srtToASS(srt, w, h); ass != "" {
+		path := filepath.Join(tmp, "captions.ass")
+		return path, os.WriteFile(path, []byte(ass), 0o600)
+	}
+	path := filepath.Join(tmp, "captions.srt")
+	return path, os.WriteFile(path, []byte(srt), 0o600)
 }
 
 // ProviderMenu 列出该能力下已启用且有密钥的连接。默认连接会标上 default 和 default_for。
@@ -859,9 +977,21 @@ func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[stri
 	}
 	_ = intent
 	if e.OnHub != nil {
-		e.OnHub("video_route", out)
+		e.OnHub("video_route", routeNotice(out))
 	}
 	return out, nil
+}
+
+// routeNotice 只留下界面切换要用的字段。桌面通知超过内联上限就不带载荷，整份工程塞进去会让界面收不到这次路由。
+// out 里的 project 不抄过去。
+func routeNotice(out map[string]any) map[string]any {
+	notice := make(map[string]any, len(out))
+	for _, k := range []string{"dest", "pane", "id", "title", "drama_id", "session_id"} {
+		if v, ok := out[k]; ok {
+			notice[k] = v
+		}
+	}
+	return notice
 }
 
 // windowSeconds 把 15-30 收成 20 秒，60-90 收成 75 秒，8-15 收成 12 秒，其余收成 20 秒。

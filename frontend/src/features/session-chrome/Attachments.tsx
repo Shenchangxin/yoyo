@@ -58,7 +58,7 @@ function AttachmentChip({ att, onRemove }: { att: Attachment; onRemove: () => vo
   return (
     <button
       type="button"
-      className="inline-flex max-w-[11rem] items-center gap-1 rounded-md bg-lift px-1.5 py-0.5 text-[11px] text-muted hover:text-foreground"
+      className="inline-flex max-w-[11rem] items-center gap-1 rounded-md bg-lift px-1.5 py-0.5 text-ui-caption text-muted hover:text-foreground"
       onClick={onRemove}
       aria-label={name}
     >

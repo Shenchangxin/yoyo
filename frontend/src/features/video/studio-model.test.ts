@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { gateIndex, projectShots, shotReady, STUDIO_GATES } from "./studio-model.ts";
+import { gateIndex, projectShots, shotReady, STUDIO_GATES, visualsReady } from "./studio-model.ts";
 
 describe("studio gates", () => {
   /** 工序从设定排到交付，认不出的名字落到剧本。 */
@@ -25,5 +25,13 @@ describe("studio gates", () => {
       storyboard: { shots: [{ id: "old" }] },
     });
     assert.equal(shots[0]?.id, "s1");
+  });
+
+  /** 合成要每一镜都有画面且没过期，和服务端一样；只有一部分镜头好了不能往下走。 */
+  it("needs every shot ready and fresh before compose", () => {
+    assert.equal(visualsReady([]), false);
+    assert.equal(visualsReady([{ image_hash: "a" }, { video_hash: "b" }]), true);
+    assert.equal(visualsReady([{ image_hash: "a" }, { caption: "还没出图" }]), false);
+    assert.equal(visualsReady([{ image_hash: "a", stale: true }]), false);
   });
 });

@@ -2,7 +2,7 @@
 name: hypit
 description: Finish a commissioned film as a watchable short. Use when the operator hands over a talking, drama, podcast, interview, ranking, explainer, or narration brief, or mentions @skill:hypit.
 license: Apache-2.0
-allowed-tools: video_route provider_menu studio_get studio_update studio_apply_template studio_approve_script studio_preflight studio_generate_missing studio_speak studio_apply_timing studio_assemble ask_user update_plan load_skill
+allowed-tools: video_route provider_menu studio_get studio_update studio_apply_template studio_approve_script studio_preflight studio_auto studio_generate_missing studio_speak studio_apply_timing studio_assemble ask_user update_plan load_skill
 ---
 
 # Hypit
@@ -13,7 +13,7 @@ The creation desk already collected the brief. Keep their subject, people, and l
 
 ## Open the short
 
-`video_route` dest=studio, title = the subject. `studio_*` attaches once that short is bound. If those tools are absent on this turn, stop after the route and continue on the bound short.
+If a short is already bound (`studio_get` works), stay on it. Otherwise `video_route` dest=studio, title = the subject. The route result lists the `studio_*` tools that are now live on this same turn; keep going with them without waiting for the operator. Only if the result lists no tools, stop after the route and say the short is open on the Shorts desk.
 
 `studio_apply_template`:
 
@@ -38,6 +38,8 @@ Spoken text only, in the operator's language. One shot per beat. Keep the relati
 
 ## Picture, voice, file
 
-`studio_preflight` `visuals`. `studio_generate_missing` for stills. `studio_speak` the approved script, `studio_apply_timing`, then `studio_assemble`.
+After they confirm, `studio_approve_script` (pass `script` to save and lock that text in one call). Then `studio_auto`: it speaks the script (local edge-tts when there is no speech account), queues the missing stills, waits for them, fits the shot lengths to the voice, and assembles, all in the background. Tell the operator the short is being made on the Shorts desk. `studio_get` shows `auto_phase` until `done` or `failed`; on `failed`, read `auto_error` and say exactly what to configure or upload.
 
-Report the result hash. The finished film is that mp4 in the shorts library. Leave hashes and keys as the tools return them.
+Doing it by hand instead: `studio_generate_missing` only queues stills. Wait until every shot has an image in `studio_get` before `studio_speak`, `studio_apply_timing`, and `studio_assemble`.
+
+Report the result hash once it lands. The finished film is that mp4 in the shorts library. Leave hashes and keys as the tools return them.

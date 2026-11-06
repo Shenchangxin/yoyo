@@ -4,6 +4,7 @@ package cut
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,7 +29,7 @@ func (b Bin) Duration(path string) (float64, error) {
 		return 0, err
 	}
 	probe := strings.TrimSpace(b.FFprobe)
-	if probe != "" && !strings.Contains(strings.ToLower(probe), "ffmpeg") {
+	if probe != "" && !strings.Contains(strings.ToLower(filepath.Base(probe)), "ffmpeg") {
 		out, err := b.probe("-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path)
 		if err == nil {
 			s := strings.TrimSpace(string(out))

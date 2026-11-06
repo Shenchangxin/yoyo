@@ -126,25 +126,56 @@ export function sameCast(a: FilmCast, b: FilmCast) {
     && a.rows[2] === b.rows[2];
 }
 
-/** filmCommission 写成交给 Hypit 的简报。mode 是片子。cast 是操作者改过的字。relationship 是这种片子留住的关系。 */
-export function filmCommission(mode: FilmMode, cast: FilmCast, relationship: string) {
+/** BriefLabels 是简报里每一行的叫法，界面按语言传进来。modeName 是片型给人看的名字。 */
+export type BriefLabels = {
+  intro: string;
+  format: string;
+  relation: string;
+  subject: string;
+  left: string;
+  ask: string;
+  right: string;
+  reply: string;
+  speaker: string;
+  outro: string;
+  modeName: string;
+};
+
+const BRIEF_EN: Omit<BriefLabels, "modeName"> = {
+  intro: "Finish this film with Hypit.",
+  format: "Format",
+  relation: "Relationship",
+  subject: "Subject",
+  left: "Left",
+  ask: "Ask",
+  right: "Right",
+  reply: "Reply",
+  speaker: "Speaker",
+  outro: "Open a short and assemble an mp4. Ask before image or speech.",
+};
+
+/** filmCommission 写成交给 Hypit 的简报。mode 是片子。cast 是操作者改过的字。relationship 是这种片子留住的关系。labels 是各行的叫法，不给时用英文，片型名不给时写 mode。 */
+export function filmCommission(mode: FilmMode, cast: FilmCast, relationship: string, labels: Partial<BriefLabels> = {}) {
+  const l = { ...BRIEF_EN, modeName: mode, ...labels };
+  const sep = /[\u4e00-\u9fff]/.test(l.format) ? "：" : ": ";
+  const line = /** key 是这一行的叫法，value 是内容。 */ (key: string, value: string) => `${key}${sep}${value}`;
   const lines = [
     "@skill:hypit",
     "",
-    "Finish this film with Hypit.",
-    `Format: ${mode}`,
-    `Relationship: ${relationship}`,
-    `Subject: ${cast.subject.trim()}`,
+    l.intro,
+    line(l.format, l.modeName),
+    line(l.relation, relationship),
+    line(l.subject, cast.subject.trim()),
   ];
   if (mode === "podcast" || mode === "drama") {
-    lines.push(`Left: ${cast.left.trim()}`, `Ask: ${cast.ask.trim()}`, `Right: ${cast.right.trim()}`, `Reply: ${cast.reply.trim()}`);
+    lines.push(line(l.left, cast.left.trim()), line(l.ask, cast.ask.trim()), line(l.right, cast.right.trim()), line(l.reply, cast.reply.trim()));
   } else {
     cast.rows.forEach(/** row 按出现顺序写进简报。index 从 1 起。 */ (row, index) => {
       lines.push(`${index + 1}. ${row.trim()}`);
     });
-    if (mode === "talking" && cast.left.trim()) lines.push(`Speaker: ${cast.left.trim()}`);
+    if (mode === "talking" && cast.left.trim()) lines.push(line(l.speaker, cast.left.trim()));
   }
-  lines.push("Open a short and assemble an mp4. Ask before image or speech.");
+  lines.push(l.outro);
   return lines.join("\n");
 }
 

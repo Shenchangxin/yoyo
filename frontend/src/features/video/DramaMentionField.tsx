@@ -29,7 +29,7 @@ export function DramaMentionField({
       <Textarea
         {...props}
         ref={ref}
-        className={cn("min-h-[88px] rounded-lg border border-border bg-background px-3 py-2 text-[13px] leading-5 focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20", className)}
+        className={cn("min-h-[88px] rounded-lg border border-border bg-background px-3 py-2 text-ui-body leading-5 focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20", className)}
         onChange={/** e 先交给 props.onChange，再用光标前的文本找 @。 */ (e) => {
           props.onChange?.(e);
           const caret = e.target.selectionStart || 0;
@@ -50,7 +50,7 @@ export function DramaMentionField({
             <button
               key={a.kind + a.name}
               type="button"
-              className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] hover:bg-lift"
+              className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-ui-footnote hover:bg-lift"
               onMouseDown={/** ev 阻止默认，避免输入框先失焦。 */ (ev) => {
                 ev.preventDefault();
                 const el = ref.current;
@@ -65,7 +65,7 @@ export function DramaMentionField({
               }}
             >
               <span className="truncate font-medium">{a.name}</span>
-              <span className="text-[10px] uppercase tracking-[0.06em] text-muted">{a.kind}</span>
+              <span className="text-ui-caption uppercase tracking-[0.06em] text-muted">{a.kind}</span>
             </button>
           ))}
         </div>

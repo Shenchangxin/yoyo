@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // WordsFromCues 把每一句拆成词，并让这些词平分这一句的时间。汉字和假名一个字一个词，拉丁字母连在一起。
@@ -232,20 +233,32 @@ func LineTexts(p Project) []Line {
 	return out
 }
 
-// joinTokens 把词拼回一句。任一词超过一个字时，和相邻词之间加空格。
-// words 逐个写入，任一词的字数大于 1 时和相邻词之间加空格。
+// joinTokens 把词拼回一句。只有前一个词以半角字符结尾、后一个词以拉丁字母或数字开头时才隔一个空格；
+// 汉字、假名、谚文之间不加空格，否则配音会在词和词之间停顿，「差点走了」读成「差点 走了」。
+// words 逐个写入，空词跳过。
 func joinTokens(words []Word) string {
 	var b strings.Builder
-	prevLong := false
+	var prev rune
 	for _, w := range words {
-		long := len([]rune(w.Text)) > 1
-		if b.Len() > 0 && (long || prevLong) {
+		if w.Text == "" {
+			continue
+		}
+		first, _ := utf8.DecodeRuneInString(w.Text)
+		if b.Len() > 0 && prev < utf8.RuneSelf && prev != ' ' && latinRune(first) {
 			b.WriteByte(' ')
 		}
 		b.WriteString(w.Text)
-		prevLong = long
+		prev, _ = utf8.DecodeLastRuneInString(w.Text)
 	}
 	return b.String()
+}
+
+// latinRune 判断这个字是不是拉丁字母、数字或撇号这类要靠空格分词的字。汉字、假名和谚文不算。
+func latinRune(r rune) bool {
+	if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
+		return false
+	}
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '\''
 }
 
 // ShotWords 返回挂在这一镜上的词。一镜没有词、但有时间跨度时，返回一个盖住这段时间的空词。

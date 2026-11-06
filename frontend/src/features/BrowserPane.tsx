@@ -62,13 +62,13 @@ function CsvSheet(props: { workspace?: string; path: string }) {
     });
     return () => { stop = true; };
   }, [props.workspace, props.path]);
-  if (err) return <p className="grid h-full place-items-center px-6 text-[13px] text-muted">{err}</p>;
-  if (!rows.length) return <p className="grid h-full place-items-center text-[13px] text-muted">{copy.review.openingFile}</p>;
+  if (err) return <p className="grid h-full place-items-center px-6 text-ui-body text-muted">{err}</p>;
+  if (!rows.length) return <p className="grid h-full place-items-center text-ui-body text-muted">{copy.review.openingFile}</p>;
   const head = rows[0];
   const body = rows.slice(1);
   return (
     <div className="overlay-scroll h-full overflow-auto" data-testid="csv-sheet">
-      <table className="w-full border-collapse text-left text-[12px]">
+      <table className="w-full border-collapse text-left text-ui-footnote">
         <thead className="sticky top-0 bg-card">
           <tr>
             {head.map((cell, i) => (
@@ -123,17 +123,17 @@ export function FilePreviewPane(props: { workspace?: string; path: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="file-preview-window">
       <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border/60 py-2 pl-4 pr-3">
-        <h1 className="min-w-0 flex-1 truncate text-[14px] font-medium">{name}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-ui-body-l font-medium">{name}</h1>
         <button
           type="button"
-          className="h-7 rounded-full border border-border/70 px-3 text-[12px] text-foreground hover:bg-lift"
+          className="h-7 rounded-full border border-border/70 px-3 text-ui-footnote text-foreground hover:bg-lift"
           onClick={() => { if (abs) void api.revealPath(abs); }}
         >
           {copy.review.openFolder}
         </button>
         <button
           type="button"
-          className="h-7 rounded-full border border-border/70 px-3 text-[12px] text-foreground hover:bg-lift"
+          className="h-7 rounded-full border border-border/70 px-3 text-ui-footnote text-foreground hover:bg-lift"
           onClick={() => { if (abs) void api.openPath(abs); }}
         >
           {copy.review.openWithApp}
@@ -143,13 +143,13 @@ export function FilePreviewPane(props: { workspace?: string; path: string }) {
         {html && pageURL ? (
           <iframe title={name} src={pageURL} className="h-full w-full border-0 bg-white" data-testid="file-browser-frame" />
         ) : html && !failed ? (
-          <div className="grid h-full place-items-center text-[12px] text-muted">{copy.review.openingFile}</div>
+          <div className="grid h-full place-items-center text-ui-footnote text-muted">{copy.review.openingFile}</div>
         ) : csv && target.workspace && target.path ? (
           <CsvSheet workspace={target.workspace} path={target.path} />
         ) : target.workspace && target.path ? (
           <WorkspaceFileView workspace={target.workspace} path={target.path} fill />
         ) : (
-          <div className="grid h-full place-items-center text-[12px] text-muted">{copy.review.cannotPreview}</div>
+          <div className="grid h-full place-items-center text-ui-footnote text-muted">{copy.review.cannotPreview}</div>
         )}
       </div>
     </div>
@@ -289,46 +289,46 @@ export function BrowserPane(props: {
     return (
       <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center" data-testid="review-browser">
         <span className="mark-well mb-3 text-muted" aria-hidden><Globe className="size-4" /></span>
-        <p className="text-[13px] font-medium text-foreground/85">{copy.review.browserIdle}</p>
-        <p className="mt-1 max-w-[22rem] text-[12px] leading-[1.55] text-muted">{copy.review.browserIdleHint}</p>
+        <p className="text-ui-body font-medium text-foreground/85">{copy.review.browserIdle}</p>
+        <p className="mt-1 max-w-[22rem] text-ui-footnote leading-[1.55] text-muted">{copy.review.browserIdleHint}</p>
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="review-browser">
-      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/60 pl-2.5 pr-1.5 text-[12px] text-muted">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/60 pl-2.5 pr-1.5 text-ui-footnote text-muted">
         {live ? <span className={cn("pulse-dot", view?.live && "is-accent")} aria-hidden /> : <Globe className="size-3.5 shrink-0" aria-hidden />}
-        <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-[11px] uppercase tracking-[0.08em] text-muted">
+        <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-ui-caption uppercase tracking-[0.08em] text-muted">
           {live ? copy.review.liveLane : copy.review.page}
         </span>
         <span
-          className="min-w-0 flex-1 truncate rounded-md bg-lift/70 px-2 py-0.5 font-mono text-[11px] text-foreground/85"
+          className="min-w-0 flex-1 truncate rounded-md bg-lift/70 px-2 py-0.5 font-mono text-ui-caption text-foreground/85"
           title={address}
           data-testid="browser-url"
         >
           {address}
         </span>
-        {live ? <span className="shrink-0 text-[11px] text-muted/80">{lane}</span> : null}
+        {live ? <span className="shrink-0 text-ui-caption text-muted/80">{lane}</span> : null}
         {live && (view?.tabCount ?? 0) > 1 ? (
-          <span className="shrink-0 text-[11px] text-muted/80">
+          <span className="shrink-0 text-ui-caption text-muted/80">
             {view?.tabCount} {copy.review.tabsLane}
           </span>
         ) : null}
         {view?.profileName && view.profileName !== "default" ? (
-          <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-[11px] text-muted" title={view.profile}>
+          <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-ui-caption text-muted" title={view.profile}>
             {view.profileName}
           </span>
         ) : null}
         {view?.recording ? (
-          <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-[11px] text-foreground/85">
+          <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-ui-caption text-foreground/85">
             {copy.review.recordingLane}
           </span>
         ) : null}
         {htmlPath && live ? (
           <button
             type="button"
-            className="h-6 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
+            className="h-6 rounded-md px-2 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground"
             onClick={() => setSource((v) => !v)}
           >
             {source ? copy.review.liveLane : copy.transcript.preview}
@@ -349,7 +349,7 @@ export function BrowserPane(props: {
         {canTakeOver ? (
           <button
             type="button"
-            className="h-6 rounded-md bg-foreground px-2 text-[11px] font-medium text-background hover:opacity-90 disabled:opacity-40"
+            className="h-6 rounded-md bg-foreground px-2 text-ui-caption font-medium text-background hover:opacity-90 disabled:opacity-40"
             data-testid="browser-takeover"
             disabled={busy}
             onClick={() => { void takeOver(); }}
@@ -380,15 +380,15 @@ export function BrowserPane(props: {
           </button>
         ) : (
           <div className="grid h-full place-items-center px-6 text-center">
-            <p className="text-[12px] text-muted">{view?.text || err || copy.review.waitingFrame}</p>
+            <p className="text-ui-footnote text-muted">{view?.text || err || copy.review.waitingFrame}</p>
           </div>
         )}
-        {err ? <p className="absolute bottom-2 left-3 right-3 text-[11px] text-danger">{err}</p> : null}
+        {err ? <p className="absolute bottom-2 left-3 right-3 text-ui-caption text-danger">{err}</p> : null}
       </div>
       {view?.log?.length ? (
         <ul className="overlay-scroll max-h-28 shrink-0 overflow-auto border-t border-border/50">
           {view.log.slice(-8).reverse().map((row, i) => (
-            <li key={`${row.ts}-${i}`} className="flex h-7 items-center gap-2 border-b border-border/40 px-3 font-mono text-[11px] last:border-b-0">
+            <li key={`${row.ts}-${i}`} className="flex h-7 items-center gap-2 border-b border-border/40 px-3 font-mono text-ui-caption last:border-b-0">
               <span className="shrink-0 text-foreground/80">{row.op}</span>
               <span className={cn("min-w-0 truncate text-muted")}>{row.detail || row.url}</span>
             </li>

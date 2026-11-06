@@ -67,8 +67,8 @@ export function ChatDock(props: {
   return (
     <aside className="flex h-full min-h-0 flex-col bg-transparent">
       <div className="flex h-11 shrink-0 items-center border-b border-border/50 px-3">
-        <span className="text-[13px] font-medium tracking-[-0.02em]">{copy.dock.chat}</span>
-        <button type="button" className="ml-auto h-6 cursor-pointer rounded-lg px-2 text-[11px] font-medium text-muted transition-[background-color,color] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground" onClick={props.onOpenAgent}>
+        <span className="text-ui-body font-medium tracking-[-0.02em]">{copy.dock.chat}</span>
+        <button type="button" className="ml-auto h-6 cursor-pointer rounded-lg px-2 text-ui-caption font-medium text-muted transition-[background-color,color] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground" onClick={props.onOpenAgent}>
           {copy.dock.expand}
         </button>
       </div>

@@ -55,12 +55,14 @@ func (a *App) reachLines() []string {
 	if a == nil || a.Memory == nil {
 		return nil
 	}
+	// 检索词会发到外部搜索。档案里是本人说过的话，可能有名字和私事，不拿去检索。
 	var texts []string
+	now := time.Now()
 	for _, item := range a.Memory.All() {
-		if item.Staging || item.Source == "machine" {
+		if item.Staging || item.Source == "machine" || memory.Expired(item, now) {
 			continue
 		}
-		if item.Kind != memory.KindProject && item.Kind != memory.KindProfile && item.Kind != memory.KindSemantic {
+		if item.Kind != memory.KindProject && item.Kind != memory.KindSemantic {
 			continue
 		}
 		texts = append(texts, item.Text)

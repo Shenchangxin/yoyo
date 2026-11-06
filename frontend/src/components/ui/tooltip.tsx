@@ -30,7 +30,7 @@ export function Tooltip({
           side={side}
           sideOffset={6}
           className={cn(
-            "z-50 max-w-xs overflow-visible rounded-lg border border-border bg-popover text-[12px] text-foreground shadow-[var(--shadow-popover)]",
+            "z-50 max-w-xs overflow-visible rounded-lg border border-border bg-popover text-ui-footnote text-foreground shadow-[var(--shadow-popover)]",
             className,
           )}
         >

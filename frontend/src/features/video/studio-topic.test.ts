@@ -3,7 +3,19 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cycleScore, setScore, topicCanFilm, topicIsScheduled, topicMatchesQuery, topicPrimaryAction, topicScoreAvg, trendMatchesQuery } from "./studio-topic.ts";
+import { cycleScore, scheduleWhen, setScore, topicCanFilm, topicIsScheduled, topicMatchesQuery, topicPrimaryAction, topicScoreAvg, trendMatchesQuery } from "./studio-topic.ts";
+
+describe("topic schedule slots", () => {
+  /** 十分钟和一小时按分钟算；今晚 8 点过了就排到明晚；明早是明天 9 点。 */
+  it("turns slots into run times", () => {
+    const afternoon = new Date(2026, 10, 6, 15, 30);
+    assert.deepEqual(scheduleWhen("soon", afternoon), { delayMinutes: 10 });
+    assert.deepEqual(scheduleWhen("hour", afternoon), { delayMinutes: 60 });
+    assert.deepEqual(scheduleWhen("tonight", afternoon), { at: "2026-11-06T20:00" });
+    assert.deepEqual(scheduleWhen("tonight", new Date(2026, 10, 6, 19, 55)), { at: "2026-11-07T20:00" });
+    assert.deepEqual(scheduleWhen("morning", new Date(2026, 10, 30, 23, 0)), { at: "2026-12-01T09:00" });
+  });
+});
 
 describe("topic card helpers", () => {
   /** 只平均已经填上的正分。 */

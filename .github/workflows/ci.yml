@@ -36,6 +36,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Check design tokens
+        working-directory: frontend
+        run: node scripts/check-tokens.mjs
       - name: Build UI
         working-directory: frontend
         run: |

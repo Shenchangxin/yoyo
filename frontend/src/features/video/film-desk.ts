@@ -21,6 +21,8 @@ export type FilmProject = {
   title?: string;
   structure?: string;
   note?: string;
+  /** building 是后台开始做画面的时间，空着表示没在做。 */
+  building?: string;
   bed?: string;
   brief?: { host?: string; product?: string; language?: string; aspect?: string; hook?: string; price?: string; cta?: string };
   entries?: { id?: string; label?: string }[];

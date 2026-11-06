@@ -18,6 +18,13 @@ func (s *Service) DeskPush(note app.DeskNote) (bool, error) {
 			"text":      note.Text,
 			"chip":      note.Chip,
 			"brief":     note.Brief,
+			"class":     note.Class,
+			"why":       note.Why,
+			"name":      note.Name,
+			"detail":    note.Detail,
+			"state":     note.State,
+			"memoryId":  note.MemoryID,
+			"quiet":     note.Quiet,
 		})
 		if err != nil {
 			return false, err
@@ -30,6 +37,34 @@ func (s *Service) DeskPush(note app.DeskNote) (bool, error) {
 		return false, fmt.Errorf("app is not running")
 	}
 	return s.App.DeskPush(note), nil
+}
+
+// DeskState 返回开口门最近一轮判断，以及今天仍被按住的类别。
+func (s *Service) DeskState() (app.DeskState, error) {
+	if s.RPC != nil {
+		return decode[app.DeskState](s.call("desk.state", nil))
+	}
+	if s.App == nil {
+		return app.DeskState{}, fmt.Errorf("app is not running")
+	}
+	return s.App.DeskState(), nil
+}
+
+// DeskFeedback 记下人对某一类开口的反应。kind 取 used、ignore、later、wrong、mute、unmute。
+func (s *Service) DeskFeedback(className, kind, memoryID string) (bool, error) {
+	if s.RPC != nil {
+		v, err := s.call("desk.feedback", map[string]any{"className": className, "kind": kind, "memoryId": memoryID})
+		if err != nil {
+			return false, err
+		}
+		body, _ := v.(map[string]any)
+		ok, _ := body["ok"].(bool)
+		return ok, nil
+	}
+	if s.App == nil {
+		return false, fmt.Errorf("app is not running")
+	}
+	return s.App.DeskFeedback(className, kind, memoryID), nil
 }
 
 // BriefList 返回已经固定的晨间和晚间简报，新的在前。

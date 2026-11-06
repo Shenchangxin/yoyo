@@ -5,12 +5,18 @@
 
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, RotateCcw, ShieldAlert } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, Moon, RotateCcw, ShieldAlert, Sun } from "lucide-react";
 import { SendSling } from "../components/SendSling";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import { toast } from "sonner";
 import { askBrief } from "./superagent/BriefOverlay";
+import { focusBrief } from "./superagent/needs";
+import { EventCard } from "../components/ui/event-card";
+import { TaskEventHead, TurnReceipts } from "./transcript/TurnReceipts";
+import { FirstRun } from "./transcript/FirstRun";
+import { SpeakFeedback } from "./superagent/SpeakFeedback";
+import { speakPhrases, speakSentence } from "./superagent/work-model";
 import { Markdown } from "../lib/markdown";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
@@ -302,6 +308,7 @@ export function Transcript(props: {
                   )}
                 </div>
               ))}
+              {props.compact ? null : <TurnReceipts parts={row.parts} />}
               {row.copyText && !props.compact ? (
                 <div className="u-chrome">
                   <TurnActions
@@ -385,8 +392,8 @@ function DeliverableBubble(props: { path: string; pending?: boolean; onOpen?: ()
     >
       <span className={cn("deliverable-mark", kind === "CSV" && "is-csv", kind === "HTML" && "is-html")} aria-hidden>{kind.slice(0, 4)}</span>
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-[14px] font-medium leading-5">{fileBase(props.path)}</span>
-        <span className="block truncate text-[12px] leading-5 text-muted">{kind}</span>
+        <span className="block truncate text-ui-body-l font-medium leading-5">{fileBase(props.path)}</span>
+        <span className="block truncate text-ui-footnote leading-5 text-muted">{kind}</span>
       </span>
       <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
     </button>
@@ -600,7 +607,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         { key: "desk", node: copy.transcript.hintConductor },
       ]
     : [
-        ws ? { key: "ws", node: <><span className="text-muted">{copy.transcript.workingIn}</span><span className="ml-1.5 font-mono text-[12px] text-foreground/80">{ws}</span></> } : null,
+        ws ? { key: "ws", node: <><span className="text-muted">{copy.transcript.workingIn}</span><span className="ml-1.5 font-mono text-ui-footnote text-foreground/80">{ws}</span></> } : null,
         { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
         videoing
           ? { key: "mode", node: copy.transcript.hintVideoMode }
@@ -611,10 +618,15 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     const hour = new Date().getHours();
     const hello = hour < 12 ? copy.transcript.helloMorning : hour < 18 ? copy.transcript.helloAfternoon : copy.transcript.helloEvening;
     return (
-      <div className="empty-rise" data-testid="empty-turn">
-        <p className="text-[13px] tracking-[-0.01em] text-muted">{hello}</p>
-        <h1 className="mt-1 max-w-[16ch] text-[21px] font-semibold leading-[1.2] tracking-[-0.036em] text-foreground">{copy.transcript.ready}</h1>
-      </div>
+      <FirstRun
+        onPrompt={onPrompt}
+        fallback={(
+          <div className="empty-rise" data-testid="empty-turn">
+            <p className="text-ui-body tracking-[-0.01em] text-muted">{hello}</p>
+            <h1 className="mt-1 max-w-[16ch] text-ui-display font-semibold leading-[1.2] tracking-[-0.036em] text-foreground">{copy.transcript.ready}</h1>
+          </div>
+        )}
+      />
     );
   }
   return (
@@ -622,11 +634,11 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
       {studioDesk ? null : <MarkWell />}
       <h1 className={cn(
         "font-semibold leading-[1.15] tracking-[-0.042em] text-pretty text-foreground",
-        studioDesk ? "text-[16px]" : "mt-6 max-w-[16ch] text-[21px]",
+        studioDesk ? "text-ui-title-s" : "mt-6 max-w-[16ch] text-ui-display",
       )}>
         {ready}
       </h1>
-      <p className="mt-3 flex max-w-[46ch] flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] leading-[1.6] text-muted">
+      <p className="mt-3 flex max-w-[46ch] flex-wrap items-center gap-x-3 gap-y-1.5 text-ui-body leading-[1.6] text-muted">
         {hints.map((h, i) => (
           <span key={h.key} className="inline-flex items-center">
             {i > 0 ? <span className="mr-3 text-muted/35" aria-hidden>·</span> : null}
@@ -639,7 +651,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
           <button
             type="button"
             data-testid="studio-open-desk-empty"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-[13px] text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-ui-body text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
             onClick={() => openStudioDesk()}
           >
             {copy.video.shellStudio}
@@ -650,7 +662,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
           <button
             type="button"
             key={`${s.label}-${i}`}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-[13px] text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-ui-body text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
             style={{ animationDelay: `${60 + i * 40}ms` }}
             onClick={() => onPrompt?.(s.text)}
           >
@@ -913,7 +925,7 @@ function TranscriptLane({
         {older ? (
           <button
             type="button"
-            className="mb-3 w-full rounded-md py-1.5 text-center text-[12px] text-muted hover:bg-lift hover:text-foreground"
+            className="mb-3 w-full rounded-md py-1.5 text-center text-ui-footnote text-muted hover:bg-lift hover:text-foreground"
             disabled={loadingOlder}
             onClick={() => { void onLoadOlder?.(); }}
           >
@@ -948,7 +960,7 @@ function TranscriptLane({
       {escaped ? (
         <button
           type='button'
-          className='absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] transition-[background-color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift active:scale-[0.98]'
+          className='absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover py-1.5 pl-2.5 pr-3 text-ui-footnote text-foreground shadow-[var(--shadow-popover)] transition-[background-color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift active:scale-[0.98]'
           onClick={() => {
             followCtl.current?.setFollowing(true);
             setEscaped(false);
@@ -1013,15 +1025,15 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   if (ask) {
     return (
       <div
-        className="u-card-hover is-warn relative overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
+        className="u-card-hover is-warn relative overflow-hidden rounded-xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
         role="status"
         data-testid="ask-user-card"
       >
         <span className="pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full bg-warning/80" aria-hidden />
-        <div className="text-[11px] font-medium text-muted">{copy.transcript.askQuestion}</div>
-        <div className="mt-0.5 text-[14px] font-medium tracking-tight text-foreground">{subject || copy.transcript.askQuestion}</div>
+        <div className="text-ui-caption font-medium text-muted">{copy.transcript.askQuestion}</div>
+        <div className="mt-0.5 text-ui-body-l font-medium tracking-tight text-foreground">{subject || copy.transcript.askQuestion}</div>
         <textarea
-          className="mt-2 min-h-[4.5rem] w-full resize-y rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 text-[13px] leading-[1.5] text-foreground outline-none focus:border-foreground/30"
+          className="mt-2 min-h-[4.5rem] w-full resize-y rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 text-ui-body leading-[1.5] text-foreground outline-none focus:border-foreground/30"
           value={answer}
           placeholder={copy.transcript.answerPlaceholder}
           autoComplete="off"
@@ -1030,7 +1042,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
         />
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center gap-2">
-            <span className="text-[12px] font-medium text-foreground">{copy.transcript.sendAnswer}</span>
+            <span className="text-ui-footnote font-medium text-foreground">{copy.transcript.sendAnswer}</span>
             <SendSling
               disabled={!answer.trim()}
               ariaLabel={copy.transcript.sendAnswer}
@@ -1043,7 +1055,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           </span>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-footnote text-muted transition-colors hover:bg-danger/10 hover:text-danger"
             onClick={() => onResolve(item.id, "deny")}
           >
             {copy.transcript.reject}
@@ -1054,7 +1066,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   }
   return (
     <div
-      className="u-card-hover is-warn relative overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
+      className="u-card-hover is-warn relative overflow-hidden rounded-xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
       role="status"
       data-testid="approval-card"
     >
@@ -1064,19 +1076,19 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           <ShieldAlert className="size-3.5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
+          <div className="flex items-center gap-2 text-ui-caption font-medium text-muted">
             {copy.transcript.needsApproval}
           </div>
-          <div className="mt-0.5 text-[14px] font-medium tracking-tight text-foreground">{item.action || "action"}</div>
+          <div className="mt-0.5 text-ui-body-l font-medium tracking-tight text-foreground">{item.action || "action"}</div>
           {subject ? (
-            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[12px] leading-[1.5] text-foreground/85">
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-ui-footnote leading-[1.5] text-foreground/85">
               {subject}
             </pre>
           ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-ui-footnote font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
               onClick={() => onResolve(item.id, "once")}
             >
               {copy.transcript.allow}
@@ -1084,7 +1096,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[12px] text-foreground transition-colors hover:bg-lift"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-ui-footnote text-foreground transition-colors hover:bg-lift"
               onClick={() => onResolve(item.id, "session")}
             >
               {copy.transcript.allowSession}
@@ -1092,7 +1104,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-footnote text-muted transition-colors hover:bg-lift hover:text-foreground"
               onClick={() => onResolve(item.id, "always")}
             >
               {copy.transcript.allowAlways}
@@ -1101,7 +1113,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
             <span className="flex-1" />
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-footnote text-muted transition-colors hover:bg-danger/10 hover:text-danger"
               onClick={() => onResolve(item.id, "deny")}
             >
               {copy.transcript.reject}
@@ -1116,7 +1128,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
 
 /** 回合操作按钮的共用样式。 */
 const turnActionBtn =
-  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground disabled:opacity-40";
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-ui-caption text-muted hover:bg-lift hover:text-foreground disabled:opacity-40";
 
 /** 没有文字就不渲染。写入成功后勾选保持 1400 毫秒。失败弹出复制失败。text 为假时返回 null；传给 writeClipboard，写到 button 的 data-copy-text。 */
 function CopyAction({ text }: { text: string }) {
@@ -1164,7 +1176,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   return (
     <div
       className={cn(
-        "u-card-hover relative overflow-hidden rounded-2xl border px-4 py-3.5",
+        "u-card-hover relative overflow-hidden rounded-xl border px-4 py-3.5",
         soft ? "border-border bg-card/80" : "is-danger border-danger/25 bg-danger/8",
       )}
       role="alert"
@@ -1173,18 +1185,18 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
         className={cn("pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full", soft ? "bg-muted/60" : "bg-danger/80")}
         aria-hidden
       />
-      <div className={cn("text-[14px] font-medium tracking-[-0.01em]", soft ? "text-foreground" : "text-danger")}>{labels.title}</div>
-      {hint ? <p className={cn("mt-1 text-[13px] leading-5", soft ? "text-muted" : "text-danger/80")}>{hint}</p> : null}
+      <div className={cn("text-ui-body-l font-medium tracking-[-0.01em]", soft ? "text-foreground" : "text-danger")}>{labels.title}</div>
+      {hint ? <p className={cn("mt-1 text-ui-body leading-5", soft ? "text-muted" : "text-danger/80")}>{hint}</p> : null}
       {showDetail ? (
-        <details className="mt-2 text-[12px] text-muted">
+        <details className="mt-2 text-ui-footnote text-muted">
           <summary className={cn("cursor-pointer select-none", soft ? "text-muted hover:text-foreground" : "text-danger/70")}>{detailsLabel}</summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11px] leading-[1.5]">{detail}</pre>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-ui-caption leading-[1.5]">{detail}</pre>
         </details>
       ) : null}
       {classified.retryable && onRetry ? (
         <button
           type="button"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-ui-footnote font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
           onClick={onRetry}
         >
           <RotateCcw className="size-3" aria-hidden />
@@ -1192,7 +1204,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
         </button>
       ) : null}
       {item.payload?.crash_path ? (
-        <p className="mt-2 font-mono text-[11px] text-muted">
+        <p className="mt-2 font-mono text-ui-caption text-muted">
           {copy.settings.crashFile}: {String(item.payload.crash_path)}
         </p>
       ) : null}
@@ -1288,7 +1300,7 @@ function CompactRow({ item }: { item: Item }) {
   const label = note || bits.join(" · ") || copy.app.compacted;
   return (
     <div className="flex justify-center py-1" data-testid="compact-row">
-      <div className="max-w-[36rem] rounded-full border border-border/50 bg-lift/40 px-3 py-1 text-center text-[11px] leading-[1.4] text-muted">
+      <div className="max-w-[36rem] rounded-full border border-border/50 bg-lift/40 px-3 py-1 text-center text-ui-caption leading-[1.4] text-muted">
         {label}
       </div>
     </div>
@@ -1320,7 +1332,7 @@ function UserPrompt({
   const prose = peeled.text.trim();
   const images = (parts || []).filter((p) => p.image_url && (p.type === "image_url" || (p.mime || "").startsWith("image/")));
   return (
-    <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-[14px] leading-[1.55] tracking-normal">
+    <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-ui-body-l leading-[1.55] tracking-normal">
       {images.length ? (
         <div className={cn("flex flex-wrap gap-1.5", (chips.length || prose) && "mb-1.5")}>
           {images.map((p, i) => (
@@ -1339,7 +1351,7 @@ function UserPrompt({
             <span
               key={`${c.token}-${i}`}
               data-testid={c.kind === "file" ? "user-attach-chip" : "user-mention-chip"}
-              className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-background/55 px-1.5 py-0.5 text-[11px]"
+              className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-background/55 px-1.5 py-0.5 text-ui-caption"
               title={c.detail || c.token}
             >
               <MentionGlyph kind={c.kind} />
@@ -1392,7 +1404,7 @@ const ItemRow = memo(function ItemRow({
   if (shown.type === "user") {
     if (shown.source === "steer") {
       return (
-        <div className="text-center text-[11px] text-muted">
+        <div className="text-center text-ui-caption text-muted">
           {copy.transcript.steer}: {shown.text.replace(/^User steering \(apply now\):\s*/i, "")}
         </div>
       );
@@ -1407,7 +1419,7 @@ const ItemRow = memo(function ItemRow({
             attachments={Array.isArray(shown.payload?.attachments) ? shown.payload.attachments : undefined}
           />
           <div className="mt-0.5 flex min-h-5 items-center justify-end gap-1.5">
-            {clock ? <span className="text-[11px] tabular-nums text-muted/65">{clock}</span> : null}
+            {clock ? <span className="text-ui-caption tabular-nums text-muted/65">{clock}</span> : null}
             {copyText || onRestore || onFork ? (
               <UserMsgActions text={copyText} from={from} onRestore={onRestore} onFork={onFork} />
             ) : null}
@@ -1420,13 +1432,13 @@ const ItemRow = memo(function ItemRow({
     const handoff = shown.payload?.kind === "handoff";
     const body = !streaming && fileActions.linkFiles ? hidePaths(shown.text) : shown.text;
     return (
-      <div className={cn("assistant-prose w-full min-w-0", handoff && "max-w-[40rem] rounded-[24px] bg-card px-4 py-3.5 shadow-[var(--shadow-card)]")} data-testid={handoff ? "task-handoff" : "task-status"}>
-        {handoff ? <p className="text-[12px] font-medium tracking-wide text-muted">{copy.transcript.needsYou}</p> : null}
-        <div className={cn(handoff && "mt-2")}>
+      <div className={cn("assistant-prose w-full min-w-0", handoff && "max-w-[40rem] rounded-lg border border-border border-l-2 border-l-status-needs bg-card px-3.5 py-3 shadow-[var(--shadow-card)]")} data-testid={handoff ? "task-handoff" : "task-status"}>
+        <TaskEventHead ticket={String(shown.payload?.ticket || "")} state={String(shown.payload?.state || "")} handoff={handoff} />
+        <div className="mt-1.5">
           <Markdown text={body} streaming={streaming} rich={!!rich && !streaming} />
           {streaming ? null : <FilePathList text={shown.text} />}
         </div>
-        {handoff ? <p className="mt-3 text-[12px] leading-5 text-muted">{copy.transcript.needsYouHint}</p> : null}
+        {handoff ? <p className="mt-2 text-ui-footnote text-muted">{copy.transcript.needsYouHint}</p> : null}
       </div>
     );
   }
@@ -1434,27 +1446,33 @@ const ItemRow = memo(function ItemRow({
     const briefKind = String(shown.payload?.kind || "");
     const noted = briefKind === "speak" || briefKind === "reach";
     const notedAt = noted ? formatMessageClock(Date.parse(shown.ts), { md: copy.transcript.clockMd, ymd: copy.transcript.clockYmd }) : "";
+    const said = briefKind === "speak" ? speakSentence(shown.payload, shown.text, speakPhrases(copy.work)) : shown.text;
     return (
       <div className="assistant-prose w-full min-w-0">
-        {notedAt ? <p className="mb-1 text-[12px] tabular-nums text-muted" data-testid="reach-clock">{notedAt}</p> : null}
+        {notedAt ? <p className="mb-1 text-ui-footnote tabular-nums text-muted" data-testid="reach-clock">{notedAt}</p> : null}
         <div className={cn(streaming && "assistant-live")}>
-          <Markdown text={!streaming && fileActions.linkFiles ? hidePaths(shown.text) : shown.text} streaming={streaming} rich={!!rich && !streaming} />
+          <Markdown text={!streaming && fileActions.linkFiles ? hidePaths(said) : said} streaming={streaming} rich={!!rich && !streaming} />
           {streaming ? null : <FilePathList text={shown.text} />}
         </div>
+        {briefKind === "speak" && !streaming && shown.payload ? <SpeakFeedback payload={shown.payload} /> : null}
         {briefKind === "brief" && shown.payload?.chip ? (
-          <button
-            type="button"
-            className="mt-3 inline-flex h-9 items-center rounded-full bg-card px-3.5 text-[13px] font-medium shadow-[var(--shadow-card)] hover:bg-lift"
-            onClick={() => askBrief({
-              id: String(shown.payload?.id || ""),
-              chip: String(shown.payload?.chip || ""),
-              slot: String(shown.payload?.slot || ""),
-              day: String(shown.payload?.day || ""),
-              brief: String(shown.payload?.brief || ""),
-            })}
-          >
-            {String(shown.payload.chip)}
-          </button>
+          <EventCard
+            className="mt-3 max-w-[420px]"
+            testId="brief-event"
+            icon={String(shown.payload.slot) === "evening" ? <Moon /> : <Sun />}
+            title={String(shown.payload.chip)}
+            detail={copy.desk.briefOpen}
+            onClick={() => {
+              const target = {
+                id: String(shown.payload?.id || ""),
+                chip: String(shown.payload?.chip || ""),
+                slot: String(shown.payload?.slot || ""),
+                day: String(shown.payload?.day || ""),
+                brief: String(shown.payload?.brief || ""),
+              };
+              if (!focusBrief(target)) askBrief(target);
+            }}
+          />
         ) : null}
       </div>
     );
@@ -1505,7 +1523,7 @@ function ArtifactTimeline({
       {hidden > 0 ? (
         <button
           type="button"
-          className="h-7 w-full rounded-md px-1 text-left text-[12px] text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
+          className="h-7 w-full rounded-md px-1 text-left text-ui-footnote text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
           data-testid="artifact-earlier"
           onClick={() => setShown((n) => n + ARTIFACT_PAGE)}
         >
@@ -1619,7 +1637,7 @@ function ArtifactCard({
           <div className="file-bubble-title">
             <button type="button" className={cn("max-w-full truncate bg-transparent text-left font-[inherit]", pending && "shimmer-text")} onClick={() => setOpen((v) => !v)}>{title}</button>
             {interrupted ? (
-              <span className="ml-2 rounded-md bg-warning/12 px-1.5 py-px text-[11px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
+              <span className="ml-2 rounded-md bg-warning/12 px-1.5 py-px text-ui-caption font-medium text-warning">{copy.transcript.toolInterrupted}</span>
             ) : null}
           </div>
           <div className="file-bubble-stat">

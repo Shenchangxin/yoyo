@@ -3,6 +3,41 @@
  * 不拥有：具体接口的类型。
  */
 
+import { copy } from "./copy";
+
+/** 剪辑和导入抛出的英文句子换成当前语言。对不上就原样返回。msg 是错误正文。 */
+function localizeCutError(msg: string): string {
+  const c = copy.video.conductor;
+  const exact: Record<string, string> = {
+    "unknown error": c.errUnknown,
+    "source hash required": c.needHash,
+    "source hash or canvas resource required": c.needHash,
+    "resource has no CAS hash": c.needHash,
+    "upload did not return a CAS hash": c.needHash,
+    "ingest a source first": c.errNeedSource,
+    "no cuts to apply": c.errNoCuts,
+    "no video": c.errNoVideo,
+    "no video to mix": c.errNoMix,
+    "no audio": c.errNoAudio,
+    "no speech or music stem": c.errNoStem,
+    "need video and captions — transcribe or set caption text first": c.errNeedCaptions,
+    "no dub text — transcribe or pass text": c.errNoDub,
+    "cue not found": c.errCue,
+    "cut project not found": c.errCutMissing,
+    "session and project required": c.errNoBind,
+    "no cut project bound — pass id or bind first": c.errNoBind,
+    "reference hash required": c.errNeedRef,
+    "clip url required": c.errClipUrl,
+    "clip too large to copy into cut": copy.composer.clipTooLarge,
+    "cut project was not created": c.errCutCreate,
+  };
+  if (exact[msg]) return exact[msg];
+  if (msg.startsWith("unknown stem ")) return c.errUnknownStem;
+  if (msg.startsWith("fetch clip failed")) return c.errFetchClip;
+  if (msg.startsWith("source changed while ")) return c.errSourceChanged;
+  return msg;
+}
+
 /** pick 按顺序返回对象上第一个既不是 undefined 也不是 null 的字段。不是对象时返回 undefined。v 判断是否为空，按下标读取，用 typeof 看类型。keys 用来遍历。 */
 export function pick(v: any, ...keys: string[]): any {
   if (v == null || typeof v !== "object") return undefined;
@@ -68,13 +103,13 @@ export function boolOr(v: any, fallback: boolean): boolean {
   return asBool(v);
 }
 
-/** errMessage 取出错误正文，原因还没包含在正文里时接上。没有错误时为 unknown error。e 为假时返回 unknown error；转成字符串，用 typeof 看类型，作为分支结果，有的分支原样返回。 */
+/** errMessage 取出错误正文，原因还没包含在正文里时接上。剪辑相关的英文句子换成当前语言。没有错误时为当前语言的「出了点问题」。e 为假时走本地化；转成字符串，用 typeof 看类型，作为分支结果，有的分支原样返回。 */
 export function errMessage(e: any): string {
-  if (!e) return "unknown error";
-  if (typeof e === "string") return e;
+  if (!e) return localizeCutError("unknown error");
+  if (typeof e === "string") return localizeCutError(e);
   const msg = e.message || e.error || e.Message;
   const cause = e.cause != null ? errMessage(e.cause) : "";
   const primary = msg != null && msg !== e ? String(msg) : String(e);
-  if (cause && cause !== primary && !primary.includes(cause)) return `${primary}: ${cause}`;
-  return primary;
+  const text = cause && cause !== primary && !primary.includes(cause) ? `${primary}: ${cause}` : primary;
+  return localizeCutError(text);
 }

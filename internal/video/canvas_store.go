@@ -499,6 +499,8 @@ func (e *Engine) BindCanvasSession(sessionID, canvasID string) error {
 	if _, err := e.getCanvasProject(canvasID); err != nil {
 		return err
 	}
+	e.bindMu.Lock()
+	defer e.bindMu.Unlock()
 	m := e.loadCanvasBinds()
 	m[sessionID] = canvasID
 	return e.saveCanvasBinds(m)

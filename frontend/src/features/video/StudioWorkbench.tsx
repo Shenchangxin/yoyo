@@ -2,7 +2,7 @@
  * 本文件拥有短片工作台的雷达、选题、制作和交付切换。不拥有每一步的表单细节。
  * 收集、开拍、保存、打包和发布草稿会改服务端。成片进行中每 2000 毫秒重读，不是另一条模型循环。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Clapperboard, List, MoreHorizontal, Plus, Radio, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -21,8 +21,10 @@ import { StudioProduce } from "./StudioProduce";
 import { DeliveryShelf } from "./DeliveryShelf";
 import { type StudioCatalog, type StudioProject as ProduceProject } from "./studio-model";
 import { studioNext, studioNextCopy, type StudioPane } from "./studio-next";
-import { SCORE_KEYS, TOPIC_FILTERS, filmInFlight, topicCanFilm, topicMatchesQuery, trendMatchesQuery, type TopicFilter } from "./studio-topic";
+import { SCORE_KEYS, TOPIC_FILTERS, filmInFlight, scheduleWhen, topicCanFilm, topicMatchesQuery, trendMatchesQuery, type ScheduleSlot, type TopicFilter } from "./studio-topic";
 import { asStudioProject, studioSessionId } from "./studio-session";
+import { playbackSrc } from "./playback-src";
+import { subscribeStudioEvents } from "./studio-events";
 import { useStudioSelection } from "./workshop-store";
 import type { VideoProject } from "../../lib/protocol";
 
@@ -95,6 +97,7 @@ type StudioProject = {
   shots?: { image_hash?: string; video_hash?: string }[];
   auto_phase?: string;
   auto_error?: string;
+  task?: { kind?: string; started_at?: string } | null;
   template_id?: string;
   target_duration?: number;
   platform?: string;
@@ -134,6 +137,7 @@ export function StudioWorkbench(props: {
   const setStudioMeta = useStudioSelection(/** st 取出 setStudioMeta。 */ (st) => st.setStudioMeta);
   const [pane, setPane] = useState<StudioPane>(studioId ? "assemble" : "radar");
   const [busy, setBusy] = useState("");
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [err, setErr] = useState("");
   const [platforms, setPlatforms] = useState<string[]>(["weibo", "douyin", "zhihu"]);
   const [trends, setTrends] = useState<TrendGroup[]>([]);
@@ -160,6 +164,7 @@ export function StudioWorkbench(props: {
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [radarLoading, setRadarLoading] = useState(true);
+  const [trendsErr, setTrendsErr] = useState("");
 
   const current = (project && project.id === studioId ? project : null) || projects.find(/** p 用 id 和当前短片 id 比对。 */ (p) => p.id === studioId) || null;
   const copilotSessionId = studioSessionId(studioId, props.projects || []);
@@ -224,8 +229,11 @@ export function StudioWorkbench(props: {
       setMediaBase(String(st?.media_base || "").replace(/\/+$/, ""));
       setRemotionReady(!!st?.remotion?.ready);
     }).catch(() => {});
-    void api.video.fetchTrends("weibo,douyin,zhihu", 15).then(/** raw 取出 trends 收成数组。 */ (raw) => setTrends(asList<TrendGroup>(raw?.trends))).catch(() => {}).finally(() => setRadarLoading(false));
-    void api.video.studioCatalog().then(/** row 空着当空对象，写成目录。 */ (row) => setCatalog((row || {}) as StudioCatalog)).catch(() => {});
+    void api.video.fetchTrends("weibo,douyin,zhihu", 15).then(/** raw 取出 trends 收成数组。 */ (raw) => {
+      setTrends(asList<TrendGroup>(raw?.trends));
+      setTrendsErr("");
+    }).catch(/** e 是拉热榜失败的原因，留给空状态显示。 */ (e) => setTrendsErr(api.errMessage(e))).finally(() => setRadarLoading(false));
+    void api.video.studioCatalog().then(/** row 空着当空对象，写成目录。 */ (row) => setCatalog((row || {}) as StudioCatalog)).catch(/** e 是读目录失败的原因。 */ (e) => toast.error(api.errMessage(e)));
   }, [loadProjects]);
 
   useEffect(() => {
@@ -233,25 +241,41 @@ export function StudioWorkbench(props: {
     void loadPublishes().catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
   }, [pane, loadPublishes]);
 
-  const filmLive = projects.some(/** p 把 auto_phase 交给 filmInFlight。 */ (p) => filmInFlight(p.auto_phase));
+  const filmLive = projects.some(/** p 把 auto_phase 交给 filmInFlight。 */ (p) => filmInFlight(p.auto_phase) || !!p.task?.kind);
   useEffect(() => {
-    if (!filmLive) return;
-    const t = window.setInterval(() => {
-      void loadProjects();
-      const id = useStudioSelection.getState().studioId;
-      if (id) void loadProject(id);
-      void loadTopics();
-    }, 2000);
-    return () => window.clearInterval(t);
+    // 任一短片有进展时服务端推 studio_state：合并 300 毫秒内的事件，重读列表和选题。还有短片在跑时每 10 秒兜底重读。
+    let timer: number | undefined;
+    const reload = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void loadProjects().catch(() => {});
+        void loadTopics().catch(() => {});
+        const id = useStudioSelection.getState().studioId;
+        if (id) void loadProject(id).catch(() => {});
+      }, 300);
+    };
+    const off = subscribeStudioEvents(reload);
+    const t = filmLive ? window.setInterval(reload, 10_000) : undefined;
+    return () => {
+      off();
+      window.clearTimeout(timer);
+      if (t) window.clearInterval(t);
+    };
   }, [filmLive, loadProjects, loadProject, loadTopics]);
 
+  const captionEdited = useRef(false);
   useEffect(() => {
+    // 换短片时清空草稿平台、标签和「改过文案」的记号，免得上一条的标签串到这一条。
     setDraftPlatform("");
+    setDraftTags("");
+    captionEdited.current = false;
   }, [current?.id]);
 
   useEffect(() => {
+    // 后台写回的文案只在操作者还没动过时灌进输入框，正在改的字不被盖掉。
+    if (captionEdited.current) return;
     const text = current?.copy_text || current?.delivery?.copy_text || "";
-    if (text) setDraftCaption(text);
+    setDraftCaption(text);
   }, [current?.id, current?.copy_text, current?.delivery?.copy_text]);
 
   useEffect(() => {
@@ -260,10 +284,15 @@ export function StudioWorkbench(props: {
       return;
     }
     const id = studioId;
-    void loadProject(id).catch(() => {
+    void loadProject(id).catch(/** e 是读取失败。只有短片真的不在了才回首页；引擎还没开好或一时读不到时留着这条，并提示。 */ (e) => {
       if (useStudioSelection.getState().studioId !== id) return;
-      setProject(null);
-      setStudioId("");
+      const msg = api.errMessage(e);
+      if (/not found/i.test(msg)) {
+        setProject(null);
+        setStudioId("");
+        return;
+      }
+      toast.error(msg);
     });
   }, [studioId, loadProject, setStudioId]);
 
@@ -275,20 +304,30 @@ export function StudioWorkbench(props: {
       title: hit?.title || useStudioSelection.getState().title,
       status: hit?.status,
       gate: hit?.gate,
-    }).catch(() => {
-      /* 副驾绑定失败也不能把短片弹回首页 */
+    }).catch(/** e 是绑不上副驾的原因。短片留着，只提示一次。 */ (e) => {
+      toast.error(api.errMessage(e));
     });
     // 每个短片只挂一次。切换短片会改 studioId，新建也会。
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 靠 studioId 足够稳定
   }, [studioId]);
 
   useEffect(() => {
+    if (studioId !== restoreId.current) restoreId.current = "";
     if (studioId) {
       setPane(/** p 是 radar 或 topics 时收成 assemble，否则原样返回。 */ (p) => (p === "radar" || p === "topics" ? "assemble" : p));
       return;
     }
-    setPane(/** p 是 assemble 或 publish 时收成 radar，否则原样返回。 */ (p) => (p === "assemble" || p === "publish" ? "radar" : p));
+    // 退出当前短片（返回键或 Esc）都回选题，和左上角的返回一致。
+    setPane(/** p 是 assemble 或 publish 时收成 topics，否则原样返回。 */ (p) => (p === "assemble" || p === "publish" ? "topics" : p));
   }, [studioId]);
+
+  const restoreId = useRef(studioId);
+  useEffect(() => {
+    // 重开应用回到上次的短片时：已经有成片或一键成片还在跑，就直接去发布栏，不停在制作的第一步。
+    if (!current?.id || !restoreId.current || current.id !== restoreId.current) return;
+    restoreId.current = "";
+    if (current.result_hash || filmInFlight(current.auto_phase)) setPane("publish");
+  }, [current?.id, current?.result_hash, current?.auto_phase]);
 
   useEffect(() => {
     const next = studioNext(current, pane);
@@ -323,8 +362,14 @@ export function StudioWorkbench(props: {
   /** 按勾选的平台重拉热榜，每边 15 条。 */
   async function refreshTrends() {
     await run("radar", async () => {
-      const raw = await api.video.fetchTrends(platforms.join(","), 15);
-      setTrends(asList<TrendGroup>(raw?.trends));
+      try {
+        const raw = await api.video.fetchTrends(platforms.join(","), 15);
+        setTrends(asList<TrendGroup>(raw?.trends));
+        setTrendsErr("");
+      } catch (e) {
+        setTrendsErr(api.errMessage(e));
+        throw e;
+      }
     });
   }
 
@@ -455,12 +500,19 @@ export function StudioWorkbench(props: {
     await filmTopics(rows.map(/** t 取出 id。 */ (t) => t.id));
   }
 
-  /** 把选题排进队列。重复时只提示已经在队列里。 t 用 id 交给 scheduleTopic。 */
-  async function schedule(t: Topic) {
+  /** 把选题排到挑好的时间开拍。重复时只提示已经在队列里；主动工作关着时提醒到点不会自己开拍。 t 用 id 交给 scheduleTopic。slot 换成开拍时间。 */
+  async function schedule(t: Topic, slot: ScheduleSlot = "soon") {
     await run("schedule", async () => {
-      const out = (await api.video.scheduleTopic(t.id)) as { duplicate?: boolean };
+      const out = (await api.video.scheduleTopic(t.id, "", defaultAspect, scheduleWhen(slot))) as { duplicate?: boolean; run_at?: string; paused?: boolean };
       await loadTopics();
-      toast.success(out?.duplicate ? s.scheduleExists : s.scheduleQueued);
+      if (out?.duplicate) {
+        toast.success(s.scheduleExists);
+        return;
+      }
+      const at = out?.run_at ? new Date(out.run_at) : null;
+      const when = at && !Number.isNaN(at.getTime()) ? at.toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      toast.success(when ? s.scheduledAt.replace("{time}", when) : s.scheduleQueued);
+      if (out?.paused) toast.warning(s.schedulePaused);
     });
   }
 
@@ -521,13 +573,16 @@ export function StudioWorkbench(props: {
     props.onRefreshHistory?.();
   }
 
-  /** 把补丁写回当前短片。 patch 展开进当前短片的更新。 */
+  /** 把补丁写回当前短片。保存按点的先后排队，一次只送一份：失焦保存口播紧接着点平台时，后一份的结果一定带着前一份，旧结果不会晚到盖掉新的。 patch 展开进当前短片的更新。 */
   async function saveProject(patch: Partial<StudioProject>) {
     if (!current?.id) return;
-    await run("save", async () => {
-      const next = (await api.video.updateStudio({ id: current.id, ...patch })) as StudioProject;
-      setProject(next);
-    });
+    const id = current.id;
+    const queued = saveQueue.current.then(() => run("save", async () => {
+      const next = (await api.video.updateStudio({ id, ...patch })) as StudioProject;
+      if (useStudioSelection.getState().studioId === id) setProject(next);
+    }));
+    saveQueue.current = queued;
+    await queued;
   }
 
   /** 给当前成片套壳。返回了新哈希就写回短片。 */
@@ -558,11 +613,12 @@ export function StudioWorkbench(props: {
       toast.error(s.filmPickPlatform);
       return;
     }
-    if (current.delivery?.status !== "publishable") {
-      toast.error(s.desk.needPack);
-      return;
-    }
     await run("draft", async () => {
+      // 还没打交付包就先替操作者打一次：成片已经在，没必要让人多点一步。
+      if (current.delivery?.status !== "publishable") {
+        const packed = (await api.video.packageStudio(current.id)) as StudioProject;
+        if (packed?.id) setProject(packed);
+      }
       await api.video.draftPublish({
         platform: draftPlatform,
         title: current.title || s.newProject,
@@ -587,10 +643,27 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 有媒体根地址时拼出 /media/ 路径。 hash 为空就返回空字符串，否则在有媒体根时拼出 /media/ 路径。 */
+  /** 有媒体根地址时拼出 /media/ 路径，再按当前页面改成能播的地址。 hash 为空就返回空字符串，否则在有媒体根时拼出 /media/ 路径交给 playbackSrc。 */
   function mediaSrc(hash?: string) {
     if (!hash) return "";
-    return mediaBase ? `${mediaBase}/media/${hash}` : "";
+    return mediaBase ? playbackSrc(`${mediaBase}/media/${hash}`) : "";
+  }
+
+  /** 把选题开成一条短片，进制作台一步步做，不走一键成片。选题上已经有短片就直接打开那一条。 t 有 studio_project_id 时打开它，否则用选题和默认画幅新建。 */
+  async function openTopicInDesk(t: Topic) {
+    const existing = projects.find(/** p 用 id 和选题上的短片 id 比对。 */ (p) => p.id === t.studio_project_id);
+    if (existing) {
+      await openShort(existing);
+      return;
+    }
+    await run("create", async () => {
+      const p = (await api.video.createStudio({ topic_id: t.id, aspect: defaultAspect })) as StudioProject;
+      if (!p?.id) return;
+      await openShort(p);
+      await loadTopics();
+      await loadProjects();
+      props.onRefreshHistory?.();
+    });
   }
 
   /** 把热榜平台 id 换成界面名字。 */
@@ -624,6 +697,8 @@ export function StudioWorkbench(props: {
   ];
   const next = studioNext(current, pane);
   const nextLabel = studioNextCopy(s, next.key);
+  // 下一步在别的栏，或在同一栏但还没走到那一道工序时，才算有事可做。
+  const nextPending = pane !== next.pane || (!!next.gate && next.gate !== current?.gate);
   const paneDone: Record<StudioPane, boolean> = {
     radar: topics.length > 0,
     topics: !!current,
@@ -661,7 +736,7 @@ export function StudioWorkbench(props: {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="studio-workbench" data-pane={pane} data-bound={current ? "true" : "false"} data-home={atHome ? "true" : "false"}>
-      {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
+      {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-ui-footnote text-danger">{err}</div> : null}
       <header className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-2">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-0.5">
@@ -670,7 +745,7 @@ export function StudioWorkbench(props: {
                 <ArrowLeft className="size-3.5" aria-hidden />
               </Button>
             ) : null}
-            <h1 className="min-w-0 truncate text-[14px] font-semibold tracking-[-0.03em]" data-testid="studio-workbench-bound">
+            <h1 className="min-w-0 truncate text-ui-body-l font-semibold tracking-[-0.03em]" data-testid="studio-workbench-bound">
               {current?.title || copy.video.shellStudio}
             </h1>
             {projects.length > 0 ? (
@@ -707,8 +782,8 @@ export function StudioWorkbench(props: {
                           onSelect={() => { void selectProject(p.id); }}
                         >
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px]">{shortLabel(p.title)}</span>
-                            {meta ? <span className="mt-0.5 block truncate text-[11px] text-muted">{meta}</span> : null}
+                            <span className="block truncate text-ui-body">{shortLabel(p.title)}</span>
+                            {meta ? <span className="mt-0.5 block truncate text-ui-caption text-muted">{meta}</span> : null}
                           </span>
                           {p.id === studioId ? <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : null}
                         </DropdownMenuItem>
@@ -730,9 +805,9 @@ export function StudioWorkbench(props: {
               </DropdownMenu>
             ) : null}
           </div>
-          <p className="truncate text-[12px] text-muted" data-testid="studio-next">
+          <p className="truncate text-ui-footnote text-muted" data-testid="studio-next">
             {current
-              ? [statusLabel[current.status || ""] || current.status, gateLabel[current.gate || current.furthest_gate || ""] || "", pane === next.pane ? "" : nextLabel].filter(Boolean).join(" · ")
+              ? [statusLabel[current.status || ""] || current.status, gateLabel[current.gate || current.furthest_gate || ""] || "", nextPending ? nextLabel : ""].filter(Boolean).join(" · ")
               : s.homeHint}
           </p>
           {current?.id ? (
@@ -747,20 +822,23 @@ export function StudioWorkbench(props: {
             />
           ) : null}
         </div>
-        {!atHome && pane !== next.pane ? (
+        {!atHome && nextPending ? (
           <Button
             size="sm"
             variant="default"
-            className="h-7 shrink-0 gap-1 text-[12px]"
+            className="h-7 shrink-0 gap-1 text-ui-footnote"
             data-testid="studio-next-do"
-            onClick={() => setPane(next.pane)}
+            onClick={() => {
+              setPane(next.pane);
+              if (next.gate && current?.id && next.gate !== current.gate) void saveProject({ gate: next.gate });
+            }}
           >
             {s.nextDo}
             <ChevronRight className="size-3.5" aria-hidden />
           </Button>
         ) : null}
         {atHome ? (
-          <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 text-[12px]" disabled={!!busy} data-testid="studio-new-short" onClick={() => setNaming(true)}>
+          <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 text-ui-footnote" disabled={!!busy} data-testid="studio-new-short" onClick={() => setNaming(true)}>
             <Plus className="size-3.5" aria-hidden />
             {s.newProject}
           </Button>
@@ -797,12 +875,12 @@ export function StudioWorkbench(props: {
             title={p.hint}
             aria-current={pane === p.id ? "page" : undefined}
             className={cn(
-              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium",
+              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-ui-footnote font-medium",
               pane === p.id ? "bg-foreground text-background" : paneDone[p.id] ? "text-foreground hover:bg-lift/70" : "text-muted hover:bg-lift/70 hover:text-foreground",
             )}
             onClick={() => setPane(p.id)}
           >
-            <span className="tabular-nums text-[10px] opacity-70">{i + 1}</span>
+            <span className="tabular-nums text-ui-caption opacity-70">{i + 1}</span>
             {p.label}
           </button>
         ))}
@@ -810,7 +888,7 @@ export function StudioWorkbench(props: {
           <div className="relative ml-auto min-w-40 flex-1">
             <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
             <Input
-              className="h-7 border-transparent bg-lift/80 pl-7 text-[12px]"
+              className="h-7 border-transparent bg-lift/80 pl-7 text-ui-footnote"
               value={query}
               placeholder={s.searchTopics}
               aria-label={s.searchTopics}
@@ -839,7 +917,7 @@ export function StudioWorkbench(props: {
         {pane === "radar" ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-[12px] text-muted">{s.platforms}</span>
+              <span className="mr-1 text-ui-footnote text-muted">{s.platforms}</span>
               {TREND_PLATFORMS.map(/** p 用来判断是否已选，点击时加进或移出，并交给 trendLabel 显示。 */ (p) => {
                 const on = platforms.includes(p);
                 return (
@@ -847,7 +925,7 @@ export function StudioWorkbench(props: {
                     key={p}
                     type="button"
                     aria-pressed={on}
-                    className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
+                    className={cn("rounded-full px-2 py-0.5 text-ui-caption", on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
                     onClick={() => setPlatforms(/** prev 在已选且只剩这一项时不动；已选就去掉 p，未选就把 p 加进去。 */ (prev) => {
                       if (on && prev.length <= 1) return prev;
                       return on ? prev.filter(/** x 和 p 不同才留下。 */ (x) => x !== p) : [...prev, p];
@@ -857,7 +935,7 @@ export function StudioWorkbench(props: {
                   </button>
                 );
               })}
-              <Button size="sm" variant="lift" className="ml-auto h-7 gap-1 text-[12px]" disabled={!!busy} onClick={() => void refreshTrends()}>
+              <Button size="sm" variant="lift" className="ml-auto h-7 gap-1 text-ui-footnote" disabled={!!busy} onClick={() => void refreshTrends()}>
                 <RefreshCw className="size-3.5" aria-hidden />
                 {s.refresh}
               </Button>
@@ -868,11 +946,17 @@ export function StudioWorkbench(props: {
                 title={copy.video.loadingRadar}
                 body={s.refresh}
               />
+            ) : shownTrends.length === 0 && query.trim() && trends.length > 0 ? (
+              <EmptyState
+                icon={<Radio className="size-5" />}
+                title={s.noMatch.replace("{q}", query.trim())}
+                action={<Button size="sm" variant="ghost" onClick={() => setQuery("")}>{s.clearSearch}</Button>}
+              />
             ) : shownTrends.length === 0 ? (
               <EmptyState
                 icon={<Radio className="size-5" />}
-                title={s.emptyRadar}
-                body={s.emptyRadarHint}
+                title={trendsErr ? s.radarFailed : s.emptyRadar}
+                body={trendsErr || s.emptyRadarHint}
                 action={
                   <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void refreshTrends()}>
                     {s.refresh}
@@ -882,7 +966,7 @@ export function StudioWorkbench(props: {
             ) : (
               shownTrends.map(/** g 用 platform 或 label 当 key 和标题，不 ok 就显示离线，并列出 items，收藏时把 platform 交给 collect。 */ (g) => (
                 <section key={g.platform || g.label} className="overflow-hidden rounded-xl border border-border bg-card">
-                  <h2 className="flex items-center gap-2 px-3.5 py-2 text-[12px] font-medium text-muted">
+                  <h2 className="flex items-center gap-2 px-3.5 py-2 text-ui-footnote font-medium text-muted">
                     {g.label || g.platform}
                     {!g.ok ? <span className="text-danger/80">{s.offline}</span> : null}
                   </h2>
@@ -890,10 +974,10 @@ export function StudioWorkbench(props: {
                     {(g.items || []).map(/** item 显示 title，有 hot 就显示，收藏时整条交给 collect。i 和平台拼成 key。 */ (item, i) => (
                       <li key={`${g.platform}-${i}`} className="flex items-center gap-3 px-3.5 py-2.5">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] text-foreground">{item.title}</p>
-                          {item.hot ? <p className="text-[11px] text-muted">{item.hot}</p> : null}
+                          <p className="truncate text-ui-body text-foreground">{item.title}</p>
+                          {item.hot ? <p className="text-ui-caption text-muted">{item.hot}</p> : null}
                         </div>
-                        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void collect(g.platform || "", item)}>
+                        <Button size="sm" variant="ghost" className="h-7 text-ui-footnote" disabled={!!busy} onClick={() => void collect(g.platform || "", item)}>
                           {s.collect}
                         </Button>
                       </li>
@@ -914,7 +998,7 @@ export function StudioWorkbench(props: {
                   type="button"
                   data-testid={`studio-topic-filter-${st || "all"}`}
                   aria-pressed={topicStatus === st}
-                  className={cn("rounded-full px-2 py-0.5 text-[11px]", topicStatus === st ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
+                  className={cn("rounded-full px-2 py-0.5 text-ui-caption", topicStatus === st ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
                   onClick={() => {
                     setTopicStatus(st);
                     void loadTopics(st).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
@@ -933,17 +1017,24 @@ export function StudioWorkbench(props: {
             {pickCount > 0 ? (
               <div className="flex items-center gap-3 rounded-xl border border-foreground/15 bg-card px-3 py-2.5" data-testid="studio-topic-picked">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-foreground">{s.selectedCount.replace("{n}", String(pickCount))}</p>
-                  <p className="mt-0.5 text-[12px] leading-[1.45] text-muted">{s.filmHint}</p>
+                  <p className="text-ui-body font-medium text-foreground">{s.selectedCount.replace("{n}", String(pickCount))}</p>
+                  <p className="mt-0.5 text-ui-footnote text-muted">{s.filmHint}</p>
+                  {pickCount > 8 ? <p className="mt-0.5 text-ui-footnote text-warning">{s.batchLimit}</p> : null}
                 </div>
-                <Button size="sm" variant="default" className="h-8 shrink-0 text-[12px]" disabled={!!busy} data-testid="studio-new-from-topics" onClick={() => void produceSelected()}>
+                <Button size="sm" variant="default" className="h-8 shrink-0 text-ui-footnote" disabled={!!busy} data-testid="studio-new-from-topics" onClick={() => void produceSelected()}>
                   {s.desk.oneClick}
                 </Button>
               </div>
             ) : (
-              <p className="text-[12px] leading-[1.5] text-muted">{s.topicsHint}</p>
+              <p className="text-ui-footnote leading-[1.5] text-muted">{s.topicsHint}</p>
             )}
-            {shownTopics.length === 0 ? (
+            {shownTopics.length === 0 && query.trim() && topics.length > 0 ? (
+              <EmptyState
+                icon={<List className="size-5" />}
+                title={s.noMatch.replace("{q}", query.trim())}
+                action={<Button size="sm" variant="ghost" onClick={() => setQuery("")}>{s.clearSearch}</Button>}
+              />
+            ) : shownTopics.length === 0 ? (
               <EmptyState
                 icon={<List className="size-5" />}
                 title={s.emptyTopics}
@@ -963,19 +1054,21 @@ export function StudioWorkbench(props: {
                     busy={!!busy}
                     picked={picked.has(t.id)}
                     statusLabel={statusLabel[t.status || "inbox"] || t.status || ""}
+                    sourceLabel={t.source_platform ? trendLabel(t.source_platform) : ""}
                     deleteLabel={copy.video.delete}
                     scoreLabels={scoreLabel}
                     film={projects.find(/** p 用 id 和选题上的短片 id 比对。 */ (p) => p.id === t.studio_project_id)}
                     copy={s}
                     onPick={() => togglePick(t.id)}
                     onProduce={() => void produce(t)}
+                    onOpenDesk={() => void openTopicInDesk(t)}
                     onUnschedule={() => void unschedule(t)}
                     onPatch={/** extra 交给 patchTopic。 */ (extra) => void patchTopic(t, extra)}
                     onExpand={() => void run("expand", async () => {
                       await api.video.expandTopic(t.id);
                       await loadTopics();
                     })}
-                    onSchedule={() => void schedule(t)}
+                    onSchedule={/** slot 是选题卡上挑的开拍时间。 */ (slot) => void schedule(t, slot)}
                     onPersona={() => void makePersona(t.id, t.title)}
                     onChoose={/** optionId 交给 chooseTopicOption，然后重读选题。 */ (optionId) => void run("choose", async () => {
                       await api.video.chooseTopicOption(t.id, optionId);
@@ -1035,7 +1128,10 @@ export function StudioWorkbench(props: {
             tags={draftTags}
             onSelect={/** id 交给 openDelivery。 */ (id) => { void openDelivery(id); }}
             onPlatform={setDraftPlatform}
-            onCaption={setDraftCaption}
+            onCaption={/** value 是操作者改的文案，记下改过，后台再写回也不覆盖。 */ (value) => {
+              captionEdited.current = true;
+              setDraftCaption(value);
+            }}
             onTags={setDraftTags}
             onSave={() => void saveDraftPublish()}
             onRetry={() => {
@@ -1067,6 +1163,7 @@ export function StudioWorkbench(props: {
                     key={row.id}
                     draft={row}
                     busy={busy}
+                    platformLabel={pubPlatforms.find(/** x 是发布平台，和草稿平台比对。 */ (x) => x.id === row.platform)?.label || row.platform || ""}
                     statusLabel={statusLabel[row.status || "draft"] || row.status || ""}
                     onRun={run}
                     onReload={async () => {
@@ -1123,6 +1220,7 @@ export function StudioWorkbench(props: {
 function PublishDraftCard(props: {
   draft: Publish;
   busy: string;
+  platformLabel: string;
   statusLabel: string;
   onRun: (label: string, fn: () => Promise<void>) => Promise<void>;
   onReload: () => Promise<void>;
@@ -1138,34 +1236,36 @@ function PublishDraftCard(props: {
   return (
     <li className="rounded-xl border border-border bg-card px-3.5 py-3">
       <div className="min-w-0">
-        <p className="text-[13px] font-medium text-foreground">{p.title}</p>
-        <p className="mt-0.5 text-[12px] text-muted">{[p.platform, props.statusLabel].filter(Boolean).join(" · ")}</p>
-        {p.posted_url ? <p className="mt-1 truncate text-[12px] text-muted">{p.posted_url}</p> : null}
-        {p.export_path ? <p className="mt-1 truncate text-[11px] text-muted">{p.export_path}</p> : null}
+        <p className="text-ui-body font-medium text-foreground">{p.title}</p>
+        <p className="mt-0.5 text-ui-footnote text-muted">{[props.platformLabel, props.statusLabel].filter(Boolean).join(" · ")}</p>
+        {p.posted_url ? <p className="mt-1 truncate text-ui-footnote text-muted">{p.posted_url}</p> : null}
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("export", async () => {
+        <Button size="sm" variant="ghost" className="h-7 text-ui-footnote" disabled={!!props.busy} onClick={() => void props.onRun("export", async () => {
           await api.video.exportPublish(p.id);
           await props.onReload();
         })}>{s.exportMp4}</Button>
-        <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("open", async () => {
+        <Button size="sm" variant="default" className="h-7 text-ui-footnote" disabled={!!props.busy} onClick={() => void props.onRun("open", async () => {
           await api.video.openPublish(p.id);
           await props.onReload();
         })}>{s.openCreator}</Button>
-        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("analytics", async () => {
+        <Button size="sm" variant="ghost" className="h-7 text-ui-footnote" disabled={!!props.busy} onClick={() => void props.onRun("analytics", async () => {
           await api.video.openPublishAnalytics(p.id);
         })}>{s.openAnalytics}</Button>
         {p.export_path ? (
-          <Button size="sm" variant="ghost" className="h-7 text-[12px]" onClick={() => void api.openPath(p.export_path || "")}>{s.reveal}</Button>
+          <Button size="sm" variant="ghost" className="h-7 text-ui-footnote" onClick={() => void api.openPath(p.export_path || "")}>{s.reveal}</Button>
         ) : null}
-        <Button size="sm" variant="ghost" className="h-7 text-[12px] text-danger" disabled={!!props.busy} onClick={() => void props.onRun("failed", async () => {
-          await api.video.markPublish(p.id, "failed", { note });
-          await props.onReload();
-        })}>{s.markFailed}</Button>
+        <Button size="sm" variant="ghost" className="h-7 text-ui-footnote text-danger" disabled={!!props.busy} onClick={() => {
+          if (!window.confirm(s.markFailedConfirm)) return;
+          void props.onRun("failed", async () => {
+            await api.video.markPublish(p.id, "failed", { note });
+            await props.onReload();
+          });
+        }}>{s.markFailed}</Button>
       </div>
       <details className="mt-2" data-testid="studio-record-stats">
-        <summary className="cursor-pointer text-[12px] text-muted">{copy.video.recordStats}</summary>
-        <p className="mt-1 text-[11px] leading-[1.45] text-muted">{s.analyticsNote}</p>
+        <summary className="cursor-pointer text-ui-footnote text-muted">{copy.video.recordStats}</summary>
+        <p className="mt-1 text-ui-caption leading-[1.45] text-muted">{s.analyticsNote}</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <Input className="h-8" placeholder={s.postedUrl} value={postedUrl} onChange={/** e 取出 target.value 交给 setPostedUrl。 */ (e) => setPostedUrl(e.target.value)} />
           <Input className="h-8" placeholder={s.analyticsNote} value={note} onChange={/** e 取出 target.value 交给 setNote。 */ (e) => setNote(e.target.value)} />
@@ -1173,7 +1273,7 @@ function PublishDraftCard(props: {
           <Input className="h-8" placeholder={s.likes} value={likes} onChange={/** e 取出 target.value 交给 setLikes。 */ (e) => setLikes(e.target.value)} />
           <Input className="h-8 sm:col-span-2" placeholder={s.comments} value={comments} onChange={/** e 取出 target.value 交给 setComments。 */ (e) => setComments(e.target.value)} />
         </div>
-        <Button size="sm" variant="lift" className="mt-2 h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("posted", async () => {
+        <Button size="sm" variant="lift" className="mt-2 h-7 text-ui-footnote" disabled={!!props.busy} onClick={() => void props.onRun("posted", async () => {
           await api.video.markPublish(p.id, "posted", {
             posted_url: postedUrl,
             note,

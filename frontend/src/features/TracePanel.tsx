@@ -73,7 +73,7 @@ export function TracePanel(props: {
   return (
     <div className="flex min-h-0 flex-col" data-testid="trace-panel">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 pl-3 pr-1.5">
-        <dl className="flex min-w-0 flex-1 items-center gap-x-2.5 overflow-hidden whitespace-nowrap text-[12px] tabular-nums text-muted" data-testid="trace-stats">
+        <dl className="flex min-w-0 flex-1 items-center gap-x-2.5 overflow-hidden whitespace-nowrap text-ui-footnote tabular-nums text-muted" data-testid="trace-stats">
           <Stat value={String(stats?.events || 0)} label={copy.trace.events} />
           <Dot />
           <Stat value={String(stats?.toolCalls || 0)} label={copy.trace.tools} />
@@ -97,7 +97,7 @@ export function TracePanel(props: {
               type="button"
               aria-label={copy.trace.copyId}
               title={props.sessionId}
-              className="mr-0.5 inline-flex max-w-[9.5rem] shrink items-center gap-1 rounded-md px-1 font-mono text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+              className="mr-0.5 inline-flex max-w-[9.5rem] shrink items-center gap-1 rounded-md px-1 font-mono text-ui-caption text-muted transition-colors hover:bg-lift hover:text-foreground"
               onClick={async () => {
                 if (await writeClipboard(props.sessionId)) markCopied("session-id");
               }}
@@ -126,7 +126,7 @@ export function TracePanel(props: {
 
       {(t?.artifacts || []).length ? (
         <section>
-          <div className="flex h-8 items-center px-3 text-[11px] font-medium text-muted">
+          <div className="flex h-8 items-center px-3 text-ui-caption font-medium text-muted">
             {copy.trace.artifacts}
             <span className="ml-2 tabular-nums normal-case tracking-normal text-muted/60">{t!.artifacts.length}</span>
           </div>
@@ -165,7 +165,7 @@ export function TracePanel(props: {
               role="tab"
               aria-selected={filter === f.id}
               className={cn(
-                "h-6 rounded-md px-2 text-[11px] font-medium transition-colors",
+                "h-6 rounded-md px-2 text-ui-caption font-medium transition-colors",
                 filter === f.id ? "bg-lift text-foreground" : "text-muted hover:text-foreground",
               )}
               onClick={() => setFilter(f.id)}
@@ -194,14 +194,14 @@ export function TracePanel(props: {
                     )}
                     onClick={() => setOpen(expanded ? null : key)}
                   >
-                    <span className="font-mono text-[11px] tabular-nums text-muted/60">{formatTime(ev.ts)}</span>
+                    <span className="font-mono text-ui-caption tabular-nums text-muted/60">{formatTime(ev.ts)}</span>
                     <span className="flex min-w-0 items-baseline gap-2">
-                      <span className={cn("shrink-0 font-mono text-[11px]", ev.error ? "text-danger" : "text-muted")}>
+                      <span className={cn("shrink-0 font-mono text-ui-caption", ev.error ? "text-danger" : "text-muted")}>
                         {ev.name || ev.type}
                       </span>
-                      <span className="min-w-0 truncate text-[12px] text-foreground/85">{ev.summary}</span>
+                      <span className="min-w-0 truncate text-ui-footnote text-foreground/85">{ev.summary}</span>
                     </span>
-                    <span className="font-mono text-[11px] tabular-nums text-muted/60">
+                    <span className="font-mono text-ui-caption tabular-nums text-muted/60">
                       {ev.elapsedMs > 0 ? `${ev.elapsedMs}ms` : ""}
                     </span>
                   </button>
@@ -232,7 +232,7 @@ function Empty({ title, icon }: { title: string; icon?: ReactNode }) {
   return (
     <div className="flex min-h-[8rem] flex-col items-center justify-center px-6 text-center">
       {icon ? <span className="mb-3 grid size-8 place-items-center rounded-lg bg-lift/60 text-muted" aria-hidden>{icon}</span> : null}
-      <p className="text-[12px] text-muted">{title}</p>
+      <p className="text-ui-footnote text-muted">{title}</p>
     </div>
   );
 }
@@ -258,7 +258,7 @@ function CopyButton({ copied, onClick }: { copied: boolean; onClick: () => void 
   return (
     <button
       type="button"
-      className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+      className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-ui-caption text-muted transition-colors hover:bg-lift hover:text-foreground"
       onClick={onClick}
     >
       <IconSwap
@@ -277,7 +277,7 @@ function Surface({ children, tone }: { children: ReactNode; tone?: "fg" }) {
   return (
     <pre
       className={cn(
-        "max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border/60 bg-panel/70 px-3 py-2 font-mono text-[11px] leading-[1.55]",
+        "max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border/60 bg-panel/70 px-3 py-2 font-mono text-ui-caption leading-[1.55]",
         tone === "fg" ? "text-foreground/90" : "text-muted",
       )}
     >
@@ -303,31 +303,31 @@ function ArtifactRow(props: {
         type="button"
         aria-expanded={props.open}
         className={cn(
-          "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-lift/40",
+          "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 px-3 py-1.5 text-left text-ui-footnote transition-colors hover:bg-lift/40",
           props.open && "bg-lift/30",
         )}
         onClick={props.onOpen}
       >
-        <span className="font-mono text-[11px] text-muted">{art.kind}</span>
+        <span className="font-mono text-ui-caption text-muted">{art.kind}</span>
         <span className="min-w-0 truncate font-mono text-foreground/85">{art.label}</span>
-        <span className="font-mono text-[11px] tabular-nums text-muted/60">{art.bytes > 0 ? formatBytes(art.bytes) : ""}</span>
+        <span className="font-mono text-ui-caption tabular-nums text-muted/60">{art.bytes > 0 ? formatBytes(art.bytes) : ""}</span>
       </button>
       {props.open ? (
         <div className="px-3 pb-2.5 pt-0.5">
-          {props.blob === "loading" ? <p className="text-[11px] text-muted">…</p> : null}
-          {props.blob === "error" ? <p className="text-[11px] text-danger">—</p> : null}
+          {props.blob === "loading" ? <p className="text-ui-caption text-muted">…</p> : null}
+          {props.blob === "error" ? <p className="text-ui-caption text-danger">—</p> : null}
           {props.blob && typeof props.blob === "object" ? (
             <>
               <Surface>{props.blob.text}</Surface>
               <div className="mt-1.5 flex items-center gap-2">
                 <CopyButton copied={props.copied} onClick={() => props.onCopy(props.blob && typeof props.blob === "object" ? props.blob.text : art.preview)} />
-                {props.blob.truncated ? <span className="text-[11px] text-muted">{copy.trace.truncated}</span> : null}
+                {props.blob.truncated ? <span className="text-ui-caption text-muted">{copy.trace.truncated}</span> : null}
               </div>
             </>
           ) : art.preview ? (
             <Surface>{art.preview}</Surface>
           ) : art.kind === "spill" ? (
-            <p className="text-[11px] text-muted">{copy.trace.loadSpill}</p>
+            <p className="text-ui-caption text-muted">{copy.trace.loadSpill}</p>
           ) : null}
         </div>
       ) : null}
@@ -353,22 +353,22 @@ function EventDetail(props: {
         {ev.spillId && props.onLoadSpill ? (
           <button
             type="button"
-            className="h-6 rounded-md px-1.5 text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+            className="h-6 rounded-md px-1.5 text-ui-caption text-muted transition-colors hover:bg-lift hover:text-foreground"
             onClick={props.onLoadSpill}
           >
             {copy.trace.loadSpill}
           </button>
         ) : null}
-        <span className="ml-auto flex items-center gap-2 font-mono text-[11px] tabular-nums text-muted/60">
+        <span className="ml-auto flex items-center gap-2 font-mono text-ui-caption tabular-nums text-muted/60">
           {ev.bytes > 0 ? <span>{formatBytes(ev.bytes)}</span> : null}
           {ev.spillId ? <span>{ev.spillId}</span> : null}
         </span>
       </div>
-      {props.blob === "loading" ? <p className="mt-1 text-[11px] text-muted">…</p> : null}
+      {props.blob === "loading" ? <p className="mt-1 text-ui-caption text-muted">…</p> : null}
       {props.blob && typeof props.blob === "object" ? (
         <div className="mt-2">
           <Surface tone="fg">{props.blob.text}</Surface>
-          {props.blob.truncated ? <p className="mt-1 text-[11px] text-muted">{copy.trace.truncated}</p> : null}
+          {props.blob.truncated ? <p className="mt-1 text-ui-caption text-muted">{copy.trace.truncated}</p> : null}
         </div>
       ) : null}
     </div>

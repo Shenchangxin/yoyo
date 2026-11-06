@@ -49,6 +49,7 @@ type Runtime struct {
 	logs         map[string][]byte
 	report       func(ticketID, state, summary, question string)
 	notice       func(sessionID, text string)
+	profile      func() string
 }
 
 // Open 打开 path 上的快照并还原引擎。path 为空时只放在内存里。policy 在没有快照时作为初始策略。
@@ -131,6 +132,7 @@ func (rt *Runtime) attachExec() {
 	rt.exec.LogLoad = rt.loadWorkerLog
 	rt.exec.LogSave = rt.saveWorkerLog
 	rt.exec.OnReport = rt.queueReport
+	rt.exec.Profile = rt.profile
 }
 
 // wireEffects 登记六类先落盘再执行的副作用。调用时要已持有锁。
@@ -313,6 +315,19 @@ func (rt *Runtime) SetMount(fn func(reg *dsh.Registry, agent *dsh.Agent, dir, ti
 	defer rt.mu.Unlock()
 	if rt.exec != nil {
 		rt.exec.Mount = fn
+	}
+}
+
+// SetProfile 接上操作者画像。fn 返回已经留下的偏好和本人说过的话，写进每个新工人的系统提示，只读。
+func (rt *Runtime) SetProfile(fn func() string) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.profile = fn
+	if rt.exec != nil {
+		rt.exec.Profile = fn
 	}
 }
 
@@ -611,6 +626,12 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 				rt.exec.Interrupt(ticketID)
 			}
 		}
+	case "pause":
+		if rt.exec == nil || !rt.exec.Pause(ticketID) {
+			err = errCode("notRunning")
+		}
+	case "accept":
+		err = rt.eng.Accept(ticketID, reason)
 	case "retry":
 		err = rt.eng.Retry(ticketID)
 	case "requestStatus":

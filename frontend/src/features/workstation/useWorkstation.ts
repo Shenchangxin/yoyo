@@ -42,10 +42,10 @@ import { cutThreadId, isCutThread, rememberCutThread } from "../video/cut-thread
 import { defaultDramaStyle, useDramaSelection, useStudioSelection } from "../video/workshop-store";
 import { useCutDesk, type CutProject } from "../video/cut-desk";
 import { useCreateMode } from "../video/create-mode";
-import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
+import { ingestVideoFile, ingestVideoPath, isClipTooLarge, isVideoPath, nativeFilePath } from "../video/ingest-clip";
+import { videoItemOf } from "../video/video-item";
 import { useFilmDesk } from "../video/film-desk";
-import { filmCommission, readCast, useFilmCast, type FilmMode } from "../video/film-cast";
-
+import { useRemakeDesk } from "../video/remake-desk";
 /** 蛇形或驼峰键存在时用 num，缺省按 0。两个键都没有就沿用 prev。p 为真时才继续，按下标读取。snake 用作下标。camel 用作下标。 */
 function sliceNum(p: Record<string, any>, snake: string, camel: string, prev?: number): number | undefined {
   if (p && (snake in p || camel in p)) return num(p[snake] ?? p[camel], 0);
@@ -760,8 +760,7 @@ export function useWorkstation() {
         offs.push(Events.On("yoyo:doctor", (info: any) => { setDoctor(unwrapEvent(info) || {}); openSettings("advanced", "advanced-doctor"); }));
         offs.push(Events.On("yoyo:logs", (info: any) => { setLogs(unwrapEvent(info) || {}); openSettings("advanced", "advanced-logs"); }));
         offs.push(Events.On("yoyo:item", (ev: any) => {
-          const kind = String(ev?.item_kind || ev?.ItemKind || "");
-          const payload = (ev?.payload || ev?.Payload || {}) as Record<string, unknown>;
+          const { kind, payload } = videoItemOf(ev);
           if (kind === "video_route") handlers.current.route(payload);
           if (kind === "cut_state") handlers.current.cut(payload);
         }));
@@ -2258,6 +2257,10 @@ export function useWorkstation() {
             ui.openVideoPane("canvas", { canvasFocus: "library" });
             return;
           }
+          if (!typing && ui.videoPane === "create" && (useFilmDesk.getState().project?.id || useRemakeDesk.getState().draft?.id)) {
+            window.dispatchEvent(new Event("yoyo:leave-create-overlay"));
+            return;
+          }
           if (!typing && ui.videoPane === "create" && useCutDesk.getState().project?.source_hash) {
             void leaveCut();
             return;
@@ -2311,15 +2314,12 @@ export function useWorkstation() {
     return () => window.removeEventListener("keydown", onKey);
   }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, jumpToTurn, leaveCut]);
 
-  /** 有文件但没有本地路径就提示并返回空字符串。都没有时打开选择框，选了却没有视频也返回空字符串。路径不是视频同样返回空字符串。source 读取 path、file。 */
+  /** 都没有时打开选择框，选了却没有视频返回空字符串。路径不是视频同样返回空字符串。拖进来的文件没有本机路径时也返回空字符串，由调用方改走上传。source 读取 path、file。 */
   async function pickVideoFile(source: { path?: string; file?: File } = {}) {
     let path = String(source.path || "").trim();
     const file = source.file;
     if (!path && file) path = nativeFilePath(file);
-    if (!path && file) {
-      toast.error(copy.video.conductor.needFile);
-      return "";
-    }
+    if (!path && file) return "";
     if (!path && !file) {
       const picked = await api.pickFiles();
       path = picked.find((item) => isVideoPath(item)) || "";
@@ -2335,25 +2335,25 @@ export function useWorkstation() {
     return path;
   }
 
-  /** 没有路径就返回。工程没有 id 或源片哈希时抛需要哈希。错误文字正好是 clip too large 时用过大文案。source 传给 pickVideoFile。 */
+  /** 选好或拖进来一条视频后建剪辑工程。拖进来的文件没有本机路径时直接上传字节，太大就提示改用导入。工程没有 id 或源片哈希时抛需要哈希。source 传给 pickVideoFile。 */
   async function ingestVideo(source: { path?: string; file?: File } = {}) {
     leaveGen.current += 1;
-    const path = await pickVideoFile(source);
-    if (!path) return;
+    const dropped = source.file && !String(source.path || "").trim() && !nativeFilePath(source.file) ? source.file : null;
+    const path = dropped ? "" : await pickVideoFile(source);
+    if (!path && !dropped) return;
     const toastId = toast.loading(copy.video.conductor.importing);
     try {
       const t = await prepareWelcomeThread();
-      const project = await ingestVideoPath(path, t.id);
+      const project = dropped ? await ingestVideoFile(dropped, t.id) : await ingestVideoPath(path, t.id);
       if (!project?.id || !project.source_hash) throw new Error(copy.video.conductor.needHash);
       await claimCutThread(project, t);
       toast.success(copy.video.conductor.importedOk, { id: toastId });
     } catch (e) {
-      const tooBig = e instanceof Error && e.message === "clip too large";
-      toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e), { id: toastId });
+      toast.error(isClipTooLarge(e) ? copy.composer.clipTooLarge : api.errMessage(e), { id: toastId });
     }
   }
 
-  /** 没有路径就返回。没有哈希或没有工程 id 时抛需要哈希。标题去掉扩展名。 */
+  /** 选一条有权使用的参考片，建成翻拍草稿并打开它：时长、镜头和台词先读出来，再换成自己的画面。没有哈希或没有工程 id 时抛需要哈希。标题去掉扩展名。 */
   async function startRemake() {
     const path = await pickVideoFile();
     if (!path) return;
@@ -2363,33 +2363,16 @@ export function useWorkstation() {
       const hash = String(ref?.cas_hash || ref?.hash || "");
       if (!hash) throw new Error(copy.video.conductor.needHash);
       const base = path.split(/[/\\]/).pop() || copy.video.conductor.remakeDraft;
-      const project = await api.video.filmOpen({ hash, title: base.replace(/\.[^.]+$/, "") });
-      if (!project?.id) throw new Error(copy.video.conductor.needHash);
-      useFilmDesk.getState().setProject(project);
-      toast.success(copy.video.film.ready, { id: toastId });
+      const draft = await api.video.remakeDraft(hash, base.replace(/\.[^.]+$/, "")) as CutProject;
+      if (!draft?.id) throw new Error(copy.video.conductor.needHash);
+      useFilmDesk.getState().clear();
+      useRemakeDesk.getState().setDraft(draft);
+      useCreateMode.getState().setEngaged(false);
+      useUI.getState().openVideoPane("create");
+      toast.success(draft.note ? draft.note : copy.video.conductor.remakeReady, { id: toastId });
     } catch (e) {
-      const tooBig = e instanceof Error && e.message === "clip too large";
-      toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e), { id: toastId });
+      toast.error(api.errMessage(e), { id: toastId });
     }
-  }
-
-  /** 把这种片子的简报交给 Hypit。structure 选择关系。description 非空时只换题目。 */
-  async function startFilm(structure: FilmMode, description = "") {
-    const film = copy.video.film;
-    const hints: Record<FilmMode, string> = {
-      talking: film.talkingHint,
-      drama: film.dramaHint,
-      podcast: film.podcastHint,
-      interview: film.interviewHint,
-      ranking: film.rankingHint,
-      explainer: film.explainerHint,
-      narration: film.narrationHint,
-    };
-    const typed = description.trim();
-    const cast = { ...readCast(structure, film), ...(typed ? { subject: typed } : {}) };
-    if (typed) useFilmCast.getState().write(structure, cast);
-    useCreateMode.getState().setEngaged(true);
-    await onSend({ text: filmCommission(structure, cast, hints[structure]) });
   }
 
   /** 空 id 返回。打开创作窗格。不是当前会话才切换过去。 */
@@ -2524,6 +2507,7 @@ export function useWorkstation() {
     else if (c === "dock") setChatDock((v) => !v);
     else if (c === "harness") openHarness("overview");
     else if (c === "video") openVideo();
+    else if (c === "idol") openIdol();
     else if (c === "run-eval") void runHarbor("suite");
     else if (c === "run-evolve") void runEvolve();
     else if (c === "palette") setPalette(true);
@@ -2544,15 +2528,6 @@ export function useWorkstation() {
   };
   /** 把路由载荷交给 applyVideoRoute。payload 传给 applyVideoRoute。 */
   handlers.current.route = (payload) => { applyVideoRoute(payload); };
-  /** 只在 id 就是当前剪辑工程时刷新。会话 id 沿用桌子上的。payload 读取 id。 */
-  handlers.current.cut = (payload) => {
-    const id = String(payload.id || "");
-    const cur = useCutDesk.getState();
-    if (!id || cur.project?.id !== id) return;
-    void api.video.cutGet(id).then((row) => {
-      if (row?.id) useCutDesk.getState().setProject(row as CutProject, cur.sessionId);
-    }).catch(() => {});
-  };
 
   return {
     copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openIdol, closeIdol, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
@@ -2568,7 +2543,7 @@ export function useWorkstation() {
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, ensureLearnScope, openThread, openVideoProject, ingestVideo, startRemake, startFilm, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, ensureLearnScope, openThread, openVideoProject, ingestVideo, startRemake, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     /** 没有当前会话就返回。取消后按列表重写条数。id 传给 api.queueCancel。 */
     onQueueCancel: async (id: string) => {

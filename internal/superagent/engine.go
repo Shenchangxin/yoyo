@@ -167,6 +167,9 @@ func (e *Engine) Report(ticketID string, report Report) error {
 	}
 	e.seq++
 	report.Seq = e.seq
+	if report.At.IsZero() {
+		report.At = e.now()
+	}
 	asg.Reports = append(asg.Reports, report)
 	if report.State == "ready" {
 		t.Attention = ""
@@ -602,6 +605,11 @@ func (e *Engine) RecoverHost() []string {
 		if asg == nil {
 			continue
 		}
+		// 快照里可能还有只跟着上下文线程、却停在等验收的工单。按现在的规则，它们在报做完时就该结束。
+		if n := len(asg.Reports); n > 0 && asg.Reports[n-1].State == "ready" && !ownsThread(t) && !inputAfter(t, asg.Reports[n-1].Seq) {
+			e.finish(t, "executor", "completed", asg.Reports[n-1].Summary)
+			continue
+		}
 		if asg.State == "running" {
 			if settled(asg) && !inputAfter(t, asg.Reports[len(asg.Reports)-1].Seq) && !transientReport(asg) {
 				continue
@@ -668,6 +676,28 @@ func (e *Engine) Stop(ticketID, reason string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.stop(ticketID, reason)
+}
+
+// Accept 由人验收 ticketID：工人报了做完、工单在等人看结果时，把它记成做完了。不在等验收时返回 notReview。
+// 跟随的线程还没关也一样结束，人看过就算数。reason 为空时记成验收通过。
+func (e *Engine) Accept(ticketID, reason string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return errCode("unknownTicket")
+	}
+	if t.Ended != nil {
+		return errCode("ticketEnded")
+	}
+	if TicketStage(t).Action != "review" {
+		return errCode("notReview")
+	}
+	if strings.TrimSpace(reason) == "" {
+		reason = "验收通过"
+	}
+	e.finish(t, "human", "completed", reason)
+	return nil
 }
 
 // Retry 结束 ticketID 上卡住的派工并新开一次。ticketID 不在可重试阶段时返回 notRetryable。
@@ -791,6 +821,22 @@ func (e *Engine) Ticket(id string) (Ticket, bool) {
 		return Ticket{}, false
 	}
 	return cloneTicket(t), true
+}
+
+// RuleTexts 按 ids 的顺序返回还启用的规则正文。addressed、person 和认不出的编号跳过。
+func (e *Engine) RuleTexts(ids []string) []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var out []string
+	for _, id := range ids {
+		for _, rule := range e.policy.Rules {
+			if rule.ID == id && rule.Enabled && strings.TrimSpace(rule.Text) != "" {
+				out = append(out, strings.TrimSpace(rule.Text))
+				break
+			}
+		}
+	}
+	return out
 }
 
 // Trigger 返回 id 的副本。没有这次触发时 ok 为假。
@@ -981,7 +1027,7 @@ func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirme
 // openTicket 用 tr 和 strength 开出 ticketID。name 收成分支短名，空的就先不记。
 // brief 非空时，工人读到的是这份说明，不是 tr 的原话。
 func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules []string, brief string) {
-	t := &Ticket{ID: ticketID, Origin: tr.ID, Name: branchName(name), Mandate: Mandate{Version: e.policy.Version, Strength: strength, Sender: tr.Sender}}
+	t := &Ticket{ID: ticketID, Origin: tr.ID, Name: branchName(name), Opened: e.now(), Mandate: Mandate{Version: e.policy.Version, Strength: strength, Sender: tr.Sender}}
 	switch {
 	case strength == "explicit":
 		t.Mandate.Rules = []string{"addressed"}
@@ -1010,7 +1056,8 @@ func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules 
 	})
 }
 
-// applyReportEnd 按 report 结束 t。没有跟随线程的 ready 记 completed。跟随都关闭时用关闭结果。dropped 结束工单。
+// applyReportEnd 按 report 结束 t。ready 时没有自己开的线程就记 completed；自己开的线程（比如工人开的拉取请求）要等它关闭，用关闭结果。
+// 只为上下文跟着的线程，比如主会话，永远不会关，不挡完成。dropped 结束工单。
 func (e *Engine) applyReportEnd(t *Ticket, report Report) {
 	switch report.State {
 	case "dropped":
@@ -1020,7 +1067,7 @@ func (e *Engine) applyReportEnd(t *Ticket, report Report) {
 		}
 		e.finish(t, "executor", outcome, report.Summary)
 	case "ready":
-		if len(t.Follows) == 0 {
+		if !ownsThread(t) {
 			e.finish(t, "executor", "completed", report.Summary)
 			return
 		}
@@ -1275,6 +1322,16 @@ func reportState(t *Ticket) string {
 		return ""
 	}
 	return asg.Reports[len(asg.Reports)-1].State
+}
+
+// ownsThread 在 t 跟着一条自己开的线程时为真，比如工人开的拉取请求。
+func ownsThread(t *Ticket) bool {
+	for _, f := range t.Follows {
+		if f.Own {
+			return true
+		}
+	}
+	return false
 }
 
 // followsDone 在 t 要跟着的线程都已关闭时返回最晚一次关闭。还有开着的就返回 nil。有自己打开的线程时只数那些。

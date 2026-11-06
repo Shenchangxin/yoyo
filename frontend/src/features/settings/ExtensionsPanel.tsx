@@ -1,6 +1,6 @@
 ﻿/**
- * 拥有：MCP 和插件的设置。
- * 不拥有：连接应用。那些在连接页。启动、停止和替换会调用 api 改状态。
+ * 拥有：MCP 和插件的设置。MCP 排在连接页，插件排在高级页。
+ * 不拥有：连接应用。启动、停止和替换会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -22,25 +22,15 @@ import type { SettingsHost } from "./host";
 /** 画一行输入。label 用作标签，作为子节点渲染。value 写到 Input 的 value。onChange 被调用，并传入 e.target.value。 */
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+    <label className="flex flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
       <span>{label}</span>
-      <Input className="h-8 w-full text-[13px] font-normal" value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input className="h-8 w-full text-ui-body font-normal" value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }
 
-/** ExtensionsSettings 只放 MCP 和插件。host 写到 McpSection 的 host。 */
-export function ExtensionsSettings({ host }: { host: SettingsHost }) {
-  return (
-    <>
-      <McpSection host={host} />
-      <FiberSection host={host} />
-    </>
-  );
-}
-
-/** 编辑 MCP 服务，并能启动、停止和替换。host 读取 plugins，调用 onReplaceMcp，调用 onStopMcp，调用 onStartMcpHttp，调用 onStartMcp。 */
-function McpSection({ host }: { host: SettingsHost }) {
+/** McpSection 编辑 MCP 服务，并能启动、停止和替换。host 读取 plugins，调用 onReplaceMcp，调用 onStopMcp，调用 onStartMcpHttp，调用 onStartMcp。 */
+export function McpSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const servers = asArray(host.plugins?.mcp || host.plugins?.servers);
   const [adding, setAdding] = useState(false);
@@ -85,7 +75,7 @@ function McpSection({ host }: { host: SettingsHost }) {
         <div className="p-3">
           <textarea
             aria-label={copy.settings.mcpJson}
-            className="no-drag h-44 w-full rounded-[9px] border border-border bg-background p-3 font-mono text-[12px] leading-[1.6] text-foreground outline-none focus-visible:border-foreground/25"
+            className="no-drag h-44 w-full rounded-md border border-border bg-background p-3 font-mono text-ui-footnote leading-[1.6] text-foreground outline-none focus-visible:border-foreground/25"
             value={json}
             spellCheck={false}
             autoComplete="off"
@@ -179,7 +169,7 @@ function McpSection({ host }: { host: SettingsHost }) {
 }
 
 /** 列出插件，并能卸载。host 读取 plugins，调用 onUnload。 */
-function FiberSection({ host }: { host: SettingsHost }) {
+export function FiberSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const fibers = asArray(host.plugins?.fibers || host.plugins?.Fibers);
   const [pending, setPending] = useState("");

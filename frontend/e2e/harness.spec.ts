@@ -14,7 +14,7 @@ test("harness is a single rail entry with an overview", async ({ page }) => {
   await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Harbor", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Evolve", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByTestId("harness-workspace")).toBeVisible();
   await expect(page.getByTestId("harness-overview")).toBeVisible();
   await expect(page.getByText("Checks passed. You can start using this new version.")).toBeVisible();
@@ -39,7 +39,7 @@ test("harness overview shows evolution path and artifact actions", async ({ page
     },
   });
   await page.goto("/");
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByTestId("harness-lineage")).toBeVisible();
   await expect(page.getByText("Write the output file before exploring.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "What changed" })).toBeVisible();
@@ -50,7 +50,7 @@ test("harness overview shows evolution path and artifact actions", async ({ page
 test("harness chat dock is off until toggled", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByRole("button", { name: "Toggle chat" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: "Expand" })).toHaveCount(0);
   await page.getByRole("button", { name: "Toggle chat" }).click();
@@ -63,7 +63,7 @@ test("propose tab can evolve this thread without moving active", async ({ page }
   });
   await page.goto("/");
   await page.getByRole("button", { name: /Demo thread/ }).click();
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await page.getByRole("tab", { name: "Improve" }).click();
   await expect(page.getByRole("button", { name: "Improve the agent" })).toBeVisible();
   const overlay = page.getByTestId("overlay-thread");
@@ -87,7 +87,7 @@ test("propose tab can prove a pinned overlay without checkout copy", async ({ pa
   });
   await page.goto("/");
   await page.getByRole("button", { name: /Demo thread/ }).click();
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await page.getByRole("tab", { name: "Improve" }).click();
   const overlay = page.getByTestId("overlay-thread");
   await overlay.getByRole("button", { name: "Improve this chat" }).click();
@@ -99,7 +99,7 @@ test("propose tab can prove a pinned overlay without checkout copy", async ({ pa
 test("prove tab has one primary eval button", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await page.getByRole("tab", { name: "Check" }).click();
   await expect(page.getByRole("button", { name: "Check", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "More checks" })).toBeVisible();
@@ -131,10 +131,10 @@ test("zh-CN primary harness verbs have no leftover paper words", async ({ page }
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("button", { name: "General", exact: true }).click();
   await page.getByRole("radio", { name: "中文" }).click();
   await page.getByRole("button", { name: "会话", exact: true }).click();
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByRole("tab", { name: "状态" })).toBeVisible();
   await expect(page.getByText("检查已通过。可以开始使用这个新版本。")).toBeVisible();
   await expect(page.getByText("held-in")).toHaveCount(0);
@@ -151,7 +151,7 @@ test("zh-CN primary harness verbs have no leftover paper words", async ({ page }
 test("first visit shows three steps when there is no version yet", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", { harness: { refs: {} } });
   await page.goto("/");
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   const first = page.getByTestId("harness-first-run");
   await expect(first).toBeVisible();
   await expect(first).toContainText("Three steps");
@@ -165,6 +165,7 @@ test("chat can jump to improve this chat", async ({ page }) => {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     events: [
       { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "hello from demo" } },
+      { type: "error", session_id: "s1", ts: "2026-01-01T00:00:05Z", payload: { text: "model timed out" } },
     ],
   });
   await page.goto("/");
@@ -180,10 +181,10 @@ test("laboratory switch reveals owner tables", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("button", { name: "Advanced", exact: true }).click();
   await page.getByRole("switch", { name: "Show laboratory" }).click();
   await page.getByRole("button", { name: "Sessions", exact: true }).click();
-  await page.getByRole("button", { name: /^Harness/ }).click();
+  await page.getByRole("button", { name: /^Lab\b/ }).click();
   await page.getByRole("tab", { name: "Improve" }).click();
   await expect(page.getByRole("heading", { name: "Same-budget comparison" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Try" })).toBeVisible();

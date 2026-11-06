@@ -5,6 +5,7 @@ package video
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/Shenchangxin/yoyo/internal/filestore"
 )
@@ -276,6 +277,18 @@ type skillFlagRec struct {
 type pluginFlagRec struct {
 	Enabled   bool   `json:"enabled"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+// errUnchanged 让 mutateStudio 和 mutateCut 跳过写回。改动函数发现没有要改的时返回它。
+var errUnchanged = errors.New("unchanged")
+
+// lockDoc 锁住一份文档的读改写，返回解锁函数。同一份文档的所有写入方都要经过这里，锁才护得住。锁里只做读、改、写，不跑网络和 ffmpeg。
+// col 与去掉首尾空白的 id 拼成锁的键。
+func (e *Engine) lockDoc(col, id string) func() {
+	v, _ := e.docLocks.LoadOrStore(col+"/"+strings.TrimSpace(id), &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // getDoc 按集合和标识读取文档。文档库为空或标识为空白时返回 ErrNotFound。

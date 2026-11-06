@@ -5,16 +5,7 @@
 import { getRemoteCanvasProject } from "@yingce/services/api/user-data";
 import { useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
 import { useCanvasHost } from "./session";
-
-/** 取出事件上的条目种类。ev 依次看 item_kind、ItemKind 和 payload.kind。 */
-function eventKind(ev: any) {
-  return String(ev?.item_kind || ev?.ItemKind || ev?.payload?.kind || "");
-}
-
-/** 取出事件载荷，没有就用事件本身。ev 先取 payload 或 Payload，都没有就用自身。 */
-function eventPayload(ev: any) {
-  return ev?.payload || ev?.Payload || ev || {};
-}
+import { videoItemOf } from "../video-item";
 
 /** 尝试拿到 Wails 事件。拿不到就返回空。 */
 async function wailsEvents(): Promise<{ On?: (name: string, cb: (e: any) => void) => () => void } | null> {
@@ -51,9 +42,8 @@ export function installCanvasHub() {
   void wailsEvents().then(/** Events 没有 On 就返回，否则用 On 听 yoyo:item。 */ (Events) => {
     if (!alive || !Events?.On) return;
     /** 只重读当前画布；还没选工程时先记下事件里的画布 id。 */
-    off = Events.On("yoyo:item", /** ev 交给 eventKind 和 eventPayload，用来判断要不要重读当前画布。 */ (ev: any) => {
-      const kind = eventKind(ev);
-      const payload = eventPayload(ev);
+    off = Events.On("yoyo:item", /** ev 交给 videoItemOf 拆开 Wails 信封和通知，用种类和载荷判断要不要重读当前画布。 */ (ev: any) => {
+      const { kind, payload } = videoItemOf(ev);
       if (kind === "canvas_patch" || kind === "canvas_text_delta" || kind === "video_job") {
         const canvasId = String(payload.canvas_id || payload.canvasId || payload.project_id || "");
         const current = useCanvasHost.getState().projectId;

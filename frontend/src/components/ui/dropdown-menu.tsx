@@ -26,7 +26,7 @@ export function DropdownMenuContent({ className, sideOffset = 6, ...props }: Com
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-[160px] overflow-hidden rounded-xl border border-border bg-popover p-1.5 text-[13px] text-foreground shadow-[var(--shadow-popover)]",
+          "z-50 min-w-[160px] overflow-hidden rounded-xl border border-border bg-popover p-1.5 text-ui-body text-foreground shadow-[var(--shadow-popover)]",
           className,
         )}
         {...props}
@@ -55,7 +55,7 @@ export function DropdownMenuSeparator({ className, ...props }: ComponentProps<ty
 
 /** DropdownMenuLabel 用小号弱色标出一组条目，本身不可选。className 传给 cn。props 展开到 DropdownMenuPrimitive.Label。 */
 export function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Label>) {
-  return <DropdownMenuPrimitive.Label className={cn("px-2.5 py-1.5 text-[11px] text-muted", className)} {...props} />;
+  return <DropdownMenuPrimitive.Label className={cn("px-2.5 py-1.5 text-ui-caption text-muted", className)} {...props} />;
 }
 
 // DropdownMenuSub 转发子菜单根。
@@ -83,7 +83,7 @@ export function DropdownMenuSubContent({ className, ...props }: ComponentProps<t
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.SubContent
         className={cn(
-          "z-50 min-w-[160px] overflow-hidden rounded-xl border border-border bg-popover p-1.5 text-[13px] text-foreground shadow-[var(--shadow-popover)]",
+          "z-50 min-w-[160px] overflow-hidden rounded-xl border border-border bg-popover p-1.5 text-ui-body text-foreground shadow-[var(--shadow-popover)]",
           className,
         )}
         {...props}

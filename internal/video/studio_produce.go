@@ -54,7 +54,7 @@ func (e *Engine) GenerateStudioShot(id, shotID string) (Job, error) {
 		return Job{}, err
 	}
 	if p.ScriptStatus != ScriptApproved {
-		return Job{}, fmt.Errorf("approve the script before generating visuals")
+		return Job{}, fmt.Errorf("先锁定口播再生成画面")
 	}
 	idx := -1
 	for i, s := range p.Storyboard.Shots {
@@ -78,21 +78,47 @@ func (e *Engine) GenerateStudioShot(id, shotID string) (Job, error) {
 	} else if p.Identity.RefHash != "" {
 		refs = append(refs, p.Identity.RefHash)
 	}
+	if _, err := e.ActiveProvider("image", ""); err != nil {
+		return Job{}, err
+	}
+	// 先把任务编号记到这一镜上再入队。结果回来时只认镜头上记着的那个任务，不靠先后顺序。
+	jobID := NewID()
+	prevJob, prevStale := shot.JobID, shot.Stale
+	if _, err := e.mutateStudio(id, func(p *StudioProject) error {
+		for i, s := range p.Storyboard.Shots {
+			if s.ID == shotID {
+				p.Storyboard.Shots[i].JobID = jobID
+				p.Storyboard.Shots[i].Stale = true
+				e.noteStudio(p, "generate", "shot "+shotID)
+				return nil
+			}
+		}
+		return fmt.Errorf("shot not found")
+	}); err != nil {
+		return Job{}, err
+	}
 	j, err := e.EnqueueImage(EnqueueImage{
-		Prompt: prompt, Size: ImageSizeFor("scene", p.Aspect), AspectRatio: p.Aspect, Refs: refs,
+		ID: jobID, Prompt: prompt, Size: ImageSizeFor("scene", p.Aspect), AspectRatio: p.Aspect, Refs: refs,
 		StudioProjectID: p.ID, StudioShotID: shot.ID, StudioKind: "shot",
 	})
 	if err != nil {
+		_, _ = e.mutateStudio(id, func(p *StudioProject) error {
+			for i, s := range p.Storyboard.Shots {
+				if s.ID == shotID && s.JobID == jobID {
+					p.Storyboard.Shots[i].JobID = prevJob
+					p.Storyboard.Shots[i].Stale = prevStale
+					return nil
+				}
+			}
+			return errUnchanged
+		})
 		return Job{}, err
-	}
-	p.Storyboard.Shots[idx].JobID = j.ID
-	p.Storyboard.Shots[idx].Stale = true
-	e.noteStudio(&p, "generate", "shot "+shot.ID)
-	if _, err := e.saveStudio(p); err != nil {
-		return j, err
 	}
 	return j, nil
 }
+
+// manualShotJob 记在操作者亲手换过画面的镜头上。之前排着的生图任务回来时，不会盖掉手动换上的画面。
+const manualShotJob = "manual"
 
 // GenerateMissingStudioShots 给还没有可用画面的镜头排队生图。图还在且没过期、又没有视频的会跳过。视频还在且没过期的也会跳过。中途失败时返回已经排上的任务。
 // id 传给 GetStudioProject，并与每个镜头的 ID 一起传给 GenerateStudioShot。
@@ -128,69 +154,101 @@ func (e *Engine) applyStudioJob(j Job, params JobParams) error {
 	if params.StudioProjectID == "" || j.ResultHash == "" {
 		return nil
 	}
-	p, err := e.GetStudioProject(params.StudioProjectID)
-	if err != nil {
-		return err
-	}
-	switch params.StudioKind {
-	case "cover":
-		p.Covers = append(p.Covers, j.ResultHash)
-		if p.CoverHash == "" {
-			p.CoverHash = j.ResultHash
-		}
-		e.noteStudio(&p, "cover", "candidate ready")
-	default:
-		found := false
-		for i, s := range p.Storyboard.Shots {
-			if s.ID != params.StudioShotID && s.JobID != j.ID {
-				continue
+	landed, err := e.mutateStudio(params.StudioProjectID, func(p *StudioProject) error {
+		switch params.StudioKind {
+		case "cover":
+			p.Covers = append(p.Covers, j.ResultHash)
+			if p.CoverHash == "" {
+				p.CoverHash = j.ResultHash
 			}
-			if j.Type == "video" {
-				if s.VideoHash != "" {
-					p.Storyboard.Shots[i].PrevVideo = s.VideoHash
+			e.noteStudio(p, "cover", "candidate ready")
+			return nil
+		default:
+			for i, s := range p.Storyboard.Shots {
+				if s.ID != params.StudioShotID && s.JobID != j.ID {
+					continue
 				}
-				p.Storyboard.Shots[i].VideoHash = j.ResultHash
-			} else {
-				if s.ImageHash != "" {
-					p.Storyboard.Shots[i].PrevImage = s.ImageHash
+				// 镜头等的不是这个任务（后来又排了新的，或操作者手动换了画面），旧结果不能盖掉。
+				if s.JobID != "" && s.JobID != j.ID {
+					return errUnchanged
 				}
-				p.Storyboard.Shots[i].ImageHash = j.ResultHash
+				landShotMedia(p, i, j)
+				e.noteStudio(p, "shot", "media landed")
+				return nil
 			}
-			p.Storyboard.Shots[i].Stale = false
-			p.Storyboard.Shots[i].JobID = j.ID
-			found = true
-			break
+			return errUnchanged
 		}
-		if found {
-			e.noteStudio(&p, "shot", "media landed")
-		}
+	})
+	if err == nil {
+		e.emitStudio(landed)
 	}
-	_, err = e.saveStudio(p)
 	return err
 }
 
-// markStudioJobFailed 记下镜头生图失败。封面任务不处理。这一镜已经有图或视频时清掉过期，避免旧画面被卡死。
-// j 的 Params 传给 parseParams，ID 与参数里的 StudioShotID 一起用来匹配镜头。
+// landShotMedia 把任务结果写到第 i 镜。换下来的上一版留在 PrevImage 或 PrevVideo，过期清掉，任务编号记成这一个。
+// p 的第 i 镜被改写。
+// j 的 Type 决定写视频还是图，ResultHash 是新画面。
+func landShotMedia(p *StudioProject, i int, j Job) {
+	s := p.Storyboard.Shots[i]
+	if j.Type == "video" {
+		if s.VideoHash != "" && s.VideoHash != j.ResultHash {
+			p.Storyboard.Shots[i].PrevVideo = s.VideoHash
+		}
+		p.Storyboard.Shots[i].VideoHash = j.ResultHash
+	} else {
+		if s.ImageHash != "" && s.ImageHash != j.ResultHash {
+			p.Storyboard.Shots[i].PrevImage = s.ImageHash
+		}
+		p.Storyboard.Shots[i].ImageHash = j.ResultHash
+	}
+	p.Storyboard.Shots[i].Stale = false
+	p.Storyboard.Shots[i].JobID = j.ID
+}
+
+// jobPending 判断任务还在排队、运行或轮询。读不到任务时返回假。
+func (e *Engine) jobPending(id string) bool {
+	j, err := e.GetJob(id)
+	if err != nil {
+		return false
+	}
+	switch j.Status {
+	case "queued", "running", "polling":
+		return true
+	default:
+		return false
+	}
+}
+
+// markStudioJobFailed 记下镜头生图失败，并把原因挂到画面这一闸。封面任务不处理。任务编号清掉，界面不再一直显示生成中。这一镜已经有图或视频时清掉过期，避免旧画面被卡死。
+// j 的 Params 传给 parseParams，ID 与参数里的 StudioShotID 一起用来匹配镜头，Error 写进问题。
 func (e *Engine) markStudioJobFailed(j Job) {
 	params := parseParams(j.Params)
 	if params.StudioProjectID == "" || params.StudioKind == "cover" {
 		return
 	}
-	p, err := e.GetStudioProject(params.StudioProjectID)
-	if err != nil {
-		return
-	}
-	for i, s := range p.Storyboard.Shots {
-		if s.ID != params.StudioShotID && s.JobID != j.ID {
-			continue
+	failed, _ := e.mutateStudio(params.StudioProjectID, func(p *StudioProject) error {
+		for i, s := range p.Storyboard.Shots {
+			if s.ID != params.StudioShotID && s.JobID != j.ID {
+				continue
+			}
+			if s.JobID != "" && s.JobID != j.ID {
+				return errUnchanged
+			}
+			p.Storyboard.Shots[i].JobID = ""
+			if strings.TrimSpace(s.ImageHash) != "" || strings.TrimSpace(s.VideoHash) != "" {
+				p.Storyboard.Shots[i].Stale = false
+			}
+			msg := "生图失败"
+			if reason := strings.TrimSpace(j.Error); reason != "" {
+				msg += "：" + reason
+			}
+			e.warnStudio(p, GateVisuals, msg)
+			e.noteStudio(p, "shot", "generate failed")
+			return nil
 		}
-		if strings.TrimSpace(s.ImageHash) != "" || strings.TrimSpace(s.VideoHash) != "" {
-			p.Storyboard.Shots[i].Stale = false
-		}
-		e.noteStudio(&p, "shot", "generate failed")
-		_, _ = e.saveStudio(p)
-		return
-	}
+		return errUnchanged
+	})
+	e.emitStudio(failed)
 }
 
 // GenerateStudioCover 按标题排队一张封面。有海报就用海报做参考，否则用第一张镜头图。
@@ -223,8 +281,10 @@ func (e *Engine) GenerateStudioCover(id string) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	e.noteStudio(&p, "cover", "queued")
-	_, _ = e.saveStudio(p)
+	_, _ = e.mutateStudio(id, func(p *StudioProject) error {
+		e.noteStudio(p, "cover", "queued")
+		return nil
+	})
 	return j, nil
 }
 
@@ -232,38 +292,34 @@ func (e *Engine) GenerateStudioCover(id string) (Job, error) {
 // id 传给 GetStudioProject。
 // hash 去掉首尾空白，空串时返回错误 cover hash required，否则写入 CoverHash。
 func (e *Engine) PickStudioCover(id, hash string) (StudioProject, error) {
-	p, err := e.GetStudioProject(id)
-	if err != nil {
-		return StudioProject{}, err
-	}
 	hash = strings.TrimSpace(hash)
-	if hash == "" {
-		return p, fmt.Errorf("cover hash required")
-	}
-	p.CoverHash = hash
-	e.noteStudio(&p, "cover", "picked")
-	return e.saveStudio(p)
+	return e.mutateStudio(id, func(p *StudioProject) error {
+		if hash == "" {
+			return fmt.Errorf("cover hash required")
+		}
+		p.CoverHash = hash
+		e.noteStudio(p, "cover", "picked")
+		return nil
+	})
 }
 
 // WriteStudioCopy 按平台把发布文案写上工程，并尽量把正文放进内容库。平台非空时改工程的平台。不编造经历或功效。
 // id 传给 GetStudioProject。
 // platform 非空时写入工程的 Platform。
 func (e *Engine) WriteStudioCopy(id, platform string) (StudioProject, error) {
-	p, err := e.GetStudioProject(id)
-	if err != nil {
-		return StudioProject{}, err
-	}
-	if platform != "" {
-		p.Platform = platform
-	}
-	p.CopyText = defaultPublishCopy(p)
-	if e.CAS != nil {
-		if h, err := e.PutBytes([]byte(p.CopyText)); err == nil {
-			p.CopyHash = h
+	return e.mutateStudio(id, func(p *StudioProject) error {
+		if platform != "" {
+			p.Platform = platform
 		}
-	}
-	e.noteStudio(&p, "copy", p.Platform)
-	return e.saveStudio(p)
+		p.CopyText = defaultPublishCopy(*p)
+		if e.CAS != nil {
+			if h, err := e.PutBytes([]byte(p.CopyText)); err == nil {
+				p.CopyHash = h
+			}
+		}
+		e.noteStudio(p, "copy", p.Platform)
+		return nil
+	})
 }
 
 // ExpandTopic 给选题写三个固定角度。不调用模型，也不改分数。
@@ -330,9 +386,12 @@ func (e *Engine) IngestStudioURL(id, rawURL string) (StudioProject, error) {
 	} else {
 		shot.ImageHash = hash
 	}
-	p.Storyboard.Shots = append(p.Storyboard.Shots, shot)
-	e.noteStudio(&p, "ingest", rawURL)
-	return e.saveStudio(p)
+	return e.mutateStudio(id, func(p *StudioProject) error {
+		p.Storyboard.Shots = append(p.Storyboard.Shots, shot)
+		p.ShotsFrom = ""
+		e.noteStudio(p, "ingest", rawURL)
+		return nil
+	})
 }
 
 // fetchMediaURL 优先用 PATH 里的 yt-dlp 下载。没有就直接 HTTP 下载，最多 80MB。空文件或状态码大于等于 300 都算失败。
@@ -345,19 +404,20 @@ func (e *Engine) fetchMediaURL(rawURL string) (hash, mime string, err error) {
 		}
 		defer os.RemoveAll(tmp)
 		out := filepath.Join(tmp, "media.%(ext)s")
-		cmd := quiet(exec.Command(ytdlp, "-f", "mp4/best", "-o", out, "--no-playlist", rawURL))
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		cmd := quiet(exec.CommandContext(ctx, ytdlp, "-f", "mp4/best", "--max-filesize", "2G", "-o", out, "--no-playlist", rawURL))
 		if b, runErr := cmd.CombinedOutput(); runErr != nil {
+			if ctx.Err() != nil {
+				return "", "", fmt.Errorf("yt-dlp: 下载超过 10 分钟，已停止")
+			}
 			return "", "", fmt.Errorf("yt-dlp: %s", trimErr(b, runErr))
 		}
 		matches, _ := filepath.Glob(filepath.Join(tmp, "media.*"))
 		if len(matches) == 0 {
 			return "", "", fmt.Errorf("yt-dlp produced no file")
 		}
-		raw, rerr := os.ReadFile(matches[0])
-		if rerr != nil {
-			return "", "", rerr
-		}
-		h, herr := e.PutBytes(raw)
+		h, _, herr := e.PutPath(matches[0])
 		return h, "video/mp4", herr
 	}
 	httpDo := e.HTTP

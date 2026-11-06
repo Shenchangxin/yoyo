@@ -60,6 +60,7 @@ func (a *App) orchestrator() *superagent.Runtime {
 		return err
 	}, liveModel{app: a}, orchestratorShell(work))
 	rt.SetMount(a.mountWorker)
+	rt.SetProfile(a.workerProfile)
 	rt.SetOnReport(a.relayReport)
 	rt.SetOnNotice(a.relayNotice)
 	rt.SetPrepareRunner(orchestratorPrepare(work))
@@ -77,6 +78,17 @@ func (a *App) orchestrator() *superagent.Runtime {
 		a.relayWaiting()
 	}()
 	return rt
+}
+
+// workerProfileBytes 是工人系统提示里操作者画像的上限。
+const workerProfileBytes = 1500
+
+// workerProfile 是交给工人的操作者画像：偏好和本人说过的话。没有记忆库时为空。
+func (a *App) workerProfile() string {
+	if a == nil || a.Memory == nil {
+		return ""
+	}
+	return a.Memory.OperatorPin(workerProfileBytes)
 }
 
 // relayWaiting 把还等人的工单补进当前主会话。已经写过的同一段正文不会再写。

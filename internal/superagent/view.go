@@ -76,6 +76,7 @@ type SourceState struct {
 }
 
 // TicketRow 是工单一行。Stage 是阶段名，Action 是这一阶段在等的动作。
+// OpenedAt 是接单的时刻，UpdatedAt 是最近一次输入、报告或结束的时刻，都是 RFC3339，认不出时为空。
 type TicketRow struct {
 	ID            string          `json:"id"`
 	Stage         string          `json:"stage"`
@@ -90,6 +91,8 @@ type TicketRow struct {
 	OriginURL     string          `json:"originUrl,omitempty"`
 	Title         string          `json:"title"`
 	Directory     string          `json:"directory,omitempty"`
+	OpenedAt      string          `json:"openedAt,omitempty"`
+	UpdatedAt     string          `json:"updatedAt,omitempty"`
 	Inputs        []InputRow      `json:"inputs"`
 	Follows       []FollowRow     `json:"follows"`
 	Assignments   []AssignmentRow `json:"assignments"`
@@ -252,7 +255,10 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 		if ri != rj {
 			return ri < rj
 		}
-		return view.Tickets[i].ID < view.Tickets[j].ID
+		if view.Tickets[i].UpdatedAt != view.Tickets[j].UpdatedAt {
+			return view.Tickets[i].UpdatedAt > view.Tickets[j].UpdatedAt
+		}
+		return ticketOrder(view.Tickets[i].ID) > ticketOrder(view.Tickets[j].ID)
 	})
 	for _, row := range view.Tickets {
 		switch {
@@ -387,9 +393,38 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 	if ticket.Ended != nil {
 		row.Outcome = ticket.Ended.Outcome
 	}
+	opened := ticket.Opened
 	if origin, ok := byID[ticket.Origin]; ok {
 		row.OriginURL = originURL(origin)
 		row.Title = oneLine(origin.Text)
+		if opened.IsZero() {
+			opened = origin.At
+		}
+	}
+	updated := opened
+	bump := func(at time.Time) {
+		if at.After(updated) {
+			updated = at
+		}
+	}
+	for _, in := range ticket.Inputs {
+		if tr, ok := byID[in.TriggerID]; ok {
+			bump(tr.At)
+		}
+	}
+	for _, asg := range ticket.Assignments {
+		for _, rep := range asg.Reports {
+			bump(rep.At)
+		}
+	}
+	if ticket.Ended != nil {
+		bump(ticket.Ended.At)
+	}
+	if !opened.IsZero() {
+		row.OpenedAt = opened.UTC().Format(time.RFC3339)
+	}
+	if !updated.IsZero() {
+		row.UpdatedAt = updated.UTC().Format(time.RFC3339)
 	}
 	if row.Title == "" && len(ticket.Inputs) > 0 {
 		row.Title = oneLine(ticket.Inputs[0].Text)

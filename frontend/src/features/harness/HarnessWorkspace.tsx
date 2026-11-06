@@ -79,13 +79,13 @@ export function HarnessWorkspace(props: {
               aria-label={labels[id].label}
               aria-selected={on}
               className={cn(
-                "relative flex h-full items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors",
+                "relative flex h-full items-center gap-1.5 rounded-md px-2.5 text-ui-body font-medium transition-colors",
                 on ? "text-foreground" : "text-muted hover:text-foreground",
               )}
               onClick={() => props.onTab(id)}
             >
               {n ? (
-                <span className="font-mono text-[10px] tabular-nums text-muted/70" aria-hidden>
+                <span className="font-mono text-ui-badge tabular-nums text-muted/70" aria-hidden>
                   {n}
                 </span>
               ) : null}
@@ -163,7 +163,7 @@ function HarnessOverview(props: {
         >
           <div className="min-w-0">
             <LabEyebrow>{copy.rsi.next}</LabEyebrow>
-            <p className="mt-1 max-w-[46ch] text-[15px] font-medium leading-snug tracking-[-0.02em] text-pretty text-foreground">{reason}</p>
+            <p className="mt-1 max-w-[46ch] text-ui-title-s font-medium leading-snug tracking-[-0.02em] text-pretty text-foreground">{reason}</p>
           </div>
           <Button onClick={() => props.onTab(props.next.tab)}>{goLabel}</Button>
         </div>
@@ -173,21 +173,21 @@ function HarnessOverview(props: {
           <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40" data-testid="harness-versions">
             {pointers.map((c, i) => (
               <div key={c.name + c.hash} className={cn("grid grid-cols-1 items-start gap-1.5 px-4 py-2.5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto] sm:items-center sm:gap-3", i > 0 && "border-t border-border/70")}>
-                <div className="text-[13px] font-medium">{c.name}</div>
-                <div className="min-w-0 text-[12px] text-muted">
+                <div className="text-ui-body font-medium">{c.name}</div>
+                <div className="min-w-0 text-ui-footnote text-muted">
                   {lab ? <HashLine hash={c.hash} compact /> : <span className="truncate">{c.hint}</span>}
                 </div>
                 <div className="shrink-0">
                   {c.kind === "active" ? (
-                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-foreground">{copy.labs.trusted}</span>
+                    <span className="rounded-full bg-lift px-2 py-0.5 text-ui-caption text-foreground">{copy.labs.trusted}</span>
                   ) : null}
                   {c.kind === "staging" ? (
-                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
+                    <span className="rounded-full bg-lift px-2 py-0.5 text-ui-caption text-muted">
                       {dirty ? copy.rail.stagingDirty : copy.labs.notTrusted}
                     </span>
                   ) : null}
                   {c.kind === "canary" ? (
-                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
+                    <span className="rounded-full bg-lift px-2 py-0.5 text-ui-caption text-muted">
                       {canary ? copy.rsi.canaryDirty : copy.labs.notTrusted}
                     </span>
                   ) : null}
@@ -198,8 +198,8 @@ function HarnessOverview(props: {
         )}
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h3 className="text-[13px] font-medium">{copy.rsi.lineage}</h3>
-            <p className="mt-0.5 max-w-[62ch] text-[12px] text-muted">{copy.rsi.lineageHint}</p>
+            <h3 className="text-ui-body font-medium">{copy.rsi.lineage}</h3>
+            <p className="mt-0.5 max-w-[62ch] text-ui-footnote text-muted">{copy.rsi.lineageHint}</p>
           </div>
           {props.onReveal ? (
             <div className="flex flex-wrap gap-1">
@@ -209,7 +209,7 @@ function HarnessOverview(props: {
           ) : null}
         </div>
         {lineage.length === 0 ? (
-          <p className="mb-6 text-[13px] text-muted">{copy.rsi.noLineage}</p>
+          <p className="mb-6 text-ui-body text-muted">{copy.rsi.noLineage}</p>
         ) : (
           <div className="lineage-rail mb-6 overflow-hidden rounded-md bg-sidebar/40 pl-1" data-testid="harness-lineage">
             {lineage.map((n, i) => (
@@ -219,7 +219,7 @@ function HarnessOverview(props: {
         )}
         {metrics ? (
           <>
-            <h3 className="mb-3 text-[13px] font-medium">{copy.rsi.lastEval} · {checkHeadline(copy, metrics)}</h3>
+            <h3 className="mb-3 text-ui-body font-medium">{copy.rsi.lastEval} · {checkHeadline(copy, metrics)}</h3>
             <div className="overflow-hidden rounded-md bg-sidebar/40">
               <StoryRow
                 step="1"
@@ -268,15 +268,15 @@ function FirstRun({ onTab }: { onTab: (tab: HarnessTab) => void }) {
   return (
     <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40" data-testid="harness-first-run">
       <div className="px-4 py-3">
-        <h3 className="text-[13px] font-medium">{copy.rsi.firstTitle}</h3>
-        <p className="mt-1 max-w-[52ch] text-[12px] text-muted">{copy.rsi.firstLead}</p>
+        <h3 className="text-ui-body font-medium">{copy.rsi.firstTitle}</h3>
+        <p className="mt-1 max-w-[52ch] text-ui-footnote text-muted">{copy.rsi.firstLead}</p>
       </div>
       {steps.map((s, i) => (
         <div key={s.tab} className={cn("flex flex-wrap items-center gap-3 px-4 py-3", "border-t border-border/70")}>
-          <span className="font-mono text-[10px] tabular-nums text-muted/70" aria-hidden>{s.n}</span>
+          <span className="font-mono text-ui-badge tabular-nums text-muted/70" aria-hidden>{s.n}</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium">{labels[s.tab]}</div>
-            <p className="mt-0.5 text-[12px] text-muted">{s.hint}</p>
+            <div className="text-ui-body font-medium">{labels[s.tab]}</div>
+            <p className="mt-0.5 text-ui-footnote text-muted">{s.hint}</p>
           </div>
           <Button size="sm" variant={i === 0 ? "default" : "lift"} onClick={() => onTab(s.tab)}>{labels[s.tab]}</Button>
         </div>
@@ -302,16 +302,16 @@ function LineageRow({ node, first, onReveal, showIds }: { node: LineageNode; fir
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            {showIds ? <HashLine hash={node.hash} compact /> : <span className="text-[13px] font-medium">{title}</span>}
-            {node.seed ? <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">{copy.rsi.seed}</span> : null}
+            {showIds ? <HashLine hash={node.hash} compact /> : <span className="text-ui-body font-medium">{title}</span>}
+            {node.seed ? <span className="rounded-full bg-lift px-2 py-0.5 text-ui-caption text-muted">{copy.rsi.seed}</span> : null}
             {node.refs.map((r) => (
-              <span key={r} className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">{pointerLabel(copy, r)}</span>
+              <span key={r} className="rounded-full bg-lift px-2 py-0.5 text-ui-caption text-muted">{pointerLabel(copy, r)}</span>
             ))}
             {node.fromArchive ? (
-              <span className="text-[11px] text-muted">{node.accepted ? copy.labs.accepted : copy.labs.rejected}</span>
+              <span className="text-ui-caption text-muted">{node.accepted ? copy.labs.accepted : copy.labs.rejected}</span>
             ) : null}
           </div>
-          <div className="mt-0.5 text-[12px] text-muted">
+          <div className="mt-0.5 text-ui-footnote text-muted">
             {showIds ? title : null}
             {stamp ? `${showIds ? " · " : ""}${stamp}` : ""}
           </div>
@@ -337,7 +337,7 @@ function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
     <button
       type="button"
       className={cn(
-        "group inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1 font-mono text-[11px] text-muted hover:text-foreground",
+        "group inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1 font-mono text-ui-caption text-muted hover:text-foreground",
         !compact && "mt-1",
       )}
       title={copy.rsi.copyHash}

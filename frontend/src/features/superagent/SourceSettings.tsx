@@ -122,20 +122,20 @@ function Mode(props: { mode: string; onMode: (mode: string) => Promise<void> }) 
   ];
   return (
     <div className="mt-4">
-      <p className="text-[11px] font-medium text-muted">{copy.work.mode}</p>
+      <p className="text-ui-caption font-medium text-muted">{copy.work.mode}</p>
       <div className="mt-1.5 flex max-w-md gap-1 rounded-xl bg-lift/50 p-1">
         {modes.map((mode) => (
           <button
             key={mode.id}
             type="button"
-            className={cn("h-7 flex-1 rounded-lg text-[12px] font-medium", props.mode === mode.id ? "bg-background text-foreground shadow-sm" : "text-muted")}
+            className={cn("h-7 flex-1 rounded-lg text-ui-footnote font-medium", props.mode === mode.id ? "bg-background text-foreground shadow-sm" : "text-muted")}
             onClick={() => { void props.onMode(mode.id); }}
           >
             {mode.label}
           </button>
         ))}
       </div>
-      <p className="mt-1.5 text-[12px] leading-5 text-muted">{copy.work.modeHint}</p>
+      <p className="mt-1.5 text-ui-footnote leading-5 text-muted">{copy.work.modeHint}</p>
     </div>
   );
 }
@@ -147,12 +147,12 @@ function ConfigRow(props: { title: string; detail: string; state?: string; actio
   return (
     <button type="button" className="mt-3 flex w-full max-w-md items-center justify-between gap-3 border-t border-border/50 pt-3 text-left" onClick={props.onOpen}>
       <span className="min-w-0">
-        <span className="block text-[13px] font-medium">{props.title}</span>
-        <span className="mt-0.5 block truncate text-[12px] text-muted">{props.detail}</span>
+        <span className="block text-ui-body font-medium">{props.title}</span>
+        <span className="mt-0.5 block truncate text-ui-footnote text-muted">{props.detail}</span>
       </span>
       <span className="flex shrink-0 items-center gap-2">
-        {stateLabel ? <span className={cn("text-[11px]", state === "error" ? "text-danger" : state === "ok" ? "text-foreground" : "text-warning")}>{stateLabel}</span> : null}
-        <span className="text-[12px] text-muted">{props.action}</span>
+        {stateLabel ? <span className={cn("text-ui-caption", state === "error" ? "text-danger" : state === "ok" ? "text-foreground" : "text-warning")}>{stateLabel}</span> : null}
+        <span className="text-ui-footnote text-muted">{props.action}</span>
       </span>
     </button>
   );
@@ -195,9 +195,9 @@ function SourceDialog(props: {
       >
         {props.fields.map((field) => (
           <label key={field.key} className="block">
-            <span className="text-[12px] text-muted">{field.label}</span>
+            <span className="text-ui-footnote text-muted">{field.label}</span>
             <input
-              className="mt-1 h-8 w-full rounded-xl border border-border bg-background px-2.5 text-[13px] outline-none focus:border-foreground/25"
+              className="mt-1 h-8 w-full rounded-xl border border-border bg-background px-2.5 text-ui-body outline-none focus:border-foreground/25"
               value={values[field.key] ?? ""}
               type={field.secret ? "password" : "text"}
               autoComplete="off"
@@ -207,12 +207,12 @@ function SourceDialog(props: {
           </label>
         ))}
         {props.fields.some((field) => field.secret && props.source?.hasSecret) ? (
-          <label className="flex items-center gap-2 text-[12px] text-muted">
+          <label className="flex items-center gap-2 text-ui-footnote text-muted">
             <input type="checkbox" checked={clear} onChange={(event) => setClear(event.target.checked)} />
             {copy.work.clearSecret}
           </label>
         ) : null}
-        {note ? <p className="text-[12px] text-muted">{note}</p> : null}
+        {note ? <p className="text-ui-footnote text-muted">{note}</p> : null}
         <div className="dialog-actions">
           <Button type="button" size="sm" variant="lift" onClick={props.onClose}>{copy.dialog.cancel}</Button>
           <Button type="submit" size="sm">{copy.work.save}</Button>
@@ -243,8 +243,8 @@ function TextDialog(props: { open: boolean; title: string; hint: string; initial
           }).catch((e) => setNote(e instanceof Error ? e.message : String(e)));
         }}
       >
-        <input className="h-8 w-full rounded-xl border border-border bg-background px-2.5 text-[13px] outline-none" value={text} autoComplete="off" spellCheck={false} onChange={(event) => setText(event.target.value)} />
-        {note ? <p className="text-[12px] text-muted">{note}</p> : null}
+        <input className="h-8 w-full rounded-xl border border-border bg-background px-2.5 text-ui-body outline-none" value={text} autoComplete="off" spellCheck={false} onChange={(event) => setText(event.target.value)} />
+        {note ? <p className="text-ui-footnote text-muted">{note}</p> : null}
         <div className="dialog-actions">
           <Button type="button" size="sm" variant="lift" onClick={props.onClose}>{copy.dialog.cancel}</Button>
           <Button type="submit" size="sm">{copy.work.save}</Button>

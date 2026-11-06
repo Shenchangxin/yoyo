@@ -177,7 +177,9 @@ type StudioProject struct {
 	Hook         string          `json:"hook,omitempty"`
 	CTA          string          `json:"cta,omitempty"`
 	Segments     []StudioSegment `json:"segments,omitempty"`
-	Identity     StudioIdentity  `json:"identity"`
+	// ShotsFrom 是分镜按口播自动拆出时那份口播的摘要。空着表示分镜是操作者或助手写的，改口播后批准时不自动重拆。
+	ShotsFrom string         `json:"shots_from,omitempty"`
+	Identity  StudioIdentity `json:"identity"`
 	// SkipAudio 为真表示口播锁定后跳过配音，直接去画面。
 	SkipAudio  bool    `json:"skip_audio,omitempty"`
 	Voice      string  `json:"voice,omitempty"`
@@ -208,6 +210,12 @@ type StudioProject struct {
 	AutoPhase string `json:"auto_phase,omitempty"`
 	// AutoError 是一键成片失败时的原因。成功时清空。
 	AutoError string `json:"auto_error,omitempty"`
+	// Task 是正在后台跑的配音或合成。空着表示没有。
+	Task *StudioTask `json:"task,omitempty"`
+	// NoBGM 为真表示操作者清掉过配乐，一键成片不再自动配上。选了或生成了配乐会取消。
+	NoBGM bool `json:"no_bgm,omitempty"`
+	// BGMName 是当前配乐的名字，给界面显示。
+	BGMName string `json:"bgm_name,omitempty"`
 	// SubtitleEstimated 为真表示字幕按字数估算，不是听写对齐的结果。
 	SubtitleEstimated bool `json:"subtitle_estimated,omitempty"`
 	// Brief 是选题备注。起草口播时可以参考，不要求照念。
@@ -317,14 +325,26 @@ func (e *Engine) CreateStudioProject(in StudioProject) (StudioProject, error) {
 	return in, nil
 }
 
-// UpdateStudioProject 只覆盖传入的非空字段。镜头切片会整表换上，空切片会清空，nil 不动。
-// 已锁定的口播一旦改字就退回待审。画面说明变了且这一镜已有图或视频时，合并时会标成过期。
-// in 用 ID 读取工程，Title、Aspect、Style、PresetID、TemplateID、Platform、Tone、Audience、Gate、Hook、CTA、Voice、VoiceStyle、ResultHash 去掉首尾空白后非空才覆盖，TargetDuration、VoiceSpeed、BGMVolume 大于 0 才覆盖，Script、TopicID、NarrationHash、SubtitleHash、BGMHash 以及分镜的 Size、ImageMotion、Narration、Subtitle、BGM 非空才覆盖，Fit 去掉首尾空白后只接受 cover 或 contain，Identity 在 CharacterID、StyleID 或 Preserve 非空时整份换上，SkipAudio 为真时把 SkipAudio 写成真，Segments 和 Shots 为 nil 时不动，最后把合并结果传给 putDoc。
+// UpdateStudioProject 只覆盖传入的非空字段。见 UpdateStudioProjectWith；口播只在非空时覆盖。
+// in 整份传给 UpdateStudioProjectWith。
 func (e *Engine) UpdateStudioProject(in StudioProject) (StudioProject, error) {
-	cur, err := e.GetStudioProject(in.ID)
-	if err != nil {
-		return StudioProject{}, err
-	}
+	return e.UpdateStudioProjectWith(in, in.Script != "")
+}
+
+// UpdateStudioProjectWith 在这条短片的锁里只覆盖传入的非空字段。镜头切片会整表换上，空切片会清空，nil 不动；换上的镜头算手写，以后改口播不再自动重拆。
+// 口播两边去掉首尾空白再比，真的改了字才把已锁定的退回待审；scriptSet 为真时空口播也照写，清空后退回待审。
+// 闸门只接受不超过 FurthestGate 的值，没做完的工程不能被标到后面。画面说明变了且这一镜已有图或视频时，合并时会标成过期。
+// in 用 ID 读取工程，Title、Aspect、Style、PresetID、TemplateID、Platform、Tone、Audience、Gate、Hook、CTA、Voice、VoiceStyle、ResultHash 去掉首尾空白后非空才覆盖，TargetDuration、VoiceSpeed、BGMVolume 大于 0 才覆盖，TopicID、NarrationHash、SubtitleHash、BGMHash 以及分镜的 ImageMotion、Narration、Subtitle、BGM 非空才覆盖，分镜的 Size 只在没传 Aspect 时覆盖，Fit 去掉首尾空白后只接受 cover 或 contain，Identity 在 CharacterID、StyleID 或 Preserve 非空时整份换上，SkipAudio 为真时把 SkipAudio 写成真，Segments 和 Shots 为 nil 时不动。
+// scriptSet 为真时 in.Script 即使为空也写入。
+func (e *Engine) UpdateStudioProjectWith(in StudioProject, scriptSet bool) (StudioProject, error) {
+	return e.mutateStudio(in.ID, func(cur *StudioProject) error {
+		e.mergeStudioUpdate(cur, in, scriptSet)
+		return nil
+	})
+}
+
+// mergeStudioUpdate 把 in 里非空的字段并进 cur。规则见 UpdateStudioProjectWith。
+func (e *Engine) mergeStudioUpdate(cur *StudioProject, in StudioProject, scriptSet bool) {
 	if strings.TrimSpace(in.Title) != "" {
 		cur.Title = strings.TrimSpace(in.Title)
 	}
@@ -354,9 +374,6 @@ func (e *Engine) UpdateStudioProject(in StudioProject) (StudioProject, error) {
 	if in.TargetDuration > 0 {
 		cur.TargetDuration = in.TargetDuration
 	}
-	if strings.TrimSpace(in.Gate) != "" {
-		cur.Gate = strings.TrimSpace(in.Gate)
-	}
 	if strings.TrimSpace(in.Hook) != "" {
 		cur.Hook = strings.TrimSpace(in.Hook)
 	}
@@ -381,27 +398,26 @@ func (e *Engine) UpdateStudioProject(in StudioProject) (StudioProject, error) {
 	if in.SkipAudio {
 		cur.SkipAudio = true
 	}
-	if strings.TrimSpace(in.ResultHash) != "" {
-		cur.ResultHash = strings.TrimSpace(in.ResultHash)
+	if h := strings.TrimSpace(in.ResultHash); h != "" && h != cur.ResultHash {
+		cur.ResultHash = h
+		// 烧字幕、改画幅、套标题都会换掉成片；记成一版，换坏了还能还原。
+		cur.Versions = append(cur.Versions, StudioSnapshot{
+			N: len(cur.Versions) + 1, ResultHash: h, PosterHash: cur.PosterHash,
+			NarrationHash: cur.NarrationHash, SubtitleHash: cur.SubtitleHash, CoverHash: cur.CoverHash,
+			Note: "edit", CreatedAt: Now(),
+		})
 	}
-	if in.Script != "" {
-		if cur.Script != in.Script && cur.ScriptStatus == ScriptApproved {
-			cur.ScriptStatus = ScriptNeedsReview
-		}
-		cur.Script = in.Script
-		if e.CAS != nil {
-			if h, err := e.PutBytes([]byte(in.Script)); err == nil {
-				cur.ScriptHash = h
-			}
-		}
+	if scriptSet || in.Script != "" {
+		e.setStudioScript(cur, in.Script)
 	}
 	if in.TopicID != "" {
 		cur.TopicID = in.TopicID
 	}
 	if in.Storyboard.Shots != nil {
-		cur.Storyboard.Shots = e.mergeStudioShots(cur.Storyboard.Shots, ensureShotIDs(in.Storyboard.Shots))
+		cur.Storyboard.Shots = e.mergeStudioShots(cur.Storyboard.Shots, in.Storyboard.Shots)
+		cur.ShotsFrom = ""
 	}
-	if in.Storyboard.Size != "" {
+	if in.Storyboard.Size != "" && strings.TrimSpace(in.Aspect) == "" {
 		cur.Storyboard.Size = in.Storyboard.Size
 	}
 	if in.Storyboard.ImageMotion != "" {
@@ -434,20 +450,29 @@ func (e *Engine) UpdateStudioProject(in StudioProject) (StudioProject, error) {
 		cur.BGMHash = in.BGMHash
 		cur.Storyboard.BGM = in.BGMHash
 	}
-	cur.Revision++
-	cur.UpdatedAt = Now()
-	if err := e.putDoc(colStudioProjects, cur.ID, cur); err != nil {
-		return StudioProject{}, err
+	if g := strings.TrimSpace(in.Gate); g != "" && studioGateKnown(g) && cur.CanEnter(g) {
+		cur.Gate = g
 	}
-	return cur, nil
 }
 
-// PutStudioProject 按现有编号整份写回。编号空着就拒绝。
+// studioGateKnown 判断是不是六道闸门之一。
+func studioGateKnown(g string) bool {
+	for _, id := range studioGateOrder {
+		if id == g {
+			return true
+		}
+	}
+	return false
+}
+
+// PutStudioProject 在这条短片的锁里按现有编号整份写回。编号空着就拒绝。
 // p 的 ID 去掉首尾空白后为空时返回错误 id required，否则与 p 一起传给 putDoc。
 func (e *Engine) PutStudioProject(p StudioProject) error {
 	if strings.TrimSpace(p.ID) == "" {
 		return fmt.Errorf("id required")
 	}
+	unlock := e.lockDoc(colStudioProjects, p.ID)
+	defer unlock()
 	return e.putDoc(colStudioProjects, p.ID, p)
 }
 
@@ -458,6 +483,7 @@ func (e *Engine) DeleteStudioProject(id string) error {
 	if id == "" {
 		return fmt.Errorf("id required")
 	}
+	e.bindMu.Lock()
 	m := e.loadStudioBinds()
 	for sid, pid := range m {
 		if pid == id {
@@ -465,6 +491,9 @@ func (e *Engine) DeleteStudioProject(id string) error {
 		}
 	}
 	_ = e.saveStudioBinds(m)
+	e.bindMu.Unlock()
+	unlock := e.lockDoc(colStudioProjects, id)
+	defer unlock()
 	return e.delDoc(colStudioProjects, id)
 }
 
@@ -481,6 +510,8 @@ func (e *Engine) BindStudioSession(sessionID, projectID string) error {
 	if _, err := e.GetStudioProject(projectID); err != nil {
 		return err
 	}
+	e.bindMu.Lock()
+	defer e.bindMu.Unlock()
 	m := e.loadStudioBinds()
 	next := make(map[string]string, len(m)+1)
 	for sid, pid := range m {
@@ -507,12 +538,12 @@ func (e *Engine) PublishStudioAsset(p StudioProject) (StudioProject, error) {
 	if p.ResultHash == "" {
 		return p, fmt.Errorf("no assembled video")
 	}
-	raw, err := e.GetBytes(p.ResultHash)
-	if err != nil {
-		return p, err
+	size := e.mediaBytes(p.ResultHash)
+	if size <= 0 {
+		return p, fmt.Errorf("missing media")
 	}
 	w, h := aspectSize(p.Aspect)
-	res, err := e.putCanvasResourceFromHash(p.ResultHash, "video", "video/mp4", int64(len(raw)), w, h, 0)
+	res, err := e.putCanvasResourceFromHash(p.ResultHash, "video", "video/mp4", size, w, h, 0)
 	if err != nil {
 		return p, err
 	}
@@ -524,10 +555,14 @@ func (e *Engine) PublishStudioAsset(p StudioProject) (StudioProject, error) {
 		"resourceId": res.ID,
 		"status":     "confirmed",
 	})
-	p.AssetID = strAnyMap(asset, "id")
-	p.UpdatedAt = Now()
-	_ = e.putDoc(colStudioProjects, p.ID, p)
-	return p, nil
+	assetID := strAnyMap(asset, "id")
+	return e.mutateStudio(p.ID, func(cur *StudioProject) error {
+		if cur.ResultHash != p.ResultHash || cur.AssetID == assetID {
+			return errUnchanged
+		}
+		cur.AssetID = assetID
+		return nil
+	})
 }
 
 // StudioJobShouldSkip 判断延后的开拍不要再拉起助手。
@@ -558,8 +593,7 @@ func (e *Engine) StudioFromTopic(topicID, aspect string) (StudioProject, error) 
 	if t.StudioProjectID != "" {
 		if p, err := e.GetStudioProject(t.StudioProjectID); err == nil {
 			if strings.TrimSpace(aspect) != "" && normalizeAspect(aspect) != p.Aspect {
-				p.Aspect = normalizeAspect(aspect)
-				return e.UpdateStudioProject(p)
+				return e.UpdateStudioProject(StudioProject{ID: p.ID, Aspect: aspect})
 			}
 			return p, nil
 		}

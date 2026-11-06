@@ -134,7 +134,7 @@ export const SubagentCard = memo(function SubagentCard({
     <div className="u-chrome min-w-0" data-testid="subagent-card" data-live={live ? "true" : "false"} data-child={child}>
       <button
         type="button"
-        className="group/head flex w-full min-w-0 items-center gap-2.5 rounded-md py-0.5 text-left text-[13px]"
+        className="group/head flex w-full min-w-0 items-center gap-2.5 rounded-md py-0.5 text-left text-ui-body"
         aria-expanded={open}
         title={open ? copy.transcript.subagentHideWork : copy.transcript.subagentShowWork}
         onClick={() => setUserOpen((v) => !(v ?? live))}
@@ -152,7 +152,7 @@ export const SubagentCard = memo(function SubagentCard({
           <span className={cn("font-medium", live && "shimmer-text")}>{badge}</span>
           <span className="ml-2 font-normal text-muted">{title}</span>
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums text-[11px] text-muted/70">
+        <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums text-ui-caption text-muted/70">
           {elapsedMs > 0 ? <RollTime ms={elapsedMs} kind="clock" live={live} /> : null}
           <span className={cn(failed && "text-danger/90", live && "text-foreground/70")}>{status}</span>
           <ChevronRight
@@ -167,14 +167,14 @@ export const SubagentCard = memo(function SubagentCard({
       {open ? (
         <div className="step-rail mb-1 ml-1 min-w-0 pb-1 pt-0.5">
           {summary && !live ? (
-            <div className="mb-1.5 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-6 text-foreground/85">
+            <div className="mb-1.5 min-w-0 whitespace-pre-wrap break-words text-ui-body leading-6 text-foreground/85">
               {summary.replace(/^SUBAGENT_SUMMARY:\s*/i, "")}
             </div>
           ) : null}
           {work.length ? (
             <ProcessGroup items={work} live={live} running={running || live} compact={compact} />
           ) : live ? (
-            <div className="flex h-7 items-center gap-2.5 text-[13px] text-muted">
+            <div className="flex h-7 items-center gap-2.5 text-ui-body text-muted">
               <CircleDashed className="size-3.5" aria-hidden />
               {copy.transcript.subagentRunning}
             </div>

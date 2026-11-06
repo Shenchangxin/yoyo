@@ -3,6 +3,7 @@
 package superagent
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -36,6 +37,39 @@ func TestBuildViewNamesTheWork(t *testing.T) {
 	}
 	if view.Decisions[0].Thread != "room" {
 		t.Fatal(view.Decisions[0].Thread)
+	}
+}
+
+// TestBuildViewPutsRecentWorkFirst 锁住同一阶段里最近有动静的工单在前，序号按数字比，旧快照用起点触发补上接单时刻。
+func TestBuildViewPutsRecentWorkFirst(t *testing.T) {
+	base := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	ended := func(id string, at time.Time) Ticket {
+		return Ticket{ID: id, Origin: "o-" + id, Ended: &End{Outcome: "completed", At: at}}
+	}
+	var triggers []Trigger
+	for _, id := range []string{"tkt-2", "tkt-10", "tkt-11", "tkt-3"} {
+		triggers = append(triggers, Trigger{ID: "o-" + id, Text: id, At: base})
+	}
+	snap := Snapshot{
+		Policy:   Policy{Mode: "observe", Version: 1},
+		Triggers: triggers,
+		Tickets: []Ticket{
+			ended("tkt-2", base.Add(3*time.Hour)),
+			ended("tkt-10", base.Add(time.Hour)),
+			ended("tkt-11", base.Add(time.Hour)),
+			{ID: "tkt-3", Origin: "o-tkt-3", Assignments: []Assignment{{ID: "a", State: "running", Reports: []Report{{State: "progress", At: base.Add(2 * time.Hour)}}}}},
+		},
+	}
+	view := buildView(snap, nil, "", "", 3)
+	var ids []string
+	for _, row := range view.Tickets {
+		ids = append(ids, row.ID)
+	}
+	if got := strings.Join(ids, ","); got != "tkt-3,tkt-2,tkt-11,tkt-10" {
+		t.Fatalf("order = %s", got)
+	}
+	if view.Tickets[0].OpenedAt != base.Format(time.RFC3339) || view.Tickets[0].UpdatedAt != base.Add(2*time.Hour).Format(time.RFC3339) {
+		t.Fatalf("times = %+v", view.Tickets[0])
 	}
 }
 

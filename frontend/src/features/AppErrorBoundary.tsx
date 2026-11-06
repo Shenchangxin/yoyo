@@ -34,9 +34,9 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
     return (
       <div className="flex h-full items-center justify-center bg-background p-8 text-foreground">
         <div className="max-w-md text-center">
-          <p className="text-[15px] font-medium">{copy.app.errorNotice}</p>
-          <p className="mt-2 text-[13px] text-muted">{this.state.err.message}</p>
-          <button type="button" className="mt-4 text-[13px] underline" onClick={() => location.reload()}>
+          <p className="text-ui-title-s font-medium">{copy.app.errorNotice}</p>
+          <p className="mt-2 text-ui-body text-muted">{this.state.err.message}</p>
+          <button type="button" className="mt-4 text-ui-body underline" onClick={() => location.reload()}>
             {copy.app.retry}
           </button>
         </div>

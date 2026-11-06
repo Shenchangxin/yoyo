@@ -58,7 +58,7 @@ export function CommandPalette(props: {
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay-scrim fixed inset-0 z-50" />
-        <Dialog.Content className="fixed left-1/2 top-[11vh] z-50 w-[min(640px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden overscroll-contain rounded-2xl border border-border bg-popover shadow-[var(--shadow-popover)] focus:outline-none">
+        <Dialog.Content className="fixed left-1/2 top-[11vh] z-50 w-[min(640px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden overscroll-contain rounded-xl border border-border bg-popover shadow-[var(--shadow-popover)] focus:outline-none">
           <Dialog.Title className="sr-only">{copy.palette.title}</Dialog.Title>
           <Dialog.Description className="sr-only">{copy.palette.desc}</Dialog.Description>
           <Command label={copy.palette.title}>
@@ -179,7 +179,7 @@ export function CommandPalette(props: {
                   >
                     {p.kind === "drama" ? <Clapperboard className="size-4 text-muted" aria-hidden /> : <PanelsTopLeft className="size-4 text-muted" aria-hidden />}
                     {title}
-                    <span className="ml-auto text-[11px] text-muted">{p.kind === "drama" ? copy.video.drama : copy.video.canvas}</span>
+                    <span className="ml-auto text-ui-caption text-muted">{p.kind === "drama" ? copy.video.drama : copy.video.canvas}</span>
                   </Command.Item>
                   );
                 })}
@@ -196,7 +196,7 @@ export function CommandPalette(props: {
                   >
                     <Settings className="size-4 text-muted" />
                     {copy.settings.tabs[t.key]}
-                    <span className="ml-auto text-[11px] text-muted">{copy.settings.groups[t.group]}</span>
+                    <span className="ml-auto text-ui-caption text-muted">{copy.settings.groups[t.group]}</span>
                   </Command.Item>
                 ))}
                 {SETTINGS_SECTIONS.map((s) => (
@@ -209,7 +209,7 @@ export function CommandPalette(props: {
                     }}
                   >
                     {copy.settings.sections[s.titleKey]}
-                    <span className="ml-auto text-[11px] text-muted">{copy.settings.tabs[s.tab]}</span>
+                    <span className="ml-auto text-ui-caption text-muted">{copy.settings.tabs[s.tab]}</span>
                   </Command.Item>
                 ))}
               </Command.Group>
@@ -226,7 +226,7 @@ export function CommandPalette(props: {
                     >
                       {displayTitle(t.title, copy.rail.untitled)}
                       {threadChannel(t) === "video" ? (
-                        <span className="ml-auto text-[11px] text-muted">{copy.rail.video}</span>
+                        <span className="ml-auto text-ui-caption text-muted">{copy.rail.video}</span>
                       ) : null}
                     </Command.Item>
                   ))}
@@ -244,7 +244,7 @@ export function CommandPalette(props: {
                       }}
                     >
                       {displayTitle(t.title, copy.rail.untitled)}
-                      <span className="ml-auto text-[11px] text-muted">{copy.rail.pages}</span>
+                      <span className="ml-auto text-ui-caption text-muted">{copy.rail.pages}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

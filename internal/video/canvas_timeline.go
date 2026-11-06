@@ -51,6 +51,46 @@ func LookWhisper() string {
 	return ""
 }
 
+// LookWhisperModel 找 whisper.cpp 的 ggml 模型。先看 WHISPER_MODEL，再看 whisper 程序旁和上一级的 models、程序所在目录、extra、用户目录 .yoyo/video/models，以及 Yoyo 可执行文件旁的 models。
+// 多语言模型优先，大的优先；只有 .en 英文模型时也用它。找不到返回空串。
+// bin 是 whisper 程序路径，用来找它旁边的模型。
+// extra 是额外要找的目录。
+func LookWhisperModel(bin string, extra ...string) string {
+	if v := strings.TrimSpace(os.Getenv("WHISPER_MODEL")); v != "" {
+		if st, err := os.Stat(v); err == nil && !st.IsDir() {
+			return v
+		}
+	}
+	var dirs []string
+	if bin = strings.TrimSpace(bin); bin != "" {
+		d := filepath.Dir(bin)
+		dirs = append(dirs, filepath.Join(d, "models"), filepath.Join(filepath.Dir(d), "models"), d)
+	}
+	dirs = append(dirs, extra...)
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".yoyo", "video", "models"))
+	}
+	if exe, err := os.Executable(); err == nil {
+		dirs = append(dirs, filepath.Join(filepath.Dir(exe), "models"))
+	}
+	english := ""
+	for _, name := range []string{"ggml-large-v3-turbo", "ggml-large-v3", "ggml-large", "ggml-medium", "ggml-small", "ggml-base", "ggml-tiny", "ggml-"} {
+		for _, d := range dirs {
+			matches, _ := filepath.Glob(filepath.Join(d, name+"*.bin"))
+			for _, m := range matches {
+				if strings.Contains(strings.ToLower(filepath.Base(m)), ".en") {
+					if english == "" {
+						english = m
+					}
+					continue
+				}
+				return m
+			}
+		}
+	}
+	return english
+}
+
 // createTimelineRender 把时间线片段收成一条排队中的 ffmpeg 拼接任务。
 // req 读取 projectId、canvasId、clips 和 hashes；clips 里的 resourceId 或 id 能找到文件才收进片段，一段都没有时改用 hashes。
 func (e *Engine) createTimelineRender(req map[string]any) (map[string]any, error) {

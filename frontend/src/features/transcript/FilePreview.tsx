@@ -106,7 +106,7 @@ export function CodePreview({
       data-lang={lang || undefined}
       tabIndex={0}
       className={cn(
-        "code-hl overlay-scroll min-w-0 overflow-auto bg-sidebar/70 px-3 py-2 font-mono text-[12px] leading-[1.6] text-foreground/90",
+        "code-hl overlay-scroll min-w-0 overflow-auto bg-sidebar/70 px-3 py-2 font-mono text-ui-footnote leading-[1.6] text-foreground/90",
         fill ? "mt-0 h-full min-h-0 flex-1 rounded-none border-0" : "mt-2 max-h-[28rem] rounded-lg border border-border/60",
         dim && "opacity-70",
         className,
@@ -261,12 +261,12 @@ export function WorkspaceFileView({
   }, [objectUrl, mediaReady]);
 
   const frame = fill ? "flex h-full min-h-0 flex-col" : "";
-  const note = fill ? "grid h-full place-items-center px-4 text-center text-[12px] text-muted" : "mt-2 text-[12px] text-muted";
+  const note = fill ? "grid h-full place-items-center px-4 text-center text-ui-footnote text-muted" : "mt-2 text-ui-footnote text-muted";
   if (!workspace || !path) return null;
   if (err) return <p className={note}>{err}</p>;
   const resolved = kind || previewKindFromPath(path, mime);
   const cap = truncated ? (
-    <p className={cn("shrink-0 px-3 py-1.5 text-[11px] text-muted", fill ? "border-t border-border/50" : "mt-1")}>
+    <p className={cn("shrink-0 px-3 py-1.5 text-ui-caption text-muted", fill ? "border-t border-border/50" : "mt-1")}>
       {copy.review.previewTruncated}
     </p>
   ) : null;
@@ -357,7 +357,7 @@ function OfficeText({ text, fill }: { text: string; fill?: boolean }) {
   if (rows) {
     return (
       <div className={cn("overlay-scroll min-h-0 overflow-auto", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
-        <table className="w-full border-collapse text-left text-[12px]">
+        <table className="w-full border-collapse text-left text-ui-footnote">
           <tbody>
             {rows.map((row, i) => (
               <tr key={i} className="border-b border-border/40">
@@ -374,7 +374,7 @@ function OfficeText({ text, fill }: { text: string; fill?: boolean }) {
     );
   }
   return (
-    <pre className={cn("overlay-scroll overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-[1.6]", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
+    <pre className={cn("overlay-scroll overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-ui-footnote leading-[1.6]", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
       {text}
     </pre>
   );

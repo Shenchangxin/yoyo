@@ -1,6 +1,6 @@
 /**
  * 本文件拥有短片从设定到交付的步骤界面。不拥有工作台的选题和发布列表。
- * 套用、口播、出图、合成、封面和打包会改服务端。未完成镜头每 2000 毫秒重读，自动阶段每 1500 毫秒重读，不是另一条模型循环。
+ * 套用、口播、出图、合成、封面和打包会改服务端。后台有进展时服务端推 studio_state 就重读，还有事在跑时每 10 秒兜底重读，不是另一条模型循环。
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronRight, ImagePlus, LoaderCircle, Video } from "lucide-react";
@@ -13,21 +13,28 @@ import {
   gateIndex,
   projectShots,
   shotReady,
+  shotsForSave,
   STUDIO_GATES,
+  visualsReady,
   type StudioCatalog,
   type StudioGate,
   type StudioProject,
   type StudioShot,
 } from "./studio-model";
 import { requestSendToCut } from "./open-cut";
+import { playbackSrc } from "./playback-src";
+import { subscribeStudioEvents } from "./studio-events";
+import { filmInFlight } from "./studio-topic";
+import { useUI } from "../../lib/store";
+import { toast } from "sonner";
 
 const ASPECTS = ["9:16", "16:9", "1:1"];
 const LENGTHS = [15, 30, 45, 60];
 const AUTO_PHASES = ["script", "voice", "visuals", "compose"] as const;
 
-/** 自动阶段是剧本、声音、画面或合成时算正在跑。 phase 和 script、voice、visuals、compose 比较。 */
+/** 自动阶段在排队、剧本、声音、画面或合成时算正在跑。 phase 交给 filmInFlight。 */
 function autoRunning(phase?: string) {
-  return phase === "script" || phase === "voice" || phase === "visuals" || phase === "compose";
+  return filmInFlight(phase);
 }
 
 /** StudioProduceProps 是制作步从工作台接来的当前短片、目录和保存动作。 */
@@ -74,24 +81,60 @@ export function StudioProduce(props: StudioProduceProps) {
   }, [cur.id]);
 
   useEffect(() => {
-    if (!pendingKey || !cur.id) return;
-    const t = window.setInterval(() => {
-      void api.video.getStudio(cur.id).then(/** row 当成短片交给 onChangeRef。 */ (row) => onChangeRef.current(row as StudioProject)).catch(() => {});
-    }, 2000);
-    return () => window.clearInterval(t);
-  }, [cur.id, pendingKey]);
+    // 服务端把闸门往前推了（顶栏「去做」、后台配完音、助手推进），看得见的工序跟上；只往前跟，旧的刷新不会把人拽回去。
+    const g = (cur.gate as StudioGate) || "";
+    if (g && gateIndex(g) > gateIndex(step) && gateIndex(g) <= furthest + 1) setStep(g);
+    // step 是本地状态，只在服务端闸门变化时判断。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur.gate]);
 
+  const live = !!pendingKey || autoRunning(cur.auto_phase) || !!cur.task?.kind;
   useEffect(() => {
-    if (!autoRunning(cur.auto_phase) || !cur.id) return;
-    const t = window.setInterval(() => {
-      void api.video.getStudio(cur.id).then(/** row 当成短片交给 onChangeRef；自动阶段完成且有成片哈希时切到交付。 */ (row) => {
-        const next = row as StudioProject;
-        onChangeRef.current(next);
-        if (next.auto_phase === "done" && next.result_hash) setStep("delivery");
-      }).catch(() => {});
-    }, 1500);
-    return () => window.clearInterval(t);
-  }, [cur.id, cur.auto_phase]);
+    // 后台有进展时服务端会推 studio_state，收到就重读；还有事在跑时每 10 秒兜底重读一次，防止事件丢了界面停住。
+    if (!cur.id) return;
+    const id = cur.id;
+    const refresh = () => void api.video.getStudio(id).then(/** row 当成短片交给 onChangeRef。 */ (row) => onChangeRef.current(row as StudioProject)).catch(() => {});
+    const off = subscribeStudioEvents(/** pushed 是推过来的短片编号，是这一条才重读。 */ (pushed) => {
+      if (pushed === id) refresh();
+    });
+    if (!live) return off;
+    const t = window.setInterval(refresh, 10_000);
+    return () => {
+      off();
+      window.clearInterval(t);
+    };
+  }, [cur.id, live]);
+
+  const prevAuto = useRef(cur.auto_phase || "");
+  const prevTask = useRef(cur.task?.kind || "");
+  useEffect(() => {
+    // 一键成片跑完、后台配音或合成做完时自动往下走；没做成就把原因弹出来。
+    const wasAuto = prevAuto.current;
+    const wasTask = prevTask.current;
+    prevAuto.current = cur.auto_phase || "";
+    prevTask.current = cur.task?.kind || "";
+    if (autoRunning(wasAuto) && cur.auto_phase === "done" && cur.result_hash) {
+      setStep("delivery");
+      return;
+    }
+    if (!wasTask || cur.task?.kind) return;
+    const failed = (cur.issues || []).find(/** iss 是挂在工程上的问题，找这件事没做成的那条。 */ (iss) => String(iss.message || "").includes(wasTask === "speak" ? "配音没做成" : "合成没做成"));
+    if (wasTask === "speak" && cur.narration_hash && !failed) {
+      if (step === "audio") go("visuals");
+      return;
+    }
+    if (wasTask === "assemble" && cur.result_hash && !failed) {
+      if (step === "compose") go("delivery");
+      return;
+    }
+    if (failed) toast.error(String(failed.message));
+    // go 和 step 每次渲染都换，只在阶段或任务变化时判断。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur.auto_phase, cur.task?.kind]);
+
+  // 一键成片在跑时，所有会花钱或改稿的按钮都锁住；服务端也会拒绝，这里先不让点。
+  const autoBusy = autoRunning(cur.auto_phase);
+  const stepBusy = props.busy || (autoBusy ? "auto" : "");
 
   /** 没越过已到达的下一步就切换工序，并记下当前工序。 g 没越过已到达的下一步才切换，并作为 gate 写回。 */
   const go = (g: StudioGate) => {
@@ -115,7 +158,7 @@ export function StudioProduce(props: StudioProduceProps) {
           const active = step === g;
           return (
             <span key={g} className="flex items-center">
-              {i > 0 ? <span className="mx-0.5 text-[11px] text-muted/35" aria-hidden>/</span> : null}
+              {i > 0 ? <span className="mx-0.5 text-ui-caption text-muted/35" aria-hidden>/</span> : null}
               <button
                 type="button"
                 data-testid={`studio-step-${g}`}
@@ -123,33 +166,34 @@ export function StudioProduce(props: StudioProduceProps) {
                 title={locked ? p.locked : p[`${g}Hint` as "setupHint"]}
                 aria-current={active ? "step" : undefined}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px]",
+                  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-ui-footnote",
                   active ? "bg-foreground text-background" : locked ? "text-muted/50" : done ? "text-foreground hover:bg-lift/70" : "text-muted hover:bg-lift/70 hover:text-foreground",
                 )}
                 onClick={() => go(g)}
               >
-                <span className="tabular-nums text-[11px]">{done ? <Check className="size-3" aria-hidden /> : i + 1}</span>
+                <span className="tabular-nums text-ui-caption">{done ? <Check className="size-3" aria-hidden /> : i + 1}</span>
                 {p[g]}
               </button>
             </span>
           );
         })}
       </nav>
-      <p className="text-[12px] text-muted">{p[`${step}Hint` as "setupHint"]}</p>
-      {cur.error ? <p className="text-[12px] text-danger">{cur.error}</p> : null}
+      <p className="text-ui-footnote text-muted">{p[`${step}Hint` as "setupHint"]}</p>
+      {cur.error ? <p className="text-ui-footnote text-danger">{cur.error}</p> : null}
+      {autoBusy ? <p className="text-ui-footnote text-warning" data-testid="studio-auto-lock">{p.autoLock}</p> : null}
       {(cur.issues || []).length ? (
         <ul className="space-y-1" data-testid="studio-gate-issues">
-          {(cur.issues || []).slice(-3).map(/** iss 用 id 当 key，level 是 warn 就用警告色，并显示 message。 */ (iss) => (
-            <li key={iss.id} className={cn("text-[12px]", iss.level === "warn" ? "text-warning" : "text-danger")}>{iss.message}</li>
+          {(cur.issues || []).map(/** iss 用 id 当 key，level 是 warn 就用警告色，并显示 message。 */ (iss) => (
+            <li key={iss.id} className={cn("text-ui-footnote", iss.level === "warn" ? "text-warning" : "text-danger")}>{iss.message}</li>
           ))}
         </ul>
       ) : null}
-      {step === "setup" ? <SetupStep current={cur} catalog={props.catalog} busy={props.busy} run={props.run} onChange={props.onChange} saveProject={props.saveProject} onContinue={() => go("script")} /> : null}
-      {step === "script" ? <ScriptStep current={cur} catalog={props.catalog} busy={props.busy} onChange={props.onChange} run={props.run} saveProject={props.saveProject} onContinue={() => go("audio")} /> : null}
-      {step === "audio" ? <AudioStep current={cur} catalog={props.catalog} busy={props.busy} onChange={props.onChange} run={props.run} saveProject={props.saveProject} onContinue={() => go("visuals")} /> : null}
-      {step === "visuals" ? <VisualsStep {...props} shots={shots} onContinue={() => go("compose")} /> : null}
-      {step === "compose" ? <ComposeStep {...props} shots={shots} onContinue={() => go("delivery")} /> : null}
-      {step === "delivery" ? <DeliveryStep {...props} onContinue={() => props.onPublish?.()} /> : null}
+      {step === "setup" ? <SetupStep current={cur} catalog={props.catalog} busy={stepBusy} run={props.run} onChange={props.onChange} saveProject={props.saveProject} onContinue={() => go("script")} /> : null}
+      {step === "script" ? <ScriptStep current={cur} catalog={props.catalog} busy={stepBusy} onChange={props.onChange} run={props.run} saveProject={props.saveProject} onContinue={() => go("audio")} /> : null}
+      {step === "audio" ? <AudioStep current={cur} catalog={props.catalog} busy={stepBusy} onChange={props.onChange} run={props.run} saveProject={props.saveProject} onContinue={() => go("visuals")} /> : null}
+      {step === "visuals" ? <VisualsStep {...props} busy={stepBusy} shots={shots} onContinue={() => go("compose")} /> : null}
+      {step === "compose" ? <ComposeStep {...props} busy={stepBusy} shots={shots} onContinue={() => go("delivery")} /> : null}
+      {step === "delivery" ? <DeliveryStep {...props} busy={stepBusy} onContinue={() => props.onPublish?.()} /> : null}
     </div>
   );
 }
@@ -177,13 +221,13 @@ function OneClickBar(props: {
     <section className="rounded-xl border border-border/70 bg-card px-3 py-3" data-testid="studio-auto">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] text-foreground">{p.oneClick}</p>
-          <p className="mt-1 text-[12px] leading-[1.45] text-muted">{p.oneClickHint}</p>
+          <p className="text-ui-body text-foreground">{p.oneClick}</p>
+          <p className="mt-1 text-ui-footnote leading-[1.45] text-muted">{p.oneClickHint}</p>
         </div>
         <Button
           type="button"
           size="sm"
-          disabled={!!props.busy || running}
+          disabled={!!props.busy || running || !!cur.task?.kind}
           onClick={() => void props.run("auto", async () => {
             props.onChange(await api.video.autoStudio(cur.id) as StudioProject);
           })}
@@ -201,7 +245,7 @@ function OneClickBar(props: {
             <li
               key={id}
               className={cn(
-                "rounded-full px-2 py-0.5 text-[11px]",
+                "rounded-full px-2 py-0.5 text-ui-caption",
                 active ? "bg-foreground text-background" : done ? "bg-lift text-foreground" : "text-muted",
               )}
               aria-current={active ? "step" : undefined}
@@ -211,8 +255,8 @@ function OneClickBar(props: {
           );
         })}
       </ol>
-      {cur.auto_error ? <p className="mt-2 text-[12px] text-danger" data-testid="studio-auto-error">{cur.auto_error}</p> : null}
-      <p className="mt-2 text-[11px] text-muted">{p.oneClickManual}</p>
+      {cur.auto_error ? <p className="mt-2 text-ui-footnote text-danger" data-testid="studio-auto-error">{cur.auto_error}</p> : null}
+      <p className="mt-2 text-ui-caption text-muted">{p.oneClickManual}</p>
     </section>
   );
 }
@@ -262,7 +306,7 @@ function SetupStep(props: {
                 onChange={/** e 取出 target.value 转成秒数，转不成就当 0，写进 target_duration 交给 onChange。 */ (e) => props.onChange({ ...cur, target_duration: Number(e.target.value) || 0 })}
                 onBlur={/** e 取出 target.value 转成秒数，转不成就当 0，交给 saveProject。 */ (e) => void props.saveProject({ target_duration: Number(e.target.value) || 0 })}
               />
-              <span className="text-[11px] text-muted">{copy.video.durationLabel}</span>
+              <span className="text-ui-caption text-muted">{copy.video.durationLabel}</span>
             </label>
           </div>
         </FormRow>
@@ -326,7 +370,7 @@ function SetupStep(props: {
         </div>
       ) : null}
       {cur.identity?.preserve ? (
-        <p className="text-[12px] leading-[1.5] text-muted">
+        <p className="text-ui-footnote leading-[1.5] text-muted">
           <span className="text-foreground/85">{p.identity}</span> · {cur.identity.preserve}
           {cur.identity.prohibit ? ` · ${cur.identity.prohibit}` : ""}
         </p>
@@ -353,10 +397,10 @@ function ScriptStep(props: {
   const approved = cur.script_status === "approved";
   return (
     <div className="flex flex-col gap-2">
-      <label className="flex flex-col gap-1 text-[12px] font-medium">
+      <label className="flex flex-col gap-1 text-ui-footnote font-medium">
         {s.script}
         <textarea
-          className="no-drag min-h-28 w-full rounded-lg border border-border bg-background px-2.5 py-2 text-[13px] leading-[1.55] outline-none focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20"
+          className="no-drag min-h-28 w-full rounded-lg border border-border bg-background px-2.5 py-2 text-ui-body leading-[1.55] outline-none focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20"
           value={cur.script || ""}
           onChange={/** e 取出 target.value 写进 script，交给 onChange。 */ (e) => props.onChange({ ...cur, script: e.target.value })}
           onBlur={/** e 取出 target.value 作为 script 交给 saveProject。 */ (e) => void props.saveProject({ script: e.target.value })}
@@ -403,7 +447,7 @@ function ScriptStep(props: {
       {(cur.segments || []).length ? (
         <ul className="divide-y divide-border/70 border-y border-border/70">
           {cur.segments!.map(/** seg 用 id 或 kind 当 key，显示 kind，有 narration 就显示。 */ (seg) => (
-            <li key={seg.id || seg.kind} className="py-1.5 text-[12px] leading-[1.45]">
+            <li key={seg.id || seg.kind} className="py-1.5 text-ui-footnote leading-[1.45]">
               <span className="text-muted">{seg.kind || "beat"}</span>
               {seg.narration ? <span className="ml-2 text-foreground/90">{seg.narration}</span> : null}
             </li>
@@ -411,14 +455,14 @@ function ScriptStep(props: {
         </ul>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="default" disabled={!!props.busy || !String(cur.script || "").trim() || approved} onClick={() => void props.run("approve", async () => {
-          const next = await api.video.approveStudio(cur.id) as StudioProject;
+        <Button size="sm" variant="default" disabled={(!!props.busy && props.busy !== "save") || !String(cur.script || "").trim() || approved} onClick={() => void props.run("approve", async () => {
+          const next = await api.video.approveStudio(cur.id, cur.script || "") as StudioProject;
           props.onChange(next);
           props.onContinue();
         })}>{p.approve}</Button>
         {approved ? (
           <>
-            <span className="self-center text-[12px] text-success">{s.ready}</span>
+            <span className="self-center text-ui-footnote text-success">{s.ready}</span>
             <ContinueButton label={s.continueTo.replace("{step}", p.audio)} onClick={props.onContinue} />
           </>
         ) : null}
@@ -442,20 +486,54 @@ function AudioStep(props: {
   const p = s.desk;
   const cur = props.current;
   const ready = !!(cur.narration_hash || cur.skip_audio);
+  const voices = props.catalog.voices || [];
+  const vendor = props.catalog.speech?.vendor || "";
+  const noSpeech = !!props.catalog.speech && !props.catalog.speech.route;
+  const voice = voices.some(/** v 是目录里的声音，看工程记的是不是其中一个。 */ (v) => v.id === cur.voice) ? String(cur.voice) : voices[0]?.id || "";
+  const speaking = cur.task?.kind === "speak";
+  const otherTask = !!cur.task?.kind && !speaking;
+  const [previewing, setPreviewing] = useState("");
+
+  /** 用这个声音配一句试听并播放。同一个声音服务端会记住，不重复花钱。 id 是要试听的声音。 */
+  async function preview(id: string) {
+    setPreviewing(id);
+    try {
+      const row = await api.video.previewStudioVoice(id);
+      const url = playbackSrc(String(row?.url || ""));
+      if (url) await new Audio(url).play();
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    } finally {
+      setPreviewing("");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <Preflight id={cur.id} gate="audio" />
-      {(props.catalog.voices || []).length ? (
+      {noSpeech ? <p className="text-ui-footnote text-warning">{p.voiceNone}</p> : null}
+      {voices.length ? (
         <Field label={p.voice}>
-          <ChipRow
-            items={props.catalog.voices!.map(/** v 用 id 当选项 id，用 name 当标签。 */ (v) => ({ id: v.id, label: v.name }))}
-            value={cur.voice || "alloy"}
-            onPick={/** id 作为 voice 交给 saveProject。 */ (id) => void props.saveProject({ voice: id })}
-          />
+          <div className="flex flex-col gap-1.5">
+            {vendor ? <p className="text-ui-caption text-muted">{p.voiceFrom.replace("{vendor}", vendor)}</p> : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <ChipRow
+                items={voices.map(/** v 用 id 当选项 id，用 name 当标签。 */ (v) => ({ id: v.id, label: v.name }))}
+                value={voice}
+                onPick={/** id 作为 voice 交给 saveProject。 */ (id) => void props.saveProject({ voice: id })}
+              />
+              {!noSpeech && voice ? (
+                <Button size="sm" variant="ghost" disabled={!!previewing} onClick={() => void preview(voice)}>
+                  {previewing ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null}
+                  {p.voicePreview}
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </Field>
       ) : null}
-      {cur.narration_url ? <audio className="w-full" src={cur.narration_url} controls /> : null}
-      {cur.voice_engine === "edge" ? <p className="text-[12px] text-muted">{p.edgeVoice}</p> : null}
+      {cur.narration_url ? <audio className="w-full" src={playbackSrc(cur.narration_url)} controls /> : null}
+      {cur.voice_engine === "edge" ? <p className="text-ui-footnote text-muted">{p.edgeVoice}</p> : null}
       <Field label={p.speed}>
         <ChipRow
           items={[{ id: "0.8", label: "0.8×" }, { id: "1", label: p.speedNormal }, { id: "1.2", label: "1.2×" }]}
@@ -463,20 +541,25 @@ function AudioStep(props: {
           onPick={/** id 转成数字后作为 voice_speed 交给 saveProject。 */ (id) => void props.saveProject({ voice_speed: Number(id) })}
         />
       </Field>
+      {speaking ? (
+        <p className="flex items-center gap-1.5 text-ui-footnote text-muted" data-testid="studio-speaking">
+          <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+          {p.speaking}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="default" disabled={!!props.busy || cur.script_status !== "approved" || !String(cur.script || "").trim()} onClick={() => void props.run("speak", async () => {
+        <Button size="sm" variant="default" disabled={!!props.busy || speaking || otherTask || cur.script_status !== "approved" || !String(cur.script || "").trim()} onClick={() => void props.run("speak", async () => {
           const next = await api.video.speakStudio(cur.id, cur.script || "") as StudioProject;
           props.onChange(next);
-          if (next.narration_hash) props.onContinue();
         })}>{s.speak}</Button>
-        <Button size="sm" variant="ghost" disabled={!!props.busy} onClick={() => void props.run("skip", async () => {
+        <Button size="sm" variant="ghost" disabled={!!props.busy || speaking} onClick={() => void props.run("skip", async () => {
           const next = await api.video.skipStudioAudio(cur.id) as StudioProject;
           props.onChange(next);
           props.onContinue();
         })}>{p.skipAudio}</Button>
       </div>
       <details>
-        <summary className="cursor-pointer text-[12px] text-muted">{s.moreVoice}</summary>
+        <summary className="cursor-pointer text-ui-footnote text-muted">{s.moreVoice}</summary>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="ghost" disabled={!!props.busy || !cur.narration_hash} onClick={() => void props.run("timing", async () => {
             props.onChange(await api.video.studioTiming(cur.id) as StudioProject);
@@ -506,11 +589,18 @@ function VisualsStep(props: {
   const shots = props.shots;
   const [ingestUrl, setIngestUrl] = useState("");
 
+  /** 整表换上镜头并写回，删镜头时用。 next 是换上的镜头。 */
+  async function patchShots(next: StudioShot[]) {
+    props.onChange({ ...cur, storyboard: { ...(cur.storyboard || {}), shots: next }, shots: next });
+    await props.saveProject({ shots: shotsForSave(next) });
+  }
+
   /** 改一条镜头。persist 为真时写回短片。 i 标出要改的那一条。extra 并进这一条镜头。 */
   async function patchShot(i: number, extra: Partial<StudioShot>, persist = false) {
     const next = shots.map(/** sh 在 j 等于 i 时并上 extra，否则原样留下。j 和 i 比较。 */ (sh, j) => (j === i ? { ...sh, ...extra } : sh));
     props.onChange({ ...cur, storyboard: { ...(cur.storyboard || {}), shots: next }, shots: next });
-    if (persist) await props.saveProject({ shots: next, storyboard: { ...(cur.storyboard || {}), shots: next } });
+    // 只送镜头。整份分镜里的配音、字幕路径可能是旧的，送回去会盖掉刚配好的结果。
+    if (persist) await props.saveProject({ shots: shotsForSave(next) });
   }
 
   /** 把文件登记成媒体。index 小于 0 时追加镜头，否则替换那一条。 kind 交给媒体登记，并决定写成视频还是图片镜头。file 读成 data URL，并用它的 type 登记。 */
@@ -523,7 +613,7 @@ function VisualsStep(props: {
       if (!hash) return;
       const shot: StudioShot = kind === "video" ? { video_hash: hash, duration: 3, motion: "ken-burns" } : { image_hash: hash, duration: 3, motion: "ken-burns" };
       const next = index >= 0 ? shots.map(/** sh 在 j 等于 index 时并上 shot 并清掉 stale，否则原样留下。j 和 index 比较。 */ (sh, j) => (j === index ? { ...sh, ...shot, stale: false } : sh)) : [...shots, shot];
-      const saved = await api.video.updateStudio({ id: cur.id, shots: next, storyboard: { ...(cur.storyboard || {}), shots: next } }) as StudioProject;
+      const saved = await api.video.updateStudio({ id: cur.id, shots: shotsForSave(next, index) }) as StudioProject;
       props.onChange(saved);
     });
   }
@@ -535,9 +625,9 @@ function VisualsStep(props: {
         <ChipRow
           items={[{ id: "cover", label: p.fitCover }, { id: "contain", label: p.fitContain }]}
           value={cur.storyboard?.fit === "contain" ? "contain" : "cover"}
-          onPick={/** id 作为 fit 写进分镜后交给 saveProject。 */ (id) => void props.saveProject({ storyboard: { ...(cur.storyboard || {}), fit: id } })}
+          onPick={/** id 作为分镜的 fit 单独交给 saveProject，不带旧镜头。 */ (id) => void props.saveProject({ storyboard: { fit: id } })}
         />
-        <p className="text-[11px] leading-[1.4] text-muted">{p.fitHint}</p>
+        <p className="text-ui-caption leading-[1.4] text-muted">{p.fitHint}</p>
       </Field>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="default" disabled={!!props.busy} onClick={() => void props.run("gen", async () => {
@@ -545,7 +635,7 @@ function VisualsStep(props: {
           const next = await api.video.getStudio(cur.id) as StudioProject;
           props.onChange(next);
         })}>{p.generateMissing}</Button>
-        <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted hover:bg-lift hover:text-foreground">
+        <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-ui-footnote text-muted hover:bg-lift hover:text-foreground">
           <ImagePlus className="size-3.5" aria-hidden />
           {s.addStill}
           <input type="file" accept="image/*" className="hidden" onChange={/** e 取出第一个文件交给图片上传，并清空 input。 */ (e) => {
@@ -554,7 +644,7 @@ function VisualsStep(props: {
             if (f) void upload("image", f);
           }} />
         </label>
-        <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted hover:bg-lift hover:text-foreground">
+        <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-ui-footnote text-muted hover:bg-lift hover:text-foreground">
           <Video className="size-3.5" aria-hidden />
           {s.addClip}
           <input type="file" accept="video/*" className="hidden" onChange={/** e 取出第一个文件交给视频上传，并清空 input。 */ (e) => {
@@ -564,10 +654,10 @@ function VisualsStep(props: {
           }} />
         </label>
       </div>
-      {shots.length === 0 ? <p className="text-[12px] text-muted">{s.needShots}</p> : null}
+      {shots.length === 0 ? <p className="text-ui-footnote text-muted">{s.needShots}</p> : null}
       <ul className="flex flex-col">
         {shots.map(/** sh 用来取画面、是否在跑，以及 visual、prompt、caption、motion。i 没有 id 时当 key，空画面时显示成序号，并交给 patchShot。 */ (sh, i) => {
-          const src = sh.media_url || props.mediaSrc(sh.image_hash || sh.video_hash);
+          const src = playbackSrc(sh.media_url) || props.mediaSrc(sh.image_hash || sh.video_hash);
           const running = !!sh.job_id && (!shotReady(sh) || sh.stale);
           return (
             <li key={sh.id || i} className="flex gap-3 border-t border-border/50 py-2.5" data-testid="studio-shot-row">
@@ -580,7 +670,7 @@ function VisualsStep(props: {
               </div>
               <div className="grid min-w-0 flex-1 gap-1.5">
                 <textarea
-                  className="no-drag min-h-12 w-full rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none"
+                  className="no-drag min-h-12 w-full rounded-md border border-border bg-background px-2 py-1 text-ui-footnote outline-none"
                   placeholder={p.visual}
                   value={sh.visual || sh.prompt || ""}
                   onChange={/** e 取出 target.value，同时写进 visual 和 prompt。 */ (e) => void patchShot(i, { visual: e.target.value, prompt: e.target.value })}
@@ -595,7 +685,7 @@ function VisualsStep(props: {
                 />
                 <div className="flex flex-wrap items-center gap-1.5">
                   <select
-                    className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px]"
+                    className="h-7 rounded-md border border-border bg-background px-1.5 text-ui-caption"
                     value={sh.motion === "static" ? "static" : "ken-burns"}
                     onChange={/** e 取出 target.value 当运动方式；是 static 时 fit 写成 contain，否则清空 fit，并写回短片。 */ (e) => {
                       const motion = e.target.value;
@@ -607,12 +697,19 @@ function VisualsStep(props: {
                     <option value="static">{p.motionStill}</option>
                   </select>
                   <Input className="h-7 w-16" type="number" min={1} value={sh.duration || 3} aria-label={copy.video.shotDuration} onChange={/** e 取出 target.value 转成秒数，转不成就用 3。 */ (e) => void patchShot(i, { duration: Number(e.target.value) || 3 })} onBlur={/** e 取出 target.value 转成秒数，转不成就用 3，并写回短片。 */ (e) => void patchShot(i, { duration: Number(e.target.value) || 3 }, true)} />
-                  <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy} onClick={() => void props.run("regen", async () => {
+                  <Button size="sm" variant="ghost" className="h-7 text-ui-caption" disabled={!!props.busy || !sh.id || running} onClick={() => void props.run("regen", async () => {
+                    // 先把刚改的画面说明存下，生图读的是服务端的分镜；没存就会拿旧说明出图。
+                    await props.saveProject({ shots: shotsForSave(shots) });
                     await api.video.generateStudioShot(cur.id, sh.id || "");
                     props.onChange(await api.video.getStudio(cur.id) as StudioProject);
                   })}>{p.regen}</Button>
-                  {sh.stale ? <span className="text-[11px] text-warning">{p.stale}</span> : null}
-                  {running ? <span className="text-[11px] text-accent">{p.generating}</span> : null}
+                  <Button size="sm" variant="ghost" className="h-7 text-ui-caption text-muted" disabled={!!props.busy || running} onClick={() => {
+                    if (!window.confirm(p.removeShotConfirm)) return;
+                    const next = shots.filter(/** _ 是镜头，j 和 i 不同才留下。 */ (_, j) => j !== i);
+                    void patchShots(next);
+                  }}>{s.removeShot}</Button>
+                  {sh.stale ? <span className="text-ui-caption text-warning">{p.stale}</span> : null}
+                  {running ? <span className="text-ui-caption text-accent">{p.generating}</span> : null}
                 </div>
               </div>
             </li>
@@ -620,8 +717,8 @@ function VisualsStep(props: {
         })}
       </ul>
       <details>
-        <summary className="cursor-pointer text-[12px] text-muted">{p.ingest}</summary>
-        <p className="mt-1 text-[11px] leading-[1.45] text-muted">{p.ingestHint}</p>
+        <summary className="cursor-pointer text-ui-footnote text-muted">{p.ingest}</summary>
+        <p className="mt-1 text-ui-caption leading-[1.45] text-muted">{p.ingestHint}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Input className="h-8 min-w-48 flex-1" placeholder={p.ingestUrl} value={ingestUrl} onChange={/** e 取出 target.value 交给 setIngestUrl。 */ (e) => setIngestUrl(e.target.value)} />
           <Button size="sm" variant="ghost" disabled={!!props.busy || !ingestUrl.trim()} onClick={() => void props.run("ingest", async () => {
@@ -631,7 +728,7 @@ function VisualsStep(props: {
           })}>{p.ingest}</Button>
         </div>
       </details>
-      {shots.some(shotReady) ? <ContinueButton label={s.continueTo.replace("{step}", p.compose)} onClick={props.onContinue} /> : null}
+      {visualsReady(shots) ? <ContinueButton label={s.continueTo.replace("{step}", p.compose)} onClick={props.onContinue} /> : null}
     </div>
   );
 }
@@ -643,6 +740,7 @@ function ComposeStep(props: {
   shots: StudioShot[];
   run: StudioProduceProps["run"];
   onChange: StudioProduceProps["onChange"];
+  saveProject: StudioProduceProps["saveProject"];
   wrapTitle: string;
   setWrapTitle: (v: string) => void;
   remotionReady: boolean;
@@ -655,16 +753,21 @@ function ComposeStep(props: {
   return (
     <div className="flex flex-col gap-2">
       <Preflight id={cur.id} gate="compose" />
-      <BgmRow current={cur} busy={props.busy} run={props.run} onChange={props.onChange} />
-      {cur.media_url ? <video className="max-h-72 w-full rounded-xl bg-black" src={cur.media_url} poster={cur.poster_url || undefined} controls /> : null}
-      <Button size="sm" variant="default" className="self-start" disabled={!!props.busy || !props.shots.some(shotReady)} onClick={() => void props.run("assemble", async () => {
+      <BgmRow current={cur} busy={props.busy} run={props.run} onChange={props.onChange} saveProject={props.saveProject} />
+      {cur.media_url ? <video className="max-h-72 w-full rounded-xl bg-black" src={playbackSrc(cur.media_url)} poster={playbackSrc(cur.poster_url) || undefined} controls /> : null}
+      {cur.task?.kind === "assemble" ? (
+        <p className="flex items-center gap-1.5 text-ui-footnote text-muted" data-testid="studio-assembling">
+          <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+          {s.desk.assembling}
+        </p>
+      ) : null}
+      <Button size="sm" variant="default" className="self-start" disabled={!!props.busy || !!cur.task?.kind || !visualsReady(props.shots)} onClick={() => void props.run("assemble", async () => {
         const next = await api.video.assembleStudio(cur.id) as StudioProject;
         props.onChange(next);
-        if (next.result_hash) props.onContinue();
       })}>{s.assembleBtn}</Button>
       {cur.result_hash ? (
         <div className="flex flex-col gap-2" data-testid="studio-cut-ops">
-          <p className="text-[12px] text-muted">{s.desk.cutHint}</p>
+          <p className="text-ui-footnote text-muted">{s.desk.cutHint}</p>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="ghost" disabled={!!props.busy} onClick={() => void props.run("reframe", async () => {
               const r = await api.video.studioReframe(cur.result_hash || "", cur.aspect || "9:16");
@@ -685,7 +788,7 @@ function ComposeStep(props: {
             <Input className="h-8 min-w-40 flex-1" placeholder={s.wrap} value={props.wrapTitle} onChange={/** e 取出 target.value 交给 setWrapTitle。 */ (e) => props.setWrapTitle(e.target.value)} />
             <Button size="sm" variant="ghost" disabled={!!props.busy} onClick={() => void props.onWrap()}>{s.wrap}</Button>
           </div>
-          {!props.remotionReady ? <p className="text-[11px] text-muted">{s.wrapHint}</p> : null}
+          {!props.remotionReady ? <p className="text-ui-caption text-muted">{s.wrapHint}</p> : null}
           <Button
             size="sm"
             variant="default"
@@ -715,12 +818,35 @@ function DeliveryStep(props: {
   const p = s.desk;
   const cur = props.current;
   const ready = cur.delivery?.status === "publishable";
-  const activeVer = String((cur.versions || []).find(/** v 用 result_hash 和当前成片比对。 */ (v) => v.result_hash === cur.result_hash)?.n || "");
+  const activeVer = String([...(cur.versions || [])].reverse().find(/** v 用 result_hash 和当前成片比对，同一份成片取最近那一版。 */ (v) => v.result_hash === cur.result_hash)?.n || "");
+  const [coverWait, setCoverWait] = useState<number | null>(null);
+  const onChangeRef = useRef(props.onChange);
+  onChangeRef.current = props.onChange;
+  const coverCount = (cur.cover_urls || []).length;
+  useEffect(() => {
+    if (coverWait !== null && coverCount > coverWait) setCoverWait(null);
+  }, [coverCount, coverWait]);
+  useEffect(() => {
+    // 封面是排队生成的，点完只拿到任务。出图时服务端会推事件让上面重读；这里每 10 秒兜底重读一次，最多等 2 分钟。
+    if (coverWait === null || !cur.id) return;
+    const id = cur.id;
+    const t = window.setInterval(() => {
+      void api.video.getStudio(id).then(/** row 当成短片交给 onChangeRef。 */ (row) => onChangeRef.current(row as StudioProject)).catch(() => {});
+    }, 10_000);
+    const stop = window.setTimeout(() => {
+      setCoverWait(null);
+      toast.message(p.coverSlow);
+    }, 120_000);
+    return () => {
+      window.clearInterval(t);
+      window.clearTimeout(stop);
+    };
+  }, [coverWait, cur.id]);
   return (
     <div className="flex flex-col gap-3" data-testid="studio-delivery">
       <Preflight id={cur.id} gate="delivery" />
-      <p className={cn("text-[12px]", ready ? "text-success" : "text-warning")}>{ready ? p.publishable : (cur.delivery?.note || p.draftPack)}</p>
-      {cur.media_url ? <video className="max-h-56 w-full rounded-xl bg-black" src={cur.media_url} poster={cur.cover_url || cur.poster_url || undefined} controls /> : null}
+      <p className={cn("text-ui-footnote", ready ? "text-success" : "text-warning")}>{ready ? p.publishable : (cur.delivery?.note || p.draftPack)}</p>
+      {cur.media_url ? <video className="max-h-56 w-full rounded-xl bg-black" src={playbackSrc(cur.media_url)} poster={playbackSrc(cur.cover_url || cur.poster_url) || undefined} controls /> : null}
       {cur.result_hash ? (
         <Button
           size="sm"
@@ -731,24 +857,26 @@ function DeliveryStep(props: {
           onClick={() => requestSendToCut({ hash: cur.result_hash, title: cur.title || copy.video.conductor.cutTitle })}
         >{copy.video.conductor.sendToCut}</Button>
       ) : null}
-      {cur.copy_text ? <pre className="whitespace-pre-wrap rounded-lg bg-lift/50 px-3 py-2 text-[12px] leading-[1.55]">{cur.copy_text}</pre> : null}
+      {cur.copy_text ? <pre className="whitespace-pre-wrap rounded-lg bg-lift/50 px-3 py-2 text-ui-footnote leading-[1.55]">{cur.copy_text}</pre> : null}
       {(cur.delivery?.files || []).length ? (
-        <p className="text-[12px] text-muted">{cur.delivery!.files!.map(/** f 读取 kind。 */ (f) => f.kind).filter(Boolean).join(" · ")}</p>
+        <p className="text-ui-footnote text-muted">{cur.delivery!.files!.map(/** f 读取 kind。 */ (f) => f.kind).filter(Boolean).join(" · ")}</p>
       ) : null}
       <div className="flex flex-wrap gap-1.5">
         {(cur.cover_urls || []).map(/** c 用 hash 当 key 并和当前封面比较，点击时交给 pickStudioCover，有 url 就显示成图。 */ (c) => (
           <button key={c.hash} type="button" className={cn("overflow-hidden rounded-md border", cur.cover_hash === c.hash ? "border-foreground" : "border-border")} onClick={() => void props.run("cover", async () => {
             props.onChange(await api.video.pickStudioCover(cur.id, c.hash || "") as StudioProject);
           })} title={p.pickCover}>
-            {c.url ? <img src={c.url} alt="" className="h-16 w-16 object-cover" /> : null}
+            {c.url ? <img src={playbackSrc(c.url)} alt="" className="h-16 w-16 object-cover" /> : null}
           </button>
         ))}
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="ghost" disabled={!!props.busy} onClick={() => void props.run("cover", async () => {
+        <Button size="sm" variant="ghost" disabled={!!props.busy || coverWait !== null} onClick={() => void props.run("cover", async () => {
+          const before = (cur.cover_urls || []).length;
           await api.video.generateStudioCover(cur.id);
           props.onChange(await api.video.getStudio(cur.id) as StudioProject);
-        })}>{p.covers}</Button>
+          setCoverWait(before);
+        })}>{coverWait !== null ? p.generating : p.covers}</Button>
         <Button size="sm" variant="ghost" disabled={!!props.busy} onClick={() => void props.run("copy", async () => {
           props.onChange(await api.video.writeStudioCopy(cur.id, cur.platform || "") as StudioProject);
         })}>{p.writeCopy}</Button>
@@ -762,11 +890,14 @@ function DeliveryStep(props: {
       {(cur.versions || []).length > 0 ? (
         <Field label={p.versions}>
           <ChipRow
-            items={(cur.versions || []).map(/** v 用 n 拼成版本 id 和 V 标签。 */ (v) => ({ id: String(v.n), label: `V${v.n}` }))}
+            items={(cur.versions || []).map(/** v 用 n 拼成版本 id，标签写上第几版、怎么来的和几点。 */ (v) => ({ id: String(v.n), label: versionLabel(v, p) }))}
             value={activeVer}
-            onPick={/** id 转成数字后交给 restoreStudio。 */ (id) => void props.run("restore", async () => {
-              props.onChange(await api.video.restoreStudio(cur.id, Number(id)) as StudioProject);
-            })}
+            onPick={/** id 是要换回的版本；不是当前版时先确认，再交给 restoreStudio。 */ (id) => {
+              if (id === activeVer || !window.confirm(p.versionRestoreConfirm)) return;
+              void props.run("restore", async () => {
+                props.onChange(await api.video.restoreStudio(cur.id, Number(id)) as StudioProject);
+              });
+            }}
           />
         </Field>
       ) : null}
@@ -774,9 +905,10 @@ function DeliveryStep(props: {
   );
 }
 
-/** 读这一道工序的预检，失败时显示缺少适配器。 props 没有 id 就不请求，否则把 id 和 gate 交给 studioPreflight。 */
+/** 读这一道工序的预检。缺适配器时给出去设置的入口，能用但有说明（比如用本机配音、要先下载 ffmpeg）时把说明写出来。 props 没有 id 就不请求，否则把 id 和 gate 交给 studioPreflight。 */
 function Preflight(props: { id: string; gate: string }) {
-  const p = useCopy().video.studio.desk;
+  const copy = useCopy();
+  const p = copy.video.studio.desk;
   const [pf, setPf] = useState<{ ok?: boolean; spends?: string[]; missing?: string[]; message?: string } | null>(null);
   const [pfErr, setPfErr] = useState("");
   useEffect(() => {
@@ -789,15 +921,25 @@ function Preflight(props: { id: string; gate: string }) {
   }, [props.id, props.gate]);
   if (!props.id) return null;
   if (pfErr) {
-    return <p className="text-[12px] text-warning" data-testid="studio-preflight">{p.missingAdapters}</p>;
+    return <p className="text-ui-footnote text-warning" data-testid="studio-preflight">{pfErr}</p>;
   }
-  if (!pf) return <p className="text-[12px] text-muted" data-testid="studio-preflight">{p.preflight}</p>;
+  if (!pf) return <p className="text-ui-footnote text-muted" data-testid="studio-preflight">{p.preflight}</p>;
   const spend = (pf.spends || []).join(" · ");
+  const missing = pf.missing || [];
+  const section = missing.includes("speech") ? "generation-speech" : "generation-image";
+  const needAccount = missing.includes("speech") || missing.includes("image");
   return (
-    <p className={cn("text-[12px]", pf.ok ? "text-muted" : "text-warning")} data-testid="studio-preflight">
-      {p.preflight}{spend ? ` · ${spend}` : ""}
-      {pf.missing?.length ? ` · ${p.missingAdapters}` : ""}
-    </p>
+    <div className="flex flex-col gap-0.5">
+      <p className={cn("text-ui-footnote", pf.ok ? "text-muted" : "text-warning")} data-testid="studio-preflight">
+        {p.preflight}{spend ? ` · ${spend}` : ""}
+      </p>
+      {pf.message ? <p className={cn("text-ui-caption", pf.ok ? "text-muted" : "text-warning")}>{pf.message}</p> : null}
+      {!pf.ok && needAccount ? (
+        <button type="button" className="self-start text-ui-footnote underline" onClick={() => useUI.getState().openSettings("generation", section)}>
+          {copy.video.openSettings}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -807,6 +949,7 @@ function BgmRow(props: {
   busy: string;
   run: StudioProduceProps["run"];
   onChange: StudioProduceProps["onChange"];
+  saveProject: StudioProduceProps["saveProject"];
 }) {
   const p = useCopy().video.studio.desk;
   const cur = props.current;
@@ -815,27 +958,57 @@ function BgmRow(props: {
     void api.video.listStudioBGM().then(/** row 当成背景音乐目录写入。 */ (row) => setList(row as { dir?: string; items?: { name: string }[] })).catch(() => {});
   }, [cur.id, cur.bgm_hash]);
   const items = list?.items || [];
+  const making = cur.task?.kind === "bgm";
+  const locked = !!props.busy || !!cur.task?.kind;
+  const volume = cur.storyboard?.bgm_volume || 0.22;
+  const level = volume < 0.17 ? "0.12" : volume > 0.28 ? "0.35" : "0.22";
   return (
     <section className="flex flex-col gap-1.5" data-testid="studio-bgm">
-      <span className="text-[12px] text-muted">{p.bgm}</span>
-      <p className="text-[11px] leading-[1.4] text-muted">{p.bgmHint}</p>
-      {list?.dir ? <p className="break-all text-[11px] text-muted">{list.dir}</p> : null}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-ui-footnote text-muted">{p.bgm}</span>
+        {cur.bgm_hash ? <span className="text-ui-footnote text-foreground">{p.bgmNow.replace("{name}", cur.bgm_name || "✓")}</span> : null}
+      </div>
+      <p className="text-ui-caption text-muted">{p.bgmHint}</p>
       <div className="flex flex-wrap gap-1.5">
-        <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy || items.length === 0} onClick={() => void props.run("bgm", async () => {
+        <Button size="sm" variant="ghost" className="h-7 text-ui-caption" disabled={locked || items.length === 0} onClick={() => void props.run("bgm", async () => {
           props.onChange(await api.video.useStudioBGM(cur.id, "random") as StudioProject);
         })}>{p.bgmRandom}</Button>
-        <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy || !cur.bgm_hash} onClick={() => void props.run("bgm", async () => {
+        <Button size="sm" variant="ghost" className="h-7 text-ui-caption" disabled={locked} onClick={() => void props.run("bgm", async () => {
+          props.onChange(await api.video.generateStudioBGM(cur.id) as StudioProject);
+        })}>{making ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null}{p.bgmAI}</Button>
+        <Button size="sm" variant="ghost" className="h-7 text-ui-caption" disabled={locked || !cur.bgm_hash} onClick={() => void props.run("bgm", async () => {
           props.onChange(await api.video.clearStudioBGM(cur.id) as StudioProject);
         })}>{p.bgmOff}</Button>
         {items.map(/** it 用 name 当 key 和按钮文案，点击时交给 useStudioBGM。 */ (it) => (
-          <Button key={it.name} size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy} onClick={() => void props.run("bgm", async () => {
+          <Button key={it.name} size="sm" variant="ghost" className={cn("h-7 text-ui-caption", cur.bgm_name === it.name && "bg-lift")} disabled={locked} onClick={() => void props.run("bgm", async () => {
             props.onChange(await api.video.useStudioBGM(cur.id, it.name) as StudioProject);
           })}>{it.name}</Button>
         ))}
+        {list?.dir ? (
+          <Button size="sm" variant="ghost" className="h-7 text-ui-caption" onClick={() => void api.openPath(list.dir || "").catch(/** e 是打不开文件夹的原因。 */ (e) => toast.error(api.errMessage(e)))}>{p.bgmFolder}</Button>
+        ) : null}
       </div>
-      {list && items.length === 0 ? <p className="text-[11px] text-muted">{p.bgmEmpty}</p> : null}
+      {making ? <p className="text-ui-caption text-muted">{p.bgmMaking}</p> : null}
+      {list && items.length === 0 && !cur.bgm_hash ? <p className="text-ui-caption text-muted">{p.bgmEmpty}</p> : null}
+      {cur.bgm_hash ? (
+        <Field label={p.bgmVolume}>
+          <ChipRow
+            items={[{ id: "0.12", label: p.bgmQuiet }, { id: "0.22", label: p.bgmMid }, { id: "0.35", label: p.bgmLoud }]}
+            value={level}
+            onPick={/** id 转成数字后写成分镜的配乐音量。 */ (id) => void props.saveProject({ storyboard: { bgm_volume: Number(id) } })}
+          />
+        </Field>
+      ) : null}
     </section>
   );
+}
+
+/** versionLabel 把一版成片写成「V2 · 合成 · 14:05」：第几版、怎么来的、什么时候。 v 是版本。p 取合成、打包、修改的叫法。 */
+function versionLabel(v: { n: number; note?: string; created_at?: string }, p: { versionAssemble: string; versionDelivery: string; versionEdit: string }) {
+  const how = v.note === "assemble" ? p.versionAssemble : v.note === "delivery" ? p.versionDelivery : v.note === "edit" ? p.versionEdit : "";
+  const at = v.created_at ? new Date(v.created_at) : null;
+  const when = at && !Number.isNaN(at.getTime()) ? at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+  return [`V${v.n}`, how, when].filter(Boolean).join(" · ");
 }
 
 /** 带右箭头的继续按钮。 props 用 disabled 禁用按钮，点击交给 onClick，并显示 label。 */
@@ -853,8 +1026,8 @@ function FormRow(props: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 border-t border-border/50 px-3 py-2.5 first:border-t-0">
       <div>
-        <span className="text-[13px] text-foreground/85">{props.label}</span>
-        {props.hint ? <p className="mt-0.5 text-[11px] leading-[1.4] text-muted">{props.hint}</p> : null}
+        <span className="text-ui-body text-foreground/85">{props.label}</span>
+        {props.hint ? <p className="mt-0.5 text-ui-caption leading-[1.4] text-muted">{props.hint}</p> : null}
       </div>
       {props.children}
     </div>
@@ -865,7 +1038,7 @@ function FormRow(props: { label: string; hint?: string; children: ReactNode }) {
 function Field(props: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[12px] text-muted">{props.label}</span>
+      <span className="text-ui-footnote text-muted">{props.label}</span>
       {props.children}
     </div>
   );
@@ -880,7 +1053,7 @@ function ChipRow(props: { items: { id: string; label: string }[]; value: string;
           key={it.id}
           type="button"
           aria-pressed={props.value === it.id}
-          className={cn("rounded-full px-2 py-0.5 text-[11px]", props.value === it.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
+          className={cn("rounded-full px-2 py-0.5 text-ui-caption", props.value === it.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
           onClick={() => props.onPick(it.id)}
         >
           {it.label}

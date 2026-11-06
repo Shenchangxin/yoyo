@@ -39,7 +39,7 @@ export function HarnessRailNav() {
             type="button"
             aria-current={on ? "page" : undefined}
             className={cn(
-              "mb-px flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
+              "mb-px flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-ui-body transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
               on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
             )}
             onClick={() => setTab(id)}

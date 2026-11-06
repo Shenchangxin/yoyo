@@ -55,7 +55,7 @@ export function TurnOutline(props: {
       {autoTicks ? null : (
         <div className={cn("flex h-8 shrink-0 items-center", ticks ? "justify-center" : "justify-between pl-2 pr-1")}>
           {ticks ? null : (
-            <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/70">{copy.transcript.outline}</span>
+            <span className="text-ui-caption font-medium uppercase tracking-[0.08em] text-muted/70">{copy.transcript.outline}</span>
           )}
           <button
             type="button"
@@ -76,7 +76,7 @@ export function TurnOutline(props: {
           placeholder={copy.transcript.outlineSearch}
           autoComplete="off"
           spellCheck={false}
-          className="mx-1.5 mb-1 h-7 rounded-md border border-border/60 bg-transparent px-2 text-[12px] text-foreground placeholder:text-muted/60"
+          className="mx-1.5 mb-1 h-7 rounded-md border border-border/60 bg-transparent px-2 text-ui-footnote text-foreground placeholder:text-muted/60"
         />
       ) : null}
       <nav
@@ -127,7 +127,7 @@ export function TurnOutline(props: {
                     aria-current={active ? "true" : undefined}
                     data-testid="turn-outline-item"
                     className={cn(
-                      "relative flex w-full cursor-pointer items-start gap-1.5 rounded-md px-2 py-[5px] text-left text-[12px] leading-4",
+                      "relative flex w-full cursor-pointer items-start gap-1.5 rounded-md px-2 py-[5px] text-left text-ui-footnote leading-4",
                       active ? "text-foreground" : "text-muted hover:bg-lift/40 hover:text-foreground/85",
                     )}
                     onClick={() => props.onJump(t)}
@@ -135,7 +135,7 @@ export function TurnOutline(props: {
                     {active ? (
                       <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-accent" aria-hidden />
                     ) : null}
-                    <span className="w-4 shrink-0 pt-px text-right text-[10px] tabular-nums text-muted/55">{i + 1}</span>
+                    <span className="w-4 shrink-0 pt-px text-right text-ui-badge tabular-nums text-muted/55">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                     {t.live || (props.status === "working" && i === props.turns.length - 1) ? (
                       <span className="mt-0.5 size-1 shrink-0 rounded-full bg-accent" aria-hidden />

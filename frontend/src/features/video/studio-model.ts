@@ -95,11 +95,15 @@ export type StudioProject = {
   voice?: string;
   voice_speed?: number;
   voice_engine?: string;
-  storyboard?: { shots?: StudioShot[]; size?: string; fit?: string };
+  storyboard?: { shots?: StudioShot[]; size?: string; fit?: string; bgm_volume?: number };
   shots?: StudioShot[];
   narration_hash?: string;
   subtitle_hash?: string;
   bgm_hash?: string;
+  /** bgm_name 是当前配乐的名字。 */
+  bgm_name?: string;
+  /** no_bgm 为真表示操作者选了不用配乐，一键成片不会再配。 */
+  no_bgm?: boolean;
   result_hash?: string;
   poster_hash?: string;
   cover_hash?: string;
@@ -114,6 +118,8 @@ export type StudioProject = {
   error?: string;
   auto_phase?: string;
   auto_error?: string;
+  /** task 是正在后台跑的配音或合成，没有就不在。 */
+  task?: { kind?: "speak" | "assemble" | string; started_at?: string } | null;
   subtitle_estimated?: boolean;
   media_url?: string;
   poster_url?: string;
@@ -128,6 +134,8 @@ export type StudioCatalog = {
   presets?: { id: string; name: string; hint?: string; aspect?: string }[];
   templates?: { id: string; title: string; hint?: string; tags?: string[] }[];
   voices?: { id: string; name: string }[];
+  /** speech 是现在配音会用哪家。route 为空表示还没有能用的语音。 */
+  speech?: { route?: string; vendor?: string };
   platforms?: string[];
   tones?: string[];
 };
@@ -141,6 +149,21 @@ export function gateIndex(g: string | undefined) {
 /** shotReady 看镜头有没有图哈希或视频哈希。sh 看有没有 image_hash 或 video_hash。 */
 export function shotReady(sh: StudioShot) {
   return !!(sh.image_hash || sh.video_hash);
+}
+
+/** shotsForSave 是写回镜头时要送的样子。界面手里的图、视频哈希可能早于刚落地的生图，送回去会被当成手动换画面，所以只给新镜头（没有 id）和 replaceAt 那一镜留画面；过期标记、任务编号和播放地址由服务端管，一律不送。shots 是界面上的镜头。replaceAt 是这次手动换画面的那一镜，没有就传 -1。 */
+export function shotsForSave(shots: StudioShot[], replaceAt = -1): StudioShot[] {
+  return shots.map(/** sh 去掉服务端管的字段；不是新镜头也不是 replaceAt 那一镜时再去掉画面。i 和 replaceAt 比较。 */ (sh, i) => {
+    const { stale: _stale, job_id: _job, media_url: _url, ...rest } = sh;
+    if (!sh.id || i === replaceAt) return rest;
+    const { image_hash: _image, video_hash: _video, ...words } = rest;
+    return words;
+  });
+}
+
+/** visualsReady 和服务端的 VisualsReady 一样：至少有一镜，每一镜都有图或视频，并且没有过期。shots 逐镜检查。 */
+export function visualsReady(shots: StudioShot[]) {
+  return shots.length > 0 && shots.every(/** sh 要有画面且没过期。 */ (sh) => shotReady(sh) && !sh.stale);
 }
 
 /** projectShots 优先用工程上的 shots，否则用分镜里的镜头。p 没有就返回空数组；有 shots 就用 shots，否则用 storyboard.shots。 */

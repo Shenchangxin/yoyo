@@ -26,10 +26,13 @@ import { Transcript } from "./features/Transcript";
 import { BriefOverlay } from "./features/superagent/BriefOverlay";
 import { runDeskFeed, setDeskSession } from "./features/superagent/desk-feed";
 import { briefPhrases, WorkPane } from "./features/superagent/WorkPane";
+import { TaskPage } from "./features/superagent/TaskPage";
+import { refreshNeeds, useNeedCount, useNeeds } from "./features/superagent/needs";
+import { applyProactiveLevel, briefDeskOf, briefTimesOf, cacheBriefTimes, cachedBriefTimes, parseProactiveLevel } from "./lib/proactive";
 import { copy as liveCopy } from "./lib/i18n";
 import { TurnOutline } from "./features/TurnOutline";
 import { HomeHero, HomeStarters } from "./features/HomeStage";
-import { ChatNotWorking } from "./features/harness/ChatNotWorking";
+import { ChatNotWorking, lastTurnFailed } from "./features/harness/ChatNotWorking";
 import { Composer } from "./features/Composer";
 import { SessionHeader } from "./features/session-chrome/SessionHeader";
 import { Inspector } from "./features/Inspector";
@@ -186,6 +189,29 @@ function WorkstationApp() {
     return () => window.clearInterval(timer);
   }, [ws.booted, popout]);
   const [taskId, setTaskId] = useState("");
+  const needCount = useNeedCount();
+  const focusTicket = useNeeds((s) => (s.focusTask ? s.view?.tickets?.find((t) => t.id === s.focusTask) ?? null : null));
+  useEffect(() => {
+    if (!ws.booted || popout) return;
+    void refreshNeeds();
+    const timer = window.setInterval(() => { void refreshNeeds(); }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [ws.booted, popout]);
+  useEffect(() => {
+    useNeeds.getState().setFocusTask("");
+  }, [ws.activeId, ws.surface]);
+  const deskCfg = ws.savedCfg.desk;
+  const deskSynced = useRef(false);
+  useEffect(() => {
+    if (!ws.booted) return;
+    if (deskCfg?.briefMorning || deskCfg?.briefEvening) {
+      cacheBriefTimes(briefTimesOf(deskCfg));
+    } else if (!deskSynced.current) {
+      const cached = cachedBriefTimes();
+      if (cached) void ws.patchConfig({ desk: { ...deskCfg, ...briefDeskOf(cached) } });
+    }
+    deskSynced.current = true;
+  }, [ws.booted, deskCfg?.briefMorning, deskCfg?.briefEvening]);
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
   /** 欢迎线程还在回放历史或报告残留运行时，创作入口留着。只有从这张桌子发出对话、并且对话里已经有内容时才让开。 */
@@ -211,7 +237,8 @@ function WorkstationApp() {
     setIdolSlotState((cur) => (cur === node ? cur : node));
   }, []);
   const mac = isMac();
-  const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
+  const railShare = dayInRail ? layout.day : layout.rail;
+  const stagePct = showRail ? Math.max(58, 100 - railShare) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
   const sheetRight = sheetInspect && harnessing && ws.chatDock;
@@ -455,7 +482,8 @@ function WorkstationApp() {
         setTaskId("");
         document.querySelector<HTMLElement>("[data-testid='composer-input']")?.focus();
       }}
-      onOpenSettings={() => ws.openSettings("extensions", "extensions-work")}
+      onOpenSettings={() => ws.openSettings("connectors", "extensions-work")}
+      onOpenProactive={(section) => ws.openSettings("proactive", section)}
       onDraft={(text) => {
         useUI.getState().setDraft(ws.draftKey, text);
         requestAnimationFrame(() => {
@@ -464,6 +492,32 @@ function WorkstationApp() {
       }}
       openTaskId={taskId}
       onOpenTask={setTaskId}
+      onFocusTask={(id) => {
+        setTaskId("");
+        useNeeds.getState().setFocusTask(id);
+      }}
+      onResolve={ws.onResolve}
+      onOpenThread={(id) => {
+        const t = ws.threads.find((x) => x.id === id);
+        if (t) ws.openThread(t);
+      }}
+      notices={ws.notices}
+      onNotice={(n) => {
+        const t = n.sessionId ? ws.threads.find((x) => x.id === n.sessionId) : undefined;
+        if (t) ws.openThread(t);
+      }}
+      onClearNotices={ws.clearNotices}
+      paused={!!ws.health.paused}
+      onPause={() => { void api.setPaused(!ws.health.paused).then(() => ws.refresh()); }}
+      level={parseProactiveLevel(deskCfg?.level)}
+      onLevel={(level) => {
+        void applyProactiveLevel(level);
+        void ws.patchConfig({ desk: { ...deskCfg, level } });
+      }}
+      onBriefTimes={(times) => {
+        cacheBriefTimes(times);
+        void ws.patchConfig({ desk: { ...deskCfg, ...briefDeskOf(times) } });
+      }}
       skills={ws.skills}
       files={ws.files}
       workspace={toolRoot}
@@ -478,10 +532,6 @@ function WorkstationApp() {
     <HomeStarters
       onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
       onContinueLast={() => { void ws.onContinueLast(); }}
-      onImportClip={() => { void ws.ingestVideo({}); }}
-      onRemake={() => { void ws.startRemake(); }}
-      onFilm={(structure, description) => { void ws.startFilm(structure, description); }}
-      onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
       onOpenCut={(id) => { void ws.openCut(id); }}
       draftKey={ws.draftKey}
     />
@@ -518,26 +568,41 @@ function WorkstationApp() {
           />
         )}
         {ws.health.paused ? (
-          <div className="border-b border-line/50 bg-lift px-4 py-1.5 text-[12px] text-muted" data-testid="pause-banner">
+          <div className="border-b border-line/50 bg-lift px-4 py-1.5 text-ui-footnote text-muted" data-testid="pause-banner">
             {copy.pause.banner}
           </div>
         ) : null}
         {ws.active?.pageId && !paging && !studioDesk && !talkDesk ? (
-          <div className="border-b border-line/50 px-4 py-1.5 text-[12px] text-muted">
+          <div className="border-b border-line/50 px-4 py-1.5 text-ui-footnote text-muted">
             {copy.pages.banner}
           </div>
         ) : null}
         {foreignSession ? (
-          <div className="flex items-center gap-3 border-b border-line/50 bg-lift px-4 py-1.5 text-[12px] text-muted" data-testid="foreign-session-banner">
+          <div className="flex items-center gap-3 border-b border-line/50 bg-lift px-4 py-1.5 text-ui-footnote text-muted" data-testid="foreign-session-banner">
             <span className="min-w-0 flex-1">{copy.composer.foreignSession}</span>
             {boundCopilotThread ? (
               <button
                 type="button"
-                className="shrink-0 text-[11px] font-medium text-foreground underline"
+                className="shrink-0 text-ui-caption font-medium text-foreground underline"
                 data-testid="foreign-session-switch"
                 onClick={() => ws.openThread(boundCopilotThread)}
               >
                 {copy.composer.switchSession}
+              </button>
+            ) : null}
+            {studioDesk && studioId && ws.activeId ? (
+              <button
+                type="button"
+                className="shrink-0 text-ui-caption font-medium text-foreground underline"
+                data-testid="foreign-session-rebind"
+                onClick={() => {
+                  void api.video.studioBind(ws.activeId, studioId)
+                    .then(() => ws.loadVideoHistory())
+                    .then(() => toast.success(copy.composer.rebindDone))
+                    .catch((e) => toast.error(api.errMessage(e)));
+                }}
+              >
+                {copy.composer.rebindSession}
               </button>
             ) : null}
           </div>
@@ -599,8 +664,14 @@ function WorkstationApp() {
         )}
         {home && !railNarrow && filmSurface ? homeStarters : null}
         <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
-          {createLauncher ? <CreateSkills onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)} /> : null}
-          {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && hasConversation(copilotItems) && !ws.threadRunning ? (
+          {createLauncher ? (
+            <CreateSkills
+              onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+              onImport={() => { void ws.ingestVideo({}); }}
+              onRemake={() => { void ws.startRemake(); }}
+            />
+          ) : null}
+          {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && hasConversation(copilotItems) && !ws.threadRunning && lastTurnFailed(copilotItems) ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
           {composer}
@@ -714,8 +785,8 @@ function WorkstationApp() {
       onSelect={(t) => { leaveRail(); ws.openThread(t); }}
       onSelectProject={(p) => { leaveRail(); void ws.openVideoProject(p); }}
       onOpenCut={(id) => { leaveRail(); void ws.openCut(id); }}
-      onOpenFilm={(film) => { leaveRail(); useFilmDesk.getState().setProject(film); useUI.getState().openVideoPane("create"); }}
-      onOpenRemake={(cut) => { leaveRail(); useRemakeDesk.getState().setDraft(cut); useUI.getState().openVideoPane("create"); }}
+      onOpenFilm={(film) => { leaveRail(); useRemakeDesk.getState().clear(); useFilmDesk.getState().setProject(film); useCreateMode.getState().setEngaged(false); useUI.getState().openVideoPane("create"); }}
+      onOpenRemake={(cut) => { leaveRail(); useFilmDesk.getState().clear(); useRemakeDesk.getState().setDraft(cut); useCreateMode.getState().setEngaged(false); useUI.getState().openVideoPane("create"); }}
       videoProjects={ws.videoProjects}
       canvasProjectId={ws.canvasProjectId}
       dramaId={ws.dramaId}
@@ -809,6 +880,8 @@ function WorkstationApp() {
       }}
       onIdolSlot={onIdolSlot}
       day={dayInRail ? work : undefined}
+      needs={needCount}
+      dockBasis={showRail ? layout.rail : undefined}
       onRename={async (t, title) => {
         try {
           await api.renameSession(t.id, title);
@@ -863,22 +936,22 @@ function WorkstationApp() {
   const headerTitle = settings
     ? null
     : skills
-      ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
+      ? <span className="text-ui-body font-medium">{copy.skills.title}</span>
     : paging
-      ? <span className="text-[13px] font-medium">{copy.rail.pages}</span>
+      ? <span className="text-ui-body font-medium">{copy.rail.pages}</span>
     : idling
-      ? <span className="text-[13px] font-medium">{copy.idol.title}</span>
+      ? <span className="text-ui-body font-medium">{copy.idol.title}</span>
     : harnessing
       ? (
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[13px] font-medium">{copy.rsi.title}</span>
+          <span className="text-ui-body font-medium">{copy.rsi.title}</span>
           {showHarnessLab && refs.active ? (
-            <span className="truncate font-mono text-[11px] text-muted" title={refs.active}>{shortHash(refs.active)}</span>
+            <span className="truncate font-mono text-ui-caption text-muted" title={refs.active}>{shortHash(refs.active)}</span>
           ) : null}
           {stagingDirty(refs) ? (
-            <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.stagingDirty}</span>
+            <span className="rounded-md bg-lift px-1.5 py-0.5 text-ui-badge text-muted">{copy.rail.stagingDirty}</span>
           ) : canaryDirty(refs) ? (
-            <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.canaryDirty}</span>
+            <span className="rounded-md bg-lift px-1.5 py-0.5 text-ui-badge text-muted">{copy.rail.canaryDirty}</span>
           ) : null}
         </div>
       )
@@ -904,7 +977,7 @@ function WorkstationApp() {
             <Titlebar
               inspector={ws.inspector}
               hideInspector={agent && !popout}
-              hideInbox={false}
+              hideInbox={dayInRail && showRail}
               paused={!!ws.health.paused}
               onPause={() => { void api.setPaused(!ws.health.paused).then(() => ws.refresh()); }}
               title={home || (ws.surface === "agent" && !popout) ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
@@ -1053,6 +1126,21 @@ function WorkstationApp() {
     <div className="relative h-full min-h-0 overflow-hidden" data-testid="create-desk" data-skin-pane>
       {agentPane}
     </div>
+  ) : agent && focusTicket ? (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-skin-pane>
+      <TaskPage
+        ticket={focusTicket}
+        onBack={() => useNeeds.getState().setFocusTask("")}
+        onSent={() => { void refreshNeeds(); }}
+        skills={ws.skills}
+        files={ws.files}
+        workspace={toolRoot}
+        onSearchFiles={bindComposer.onSearchFiles}
+        onPickFiles={bindComposer.onPickFiles}
+        onClipboard={bindComposer.onClipboard}
+        onScreenshot={bindComposer.onScreenshot}
+      />
+    </section>
   ) : agentPane;
 
   return (
@@ -1128,9 +1216,9 @@ function WorkstationApp() {
             if (agent) ws.setInspector(open);
             else ws.setChatDock(open);
           }}>
-            <SheetContent side="bottom" className="flex h-[min(78dvh,720px)] flex-col rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)]">
+            <SheetContent side="bottom" className="flex h-[min(78dvh,720px)] flex-col rounded-t-xl p-0 pb-[env(safe-area-inset-bottom)]">
               <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
-                <SheetTitle className="text-[13px] font-medium">{agent ? copy.work.title : copy.dock.chat}</SheetTitle>
+                <SheetTitle className="text-ui-body font-medium">{agent ? copy.work.title : copy.dock.chat}</SheetTitle>
                 <SheetClose className="grid size-9 place-items-center rounded-lg text-muted" aria-label={copy.rail.collapse}>
                   <X className="size-4" />
                 </SheetClose>
@@ -1177,22 +1265,17 @@ function WorkstationApp() {
       )}
     >
       <Group
-        key={showRail ? "rail" : "norail"}
+        key={showRail ? (dayInRail ? "day" : "rail") : "norail"}
         className="h-full min-h-0 min-w-0 flex-1"
         style={{ height: "100%" }}
         orientation="horizontal"
-        defaultLayout={showRail
-          ? (() => {
-              const railShare = dayInRail ? Math.min(42, Math.max(layout.rail, 32)) : layout.rail;
-              return { rail: railShare, stage: Math.max(42, 100 - railShare) };
-            })()
-          : { stage: 100 }}
+        defaultLayout={showRail ? { rail: railShare, stage: 100 - railShare } : { stage: 100 }}
         onLayoutChanged={(next, meta) => {
           if (!meta.isUserInteraction || typeof next.rail !== "number") return;
-          setLayout((prev) => writeLayout({
-            rail: next.rail,
-            main: Math.max(30, 100 - next.rail - prev.inspect),
-          }));
+          const share = next.rail;
+          setLayout((prev) => writeLayout(dayInRail
+            ? { day: share }
+            : { rail: share, main: Math.max(30, 100 - share - prev.inspect) }));
         }}
       >
         {showRail ? (
@@ -1205,10 +1288,10 @@ function WorkstationApp() {
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
-              <div data-testid="app-error" className="mx-4 mb-1 flex items-start gap-3 rounded-xl bg-danger/10 px-3.5 py-2.5 text-[13px] text-danger">
+              <div data-testid="app-error" className="mx-4 mb-1 flex items-start gap-3 rounded-xl bg-danger/10 px-3.5 py-2.5 text-ui-body text-danger">
                 <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{ws.err}</span>
-                <button type="button" className="ml-auto shrink-0 text-[11px] underline" onClick={() => ws.setErr("")}>{copy.app.dismiss}</button>
-                <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
+                <button type="button" className="ml-auto shrink-0 text-ui-caption underline" onClick={() => ws.setErr("")}>{copy.app.dismiss}</button>
+                <button type="button" className="shrink-0 text-ui-caption underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
               </div>
             ) : null}
             <MainColumn>

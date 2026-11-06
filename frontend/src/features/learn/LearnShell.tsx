@@ -20,7 +20,7 @@ export function LearnShell(props: {
         {props.back ? (
           <button
             type="button"
-            className="mb-3 inline-flex items-center gap-1.5 text-[12px] text-muted hover:text-foreground"
+            className="mb-3 inline-flex items-center gap-1.5 text-ui-footnote text-muted hover:text-foreground"
             onClick={props.back.onClick}
           >
             <ArrowLeft className="size-3.5 shrink-0" aria-hidden />
@@ -29,8 +29,8 @@ export function LearnShell(props: {
         ) : null}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="truncate text-[21px] font-semibold tracking-[-0.03em]">{props.title}</h1>
-            {props.subtitle ? <p className="mt-1 max-w-[48ch] text-[13px] leading-relaxed text-muted">{props.subtitle}</p> : null}
+            <h1 className="truncate text-ui-display font-semibold tracking-[-0.03em]">{props.title}</h1>
+            {props.subtitle ? <p className="mt-1 max-w-[48ch] text-ui-body leading-relaxed text-muted">{props.subtitle}</p> : null}
           </div>
           {props.action ? <div className="shrink-0">{props.action}</div> : null}
         </div>
@@ -59,7 +59,7 @@ export function LearnTabs(props: {
             role="tab"
             aria-selected={on}
             className={cn(
-              "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 pb-2 text-[13px]",
+              "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 pb-2 text-ui-body",
               on ? "border-foreground text-foreground" : "border-transparent text-muted hover:text-foreground",
             )}
             onClick={() => props.onChange(item.id)}
@@ -89,7 +89,7 @@ export function LearnSegment(props: {
             type="button"
             aria-pressed={on}
             className={cn(
-              "h-7 shrink-0 whitespace-nowrap rounded-md px-2.5 text-[12px]",
+              "h-7 shrink-0 whitespace-nowrap rounded-md px-2.5 text-ui-footnote",
               on ? "bg-background text-foreground" : "text-muted hover:text-foreground",
             )}
             onClick={() => props.onChange(opt.id)}

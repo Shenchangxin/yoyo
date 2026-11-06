@@ -42,20 +42,20 @@ export function HandheldSettings() {
 
   return (
     <SettingSection id="advanced-handheld" title={copy.settings.sections.advancedHandheld} description={copy.settings.handheldBody}>
-      <div className="flex items-center gap-2 text-[12.5px] text-muted">
+      <div className="flex items-center gap-2 text-ui-footnote text-muted">
         <span className={listening ? "size-1.5 rounded-full bg-accent" : "size-1.5 rounded-full bg-muted"} aria-hidden />
         <span>{listening ? copy.settings.handheldListening : copy.settings.handheldOff}</span>
         {status?.port ? <span className="tabular-nums text-muted/80">{status.port}</span> : null}
       </div>
       {status?.fingerprint ? (
-        <p className="mt-2 break-all font-mono text-[11.5px] text-muted">
+        <p className="mt-2 break-all font-mono text-ui-caption text-muted">
           {copy.settings.handheldFingerprint} {status.fingerprint}
         </p>
       ) : null}
       {listening && Array.isArray(status?.hosts) && status.hosts.length === 0 ? (
-        <p className="mt-2 text-[12.5px] text-danger">{copy.settings.handheldNoLan}</p>
+        <p className="mt-2 text-ui-footnote text-danger">{copy.settings.handheldNoLan}</p>
       ) : null}
-      {error ? <p className="mt-2 text-[12.5px] text-danger">{error}</p> : null}
+      {error ? <p className="mt-2 text-ui-footnote text-danger">{error}</p> : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -94,18 +94,18 @@ export function HandheldSettings() {
             className="h-44 w-44 bg-white p-2"
             src={`data:image/png;base64,${offer.png}`}
           />
-          <p className="max-w-sm break-all font-mono text-[11px] text-muted">{offer.uri}</p>
-          <p className="max-w-sm text-[12.5px] text-muted">{copy.settings.handheldBrowser}</p>
+          <p className="max-w-sm break-all font-mono text-ui-caption text-muted">{offer.uri}</p>
+          <p className="max-w-sm text-ui-footnote text-muted">{copy.settings.handheldBrowser}</p>
         </div>
       ) : null}
       <ul className="mt-4 divide-y divide-border/50">
-        {pending.length === 0 && browsers.length === 0 ? <li className="py-2 text-[12.5px] text-muted">{copy.settings.handheldWaiting}</li> : null}
+        {pending.length === 0 && browsers.length === 0 ? <li className="py-2 text-ui-footnote text-muted">{copy.settings.handheldWaiting}</li> : null}
         {browsers.map((item) => (
-          <li key={item.id || "browser"} className="py-2 text-[13px]">{copy.settings.handheldBrowserOn}</li>
+          <li key={item.id || "browser"} className="py-2 text-ui-body">{copy.settings.handheldBrowserOn}</li>
         ))}
         {pending.map((item) => (
           <li key={item.id} className="flex items-center justify-between gap-3 py-2">
-            <span className="text-[13px]">{item.name || item.id}</span>
+            <span className="text-ui-body">{item.name || item.id}</span>
             <span className="flex gap-2">
               <Button size="sm" onClick={() => void api.remoteApprove(String(item.id)).then(load)}>{copy.settings.handheldApprove}</Button>
               <Button size="sm" variant="ghost" onClick={() => void api.remoteDeny(String(item.id)).then(load)}>{copy.settings.handheldDeny}</Button>
@@ -114,10 +114,10 @@ export function HandheldSettings() {
         ))}
       </ul>
       <ul className="divide-y divide-border/50">
-        {devices.length === 0 ? <li className="py-2 text-[12.5px] text-muted">{copy.settings.handheldEmpty}</li> : null}
+        {devices.length === 0 ? <li className="py-2 text-ui-footnote text-muted">{copy.settings.handheldEmpty}</li> : null}
         {devices.map((item) => (
           <li key={item.id} className="flex items-center justify-between gap-3 py-2">
-            <span className="text-[13px]">{item.name || item.id}</span>
+            <span className="text-ui-body">{item.name || item.id}</span>
             <Button size="sm" variant="ghost" onClick={() => void api.remoteRevoke(String(item.id)).then(load)}>{copy.settings.handheldRevoke}</Button>
           </li>
         ))}

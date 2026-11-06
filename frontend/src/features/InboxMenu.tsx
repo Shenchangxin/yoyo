@@ -33,8 +33,8 @@ export function InboxMenu(props: {
   if (!drafts.length && !inbox.length && !offers.length && !notices.length) {
     return (
       <div className="px-3 py-6 text-center" data-testid="inbox-menu">
-        <p className="text-[13px] font-medium text-foreground/85">{copy.review.nothingWaiting}</p>
-        <p className="mt-1 text-[12px] leading-[1.55] text-muted">{copy.review.noQueue}</p>
+        <p className="text-ui-body font-medium text-foreground/85">{copy.review.nothingWaiting}</p>
+        <p className="mt-1 text-ui-footnote leading-[1.55] text-muted">{copy.review.noQueue}</p>
       </div>
     );
   }
@@ -58,13 +58,13 @@ export function InboxMenu(props: {
                     }}
                   >
                     {where || when ? (
-                      <span className="flex min-w-0 items-center gap-2 text-[11px] text-muted">
+                      <span className="flex min-w-0 items-center gap-2 text-ui-caption text-muted">
                         <span className="min-w-0 truncate">{where}</span>
                         {when ? <span className="ml-auto shrink-0 tabular-nums">{when}</span> : null}
                       </span>
                     ) : null}
-                    <span className="mt-0.5 truncate text-[13px] font-medium text-foreground">{n.title}</span>
-                    {n.body ? <span className="mt-0.5 line-clamp-2 text-[12px] leading-[1.5] text-muted">{n.body}</span> : null}
+                    <span className="mt-0.5 truncate text-ui-body font-medium text-foreground">{n.title}</span>
+                    {n.body ? <span className="mt-0.5 line-clamp-2 text-ui-footnote leading-[1.5] text-muted">{n.body}</span> : null}
                   </button>
                   {props.onDismissNotice ? (
                     <span className="mt-2 shrink-0">
@@ -96,8 +96,8 @@ export function InboxMenu(props: {
                 <li key={id} className="px-3 py-2.5">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium text-foreground">{str(req.action || req.Action, "approval")}</div>
-                      <div className="mt-0.5 truncate font-mono text-[11px] text-muted">{str(req.command || req.Command || req.path || req.Path)}</div>
+                      <div className="text-ui-body font-medium text-foreground">{str(req.action || req.Action, "approval")}</div>
+                      <div className="mt-0.5 truncate font-mono text-ui-caption text-muted">{str(req.command || req.Command || req.path || req.Path)}</div>
                     </div>
                     {session && props.onOpenThread ? (
                       <IconAction label={copy.review.openThread} onClick={() => props.onOpenThread?.(session)}>
@@ -128,8 +128,8 @@ export function InboxMenu(props: {
                 <li key={id} className="px-3 py-2.5">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium text-foreground">{str(it.title || it.Title)}</div>
-                      <div className="mt-0.5 text-[12px] leading-[1.5] text-muted">{str(it.body || it.Body).slice(0, 200)}</div>
+                      <div className="text-ui-body font-medium text-foreground">{str(it.title || it.Title)}</div>
+                      <div className="mt-0.5 text-ui-footnote leading-[1.5] text-muted">{str(it.body || it.Body).slice(0, 200)}</div>
                     </div>
                     {session && props.onOpenThread ? (
                       <IconAction label={copy.review.openThread} onClick={() => { void api.inboxRead(id); props.onOpenThread?.(session); }}>
@@ -159,8 +159,8 @@ export function InboxMenu(props: {
           <ul>
             {drafts.map((d: any, i: number) => (
               <li key={str(d.id || i)} className="px-3 py-2.5">
-                <div className="text-[13px] font-medium text-foreground">{str(d.to)}</div>
-                <div className="mt-0.5 text-[12px] text-muted">{str(d.subject)}</div>
+                <div className="text-ui-body font-medium text-foreground">{str(d.to)}</div>
+                <div className="mt-0.5 text-ui-footnote text-muted">{str(d.subject)}</div>
               </li>
             ))}
           </ul>
@@ -194,7 +194,7 @@ function noticeTime(ts: string): string {
 /** MenuLabel 小节标题。count 为 0 时不画数字。children 作为子节点渲染。 */
 function MenuLabel({ children, count }: { children: ReactNode; count?: number }) {
   return (
-    <div className="flex h-8 items-center gap-2 px-3 text-[11px] font-medium text-muted">
+    <div className="flex h-8 items-center gap-2 px-3 text-ui-caption font-medium text-muted">
       <span>{children}</span>
       {count ? <span className="tabular-nums text-muted/60">{count}</span> : null}
     </div>
@@ -216,7 +216,7 @@ function TextAction({ children, onClick, tone }: { children: ReactNode; onClick:
     <button
       type="button"
       className={cn(
-        "h-6 rounded-md px-2 text-[11px] font-medium transition-colors",
+        "h-6 rounded-md px-2 text-ui-caption font-medium transition-colors",
         tone === "primary" && "bg-foreground text-background hover:opacity-90",
         tone === "danger" && "text-muted hover:bg-danger/10 hover:text-danger",
         (!tone || tone === "ghost") && "text-muted hover:bg-lift hover:text-foreground",

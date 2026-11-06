@@ -145,25 +145,26 @@ func (e *Engine) prepareTopicFilm(topicID string) (StudioProject, error) {
 // t 传给 planTopicFilm；Title 去掉首尾空白后为空时，工程标题写成「短片」。
 func (e *Engine) applyTopicFilmPlan(id string, t Topic) (StudioProject, error) {
 	plan := planTopicFilm(t)
-	p, err := e.ApplyStudioTemplate(id, plan.TemplateID)
-	if err != nil {
+	if _, err := e.ApplyStudioTemplate(id, plan.TemplateID); err != nil {
 		return StudioProject{}, err
 	}
 	title := strings.TrimSpace(t.Title)
 	if title == "" {
 		title = "短片"
 	}
-	p.Title = title
-	p.Audience = plan.Audience
-	p.Voice = plan.Voice
-	p.VoiceSpeed = 1
-	p.TargetDuration = plan.Duration
-	p.Brief = plan.Brief
-	p.Storyboard.Fit = "cover"
-	w, h := aspectSize(p.Aspect)
-	p.Storyboard.Size = fmt.Sprintf("%dx%d", w, h)
-	e.noteStudio(&p, "plan", plan.TemplateID)
-	return e.saveStudio(p)
+	return e.mutateStudio(id, func(p *StudioProject) error {
+		p.Title = title
+		p.Audience = plan.Audience
+		p.Voice = plan.Voice
+		p.VoiceSpeed = 1
+		p.TargetDuration = plan.Duration
+		p.Brief = plan.Brief
+		p.Storyboard.Fit = "cover"
+		w, h := aspectSize(p.Aspect)
+		p.Storyboard.Size = fmt.Sprintf("%dx%d", w, h)
+		e.noteStudio(p, "plan", plan.TemplateID)
+		return nil
+	})
 }
 
 // filmNeedsRun 判断这条还要不要做。排队中、正在做或已经完成的返回假。失败的返回真。其余看还没有成片。
@@ -176,6 +177,34 @@ func filmNeedsRun(p StudioProject) bool {
 		return true
 	default:
 		return p.ResultHash == ""
+	}
+}
+
+// recoverStudioAuto 在引擎打开时，把上次没跑完的一键成片标成失败。进程退出后后台协程已经没了，阶段却还停在排队或制作中，再点一键成片会被当成正在做而跳过。不自动重跑，免得一开应用就花钱。
+func (e *Engine) recoverStudioAuto() {
+	for _, p := range e.ListStudioProjects() {
+		if !filmPhaseBusy(p.AutoPhase) && p.Task == nil {
+			continue
+		}
+		_, _ = e.mutateStudio(p.ID, func(cur *StudioProject) error {
+			changed := false
+			if filmPhaseBusy(cur.AutoPhase) {
+				cur.AutoPhase = "failed"
+				cur.AutoError = "上次一键成片没跑完应用就关了。可以再点一次。"
+				e.noteStudio(cur, "auto", cur.AutoError)
+				changed = true
+			}
+			if cur.Task != nil {
+				kind := cur.Task.Kind
+				cur.Task = nil
+				e.warnStudio(cur, studioTaskGate(kind), "上次"+studioTaskLabel[kind]+"没做完应用就关了。可以再点一次。")
+				changed = true
+			}
+			if !changed {
+				return errUnchanged
+			}
+			return nil
+		})
 	}
 }
 
@@ -243,15 +272,12 @@ func (e *Engine) runTopicFilm(id string) {
 	if _, loaded := e.inflight.LoadOrStore(key, true); loaded {
 		return
 	}
-	p, err := e.GetStudioProject(id)
-	if err != nil {
-		e.inflight.Delete(key)
-		return
-	}
-	p.AutoPhase = "script"
-	p.AutoError = ""
-	e.noteStudio(&p, "auto", "started")
-	if _, err := e.saveStudio(p); err != nil {
+	if _, err := e.mutateStudio(id, func(p *StudioProject) error {
+		p.AutoPhase = "script"
+		p.AutoError = ""
+		e.noteStudio(p, "auto", "started")
+		return nil
+	}); err != nil {
 		e.inflight.Delete(key)
 		return
 	}

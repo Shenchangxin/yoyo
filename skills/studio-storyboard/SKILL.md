@@ -7,7 +7,7 @@ allowed-tools: studio_get studio_update studio_generate_shot studio_generate_mis
 
 # Studio board
 
-If no short is bound, `video_route` dest=studio and use their sentence as the title. `studio_*` arrives once that short is bound. If those tools are absent on this turn, stop after the route and continue on the bound short.
+If no short is bound, `video_route` dest=studio and use their sentence as the title. The route result lists the `studio_*` tools that are now live on this same turn; continue with them. Only if it lists none, stop after the route.
 
 A one-picture request is one spoken line and one shot. Show the line. `studio_approve_script` only after they confirm. Then `studio_generate_shot`.
 

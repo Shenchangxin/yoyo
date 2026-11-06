@@ -1,8 +1,8 @@
 /**
- * 拥有：设置页的外壳，按当前页签挂上对应面板。
+ * 拥有：设置页的外壳，按当前页签挂上对应面板。旧页签落到现行布局。
  * 不拥有：各面板里的字段。本页不调用 api，面板会。
  */
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import { useMedia } from "../../lib/media";
@@ -13,16 +13,20 @@ import {
   AdvancedSettings,
   AppearanceSettings,
   GeneralSettings,
+  LabsSection,
   type SettingsHost,
   PolicySettings,
   ProviderSettings,
   GenerationSettings,
 } from "./pages";
-import { ExtensionsSettings } from "./ExtensionsPanel";
+import { FiberSection, McpSection } from "./ExtensionsPanel";
 import { ConnectorsSettings } from "./ConnectorsSettings";
 import { MessagingSettings } from "./MessagingSettings";
-import { PersonalSettings } from "./PersonalPanel";
+import { HandheldSettings } from "./HandheldPanel";
 import { IdolSettings } from "./IdolSettings";
+import { ProactiveSettings } from "./ProactivePanel";
+import { GenerationCatalog } from "./GenerationCatalog";
+import { isSettingsTab, resolveSettingsTarget } from "./registry";
 
 /** SettingsPage 按当前页签挂上面板。host 写到 GeneralSettings 的 host。navInRail 为假时走另一支。 */
 export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRail?: boolean }) {
@@ -34,6 +38,12 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
   const openSettings = useUI((s) => s.openSettings);
   const compact = useMedia("(max-width: 900px)");
   const scroller = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isSettingsTab(tab)) return;
+    const next = resolveSettingsTarget(tab, section);
+    openSettings(next.tab, next.section);
+  }, [tab, section, openSettings]);
 
   useLayoutEffect(() => {
     const root = scroller.current;
@@ -92,19 +102,34 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
           className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [overflow-anchor:none]"
           style={{ scrollPaddingTop: "1.25rem" }}
         >
-          <div className="box-border mx-0 min-h-full w-full max-w-none px-4 py-5 sm:px-6">
+          <div className="box-border mx-auto min-h-full w-full max-w-[760px] px-4 py-5 sm:px-6">
             <h1 className="sr-only">{copy.settings.tabs[tab]}</h1>
             {tab === "general" ? <GeneralSettings host={host} /> : null}
             {tab === "appearance" ? <AppearanceSettings host={host} /> : null}
+            {tab === "proactive" ? <ProactiveSettings host={host} /> : null}
             {tab === "provider" ? <ProviderSettings host={host} /> : null}
-            {tab === "generation" ? <GenerationSettings host={host} /> : null}
+            {tab === "generation" ? (
+              <GenerationCatalog>
+                <GenerationSettings host={host} />
+              </GenerationCatalog>
+            ) : null}
             {tab === "policy" ? <PolicySettings host={host} /> : null}
-            {tab === "extensions" ? <ExtensionsSettings host={host} /> : null}
-            {tab === "connectors" ? <ConnectorsSettings /> : null}
-            {tab === "messaging" ? <MessagingSettings /> : null}
-            {tab === "personal" ? <PersonalSettings /> : null}
+            {tab === "connectors" ? (
+              <>
+                <ConnectorsSettings />
+                <MessagingSettings />
+                <McpSection host={host} />
+                <HandheldSettings />
+              </>
+            ) : null}
+            {tab === "advanced" ? (
+              <>
+                <AdvancedSettings host={host} />
+                <FiberSection host={host} />
+                <LabsSection host={host} />
+              </>
+            ) : null}
             {tab === "idol" ? <IdolSettings /> : null}
-            {tab === "advanced" ? <AdvancedSettings host={host} /> : null}
             <p className="sr-only">{copy.settings.hint}</p>
           </div>
         </div>

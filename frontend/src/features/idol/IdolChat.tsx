@@ -64,7 +64,7 @@ export function IdolChat(props: {
         }}
       >
         {!props.ready ? (
-          <div className="grid h-full place-items-center text-[13px] text-muted">{c.loading}</div>
+          <div className="grid h-full place-items-center text-ui-body text-muted">{c.loading}</div>
         ) : props.lines.length === 0 && !props.pending ? (
           <EmptyState
             icon={<Phone className="size-5" />}
@@ -79,47 +79,46 @@ export function IdolChat(props: {
                 line={line}
                 color={props.idol.color}
                 giftNames={props.giftNames}
-                you={c.you}
-                openWork={c.openWork}
-                score={c.score}
+                who={props.idol.name}
+                c={c}
                 onOpenWork={props.onOpenWork}
               />
             ))}
             {props.pending ? (
-              <Bubble line={{ id: "pending", role: "user", text: props.pending }} color={props.idol.color} giftNames={{}} you={c.you} openWork={c.openWork} score={c.score} onOpenWork={props.onOpenWork} />
+              <Bubble line={{ id: "pending", role: "user", text: props.pending }} color={props.idol.color} giftNames={{}} who="" c={c} onOpenWork={props.onOpenWork} />
             ) : null}
-            {props.sending ? <p className="text-[12px] text-muted">{c.thinking}</p> : null}
+            {props.sending ? <p className="text-ui-footnote text-muted">{c.thinking}</p> : null}
           </div>
         )}
       </div>
       {props.notice ? (
-        <div role="status" className="border-t border-warning/30 bg-warning/10 px-4 py-2 text-[12px] text-warning">{props.notice}</div>
+        <div role="status" className="border-t border-warning/30 bg-warning/10 px-4 py-2 text-ui-footnote text-warning">{props.notice}</div>
       ) : null}
       {props.viewingTitle ? (
         <div className="flex items-center gap-3 border-t border-border bg-background px-4 py-3">
-          <p className="min-w-0 flex-1 text-[13px] text-muted">{c.readOnly} · {props.viewingTitle}</p>
+          <p className="min-w-0 flex-1 text-ui-body text-muted">{c.readOnly} · {props.viewingTitle}</p>
           <Button size="sm" variant="lift" onClick={props.onBack}>{c.backToCurrent}</Button>
         </div>
       ) : props.ended ? (
         <div className="flex flex-wrap items-center gap-3 border-t border-border bg-background px-4 py-3">
-          <p className="min-w-0 flex-1 text-[13px] text-muted">{c.ended}</p>
+          <p className="min-w-0 flex-1 text-ui-body text-muted">{c.ended}</p>
           {props.cooling ? <Button size="sm" variant="lift" onClick={props.onOpenGifts}>{c.give}</Button> : null}
           <Button size="sm" onClick={props.onNewChat}>{c.newChat}</Button>
         </div>
       ) : props.cooling ? (
         <div className="flex flex-wrap items-center gap-3 border-t border-border bg-background px-4 py-3">
-          <p className="min-w-0 flex-1 text-[13px] text-muted">{c.cooldownUntil.replace("{time}", props.cooling)}</p>
+          <p className="min-w-0 flex-1 text-ui-body text-muted">{c.cooldownUntil.replace("{time}", props.cooling)}</p>
           <Button size="sm" variant="lift" onClick={props.onOpenGifts}>{c.give}</Button>
         </div>
       ) : (
         <div className="border-t border-border bg-background px-4 py-3">
           {props.canWork ? (
-            <label className="mb-2 flex items-center gap-2 text-[12px] text-muted" title={c.workHint}>
+            <label className="mb-2 flex items-center gap-2 text-ui-footnote text-muted" title={c.workHint}>
               <input type="checkbox" checked={props.work} onChange={(e) => props.onWork(e.target.checked)} />
               {c.work}
             </label>
           ) : null}
-          <ChatBorder className="chat-border-fit">
+          <ChatBorder className="chat-border-fit" active={props.sending}>
             <PromptBar
               value={props.text}
               onValueChange={props.onText}
@@ -135,23 +134,35 @@ export function IdolChat(props: {
   );
 }
 
-/** 渲染一行用户、偶像或事件。偶像带照片、分数或工作会话时给出对应块。props 读取 line、giftNames、score、color、you、openWork，调用 onOpenWork。 */
+/** 好感变化只说升还是降，具体数值放在悬停提示里：她要像一个人，不像一张计分表。 */
+function AffinityMark(props: { delta: number; up: string; down: string; className?: string }) {
+  return (
+    <span className={cn("tabular-nums", props.className)} title={props.delta > 0 ? `+${props.delta}` : String(props.delta)}>
+      {props.delta > 0 ? `${props.up} ↑` : `${props.down} ↓`}
+    </span>
+  );
+}
+
+/** 渲染一行用户、偶像或事件。偶像带照片（或正在拍、没发出去）、好感变化或工作会话时给出对应块。props 读取 line、giftNames、color、c，调用 onOpenWork。 */
 function Bubble(props: {
   line: Line;
   color: string;
   giftNames: Record<string, string>;
-  you: string;
-  openWork: string;
-  score: string;
+  who: string;
+  c: ReturnType<typeof useCopy>["idol"];
   onOpenWork: (id: string) => void;
 }) {
-  const line = props.line;
+  const { line, c } = props;
   if (line.role === "event") {
-    const gift = line.gift ? (props.giftNames[line.gift] || line.text) : line.text;
+    const gift = line.gift ? (props.giftNames[line.gift] || line.text) : "";
+    const text = line.event === "hung_up" ? c.eventHungUp.replace("{name}", props.who)
+      : line.event === "ended" ? c.eventEnded
+      : gift ? c.eventGift.replace("{name}", props.who).replace("{gift}", gift) : line.text;
+    if (!text) return null;
     return (
-      <div className="py-1 text-center text-[12px] text-muted">
-        {gift}
-        {line.delta ? <span className="ml-2 tabular-nums">{props.score} {line.delta > 0 ? `+${line.delta}` : line.delta}</span> : null}
+      <div className="py-1 text-center text-ui-footnote text-muted">
+        {text}
+        {line.delta ? <AffinityMark className="ml-2" delta={line.delta} up={c.affinityUp} down={c.affinityDown} /> : null}
       </div>
     );
   }
@@ -159,20 +170,26 @@ function Bubble(props: {
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
-        className={cn("max-w-[80%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed", mine ? "bg-foreground text-background" : "text-foreground")}
+        className={cn("max-w-[80%] rounded-xl px-3 py-2 text-ui-body leading-relaxed", mine ? "bg-foreground text-background" : "text-foreground")}
         style={mine ? undefined : { background: hexAlpha(props.color, 0.16) }}
       >
-        <div className={cn("mb-0.5 text-[10px]", mine ? "text-background/70" : "text-muted")}>
-          {mine ? props.you : null}
+        <div className={cn("mb-0.5 text-ui-badge", mine ? "text-background/70" : "text-muted")}>
+          {mine ? c.you : null}
           {line.at ? <span className="ml-2 tabular-nums">{clock(line.at)}</span> : null}
         </div>
         {line.text ? <p className="whitespace-pre-wrap">{line.text}</p> : null}
         {line.role === "idol" && line.photo ? <BlobImage id={line.photo} /> : null}
+        {line.role === "idol" && !line.photo && line.photoState === "pending" ? (
+          <div className="mt-2 grid h-24 w-40 animate-pulse place-items-center rounded-xl bg-black/5 text-ui-caption text-muted">{c.photoPending}</div>
+        ) : null}
+        {line.role === "idol" && line.photoState === "failed" ? (
+          <div className="mt-1 text-ui-caption text-muted">{c.photoFailed}</div>
+        ) : null}
         {line.role === "idol" && line.delta ? (
-          <div className="mt-1 text-[11px] text-muted">{props.score} {line.delta > 0 ? `+${line.delta}` : line.delta}</div>
+          <div className="mt-1 text-ui-caption text-muted"><AffinityMark delta={line.delta} up={c.affinityUp} down={c.affinityDown} /></div>
         ) : null}
         {line.role === "idol" && line.work ? (
-          <button type="button" className="mt-1 text-[12px] underline" onClick={() => props.onOpenWork(line.work || "")}>{props.openWork}</button>
+          <button type="button" className="mt-1 text-ui-footnote underline" onClick={() => props.onOpenWork(line.work || "")}>{c.openWork}</button>
         ) : null}
       </div>
     </div>

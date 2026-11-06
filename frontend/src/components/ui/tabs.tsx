@@ -22,7 +22,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsP
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "rounded-md px-2 py-1 text-[11px] text-muted transition-colors data-[state=active]:bg-panel data-[state=active]:text-foreground",
+        "rounded-md px-2 py-1 text-ui-caption text-muted transition-colors data-[state=active]:bg-panel data-[state=active]:text-foreground",
         className,
       )}
       {...props}

@@ -183,7 +183,7 @@ func (st *State) dropRetiredPresets(keepIdol, keepCircle map[string]bool) {
 		return
 	}
 	st.Conversations = filterConversations(st.Conversations, gone)
-	st.Memories = filterMemories(st.Memories, gone)
+	st.Memories = relinkMemories(filterMemories(st.Memories, gone))
 	st.Affinity = filterAffinity(st.Affinity, gone)
 	st.Lore = filterLore(st.Lore, gone)
 	st.Calls = filterCalls(st.Calls, gone)

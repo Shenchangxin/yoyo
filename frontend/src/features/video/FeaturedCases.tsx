@@ -32,7 +32,7 @@ function laneLabel(lane: CreationCaseLane, c: ReturnType<typeof useCopy>["video"
 
 /** 拼风格、共用对象，以及没有预设时的静帧说明。item 用 styleTitle、coverFile、sharedWith 和 preset 拼一行。c 提供风格、共用和静帧文案。 */
 function sourceLine(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["conductor"]) {
-  const parts = [c.featuredStyle.replace("{title}", item.styleTitle).replace("{file}", item.coverFile)];
+  const parts = [c.featuredStyle.replace("{title}", item.styleTitle)];
   if (item.sharedWith[0]) parts.push(c.featuredShared.replace("{title}", item.sharedWith[0]));
   if (!item.preset) parts.push(c.featuredStillOnly);
   return parts.join(" · ");

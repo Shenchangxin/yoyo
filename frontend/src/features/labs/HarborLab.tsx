@@ -92,7 +92,7 @@ export function HarborLab(props: {
         <Button disabled={!!props.busy} onClick={() => props.onRun("suite")}>{copy.harbor.runSuite}</Button>
         </div>
         {modelsOpen && lab ? (
-          <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+          <label className="flex flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
             {copy.harbor.runModels}
             <Input className="h-8 w-full font-normal" placeholder={copy.harbor.modelsPh} value={props.models} onChange={(e) => props.onModels(e.target.value)} />
             <span className="mt-[var(--space-item)] flex justify-end">
@@ -102,14 +102,14 @@ export function HarborLab(props: {
         ) : null}
       </div>
       {props.error ? (
-        <div className="mb-4 flex items-center gap-3 rounded-md bg-danger/8 px-4 py-3 text-[13px] text-danger">
+        <div className="mb-4 flex items-center gap-3 rounded-md bg-danger/8 px-4 py-3 text-ui-body text-danger">
           <span>{props.error}</span>
           <Button size="sm" variant="lift" onClick={() => props.onRun(props.lastKind || "suite")}>{copy.harbor.retry}</Button>
         </div>
       ) : null}
       {props.report ? (
         <>
-          <p className={cn("mb-4 text-[15px] font-medium tracking-[-0.02em]", safety > 0 && "text-danger")}>
+          <p className={cn("mb-4 text-ui-title-s font-medium tracking-[-0.02em]", safety > 0 && "text-danger")}>
             {copy.harbor.verdict}. {safety > 0 ? copy.harbor.verdictBlock : inT && outT && inP === inT && outP === outT ? copy.harbor.verdictPromote : copy.harbor.whyEvidence}
           </p>
           <div className="mb-4 overflow-hidden rounded-md bg-sidebar/40">
@@ -136,22 +136,22 @@ export function HarborLab(props: {
               last
             />
           </div>
-          <p className="mb-4 text-[13px] text-muted">
+          <p className="mb-4 text-ui-body text-muted">
             {formatMoney(usd)} · <RollTime ms={wall} kind="spoken" />
             {lab ? (
-              <span className="font-mono text-[12px]">
+              <span className="font-mono text-ui-footnote">
                 {` · ${str(pick(props.report, "snapshot", "Snapshot")).slice(0, 16) || "—"}`}
                 {str(pick(props.report, "model_fingerprint", "ModelFingerprint")) ? ` · ${str(pick(props.report, "model_fingerprint", "ModelFingerprint"))}` : ""}
                 {` · ${copy.labs.tokens} ${num(pick(props.report, "tokens_in", "TokensIn"))}/${num(pick(props.report, "tokens_out", "TokensOut"))}`}
               </span>
             ) : null}
           </p>
-          {why && safety > 0 ? <p className="mb-4 rounded-md bg-danger/8 px-4 py-3 text-[13px] text-danger">{why}</p> : null}
+          {why && safety > 0 ? <p className="mb-4 rounded-md bg-danger/8 px-4 py-3 text-ui-body text-danger">{why}</p> : null}
           {visibleResults.length === 0 ? (
-            <p className="text-[13px] text-muted">{results.length ? headline : copy.harbor.noResults}</p>
+            <p className="text-ui-body text-muted">{results.length ? headline : copy.harbor.noResults}</p>
           ) : (
             <LabTable>
-              <thead className="text-[11px] text-muted">
+              <thead className="text-ui-caption text-muted">
                 <tr>
                   <th className="px-4 py-2 font-medium">{copy.harbor.task}</th>
                   {lab ? <th className="font-medium">{copy.harbor.kind}</th> : null}
@@ -172,15 +172,15 @@ export function HarborLab(props: {
             </LabTable>
           )}
         </>
-      ) : <p className="text-[13px] text-muted">{copy.harbor.empty}</p>}
+      ) : <p className="text-ui-body text-muted">{copy.harbor.empty}</p>}
       {lab && (props.best?.reports || props.best?.Reports) ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {asArray(pick(props.best, "reports", "Reports")).map((r: any, i: number) => {
             const m = pick(r, "metrics", "Metrics") || {};
             return (
               <LabCard key={i}>
-                <div className="text-[13px] font-medium">{copy.harbor.runN} {i + 1}</div>
-                <div className="mt-1 text-[11px] text-muted">
+                <div className="text-ui-body font-medium">{copy.harbor.runN} {i + 1}</div>
+                <div className="mt-1 text-ui-caption text-muted">
                   {copy.labs.in} {num(pick(m, "held_in_pass", "HeldInPass"))}/{num(pick(m, "held_in_total", "HeldInTotal"))} · {copy.labs.out} {num(pick(m, "held_out_pass", "HeldOutPass"))}/{num(pick(m, "held_out_total", "HeldOutTotal"))}
                 </div>
               </LabCard>

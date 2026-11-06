@@ -258,10 +258,10 @@ function fromTemplate(kind: Kind, t: MediaProvider): Draft {
 /** 画一带说明的字段。label 用作标签，作为子节点渲染。hint 为真时才继续，作为子节点渲染。children 作为子节点渲染。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <label className="flex w-full flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+    <label className="flex w-full flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
       <span>
         {label}
-        {hint ? <span className="mt-0.5 block text-[12px] font-normal leading-[1.45] text-muted">{hint}</span> : null}
+        {hint ? <span className="mt-0.5 block text-ui-footnote font-normal leading-[1.45] text-muted">{hint}</span> : null}
       </span>
       {children}
     </label>
@@ -273,7 +273,7 @@ function StatusPill({ ok, busy, label }: { ok: boolean; busy?: boolean; label: s
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-footnote font-medium",
         ok ? "bg-success/15 text-success" : busy ? "bg-accent/15 text-accent" : "bg-danger/10 text-danger",
       )}
     >
@@ -508,7 +508,7 @@ export function GenerationSettings({ host }: { host?: SettingsHost }) {
         </SettingRow>
         {ffmpegWorking ? <ProgressHairline value={Number(ffmpegInstall.percent) || 0} /> : null}
         {ffmpegPhase === "error" && !ffmpeg && ffmpegInstall.error ? (
-          <p className="pb-2 text-[12px] leading-[1.45] text-danger">{String(ffmpegInstall.error)}</p>
+          <p className="pb-2 text-ui-footnote leading-[1.45] text-danger">{String(ffmpegInstall.error)}</p>
         ) : null}
         <SettingRow title={v.studioAspect} description={v.studioAspectHint}>
           <SettingSegmented
@@ -580,7 +580,7 @@ export function GenerationSettings({ host }: { host?: SettingsHost }) {
         </SettingRow>
         {remotionWorking ? <ProgressHairline value={Number(remotionInstall.percent) || 0} /> : null}
         {remotionPhase === "error" && !remotion?.ready && remotionInstall.error ? (
-          <p className="pb-2 text-[12px] leading-[1.45] text-danger">{String(remotionInstall.error)}</p>
+          <p className="pb-2 text-ui-footnote leading-[1.45] text-danger">{String(remotionInstall.error)}</p>
         ) : null}
       </SettingSection>
 
@@ -854,18 +854,18 @@ function AdapterSection(props: {
                   setDraft(open ? null : fromRow(p));
                 }}
               >
-                <div className="truncate text-[13px] font-medium leading-[1.4] text-foreground">{p.name}</div>
-                <div className="mt-0.5 truncate font-mono text-[11px] leading-[1.4] text-muted">
+                <div className="truncate text-ui-body font-medium leading-[1.4] text-foreground">{p.name}</div>
+                <div className="mt-0.5 truncate font-mono text-ui-caption leading-[1.4] text-muted">
                   {[vendorLabel(p.provider), hostPath(p.base_url)].filter(Boolean).join(" · ")}
                 </div>
               </button>
               <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                 {p.is_default ? (
-                  <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] font-medium text-foreground">{v.makeDefault}</span>
+                  <span className="rounded-full bg-lift px-2 py-0.5 text-ui-caption font-medium text-foreground">{v.makeDefault}</span>
                 ) : (
                   <button
                     type="button"
-                    className="rounded-full px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
+                    className="rounded-full px-2 py-0.5 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground"
                     onClick={() => void patchRow(p, { is_default: true })}
                   >
                     {v.setDefault}
@@ -873,7 +873,7 @@ function AdapterSection(props: {
                 )}
                 <span
                   className={cn(
-                    "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                    "rounded-full px-2 py-0.5 text-ui-caption font-medium",
                     p.provider === "cas" || p.has_key ? "bg-success/15 text-success" : "bg-danger/10 text-danger",
                   )}
                 >
@@ -902,7 +902,7 @@ function AdapterSection(props: {
                         title={v.defaultModel}
                         aria-pressed={on}
                         className={cn(
-                          "max-w-[14rem] truncate rounded-full px-2 py-0.5 font-mono text-[11px]",
+                          "max-w-[14rem] truncate rounded-full px-2 py-0.5 font-mono text-ui-caption",
                           on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
                         )}
                         onClick={() => void patchRow(p, { model: m })}
@@ -943,7 +943,7 @@ function AdapterSection(props: {
 
       {showPicker && !draft ? (
         <div className="flex flex-col gap-0.5">
-          <p className="px-1 text-[12px] leading-[1.4] text-muted">{v.templateHint}</p>
+          <p className="px-1 text-ui-footnote leading-[1.4] text-muted">{v.templateHint}</p>
           {kindTemplates.map((t) => (
             <AdapterPickRow
               key={templateKey(t)}
@@ -978,7 +978,7 @@ function AdapterSection(props: {
           <span className="grid size-8 shrink-0 place-items-center rounded-[22%] bg-lift text-muted">
             <Plus className="size-3.5" aria-hidden />
           </span>
-          <span className="text-[13px] font-medium">{v.addAdapter}</span>
+          <span className="text-ui-body font-medium">{v.addAdapter}</span>
         </button>
       ) : null}
 
@@ -1034,9 +1034,9 @@ function AdapterPickRow({
     >
       <ProviderMark id={mark} className="size-8" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium leading-[1.4] text-foreground">{title}</span>
+        <span className="block text-ui-body font-medium leading-[1.4] text-foreground">{title}</span>
         {subtitle ? (
-          <span className="mt-0.5 block truncate font-mono text-[12px] leading-[1.4] text-muted">{subtitle}</span>
+          <span className="mt-0.5 block truncate font-mono text-ui-footnote leading-[1.4] text-muted">{subtitle}</span>
         ) : null}
       </span>
       {trailing ? <span className="flex shrink-0 text-muted">{trailing}</span> : null}
@@ -1246,7 +1246,7 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
         extras.map((ch) => (
           <SettingRow key={ch.id} title={ch.name || ch.pluginId || ch.id} list>
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-              <span className="truncate text-[12px] text-muted">{ch.pluginId} · {ch.capability} · {ch.baseUrl}</span>
+              <span className="truncate text-ui-footnote text-muted">{ch.pluginId} · {ch.capability} · {ch.baseUrl}</span>
               <Button size="sm" variant="ghost" onClick={() => void test(ch.id)}>{copy.settings.testConnection}</Button>
             </div>
           </SettingRow>

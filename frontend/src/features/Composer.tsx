@@ -58,7 +58,7 @@ import { ApprovalTakeover } from "./session-chrome/ApprovalTakeover";
 import { DraftEditor, type DraftEditorHandle, type DraftSnapshot } from "./session-chrome/DraftEditor";
 import { CommandOverlay, type OverlayItem } from "./session-chrome/CommandOverlay";
 import { AttachmentRail, DropOverlay } from "./session-chrome/Attachments";
-import { isVideoPath, nativeFilePath } from "./video/ingest-clip";
+import { isClipTooLarge, isVideoPath, nativeFilePath } from "./video/ingest-clip";
 import { useCutDesk } from "./video/cut-desk";
 import { useCreateMode } from "./video/create-mode";
 import { SendSling } from "../components/SendSling";
@@ -545,7 +545,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
-  /** 桌面窗口用系统选文件，只收视频路径。选了文件但没有视频时提示。错误信息正好是 clip too large 时用过大文案。否则点隐藏的文件框。 */
+  /** 桌面窗口用系统选文件，只收视频路径。选了文件但没有视频时提示。拖进来的片子太大时用过大文案。否则点隐藏的文件框。 */
   async function importClip() {
     if (disabled) return;
     if (props.onIngestVideo && desktopWindow()) {
@@ -558,7 +558,7 @@ export function Composer(props: {
       try {
         await props.onIngestVideo({ path });
       } catch (e) {
-        toast.error(e instanceof Error && e.message === "clip too large" ? copy.composer.clipTooLarge : api.errMessage(e));
+        toast.error(isClipTooLarge(e) ? copy.composer.clipTooLarge : api.errMessage(e));
       }
       return;
     }
@@ -595,7 +595,7 @@ export function Composer(props: {
             else await props.onIngestVideo({ file: f });
           }
         } catch (e) {
-          const tooBig = e instanceof Error && e.message === "clip too large";
+          const tooBig = isClipTooLarge(e);
           toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e));
         } finally {
           setAttaching(false);
@@ -737,6 +737,8 @@ export function Composer(props: {
   const placeholderText = canSteerQueue ? copy.composer.steerQueue : placeholder;
   const pendingTool = toolApproval && toolApproval.action !== "ask_user" ? toolApproval : null;
   const perch = !!props.perch;
+  // 主输入框只有一个：plain 和 compact 是任务会话、导师这类次级输入框，不带电流。
+  const primary = !props.plain && !props.compact;
 
   return (
     <div className={cn("relative no-drag w-full shrink-0", col, pad)} data-testid={props.compact ? undefined : "composer-column"}>
@@ -747,6 +749,8 @@ export function Composer(props: {
         data-plain={props.plain ? "true" : "false"}
         data-plus={props.plus ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
+        data-primary={primary ? "true" : "false"}
+        data-asking={props.ask || pendingTool ? "true" : "false"}
         data-perch={perch ? "true" : "false"}
         data-create-desk={createDesk ? "true" : "false"}
         data-drama-desk={dramaDesk ? "true" : "false"}
@@ -791,7 +795,7 @@ export function Composer(props: {
               {props.running ? (
                 <button
                   type="button"
-                  className="mb-1 self-start rounded-md px-2 py-0.5 text-[11px] text-muted hover:bg-background hover:text-foreground"
+                  className="mb-1 self-start rounded-md px-2 py-0.5 text-ui-caption text-muted hover:bg-background hover:text-foreground"
                   onClick={() => {
                     const next: BusyEnter = busyEnter === "queue" ? "steer" : "queue";
                     writeBusyEnter(next);
@@ -810,7 +814,7 @@ export function Composer(props: {
               />
             </div>
             {perch ? <PresencePerch size={props.perchSize} /> : null}
-            <ChatBorder className="sc-card-frame">
+            <CardFrame primary={primary} live={!!props.running}>
             <div
               ref={cardRef}
               className="sc-card"
@@ -880,7 +884,7 @@ export function Composer(props: {
                       <button
                         type="button"
                         data-testid="auto-skill-chip"
-                        className="inline-flex max-w-[14rem] items-center gap-1 rounded-md bg-lift px-1.5 py-0.5 text-[11px] text-foreground"
+                        className="inline-flex max-w-[14rem] items-center gap-1 rounded-md bg-lift px-1.5 py-0.5 text-ui-caption text-foreground"
                         onClick={() => setDismissedAuto((prev) => prev.includes(s.name) ? prev : [...prev, s.name])}
                       >
                         <BookOpen className="size-3 shrink-0 opacity-70" />
@@ -894,7 +898,7 @@ export function Composer(props: {
                       <button
                         type="button"
                         data-testid="suggest-skill-chip"
-                        className="inline-flex max-w-[14rem] items-center gap-1 rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+                        className="inline-flex max-w-[14rem] items-center gap-1 rounded-md border border-border/70 px-1.5 py-0.5 text-ui-caption text-muted hover:bg-lift hover:text-foreground"
                         onClick={() => insertMention(`@skill:${s.name}`)}
                       >
                         <BookOpen className="size-3 shrink-0 opacity-70" />
@@ -1016,7 +1020,7 @@ export function Composer(props: {
                       </SelectContent>
                     </Select>
                   ) : !props.plain && currentModel && !props.leading && !props.toolbarLeading ? (
-                    <span className="hidden max-w-[8.5rem] truncate px-1.5 text-[12px] text-muted sm:inline" title={currentModel}>{modelLabel}</span>
+                    <span className="hidden max-w-[8.5rem] truncate px-1.5 text-ui-footnote text-muted sm:inline" title={currentModel}>{modelLabel}</span>
                   ) : null}
                   {props.running && hasPayload ? (
                     <Tooltip content={copy.composer.stop}>
@@ -1059,7 +1063,7 @@ export function Composer(props: {
                 </div>
               </div>
             </div>
-            </ChatBorder>
+            </CardFrame>
             {props.compact ? null : (
             <div className="sc-dock" data-composer-dock>
               <StatsPills
@@ -1081,6 +1085,12 @@ export function Composer(props: {
       </div>
     </div>
   );
+}
+
+/** 主输入框外面包一圈电流，只在 live 时流动；次级输入框只有自己的细线，不起 WebGL。 */
+function CardFrame(props: { primary: boolean; live: boolean; children: ReactNode }) {
+  if (!props.primary) return <div className="sc-card-frame">{props.children}</div>;
+  return <ChatBorder className="sc-card-frame" active={props.live}>{props.children}</ChatBorder>;
 }
 
 /** 首页上的工作区芯片和选择层。路径还没就绪时不显示当前名。props 读取 chipRef、workspace、pickerOpen、copy、onToggle、items 等。 */
@@ -1156,14 +1166,10 @@ function parseCutRef(path?: string): { id: string; hash: string } | null {
   return m ? { id: m[1], hash: m[2] } : null;
 }
 
-/** 只给带 yoyo-cut 引用的附件拼一行入库说明。没有这种附件就返回空字符串。atts 调用 flatMap。 */
+/** 只给带 yoyo-cut 引用的附件拼一行入库说明。片子已经绑在这段对话的剪辑台上，助手自己读得到，这里不写编号和哈希。没有这种附件就返回空字符串。atts 调用 flatMap。 */
 function footageStamp(atts: Attachment[]): string {
-  const lines = atts.flatMap((a) => {
-    const ref = parseCutRef(a.path);
-    if (!ref) return [];
-    return [`源片已入库。cut_id=${ref.id} cas=${ref.hash}。用 cut_analyze / cut_propose / cut_apply。不要检查代码仓库。`];
-  });
-  return lines.join("\n");
+  const n = atts.filter((a) => !!parseCutRef(a.path)).length;
+  return n ? "（附带的片子已经导入剪辑台，可以直接剪。）" : "";
 }
 
 /** 读成 data URL 后去掉逗号前缀。没有哈希或没有工程 id 就抛错。附件路径写成 yoyo-cut:id:hash。f 读取 type、name，传给 r.readAsDataURL。sessionId 为假时用空字符串，传给 api.video.cutCreate。 */

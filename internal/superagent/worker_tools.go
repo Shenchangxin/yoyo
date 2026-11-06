@@ -83,6 +83,13 @@ func workerPrompt(e *Executor, dir, ticketID string) string {
 	if dir != "" {
 		fmt.Fprintf(&b, "工作目录 %s\n", dir)
 	}
+	if e != nil && e.Profile != nil {
+		if pin := strings.TrimSpace(e.Profile()); pin != "" {
+			b.WriteString("操作者已经留下的偏好和说过的话。只读，用来定语言、称呼和写法；和任务说明冲突时以说明为准：\n")
+			b.WriteString(pin)
+			b.WriteByte('\n')
+		}
+	}
 	if e != nil && e.Env != nil {
 		for _, key := range []string{
 			"DSH_SUPERAGENT_DIR", "DSH_SUPERAGENT_NAME", "DSH_SUPERAGENT_TICKET",

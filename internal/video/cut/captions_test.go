@@ -2,7 +2,32 @@
 
 package cut
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+// TestMapCuesFollowsTheCut 确认源片字幕按剪辑表搬到成片：剪掉的部分丢掉，跨剪辑点的切开，略过的不要。
+func TestMapCuesFollowsTheCut(t *testing.T) {
+	cues := []Cue{
+		{Start: 1, End: 3, Text: "留下"},
+		{Start: 4, End: 6, Text: "剪掉"},
+		{Start: 9, End: 11, Text: "跨过"},
+		{Start: 12, End: 13, Text: "略过", Omit: true},
+	}
+	cuts := []Clip{{Start: 0, End: 3.5}, {Start: 10, End: 14}}
+	got := MapCues(cues, cuts)
+	if len(got) != 2 {
+		t.Fatalf("cues %+v", got)
+	}
+	near := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
+	if got[0].Text != "留下" || !near(got[0].Start, 1) || !near(got[0].End, 3) {
+		t.Fatalf("first %+v", got[0])
+	}
+	if got[1].Text != "跨过" || !near(got[1].Start, 3.5) || !near(got[1].End, 4.5) {
+		t.Fatalf("second %+v", got[1])
+	}
+}
 
 // TestEncodeParseSRTRoundTrip 确认编码再解析后保留文本，起点落在 1.4 到 1.6 秒。
 func TestEncodeParseSRTRoundTrip(t *testing.T) {

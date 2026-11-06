@@ -168,8 +168,8 @@ class MarkdownBoundary extends Component<{ text: string; fallback: string; child
     if (this.state.failed) {
       return (
         <div data-testid="markdown-fallback">
-          <p className="mb-2 text-[11px] text-muted">{this.props.fallback}</p>
-          <pre className="overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-[1.6] text-foreground/90">
+          <p className="mb-2 text-ui-caption text-muted">{this.props.fallback}</p>
+          <pre className="overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-ui-footnote leading-[1.6] text-foreground/90">
             {this.props.text}
           </pre>
         </div>
@@ -353,7 +353,7 @@ function StreamingMarkdown({ text, quiet }: { text: string; quiet?: boolean }) {
       {folded ? (
         <button
           type="button"
-          className="mb-1 h-7 w-full rounded-md px-2 text-left text-[12px] text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
+          className="mb-1 h-7 w-full rounded-md px-2 text-left text-ui-footnote text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
           data-testid="stream-history"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}

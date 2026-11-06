@@ -11,7 +11,7 @@ export type Assignment = { id: string; state: string; report?: string; summary?:
 export type Ticket = {
   id: string; stage: string; action: string; person: boolean; origin: string; outcome?: string;
   strength?: string; sender?: string; attention?: string; deliveryError?: string; originUrl?: string;
-  title: string; directory?: string;
+  title: string; directory?: string; openedAt?: string; updatedAt?: string;
   inputs?: Input[]; follows?: Follow[]; assignments?: Assignment[];
 };
 export type Trigger = {

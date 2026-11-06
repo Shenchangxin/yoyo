@@ -11,16 +11,16 @@ import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import { cn } from "../../lib/utils";
 
 /** CONTROL_SM 是组内控件的统一宽度，同一分区的字段左边和尺度对齐。 */
-export const CONTROL_SM = "h-8 w-full text-[13px]";
+export const CONTROL_SM = "h-8 w-full text-ui-body";
 /** CONTROL_MD 沿用同一套控件宽度。 */
-export const CONTROL_MD = "h-8 w-full text-[13px]";
+export const CONTROL_MD = "h-8 w-full text-ui-body";
 /** CONTROL_LG 沿用同一套控件宽度。 */
-export const CONTROL_LG = "h-8 w-full text-[13px]";
+export const CONTROL_LG = "h-8 w-full text-ui-body";
 
 /** SettingsGroupLabel 画一组上面的小标题。children 作为子节点渲染。 */
 export function SettingsGroupLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-2 text-[11px] font-medium text-muted">
+    <div className="mb-2 text-ui-caption font-medium text-muted">
       {children}
     </div>
   );
@@ -68,7 +68,7 @@ export function SettingSection({
   const heading = title || headerActions ? (
     <div className="flex items-center gap-3">
       {title ? (
-        <h2 id={id} className="min-w-0 flex-1 text-[12px] font-medium text-muted">
+        <h2 id={id} className="min-w-0 flex-1 text-ui-footnote font-medium text-muted">
           {title}
         </h2>
       ) : (
@@ -78,7 +78,7 @@ export function SettingSection({
     </div>
   ) : null;
   const desc = description ? (
-    <p className={cn("text-[12px] text-muted", tight ? "leading-[1.4]" : "leading-[1.55]")}>{description}</p>
+    <p className={cn("text-ui-footnote text-muted", tight ? "leading-[1.4]" : "leading-[1.55]")}>{description}</p>
   ) : null;
   const header = heading || desc ? (
     <div className={cn("flex flex-col", tight ? "gap-1" : "gap-[var(--space-item)]")}>
@@ -96,20 +96,20 @@ export function SettingSection({
             {children}
           </div>
           {actions ? <div className="mt-[var(--space-item)] flex items-center justify-end gap-2">{actions}</div> : null}
-          {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.45] text-muted">{footnote}</p> : null}
+          {footnote ? <p className="mt-[var(--space-item)] text-ui-footnote leading-[1.45] text-muted">{footnote}</p> : null}
         </>
       ) : (
         <>
           <div
             id={title ? undefined : id}
             data-setting-section-id={id}
-            className={cn("flex w-full min-w-0 flex-col rounded-[12px] bg-card shadow-[var(--shadow-card)]", stackGap, tight ? "px-5 py-2.5" : "px-5 py-3")}
+            className={cn("flex w-full min-w-0 flex-col rounded-lg bg-card shadow-[var(--shadow-card)]", stackGap, tight ? "px-5 py-2.5" : "px-5 py-3")}
           >
             {header}
             {children}
             {actions ? <div className="flex items-center justify-end gap-2">{actions}</div> : null}
           </div>
-          {footnote ? <p className="mt-1.5 text-[12px] leading-[1.45] text-muted">{footnote}</p> : null}
+          {footnote ? <p className="mt-1.5 text-ui-footnote leading-[1.45] text-muted">{footnote}</p> : null}
         </>
       )}
     </section>
@@ -147,8 +147,8 @@ export function SettingRow({
       <div className="flex min-h-10 w-full min-w-0 items-center gap-6">
         {title ? (
           <div className="min-w-0 flex-[1_1_16rem]">
-            <div className="text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
-            {description ? <div className="mt-0.5 text-[12px] leading-[1.45] text-muted">{description}</div> : null}
+            <div className="text-ui-body font-medium leading-[1.4] text-foreground">{title}</div>
+            {description ? <div className="mt-0.5 text-ui-footnote leading-[1.45] text-muted">{description}</div> : null}
           </div>
         ) : null}
         {children ? (
@@ -161,8 +161,8 @@ export function SettingRow({
     <div className="flex w-full min-w-0 flex-col items-stretch gap-[var(--space-item)]">
       {title ? (
         <div className="min-w-0">
-          <div className="text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
-          {description ? <div className="mt-1 text-[13px] leading-[1.5] text-muted">{description}</div> : null}
+          <div className="text-ui-body font-medium leading-[1.4] text-foreground">{title}</div>
+          {description ? <div className="mt-1 text-ui-body leading-[1.5] text-muted">{description}</div> : null}
         </div>
       ) : null}
       {children ? <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2">{children}</div> : null}
@@ -184,7 +184,7 @@ export function SettingValueRow({
 }) {
   return (
     <SettingRow title={title} list>
-      <span className={cn("text-[13px] text-muted", mono && "font-mono tabular-nums")}>{value}</span>
+      <span className={cn("text-ui-body text-muted", mono && "font-mono tabular-nums")}>{value}</span>
     </SettingRow>
   );
 }
@@ -224,12 +224,12 @@ export function SettingActionRow({
           className="flex min-h-11 w-full items-center gap-4 px-1 text-left transition-colors hover:bg-lift/70"
     >
       <span className="min-w-0 flex-1">
-        <span className={cn("block text-[13px] font-medium leading-[1.4]", danger ? "text-danger" : "text-foreground")}>
+        <span className={cn("block text-ui-body font-medium leading-[1.4]", danger ? "text-danger" : "text-foreground")}>
           {title}
         </span>
-        {description ? <span className="mt-0.5 block text-[12px] leading-[1.5] text-muted">{description}</span> : null}
+        {description ? <span className="mt-0.5 block text-ui-footnote leading-[1.5] text-muted">{description}</span> : null}
       </span>
-      {trailing ? <span className="flex shrink-0 items-center text-[12px] text-muted">{trailing}</span> : null}
+      {trailing ? <span className="flex shrink-0 items-center text-ui-footnote text-muted">{trailing}</span> : null}
       {chevron ? <ChevronRight className="size-4 shrink-0 text-muted/70" aria-hidden /> : null}
     </button>
   );
@@ -237,7 +237,7 @@ export function SettingActionRow({
 
 /** SettingEmpty 在卡片里放一行空态，节奏和普通行一样。children 作为子节点渲染。compact 为真时才继续。_border 函数体内没有读取。 */
 export function SettingEmpty({ children, compact, border: _border }: { children: ReactNode; compact?: boolean; border?: boolean }) {
-  return <p className={cn(compact ? "py-0.5" : "py-6", "text-left text-[13px] text-muted")}>{children}</p>;
+  return <p className={cn(compact ? "py-0.5" : "py-6", "text-left text-ui-body text-muted")}>{children}</p>;
 }
 
 /** SettingCodePanel 是等宽输出，可以带工具条，用于日记、诊断和 JSON。children 作为子节点渲染。actions 为真时才继续，作为子节点渲染。className 传给 cn。 */
@@ -254,7 +254,7 @@ export function SettingCodePanel({
     <div>
       <pre
         className={cn(
-          "overflow-auto whitespace-pre-wrap break-words py-1 font-mono text-[12px] leading-[1.65] text-muted",
+          "overflow-auto whitespace-pre-wrap break-words py-1 font-mono text-ui-footnote leading-[1.65] text-muted",
           className,
         )}
       >
@@ -285,7 +285,7 @@ export function SettingSegmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="inline-flex items-center rounded-[9px] border border-border bg-background p-[2px]"
+      className="inline-flex items-center rounded-md border border-border bg-background p-[2px]"
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -297,14 +297,14 @@ export function SettingSegmented<T extends string>({
             aria-checked={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "relative rounded-[7px] px-2.5 py-[5px] text-[12px] font-medium transition-colors",
+              "relative rounded-sm px-2.5 py-[5px] text-ui-footnote font-medium transition-colors",
               active ? "text-foreground" : "text-muted hover:text-foreground",
             )}
           >
             {active ? (
               <motion.span
                 layoutId={`segmented-${id}`}
-                className="absolute inset-0 rounded-[7px] bg-lift"
+                className="absolute inset-0 rounded-sm bg-lift"
                 transition={pill}
               />
             ) : null}
@@ -349,8 +349,8 @@ export function SettingsSaveBar({
           transition={motionTransition(reduced, DURATION)}
           className="sticky bottom-3 z-20 mt-8"
         >
-          <div className="flex items-center gap-2 rounded-2xl border border-border bg-popover py-2 pl-4 pr-2 shadow-[var(--shadow-popover)]">
-            <span className="flex-1 truncate text-[13px] text-muted">{label || copy.settings.unsaved}</span>
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-popover py-2 pl-4 pr-2 shadow-[var(--shadow-popover)]">
+            <span className="flex-1 truncate text-ui-body text-muted">{label || copy.settings.unsaved}</span>
             {onDiscard ? (
               <Button size="sm" variant="ghost" onClick={onDiscard}>
                 {copy.settings.discard}

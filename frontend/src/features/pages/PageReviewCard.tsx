@@ -30,10 +30,10 @@ export function PageReviewCard(props: { item?: Item; result?: Item; onDone?: () 
   if (!parsed?.id) return null;
   return (
     <div className="rounded-xl border border-border/70 bg-lift/40 p-3" data-testid="page-review-card">
-      <div className="text-[13px] font-medium">{copy.pages.reviewTitle}: {parsed.title}</div>
-      <p className="mt-1 text-[12px] text-muted">{copy.pages.reviewHint}</p>
+      <div className="text-ui-body font-medium">{copy.pages.reviewTitle}: {parsed.title}</div>
+      <p className="mt-1 text-ui-footnote text-muted">{copy.pages.reviewHint}</p>
       {done ? (
-        <div className="mt-2 text-[12px] text-muted">{done}</div>
+        <div className="mt-2 text-ui-footnote text-muted">{done}</div>
       ) : (
         <div className="mt-2 flex gap-2">
           <Button
@@ -77,7 +77,7 @@ export function PageReviewCard(props: { item?: Item; result?: Item; onDone?: () 
           </Button>
         </div>
       )}
-      {err ? <div className="mt-2 text-[12px] text-danger">{err}</div> : null}
+      {err ? <div className="mt-2 text-ui-footnote text-danger">{err}</div> : null}
     </div>
   );
 }

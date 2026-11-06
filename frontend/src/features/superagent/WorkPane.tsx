@@ -1,20 +1,30 @@
-﻿/**
- * 拥有：会话左侧的一天。今天、任务、记忆。晨间简报在这里审计资产，点选留在简报上。点开任务留在这一栏，对话不换页。连接在设置里。
- * 不拥有：工单怎么执行，也不拥有检查器里的差异。执行在 Go 的 superagent，审查页由 App 传入。
+/**
+ * 拥有：会话左侧的一天。今天、任务、记忆。等人的事排在最前，计数等于它指向的那一列。晨间简报在这里审计资产，点选留在简报上。
+ * 点开任务留在这一栏，对话不换页，也可以放到中间去聊。记忆写错的在夹里改掉或忘掉。连接在设置里。
+ * 不拥有：工单怎么执行，也不拥有检查器里的差异。执行在 Go 的 superagent，审查页由 App 传入。开口门怎么算在 Go 的 initiative。
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Calendar, ChevronLeft, ChevronRight, Clock, Folder, ListChecks, Mail, MessageCircle, Monitor, Plus, Search, SlidersHorizontal, Sun, type LucideIcon } from "lucide-react";
-import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, memoryList, memoryWrite, poiRefresh } from "../../lib/client";
-import type { Attachment, FileHit, SkillInfo } from "../../lib/protocol";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Activity, ArrowRight, Brain, Calendar, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Clock, Coffee, Compass, Folder, FolderOpen, GitBranch, Inbox, Info, ListChecks, Mail, MapPin, Megaphone, MessageCircle, Monitor, Moon, Plus, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Sun, type LucideIcon } from "lucide-react";
+import { toast } from "sonner";
+import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, inboxDismiss, inboxRead, memoryEdit, memoryForget, memoryList, memoryWrite, personalAnswer, personalDecide, type DeskMute } from "../../lib/client";
+import type { Attachment, FileHit, Notice, SkillInfo } from "../../lib/protocol";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
-import type { DeskView, Rule, Ticket, Trigger } from "./desk-model";
-import { BRIEF_EVENT, briefEditions, latestInitiative, noteFeedback, runDeskFeed, type BriefEdition } from "./desk-feed";
-import { TaskRead } from "./TaskPage";
-import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueItems, filterTickets, memoryFolderRows, memoryPortrait, offerSlot, parseBriefPrefs, serializeStoredBrief, runningCount, taskGroups, todayBadge, unseenSuggestions, visibleIncoming, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief } from "./work-model";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { triggerText, type Rule, type Ticket } from "./desk-model";
+import { BRIEF_EVENT, DESK_EVENT, briefEditions, deskMutes, latestInitiative, refreshDesk, runDeskFeed, sendFeedback, type BriefEdition } from "./desk-feed";
+import { TaskRead, taskStatus } from "./TaskPage";
+import { onFocusBrief, onOpenDesk, refreshQueue, useNeeds, type BriefTarget, type DeskTarget } from "./needs";
+import { needItems, type NeedItem } from "./needs-model";
+import { actionLabel, briefLayout, briefProgress, cardHandled, checkedCount, itemKey, shortKicker } from "./brief-board";
+import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueDelta, filterTickets, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, offerSlot, parseBriefPrefs, refStatus, serializeStoredBrief, taskSection, taskSections, tasksBadge, ticketLine, unseenSuggestions, wouldAccept, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief, type TaskSection } from "./work-model";
+import { BRIEF_PREFS_EVENT, type ProactiveLevel } from "../../lib/proactive";
 
 type Tab = "now" | "tasks" | "memory";
+
+/** 「需要你」先列这么多条，其余点开再看。 */
+const NEEDS_SHOWN = 5;
 
 /** WorkPane 在会话桌面上常驻。reviewPulse 增加时切到审查。review 是检查器。 */
 export function WorkPane(props: {
@@ -24,9 +34,21 @@ export function WorkPane(props: {
   onReview: (open: boolean) => void;
   onNewTask: (text?: string) => void;
   onOpenSettings: () => void;
+  onOpenProactive?: (section?: string) => void;
   onDraft: (text: string) => void;
   openTaskId: string;
   onOpenTask: (id: string) => void;
+  onFocusTask?: (id: string) => void;
+  onResolve?: (id: string, decision: string) => void;
+  onOpenThread?: (id: string) => void;
+  notices?: Notice[];
+  onNotice?: (n: Notice) => void;
+  onClearNotices?: () => void;
+  paused?: boolean;
+  onPause?: () => void;
+  level?: ProactiveLevel;
+  onLevel?: (level: ProactiveLevel) => void;
+  onBriefTimes?: (times: BriefPrefs) => void;
   skills?: SkillInfo[];
   files?: FileHit[];
   workspace?: string;
@@ -37,19 +59,25 @@ export function WorkPane(props: {
 }) {
   const copy = useCopy();
   const [tab, setTab] = useState<Tab>("now");
-  const [view, setView] = useState<DeskView | null>(null);
+  const view = useNeeds((s) => s.view);
+  const queue = useNeeds((s) => s.queue);
   const [err, setErr] = useState("");
   const [memory, setMemory] = useState<MemoryRow[]>([]);
   const [desk, setDesk] = useState(latestInitiative);
+  const [focusEdition, setFocusEdition] = useState<{ target: BriefTarget | null; nonce: number }>({ target: null, nonce: 0 });
   useEffect(() => {
     const pull = () => setDesk(latestInitiative());
     window.addEventListener(BRIEF_EVENT, pull);
-    return () => window.removeEventListener(BRIEF_EVENT, pull);
+    window.addEventListener(DESK_EVENT, pull);
+    return () => {
+      window.removeEventListener(BRIEF_EVENT, pull);
+      window.removeEventListener(DESK_EVENT, pull);
+    };
   }, []);
   const load = useCallback(async () => {
     try {
       await orchestratorDeliver().catch(() => undefined);
-      setView(await orchestratorView());
+      useNeeds.getState().setView(await orchestratorView());
       setErr("");
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -58,9 +86,43 @@ export function WorkPane(props: {
 
   useEffect(() => {
     void load();
+    void refreshQueue();
     const timer = window.setInterval(() => { void load(); }, 2000);
-    return () => window.clearInterval(timer);
+    const queueTimer = window.setInterval(() => { void refreshQueue(); }, 10_000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearInterval(queueTimer);
+    };
   }, [load]);
+
+  useEffect(() => onFocusBrief((target) => {
+    setTab("now");
+    setFocusEdition((prev) => ({ target, nonce: prev.nonce + 1 }));
+    props.onReview(false);
+  }), []);
+
+  useEffect(() => {
+    const go = (target: DeskTarget) => {
+      props.onReview(false);
+      setTab(target.tab);
+      if (target.tab === "tasks") props.onOpenTask(target.ticket);
+    };
+    const state = useNeeds.getState();
+    state.setPaneMounted(true);
+    if (state.pendingDesk) {
+      go(state.pendingDesk);
+      state.setPendingDesk(null);
+    }
+    const off = onOpenDesk(go);
+    return () => {
+      off();
+      useNeeds.getState().setPaneMounted(false);
+    };
+  }, []);
+
+  const pullMemory = useCallback(async () => {
+    setMemory(await memoryList().catch(() => []) as MemoryRow[]);
+  }, []);
 
   useEffect(() => {
     if (tab !== "memory") return;
@@ -68,8 +130,8 @@ export function WorkPane(props: {
     const run = () => {
       memoryList().then((rows) => { if (!stop) setMemory(rows as MemoryRow[]); }).catch(() => {});
     };
-    poiRefresh().catch(() => null).finally(run);
-    const timer = window.setInterval(run, 4000);
+    run();
+    const timer = window.setInterval(run, 10_000);
     return () => { stop = true; window.clearInterval(timer); };
   }, [tab]);
 
@@ -82,14 +144,18 @@ export function WorkPane(props: {
     props.onReview(false);
   }
 
+  const openProactive = (section?: string) => (props.onOpenProactive ? props.onOpenProactive(section) : props.onOpenSettings());
   const tickets = view?.tickets ?? [];
-  const incoming = visibleIncoming(view?.queued ?? []);
-  const due = dueItems(view?.queued ?? []);
-  const tasks = taskGroups(tickets);
+  const needs = needItems(view, queue);
+  const sections = taskSections(tickets);
+  const taskCount = tasksBadge(tickets);
+  const observed = view
+    ? wouldAccept(view.decisions ?? []).map((row) => ({ id: row.id, text: triggerText(view, row.triggerId) || row.thread || row.triggerId, at: row.at || "" }))
+    : [];
   const reading = tab === "tasks" && !!props.openTaskId;
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: "now", label: copy.work.now, count: todayBadge(tickets, incoming, due) },
-    { id: "tasks", label: copy.work.tasks, count: runningCount(tickets) },
+  const tabs: { id: Tab; label: string; count?: number; person?: boolean }[] = [
+    { id: "now", label: copy.work.now, count: needs.length, person: needs.length > 0 },
+    { id: "tasks", label: copy.work.tasks, count: taskCount.count, person: taskCount.person },
     { id: "memory", label: copy.work.memory },
   ];
 
@@ -124,7 +190,7 @@ export function WorkPane(props: {
                 onClick={() => pick(item.id)}
               >
                 <span>{item.label}</span>
-                {item.count ? <span className="tabular-nums text-[11px] text-muted">{item.count}</span> : null}
+                {item.count ? <span className={cn("tabular-nums text-[11px]", item.person ? "text-warning" : "text-muted")}>{item.count}</span> : null}
               </button>
             );
           })}
@@ -136,16 +202,33 @@ export function WorkPane(props: {
           {!view && !err ? <p className="px-3 py-3 text-[13px] text-muted">{copy.work.loading}</p> : null}
           {view && tab === "now" ? (
             <Now
-              incoming={incoming}
+              needs={needs}
+              tickets={tickets}
+              focusEdition={focusEdition}
+              paused={!!props.paused}
+              onPause={props.onPause}
+              level={props.level || "normal"}
+              onLevel={props.onLevel}
+              notices={props.notices || []}
+              onNotice={props.onNotice}
+              onClearNotices={props.onClearNotices}
               onDecide={async (id, kind) => { await orchestratorDecide(id, kind); await load(); }}
               onDraft={props.onDraft}
+              onResolve={(id, decision) => {
+                props.onResolve?.(id, decision);
+                window.setTimeout(() => { void refreshQueue(); }, 400);
+              }}
+              onOpenTask={(id) => { pick("tasks"); props.onOpenTask(id); }}
+              onOpenThread={props.onOpenThread}
+              onOpenSettings={() => openProactive()}
+              onBriefTimes={props.onBriefTimes}
             />
           ) : null}
           {view && tab === "tasks" && props.openTaskId ? (
             <TaskRead
               ticket={(view.tickets ?? []).find((row) => row.id === props.openTaskId) ?? null}
               onBack={() => props.onOpenTask("")}
-              onLook={() => props.onReview(true)}
+              onFocus={props.onFocusTask}
               onSent={() => { void load(); }}
               skills={props.skills}
               files={props.files}
@@ -158,23 +241,37 @@ export function WorkPane(props: {
           ) : null}
           {view && tab === "tasks" && !props.openTaskId ? (
             <Tasks
-              open={tasks.open}
-              ended={tasks.ended}
+              sections={sections}
+              observed={observed}
               selected={props.openTaskId}
               onSelect={(id) => props.onOpenTask(id)}
               onNewTask={props.onNewTask}
               held={(desk?.signals || []).filter((signal) => signal.held)}
               notes={(desk?.open || []).filter((item) => item.class === "schedule")}
               rules={view.rules ?? []}
+              mode={view.mode}
               onRules={async (rules) => { await orchestratorAct("rules", "", "", JSON.stringify(rules)); await load(); }}
+              onMoreSchedules={props.onOpenProactive ? () => openProactive("personal-jobs") : undefined}
             />
           ) : null}
           {tab === "memory" ? (
             <>
-              <Memory rows={memory} onAdd={async (text) => {
-                await memoryWrite("profile", text);
-                setMemory(await memoryList() as MemoryRow[]);
-              }} />
+              <Memory
+                rows={memory}
+                onAdd={async (text) => {
+                  await memoryWrite("profile", text);
+                  await pullMemory();
+                }}
+                onForget={async (id) => {
+                  await memoryForget(id).catch(() => undefined);
+                  await pullMemory();
+                }}
+                onEdit={async (id, text) => {
+                  const saved = await memoryEdit(id, text).catch(() => ({ id: "" }));
+                  await pullMemory();
+                  return !!saved.id;
+                }}
+              />
               <p className="px-1 pb-4 text-[12px] leading-5 text-muted">
                 {copy.work.connectionsInSettings}{" "}
                 <button type="button" className="underline-offset-2 hover:underline" onClick={props.onOpenSettings}>{copy.work.openConnections}</button>
@@ -188,15 +285,32 @@ export function WorkPane(props: {
 }
 
 function Now(props: {
-  incoming: Trigger[];
+  needs: NeedItem[];
+  tickets: Ticket[];
+  focusEdition: { target: BriefTarget | null; nonce: number };
+  paused: boolean;
+  onPause?: () => void;
+  level: ProactiveLevel;
+  onLevel?: (level: ProactiveLevel) => void;
+  notices: Notice[];
+  onNotice?: (n: Notice) => void;
+  onClearNotices?: () => void;
   onDecide: (id: string, kind: string) => Promise<void>;
   onDraft: (text: string) => void;
+  onResolve: (id: string, decision: string) => void;
+  onOpenTask: (id: string) => void;
+  onOpenThread?: (id: string) => void;
+  onOpenSettings: () => void;
+  onBriefTimes?: (times: BriefPrefs) => void;
 }) {
   const copy = useCopy();
+  const d = copy.desk;
   const [editions, setEditions] = useState<BriefEdition[]>([]);
   const [prefs, setPrefs] = useState<BriefPrefs>(() => readPrefs());
   const [waiting, setWaiting] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [picked, setPicked] = useState("");
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const busy = useRef(false);
   const today = new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", weekday: "long" });
   const dueSlot: BriefSlot | null = offerSlot(prefs);
@@ -209,13 +323,33 @@ function Now(props: {
         if (alive) setEditions(rows);
       });
     };
+    const rereadPrefs = () => setPrefs(readPrefs());
     reload();
     window.addEventListener(BRIEF_EVENT, reload);
+    window.addEventListener(BRIEF_PREFS_EVENT, rereadPrefs);
     return () => {
       alive = false;
       window.removeEventListener(BRIEF_EVENT, reload);
+      window.removeEventListener(BRIEF_PREFS_EVENT, rereadPrefs);
     };
   }, []);
+  useEffect(() => {
+    const target = props.focusEdition.target;
+    if (!target) return;
+    let alive = true;
+    void briefEditions().then((rows) => {
+      if (!alive) return;
+      const hit = rows.find((row) => (target.id && row.id === target.id) || (row.slot === target.slot && row.day === target.day));
+      const brief = hit ? null : payloadBrief(target.brief);
+      const extra: BriefEdition | null = brief
+        ? { id: target.id || `brief:${target.slot}:${target.day}`, slot: target.slot === "evening" ? "evening" : "morning", day: target.day, chip: target.chip, at: "", brief }
+        : null;
+      setEditions(extra ? [extra, ...rows] : rows);
+      setPicked(hit?.id || extra?.id || "");
+      setToggled({});
+    });
+    return () => { alive = false; };
+  }, [props.focusEdition.nonce]);
   async function generate() {
     if (!dueMissing || busy.current) return;
     busy.current = true;
@@ -223,7 +357,9 @@ function Now(props: {
     try {
       if (!dueSlot) return;
       await runDeskFeed(briefPhrases(copy.work), dueSlot);
-      setEditions(await briefEditions());
+      const rows = await briefEditions();
+      setEditions(rows);
+      setPicked(rows[0]?.id || "");
     } finally {
       busy.current = false;
       setWaiting(false);
@@ -236,6 +372,7 @@ function Now(props: {
     } catch {
       /* 偏好写不进去时，这次打开里仍然用。 */
     }
+    props.onBriefTimes?.(next);
   }
   function choose(edition: BriefEdition, id: string, value: string) {
     setEditions((prev) => prev.map((row) => {
@@ -257,28 +394,48 @@ function Now(props: {
         prefs={prefs}
         onChange={savePrefs}
         onBack={() => setPrefsOpen(false)}
+        onOpenSettings={props.onOpenSettings}
       />
     );
   }
   function useCard(edition: BriefEdition, card: BriefCard, which: "primary" | "secondary") {
     const text = briefPrompt(card, which);
     choose(edition, card.id, which);
-    if (text.trim()) {
-      props.onDraft(text.trim());
-      void noteFeedback("used");
-    }
+    if (text.trim()) props.onDraft(text.trim());
+  }
+  const shown = editions.find((row) => row.id === picked) || editions[0];
+  const caption = shown ? editionCaption(shown, copy.work.briefMorning, copy.work.briefEvening, copy.work.briefYesterday) : null;
+  function jump(id: string) {
+    setToggled((prev) => ({ ...prev, [id]: false }));
+    requestAnimationFrame(() => {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document.getElementById(briefCardAnchor(id))?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    });
   }
   return (
-    <div className="relative min-w-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent)_9%,transparent),transparent_240px)] px-3 pb-8 pt-3">
-      <button
-        type="button"
-        className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-card text-muted shadow-[var(--shadow-card)] hover:text-foreground"
-        aria-label={copy.work.briefSetPrefs}
-        onClick={() => setPrefsOpen(true)}
-      >
-        <SlidersHorizontal className="size-4" />
-      </button>
-      <p className="text-center text-[12px] text-muted">{today}</p>
+    <div className="relative min-w-0 px-3 pb-8 pt-3">
+      <DeskMenu
+        paused={props.paused}
+        onPause={props.onPause}
+        level={props.level}
+        onLevel={props.onLevel}
+        notices={props.notices}
+        onNotice={props.onNotice}
+        onClearNotices={props.onClearNotices}
+        onPrefs={() => setPrefsOpen(true)}
+      />
+      <p className="flex h-8 items-center justify-center text-[12px] text-muted">{today}</p>
+      {props.needs.length > 0 ? (
+        <NeedsYou
+          items={props.needs}
+          onDecide={props.onDecide}
+          onDraft={props.onDraft}
+          onResolve={props.onResolve}
+          onOpenTask={props.onOpenTask}
+          onOpenThread={props.onOpenThread}
+          onOpenSettings={props.onOpenSettings}
+        />
+      ) : null}
       {editions.length === 0 && !waiting ? (
         <div className="mt-8 flex flex-col items-center gap-3">
           {dueMissing ? (
@@ -290,21 +447,27 @@ function Now(props: {
         </div>
       ) : null}
       {waiting ? <p className="py-10 text-center text-[14px] text-accent">{copy.work.briefRunning}</p> : null}
-      {editions.length > 0 ? (
-        <div className="mt-4 space-y-8">
-          {editions.map((edition) => {
-            const caption = editionCaption(edition, copy.work.briefMorning, copy.work.briefEvening, copy.work.briefYesterday);
-            return (
-              <section key={edition.id} data-testid="brief-edition">
-                <div className="text-center">
-                  {caption.clock ? <p className="text-[12px] tabular-nums text-muted">{caption.clock}</p> : null}
-                  <p className="mt-0.5 text-[15px] font-medium">{caption.title}</p>
-                  {caption.when ? <p className="mt-0.5 text-[12px] text-muted">{caption.when}</p> : null}
-                </div>
-                <BriefStack brief={edition.brief} onUse={(card, which) => useCard(edition, card, which)} filledLabel={copy.work.briefFilled} />
-              </section>
-            );
-          })}
+      {shown && caption ? (
+        <div className="mt-4 space-y-3" data-testid="brief-edition">
+          <BriefMasthead
+            edition={shown}
+            editions={editions}
+            caption={caption}
+            onPick={(id) => { setPicked(id); setToggled({}); }}
+            onJump={jump}
+          />
+          <BriefStack
+            brief={shown.brief}
+            onUse={(card, which) => useCard(shown, card, which)}
+            onMark={(key, value) => choose(shown, key, value)}
+            onDraft={props.onDraft}
+            filledLabel={copy.work.briefFilled}
+            source={d.briefWritten.replace("{slot}", caption.title).replace("{time}", caption.clock)}
+            tickets={props.tickets}
+            onOpenTicket={props.onOpenTask}
+            toggled={toggled}
+            onToggle={(id, collapsed) => setToggled((prev) => ({ ...prev, [id]: collapsed }))}
+          />
         </div>
       ) : null}
       {dueMissing && editions.length > 0 && !waiting ? (
@@ -314,22 +477,300 @@ function Now(props: {
           </button>
         </div>
       ) : null}
-      {props.incoming.length > 0 ? (
-        <ul className="mt-4 rounded-[24px] bg-card px-4 py-2 shadow-[var(--shadow-card)]">
-          {props.incoming.slice(0, 3).map((row) => (
-            <li key={row.id} className="py-2">
-              <p className="line-clamp-2 text-[13px] leading-5">{row.text || row.id}</p>
-              <div className="mt-2 flex gap-2">
-                <TextButton onClick={() => { void props.onDecide(row.id, "accept"); }}>{copy.work.accept}</TextButton>
-                <TextButton quiet onClick={() => { void props.onDecide(row.id, "ignore"); }}>{copy.work.ignore}</TextButton>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <p className="mt-3 text-center text-[12px] leading-5 text-muted">{editions[0]?.brief.welcome ? copy.work.briefWelcomeFoot : copy.work.briefFoot}</p>
     </div>
   );
+}
+
+/** DeskMenu 是今天右上角那颗圆钮：主动程度、暂停、简报时间和安静时段，以及最近动态。 */
+function DeskMenu(props: {
+  paused: boolean;
+  onPause?: () => void;
+  level: ProactiveLevel;
+  onLevel?: (level: ProactiveLevel) => void;
+  notices: Notice[];
+  onNotice?: (n: Notice) => void;
+  onClearNotices?: () => void;
+  onPrefs: () => void;
+}) {
+  const copy = useCopy();
+  const d = copy.desk;
+  const levels: { id: ProactiveLevel; label: string }[] = [
+    { id: "less", label: d.levelLess },
+    { id: "normal", label: d.levelNormal },
+    { id: "more", label: d.levelMore },
+  ];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-card text-muted shadow-[var(--shadow-card)] hover:text-foreground"
+          aria-label={d.menu}
+          data-testid="desk-menu"
+        >
+          <SlidersHorizontal className="size-4" />
+          {props.notices.length ? <span className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" aria-hidden /> : null}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel>{d.level}</DropdownMenuLabel>
+        {levels.map((item) => (
+          <DropdownMenuItem key={item.id} onSelect={() => props.onLevel?.(item.id)}>
+            <span className="flex-1">{item.label}</span>
+            {props.level === item.id ? <Check className="size-3.5 text-muted" /> : null}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        {props.onPause ? (
+          <DropdownMenuItem onSelect={() => props.onPause?.()}>{props.paused ? d.resume : d.pause}</DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem onSelect={props.onPrefs}>{d.prefs}</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{d.activity}</DropdownMenuLabel>
+        {props.notices.length ? (
+          <>
+            {props.notices.slice(0, 6).map((n) => (
+              <DropdownMenuItem key={n.id} onSelect={() => props.onNotice?.(n)} className="flex-col items-start gap-0">
+                <span className="w-full truncate">{n.title}</span>
+                {n.body ? <span className="w-full truncate text-[11px] text-muted">{n.body}</span> : null}
+              </DropdownMenuItem>
+            ))}
+            {props.onClearNotices ? <DropdownMenuItem onSelect={() => props.onClearNotices?.()} className="text-muted">{d.activityClear}</DropdownMenuItem> : null}
+          </>
+        ) : (
+          <p className="px-2 py-1.5 text-[12px] text-muted">{d.activityEmpty}</p>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** NeedsYou 把所有要人决定的事排在今天最上面：日程、审批、任务提问、来信、待发送、个人事务、收件。数字等于这里的条数。 */
+function NeedsYou(props: {
+  items: NeedItem[];
+  onDecide: (id: string, kind: string) => Promise<void>;
+  onDraft: (text: string) => void;
+  onResolve: (id: string, decision: string) => void;
+  onOpenTask: (id: string) => void;
+  onOpenThread?: (id: string) => void;
+  onOpenSettings: () => void;
+}) {
+  const copy = useCopy();
+  const [all, setAll] = useState(false);
+  const shown = all ? props.items : props.items.slice(0, NEEDS_SHOWN);
+  const rest = props.items.length - shown.length;
+  return (
+    <section className="mt-4 rounded-[24px] bg-card px-4 py-3 shadow-[var(--shadow-card)]" data-testid="needs-you">
+      <h2 className="flex items-center gap-1.5 text-[13px] font-medium">
+        {copy.work.sectionPerson}
+        <span className="tabular-nums text-[11px] text-warning">{props.items.length}</span>
+      </h2>
+      <ul className="mt-1 divide-y divide-border/50">
+        {shown.map((item) => <NeedRow key={item.id} {...props} item={item} />)}
+      </ul>
+      {rest > 0 ? (
+        <button type="button" className="pt-1 text-[12px] text-muted hover:text-foreground" onClick={() => setAll(true)}>
+          {copy.desk.needsMore.replace("{n}", String(rest))}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+/** NeedRow 按种类写一句话，动作就在这一行。改动外部的动作只出现在审批和发送上。 */
+function NeedRow(props: {
+  item: NeedItem;
+  onDecide: (id: string, kind: string) => Promise<void>;
+  onDraft: (text: string) => void;
+  onResolve: (id: string, decision: string) => void;
+  onOpenTask: (id: string) => void;
+  onOpenThread?: (id: string) => void;
+  onOpenSettings: () => void;
+}) {
+  const copy = useCopy();
+  const d = copy.desk;
+  const item = props.item;
+  const when = item.at ? agoLabel(item.at, copy.work) : "";
+  switch (item.kind) {
+    case "due": {
+      const delta = dueDelta(item.due || "", new Date());
+      const label = delta === null ? "" : delta < 0 ? copy.work.auditOverdue : delta === 0 ? copy.work.auditDueToday : copy.work.dueIn.replace("{n}", String(delta));
+      return (
+        <li className="flex items-start gap-3 py-2.5" data-testid="need-due">
+          <Calendar className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 text-[13px] leading-5">{item.title}</p>
+            {label ? <p className={cn("mt-0.5 text-[12px]", delta !== null && delta < 0 ? "text-warning" : "text-muted")}>{label}</p> : null}
+          </div>
+          <TextButton quiet onClick={() => props.onDraft(copy.work.dueTask.replace("{title}", item.title).replace("{when}", label || item.due || ""))}>{copy.work.duePrepare}</TextButton>
+        </li>
+      );
+    }
+    case "approval":
+      return (
+        <li className="py-2.5" data-testid="need-approval">
+          <p className="flex items-start gap-2 text-[13px] leading-5">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
+            <span className="min-w-0">{d.needApproval.replace("{action}", item.title)}</span>
+          </p>
+          {item.detail ? <p className="mt-1.5 truncate rounded-lg bg-lift/60 px-2.5 py-1 font-mono text-[12px] text-foreground/85 [font-variant-ligatures:none]">{item.detail}</p> : null}
+          {when ? <p className="mt-1 text-[12px] text-muted">{when}</p> : null}
+          <div className="mt-2 flex gap-2">
+            <TextButton onClick={() => props.onResolve(item.offerId || "", "once")}>{d.allowOnce}</TextButton>
+            <TextButton quiet onClick={() => props.onResolve(item.offerId || "", "deny")}>{d.deny}</TextButton>
+            {item.sessionId && props.onOpenThread ? <TextButton quiet onClick={() => props.onOpenThread?.(item.sessionId || "")}>{d.open}</TextButton> : null}
+          </div>
+        </li>
+      );
+    case "question":
+    case "review":
+    case "failed":
+      return (
+        <li className="flex items-start gap-3 py-2.5" data-testid="need-task">
+          <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", item.kind === "failed" ? "bg-danger" : "bg-warning")} aria-hidden />
+          <button type="button" className="min-w-0 flex-1 text-left" onClick={() => props.onOpenTask(item.ticketId || "")}>
+            <span className="block truncate text-[13px] font-medium leading-5">{item.title}</span>
+            <span className="mt-0.5 line-clamp-2 block text-[12px] leading-5 text-muted">
+              {item.detail || (item.kind === "review" ? d.needReview : item.kind === "failed" ? d.needFailed : d.needQuestion)}
+            </span>
+          </button>
+          <TextButton quiet={item.kind !== "question"} onClick={() => props.onOpenTask(item.ticketId || "")}>
+            {item.kind === "question" ? d.answer : d.look}
+          </TextButton>
+        </li>
+      );
+    case "incoming":
+      return (
+        <li className="py-2.5" data-testid="need-incoming">
+          <p className="line-clamp-2 text-[13px] leading-5">{item.title}</p>
+          {item.detail || when ? <p className="mt-0.5 text-[12px] text-muted">{[item.detail, when].filter(Boolean).join(" · ")}</p> : null}
+          <div className="mt-2 flex gap-2">
+            <TextButton onClick={() => { void props.onDecide(item.triggerId || "", "accept"); }}>{copy.work.accept}</TextButton>
+            <TextButton quiet onClick={() => { void props.onDecide(item.triggerId || "", "ignore"); }}>{copy.work.ignore}</TextButton>
+          </div>
+        </li>
+      );
+    case "draft":
+      return (
+        <li className="flex items-start gap-3 py-2.5" data-testid="need-draft">
+          <Mail className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] leading-5">{item.title}</p>
+            <p className="mt-0.5 truncate text-[12px] text-muted">{[item.detail, d.needDraft].filter(Boolean).join(" · ")}</p>
+          </div>
+          <TextButton
+            quiet
+            onClick={() => props.onDraft(d.draftPrompt.replace("{id}", item.draftId || "").replace("{to}", item.title).replace("{subject}", item.detail || item.title))}
+          >
+            {d.confirm}
+          </TextButton>
+        </li>
+      );
+    case "proposal":
+      return (
+        <li className="py-2.5" data-testid="need-proposal">
+          <p className="flex items-start gap-2 text-[13px] leading-5">
+            <Send className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
+            <span className="min-w-0">{d.needProposal.replace("{title}", item.title)}</span>
+          </p>
+          {item.detail || when ? <p className="mt-0.5 text-[12px] text-muted">{[item.detail, when].filter(Boolean).join(" · ")}</p> : null}
+          <div className="mt-2 flex gap-2">
+            <TextButton onClick={() => { void personalDecide(item.proposalId || "", item.hash || "", true).then(() => refreshQueue()).catch((e) => toast.error(String(e))); }}>{d.send}</TextButton>
+            <TextButton quiet onClick={() => { void personalDecide(item.proposalId || "", item.hash || "", false).then(() => refreshQueue()).catch((e) => toast.error(String(e))); }}>{d.dontSend}</TextButton>
+          </div>
+        </li>
+      );
+    case "personal":
+      return <PersonalNeedRow item={item} when={when} onOpenSettings={props.onOpenSettings} />;
+    case "inbox":
+      return (
+        <li className="py-2.5" data-testid="need-inbox">
+          <p className="flex items-start gap-2 text-[13px] leading-5">
+            <Inbox className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />
+            <span className="min-w-0 line-clamp-2">{item.title}</span>
+          </p>
+          {item.detail ? <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
+          <div className="mt-2 flex gap-2">
+            {item.sessionId && props.onOpenThread ? (
+              <TextButton onClick={() => {
+                void inboxRead(item.inboxId || "");
+                props.onOpenThread?.(item.sessionId || "");
+              }}>{d.open}</TextButton>
+            ) : null}
+            <TextButton quiet onClick={() => { void inboxDismiss(item.inboxId || "").then(() => refreshQueue()); }}>{d.gotIt}</TextButton>
+          </div>
+        </li>
+      );
+    default:
+      return null;
+  }
+}
+
+/** PersonalNeedRow 是在等你的个人事务。等回答的就地展开一行输入；等批准的去设置里看全貌。 */
+function PersonalNeedRow(props: { item: NeedItem; when: string; onOpenSettings: () => void }) {
+  const copy = useCopy();
+  const d = copy.desk;
+  const item = props.item;
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const answerable = item.status === "waiting_input";
+  async function submit() {
+    const answer = text.trim();
+    if (!answer || busy) return;
+    setBusy(true);
+    try {
+      await personalAnswer(item.personalId || "", answer);
+      setText("");
+      setOpen(false);
+      await refreshQueue();
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <li className="py-2.5" data-testid="need-personal">
+      <div className="flex items-start gap-3">
+        <span className="mt-[7px] size-1.5 shrink-0 rounded-full bg-warning" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium leading-5">{item.title}</p>
+          <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-muted">{item.detail || d.needPersonal}</p>
+          <p className="mt-0.5 text-[11.5px] text-muted/80">{[d.personalTag, props.when].filter(Boolean).join(" · ")}</p>
+        </div>
+        {answerable ? (
+          <TextButton quiet={open} onClick={() => setOpen((on) => !on)}>{open ? copy.work.memoryEditCancel : d.answer}</TextButton>
+        ) : (
+          <TextButton quiet onClick={props.onOpenSettings}>{d.look}</TextButton>
+        )}
+      </div>
+      {open ? (
+        <form className="mt-2 flex items-center gap-2 pl-[18px]" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+          <input
+            value={text}
+            autoFocus
+            onChange={(event) => setText(event.target.value)}
+            placeholder={d.answerPh}
+            aria-label={d.answerPh}
+            className="h-8 min-w-0 flex-1 rounded-full bg-lift px-3 text-[13px] outline-none placeholder:text-muted"
+          />
+          <button type="submit" disabled={!text.trim() || busy} className="h-7 shrink-0 rounded-lg bg-foreground px-2.5 text-[12px] font-medium text-background disabled:opacity-40">{d.answer}</button>
+        </form>
+      ) : null}
+    </li>
+  );
+}
+
+/** payloadBrief 读对话里简报消息带的那一份。最近的档案里找不到这一期时用它。 */
+function payloadBrief(raw: string): MorningBrief | null {
+  try {
+    const body = JSON.parse(raw) as MorningBrief;
+    if (!body || !Array.isArray(body.cards) || body.cards.length < 1) return null;
+    return { cards: body.cards, picked: body.picked || {}, welcome: body.welcome === true, woven: body.woven === true };
+  } catch {
+    return null;
+  }
 }
 
 function editionCaption(edition: BriefEdition, morning: string, evening: string, yesterday: string): { clock: string; title: string; when: string } {
@@ -354,158 +795,479 @@ function readPrefs(): BriefPrefs {
   }
 }
 
-/** actionLabel 用模型写的短字。没写短字、但写了点下去要放进输入框的请求时，用请求的第一句。 */
-function actionLabel(label?: string, task?: string): string {
-  const name = (label || "").trim();
-  if (name) return name;
-  const line = ((task || "").trim().split("\n")[0] || "").trim();
-  if (!line) return "";
-  const chars = Array.from(line);
-  return chars.length > 18 ? chars.slice(0, 18).join("") : line;
+/** cardClass 把一张卡落到开口门的类别上，反馈写到这一类。 */
+function cardClass(card: BriefCard): string {
+  if (card.id === "lines") return "line";
+  if (card.id === "speak") return "reach";
+  if (card.id === "around" || card.id === "place" || card.id === "tools" || card.id === "sense") return "poi";
+  return "brief";
 }
 
-function toneColor(tone?: string): string {
-  if (tone === "moving") return "var(--accent)";
-  if (tone === "stalled") return "var(--warning)";
-  if (tone === "quiet") return "var(--muted)";
-  return "";
+/** briefCardAnchor 是一张卡在页面上的 id，目录点过来时滚到这里。 */
+function briefCardAnchor(id: string): string {
+  return `brief-card-${id}`;
 }
 
-/** BriefStack 按卡上的 layout 排。模型选 checks、compare、evidence、chips、plain、letter、rows、stats。没选时按内容推断。 */
+/** tint 是一块带颜色的底：字用这个颜色，底是它的淡版。 */
+function tint(color: string, strength: number): CSSProperties {
+  return { background: `color-mix(in srgb, ${color} ${strength}%, transparent)`, color };
+}
+
+/** cardLook 给每类卡一个图标和颜色，看板上一眼认出是哪一类。颜色只分类别，不分好坏。 */
+function cardLook(card: BriefCard): { icon: LucideIcon; color: string } {
+  switch (card.id) {
+    case "situation": return { icon: ListChecks, color: "var(--warning)" };
+    case "letter": return { icon: Mail, color: "var(--accent)" };
+    case "lines": return { icon: GitBranch, color: "var(--accent)" };
+    case "done": return { icon: CheckCheck, color: "var(--success)" };
+    case "place": return { icon: FolderOpen, color: "var(--mark)" };
+    case "tools": return { icon: Monitor, color: "var(--accent)" };
+    case "direction": return { icon: Compass, color: "var(--accent)" };
+    case "next": return { icon: ArrowRight, color: "var(--accent)" };
+    case "kept": return { icon: Brain, color: "var(--mark)" };
+    case "around": return { icon: MapPin, color: "var(--success)" };
+    case "pause": return { icon: Coffee, color: "var(--warning)" };
+    case "quiet": return { icon: Moon, color: "var(--muted)" };
+    case "speak": return { icon: Megaphone, color: "var(--mark)" };
+    case "sense": return { icon: Activity, color: "var(--accent)" };
+    default: return { icon: Sparkles, color: "var(--accent)" };
+  }
+}
+
+/** BriefMasthead 是看板的报头：哪一期、几点写好、写完不再改，处理到第几张，以及一排目录。点目录跳到那张卡。 */
+function BriefMasthead(props: {
+  edition: BriefEdition;
+  editions: BriefEdition[];
+  caption: { clock: string; title: string; when: string };
+  onPick: (id: string) => void;
+  onJump: (id: string) => void;
+}) {
+  const copy = useCopy();
+  const d = copy.desk;
+  const brief = props.edition.brief;
+  const progress = briefProgress(brief);
+  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const evening = props.edition.slot === "evening";
+  const meta = [props.caption.when, props.caption.clock ? d.briefWrittenAt.replace("{time}", props.caption.clock) : "", d.briefFixed].filter(Boolean).join(" · ");
+  return (
+    <section className="rounded-[28px] bg-card px-5 py-4 shadow-[var(--shadow-card)]" data-testid="brief-masthead">
+      <div className="flex items-center gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-full" style={tint(evening ? "var(--accent)" : "var(--warning)", 16)} aria-hidden>
+          {evening ? <Moon className="size-[18px]" /> : <Sun className="size-[18px]" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          {props.editions.length > 1 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="-ml-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-1.5 text-[18px] font-semibold tracking-[-0.02em] hover:bg-lift/70" aria-label={d.briefPick} data-testid="brief-pick">
+                  <span className="truncate">{props.caption.title}</span>
+                  <ChevronDown className="size-4 shrink-0 text-muted" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {props.editions.map((edition) => {
+                  const c = editionCaption(edition, copy.work.briefMorning, copy.work.briefEvening, copy.work.briefYesterday);
+                  return (
+                    <DropdownMenuItem key={edition.id} onSelect={() => props.onPick(edition.id)}>
+                      <span className="flex-1 truncate">{[c.when, c.title].filter(Boolean).join(" ")}</span>
+                      <span className="tabular-nums text-[11px] text-muted">{c.clock}</span>
+                      {edition.id === props.edition.id ? <Check className="size-3.5 text-muted" /> : null}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <h2 className="truncate text-[18px] font-semibold tracking-[-0.02em]">{props.caption.title}</h2>
+          )}
+          <p className="mt-0.5 truncate text-[12px] text-muted">{meta}</p>
+        </div>
+      </div>
+      {progress.total > 0 ? (
+        <div className="mt-4" data-testid="brief-progress">
+          <div className="flex items-baseline justify-between text-[12px]">
+            <span className="text-muted">{d.briefHandled}</span>
+            <span className="tabular-nums text-foreground/80">{progress.done}<span className="text-muted"> / {progress.total}</span></span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-lift">
+            <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-[var(--ease-out)]" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      ) : null}
+      {brief.cards.length > 1 ? (
+        <div className="mt-3.5 flex flex-wrap gap-1.5" data-testid="brief-index">
+          {brief.cards.map((card) => {
+            const done = cardHandled(card, brief.picked);
+            return (
+              <button
+                key={card.id}
+                type="button"
+                className={cn("inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-lift/70 pl-2 pr-2.5 text-[12px] transition-colors hover:bg-lift", done ? "text-muted" : "text-foreground/85")}
+                onClick={() => props.onJump(card.id)}
+              >
+                {done ? <Check className="size-3 shrink-0 text-success" /> : <span className="size-1.5 shrink-0 rounded-full" style={{ background: cardLook(card).color }} aria-hidden />}
+                <span className="truncate">{shortKicker(card)}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** BriefStack 把一期简报摆成一列卡。卡上的内容写完不变；勾掉的条目、点过的按钮、收起的卡是你的标记。
+ *  处理完的卡默认收成一行，点标题展开。toggled 和 onToggle 不传时自己记住收起的状态。 */
 export function BriefStack(props: {
   brief: MorningBrief;
   onUse: (card: BriefCard, which: "primary" | "secondary") => void;
   filledLabel: string;
+  source?: string;
+  tickets?: Pick<Ticket, "id" | "stage">[];
+  onOpenTicket?: (id: string) => void;
+  onMark?: (key: string, value: string) => void;
+  onDraft?: (text: string) => void;
+  toggled?: Record<string, boolean>;
+  onToggle?: (id: string, collapsed: boolean) => void;
 }) {
+  const [own, setOwn] = useState<Record<string, boolean>>({});
+  const toggled = props.toggled ?? own;
+  const toggle = props.onToggle ?? ((id: string, collapsed: boolean) => setOwn((prev) => ({ ...prev, [id]: collapsed })));
+  // 刚处理的卡留在展开的样子，让人看见自己点了什么；只有打开前就处理完的卡才收成一行。
+  const hold = (id: string) => {
+    if (toggled[id] === undefined) toggle(id, false);
+  };
+  const mark = props.onMark;
   return (
-    <div className="mt-5 space-y-3">
+    <div className="space-y-3">
       {props.brief.cards.map((card) => {
-        const picked = props.brief.picked[card.id] || "";
-        const layout = card.layout || (card.choices.length >= 2 ? "compare" : card.items.length > 0 ? "checks" : "plain");
-        const primaryLabel = actionLabel(card.primary, card.task);
-        const secondaryLabel = actionLabel(card.secondary, card.alt);
+        const handled = cardHandled(card, props.brief.picked);
         return (
-          <article key={card.id} className="min-w-0 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
-            {card.kicker ? <p className="text-[12px] font-medium text-accent">{card.kicker}</p> : null}
-            <h2 className="mt-1.5 text-[22px] font-semibold leading-8 tracking-[-0.03em]">{card.title}</h2>
-            {card.lede ? <p className="mt-2 text-[13px] leading-6 text-muted">{card.lede}</p> : null}
-            {layout === "checks" && card.items.length > 0 ? (
-              <>
-                {card.mark ? <p className="mt-4 text-[12px] text-muted">{card.mark}</p> : null}
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {card.items.map((item, index) => (
-                    <div key={`${item.title}-${index}`} className={cn("min-w-0 rounded-2xl bg-lift/50 px-3 py-3", card.items.length % 2 === 1 && index === card.items.length - 1 && "col-span-2")}>
-                      <p className="text-[11px] font-medium tabular-nums text-muted">{String(index + 1).padStart(2, "0")}</p>
-                      <p className="mt-1 text-[13px] font-medium">{item.title}</p>
-                      {item.detail ? <p className="mt-1 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : null}
-            {layout === "letter" ? (
-              <div className={cn("mt-4 grid gap-2", card.items.length > 0 && card.choices.length > 0 ? "grid-cols-2" : "grid-cols-1")}>
-                {card.items.length > 0 || card.choices.length === 0 ? (
-                  <div className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
-                    <p className="text-[12px] font-medium text-muted">{card.leftLabel}</p>
-                    <div className="mt-3 space-y-3">
-                      {card.items.length === 0 ? <p className="text-[13px] text-muted">—</p> : card.items.map((item, index) => (
-                        <div key={`${item.title}-${index}`}>
-                          <p className="text-[12px] text-muted">{item.title}</p>
-                          {item.detail ? <p className="mt-0.5 text-[13px] font-medium leading-5">{item.detail}</p> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {card.choices.length > 0 ? (
-                  <div className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
-                    <p className="text-[12px] font-medium text-muted">{card.rightLabel}</p>
-                    <div className="mt-3 space-y-3">
-                      {card.choices.map((choice) => (
-                        <div key={choice.id}>
-                          <p className="text-[12px] text-muted">{choice.title}</p>
-                          {choice.detail ? <p className="mt-0.5 text-[13px] font-medium leading-5">{choice.detail}</p> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            {layout === "rows" && card.items.length > 0 ? (
-              <>
-                {card.mark ? <p className="mt-4 text-[12px] text-muted">{card.mark}</p> : null}
-                <div className="mt-3 space-y-2">
-                  {card.items.map((item, index) => (
-                    <div key={`${item.title}-${index}`} className="flex items-start gap-3 rounded-2xl bg-lift/40 px-3 py-2.5">
-                      <span className={cn("mt-0.5 w-6 shrink-0 text-[12px] font-medium tabular-nums", !toneColor(item.tone) && "text-muted")} style={toneColor(item.tone) ? { color: toneColor(item.tone) } : undefined}>{String(index + 1).padStart(2, "0")}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium">{item.title}</p>
-                        {item.detail ? <p className="mt-0.5 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : null}
-            {layout === "stats" && card.stats && card.stats.length > 0 ? (
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {card.stats.map((stat) => (
-                  <div key={stat.label} className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
-                    <p className="text-[22px] font-semibold tabular-nums tracking-[-0.03em]">{stat.value}</p>
-                    <p className="mt-1 text-[12px] text-muted">{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {layout === "compare" && card.choices.length > 0 ? (
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {card.choices.slice(0, 2).map((choice) => (
-                  <div key={choice.id} className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
-                    <p className="text-[13px] font-semibold leading-5">{choice.title}</p>
-                    {choice.detail ? <p className="mt-2 whitespace-pre-line text-[12px] leading-5 text-muted">{choice.detail}</p> : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {layout === "evidence" && card.items.length > 0 ? (
-              <div className="mt-4 space-y-2">
-                {card.items.map((item, index) => (
-                  <div key={`${item.title}-${index}`} className="min-w-0 rounded-2xl bg-lift/50 px-3 py-3">
-                    <p className="text-[12px] font-medium">{item.title}</p>
-                    {item.detail ? <p className="mt-1 text-[13px] leading-6">{item.detail}</p> : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {layout === "chips" && card.items.length > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {card.items.map((item) => (
-                  <span key={item.title} className="rounded-full bg-lift/60 px-3 py-1.5 text-[13px]">{item.title}</span>
-                ))}
-              </div>
-            ) : null}
-            {card.note ? <p className="mt-4 rounded-2xl bg-lift/50 px-3 py-3 text-[12px] leading-5 text-muted">{card.note}</p> : null}
-            {primaryLabel || secondaryLabel ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {primaryLabel ? (
-                  <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-lift text-foreground" : "bg-accent text-white")} onClick={() => props.onUse(card, "primary")}>
-                    {primaryLabel}
-                  </button>
-                ) : null}
-                {secondaryLabel ? (
-                  <button type="button" className={cn("h-10 rounded-full px-4 text-[13px] font-medium", picked === "secondary" ? "bg-foreground text-background" : "bg-lift text-foreground")} onClick={() => props.onUse(card, "secondary")}>
-                    {secondaryLabel}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {picked && (primaryLabel || secondaryLabel) ? <p className="mt-2 text-[12px] text-muted">{props.filledLabel}</p> : null}
-          </article>
+          <BriefCardView
+            key={card.id}
+            card={card}
+            picked={props.brief.picked}
+            handled={handled}
+            collapsed={toggled[card.id] ?? handled}
+            onToggle={(collapsed) => toggle(card.id, collapsed)}
+            onUse={(target, which) => { hold(target.id); props.onUse(target, which); }}
+            onMark={mark ? (key, value) => { hold(card.id); mark(key, value); } : undefined}
+            onDraft={props.onDraft}
+            filledLabel={props.filledLabel}
+            source={props.source || ""}
+            tickets={props.tickets}
+            onOpenTicket={props.onOpenTicket}
+          />
         );
       })}
     </div>
+  );
+}
+
+function BriefCardView(props: {
+  card: BriefCard;
+  picked: Record<string, string>;
+  handled: boolean;
+  collapsed: boolean;
+  onToggle: (collapsed: boolean) => void;
+  onUse: (card: BriefCard, which: "primary" | "secondary") => void;
+  onMark?: (key: string, value: string) => void;
+  onDraft?: (text: string) => void;
+  filledLabel: string;
+  source: string;
+  tickets?: Pick<Ticket, "id" | "stage">[];
+  onOpenTicket?: (id: string) => void;
+}) {
+  const copy = useCopy();
+  const d = copy.desk;
+  const card = props.card;
+  const chosen = props.picked[card.id] || "";
+  const layout = briefLayout(card);
+  const look = cardLook(card);
+  const Icon = look.icon;
+  const kinds: Record<string, string> = { ticket: copy.work.refTicket, date: copy.work.refDate, line: copy.work.refLine, memory: copy.work.refMemory };
+  const primaryLabel = actionLabel(card.primary, card.task);
+  const secondaryLabel = actionLabel(card.secondary, card.alt);
+  const checks = layout === "checks" && card.items.length > 0;
+  const ticked = checkedCount(card, props.picked);
+  const refs = card.refs ?? [];
+  const basis = card.lede || card.note || card.items[0]?.detail || "";
+  const draft = props.onDraft;
+  const ask = draft
+    ? (title: string, detail: string) => draft(detail ? d.askItem.replace("{title}", title).replace("{detail}", detail) : d.askItemBare.replace("{title}", title))
+    : null;
+  const tones = card.id === "done"
+    ? { moving: d.toneFinished, stalled: d.toneEmpty, quiet: d.toneQuiet }
+    : { moving: d.toneMoving, stalled: d.toneStalled, quiet: d.toneQuiet };
+  return (
+    <article
+      id={briefCardAnchor(card.id)}
+      className="min-w-0 scroll-mt-3 rounded-[24px] bg-card px-5 py-4 shadow-[var(--shadow-card)]"
+      data-testid="brief-card"
+      data-handled={props.handled ? "true" : undefined}
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full" style={tint(look.color, 15)} aria-hidden>
+          <Icon className="size-4" />
+        </span>
+        <button type="button" className="min-w-0 flex-1 text-left" aria-expanded={!props.collapsed} onClick={() => props.onToggle(!props.collapsed)}>
+          {card.kicker ? <span className="block text-[11.5px] font-medium tracking-[0.04em] text-muted">{card.kicker}</span> : null}
+          <span className={cn("mt-0.5 block text-[17px] font-semibold leading-6 tracking-[-0.02em] [text-wrap:pretty]", props.collapsed && props.handled && "text-foreground/65")}>{card.title}</span>
+        </button>
+        <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
+          {checks ? <span className="px-1 text-[11.5px] tabular-nums text-muted">{ticked}/{card.items.length}</span> : null}
+          {props.handled ? (
+            <span className="grid size-6 place-items-center rounded-full" style={tint("var(--success)", 16)} title={d.briefHandled}>
+              <Check className="size-3.5" />
+            </span>
+          ) : null}
+          <CardWhy card={card} basis={basis} source={props.source} />
+        </div>
+      </div>
+      {props.collapsed ? (
+        <button type="button" className="mt-2 flex w-full items-center gap-1 text-left text-[12px] text-muted hover:text-foreground" onClick={() => props.onToggle(false)}>
+          <span className="min-w-0 truncate">{props.handled ? (chosen ? props.filledLabel : d.briefAllTicked) : card.lede || d.briefExpand}</span>
+          <ChevronDown className="size-3.5 shrink-0" />
+        </button>
+      ) : (
+        <>
+          {card.lede ? <p className="mt-2 text-[13px] leading-6 text-muted">{card.lede}</p> : null}
+          {card.mark && (layout === "checks" || layout === "evidence" || layout === "rows") ? <p className="mt-3 text-[12px] tabular-nums text-muted">{card.mark}</p> : null}
+          {checks ? (
+            <ul className="mt-2 space-y-0.5">
+              {card.items.map((item, index) => {
+                const key = itemKey(card.id, index);
+                const done = !!props.picked[key];
+                return (
+                  <li key={`${item.title}-${index}`} className="group/item -mx-2 flex items-start gap-3 rounded-[14px] px-2 py-1.5 transition-colors hover:bg-lift/50">
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={done}
+                      aria-label={item.title}
+                      disabled={!props.onMark}
+                      className={cn(
+                        "mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-full border transition-colors disabled:cursor-default",
+                        done ? "border-transparent bg-success text-background" : "border-foreground/25 hover:border-foreground/50",
+                      )}
+                      onClick={() => props.onMark?.(key, done ? "" : "done")}
+                    >
+                      {done ? <Check className="size-3" strokeWidth={3} /> : null}
+                    </button>
+                    <div className={cn("min-w-0 flex-1 transition-opacity", done && "opacity-55")}>
+                      <p className={cn("text-[13px] font-medium leading-5", done && "line-through decoration-foreground/30")}>{item.title}</p>
+                      {item.detail ? <p className="mt-0.5 text-[12.5px] leading-5 text-muted">{item.detail}</p> : null}
+                    </div>
+                    {ask ? <AskButton onClick={() => ask(item.title, item.detail)} /> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          {layout === "evidence" && card.items.length > 0 ? (
+            <ol className="relative mt-3 space-y-3 pl-5">
+              <span className="absolute bottom-2 left-[5px] top-2 w-px bg-border" aria-hidden />
+              {card.items.map((item, index) => (
+                <li key={`${item.title}-${index}`} className="group/item relative flex items-start gap-2">
+                  <span className="absolute -left-5 top-[5px] size-[11px] rounded-full border-2 border-card" style={{ background: look.color }} aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium leading-5">{item.title}</p>
+                    {item.detail ? <p className="mt-0.5 text-[12.5px] leading-5 text-muted">{item.detail}</p> : null}
+                  </div>
+                  {ask ? <AskButton onClick={() => ask(item.title, item.detail)} /> : null}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {layout === "rows" && card.items.length > 0 ? (
+            <ul className="mt-2 divide-y divide-border/50">
+              {card.items.map((item, index) => {
+                const label = item.tone === "moving" ? tones.moving : item.tone === "stalled" ? tones.stalled : item.tone === "quiet" ? tones.quiet : "";
+                const color = item.tone === "moving" ? (card.id === "done" ? "var(--success)" : "var(--accent)") : item.tone === "stalled" ? "var(--warning)" : "var(--muted)";
+                return (
+                  <li key={`${item.title}-${index}`} className="group/item flex items-center gap-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium leading-5">{item.title}</p>
+                      {item.detail ? <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-muted">{item.detail}</p> : null}
+                    </div>
+                    {ask ? <AskButton onClick={() => ask(item.title, item.detail)} /> : null}
+                    {label ? <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" style={tint(color, 14)}>{label}</span> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          {layout === "stats" && card.stats && card.stats.length > 0 ? (
+            <dl className="mt-3 grid grid-cols-2 gap-2">
+              {card.stats.map((stat, index) => (
+                <div key={stat.label} className="min-w-0 rounded-[16px] bg-lift/50 px-3.5 py-3">
+                  <dd className="text-[24px] font-semibold leading-8 tabular-nums tracking-[-0.03em]" style={index === 0 ? { color: look.color } : undefined}>{stat.value}</dd>
+                  <dt className="mt-0.5 truncate text-[12px] text-muted">{stat.label}</dt>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {layout === "compare" && card.choices.length > 0 ? (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {card.choices.slice(0, 2).map((choice, index) => {
+                const which = index === 0 ? "primary" : "secondary";
+                const selectable = !!(primaryLabel && secondaryLabel);
+                const on = selectable && chosen === which;
+                const body = (
+                  <>
+                    <p className="text-[13px] font-semibold leading-5">{choice.title}</p>
+                    {choice.detail ? <p className="mt-1 whitespace-pre-line text-[12.5px] leading-5 text-muted">{choice.detail}</p> : null}
+                    {on ? <p className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-medium text-accent"><Check className="size-3" />{d.briefChosen}</p> : null}
+                  </>
+                );
+                return selectable ? (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    aria-pressed={on}
+                    className={cn("min-w-0 rounded-[16px] border px-3.5 py-3 text-left transition-colors", on ? "border-accent/60 bg-accent/10" : "border-border/60 bg-lift/30 hover:border-foreground/25")}
+                    onClick={() => props.onUse(card, which)}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div key={choice.id} className="min-w-0 rounded-[16px] border border-border/60 bg-lift/30 px-3.5 py-3">{body}</div>
+                );
+              })}
+            </div>
+          ) : null}
+          {layout === "letter" ? (
+            <div className={cn("mt-3 grid gap-2", card.items.length > 0 && card.choices.length > 0 ? "grid-cols-2" : "grid-cols-1")}>
+              {card.items.length > 0 || card.choices.length === 0 ? (
+                <div className="min-w-0 rounded-[16px] bg-lift/50 px-3.5 py-3">
+                  <p className="text-[11.5px] font-medium text-muted">{card.leftLabel}</p>
+                  <div className="mt-2 space-y-2">
+                    {card.items.length === 0 ? <p className="text-[13px] text-muted">—</p> : card.items.map((item, index) => (
+                      <div key={`${item.title}-${index}`}>
+                        <p className="text-[12px] text-muted">{item.title}</p>
+                        {item.detail ? <p className="text-[13px] font-medium leading-5">{item.detail}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {card.choices.length > 0 ? (
+                <div className="min-w-0 rounded-[16px] border border-dashed px-3.5 py-3" style={{ borderColor: "color-mix(in srgb, var(--warning) 45%, transparent)" }}>
+                  <p className="text-[11.5px] font-medium text-warning">{card.rightLabel}</p>
+                  <div className="mt-2 space-y-2">
+                    {card.choices.map((choice) => (
+                      <div key={choice.id}>
+                        <p className="text-[12px] text-muted">{choice.title}</p>
+                        {choice.detail ? <p className="whitespace-pre-line text-[13px] font-medium leading-5">{choice.detail}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {layout === "chips" && card.items.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {card.items.map((item) => ask ? (
+                <button key={item.title} type="button" className="rounded-full bg-lift/70 px-3 py-1 text-[12.5px] transition-colors hover:bg-lift" title={d.briefAsk} onClick={() => ask(item.title, item.detail)}>
+                  {item.title}
+                </button>
+              ) : (
+                <span key={item.title} className="rounded-full bg-lift/70 px-3 py-1 text-[12.5px]">{item.title}</span>
+              ))}
+            </div>
+          ) : null}
+          {card.note ? <p className="mt-3 rounded-[14px] bg-lift/50 px-3 py-2 text-[12px] leading-5 text-muted">{card.note}</p> : null}
+          {refs.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5" data-testid="brief-refs">
+              <span className="text-[11.5px] text-muted/80">{copy.work.briefRefs}</span>
+              {refs.map((ref) => {
+                const ended = refStatus(ref, props.tickets ?? []) === "ended";
+                const label = `${kinds[ref.kind] || ref.kind} · ${ref.label}${ended ? ` · ${copy.work.refEnded}` : ""}`;
+                const open = ref.kind === "ticket" && ref.target && props.onOpenTicket ? () => props.onOpenTicket?.(ref.target || "") : null;
+                return open ? (
+                  <button key={ref.id} type="button" className={cn("h-6 max-w-full truncate rounded-full bg-lift/70 px-2 text-[11.5px] hover:bg-lift hover:text-foreground", ended ? "text-muted" : "text-foreground/85")} onClick={open}>
+                    {label}
+                  </button>
+                ) : (
+                  <span key={ref.id} className="inline-flex h-6 max-w-full items-center truncate rounded-full bg-lift/50 px-2 text-[11.5px] text-muted">{label}</span>
+                );
+              })}
+            </div>
+          ) : null}
+          {primaryLabel || secondaryLabel ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {primaryLabel ? (
+                <button type="button" className={cn("h-9 rounded-full px-4 text-[13px] font-medium", chosen === "secondary" ? "bg-lift text-foreground" : "bg-foreground text-background")} onClick={() => props.onUse(card, "primary")}>
+                  {primaryLabel}
+                </button>
+              ) : null}
+              {secondaryLabel ? (
+                <button type="button" className={cn("h-9 rounded-full px-4 text-[13px] font-medium", chosen === "secondary" ? "bg-foreground text-background" : "bg-lift text-foreground")} onClick={() => props.onUse(card, "secondary")}>
+                  {secondaryLabel}
+                </button>
+              ) : null}
+              {chosen ? (
+                <span className="ml-1 inline-flex items-center gap-1.5 text-[12px] text-muted">
+                  <Check className="size-3.5 text-success" />
+                  {props.filledLabel}
+                  {props.onMark ? <button type="button" className="text-foreground/80 underline-offset-2 hover:underline" onClick={() => props.onMark?.(card.id, "")}>{d.briefUndo}</button> : null}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      )}
+    </article>
+  );
+}
+
+/** AskButton 是条目右边的「追问」：把这一条放进输入框，不替你发。鼠标停在这一行时才出现。 */
+function AskButton(props: { onClick: () => void }) {
+  const copy = useCopy();
+  return (
+    <button
+      type="button"
+      className="h-6 shrink-0 rounded-full px-2 text-[11.5px] text-muted opacity-0 transition-opacity duration-[var(--duration-fast)] hover:bg-lift hover:text-foreground focus-visible:opacity-100 group-hover/item:opacity-100 [@media(hover:none)]:opacity-100"
+      onClick={props.onClick}
+    >
+      {copy.desk.briefAsk}
+    </button>
+  );
+}
+
+/** CardWhy 是卡片右上角的 ⓘ：先说为什么给你看，再给三种反馈。反馈写到开口门对应的类别上。 */
+function CardWhy(props: { card: BriefCard; basis: string; source: string }) {
+  const copy = useCopy();
+  const d = copy.desk;
+  const className = cardClass(props.card);
+  async function feedback(kind: "ignore" | "later" | "wrong") {
+    const ok = await sendFeedback(className, kind, "", `card:${props.card.id}`);
+    if (ok) toast.success(d.fbDone);
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="grid size-7 place-items-center rounded-full text-muted/70 hover:bg-lift hover:text-foreground" aria-label={d.why} data-testid="brief-why">
+          <Info className="size-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel>{d.why}</DropdownMenuLabel>
+        <div className="space-y-1 px-2 pb-2 text-[12px] leading-5">
+          {props.basis ? (
+            <p className="flex gap-2"><span className="w-10 shrink-0 text-muted">{d.whyBasis}</span><span className="min-w-0 text-foreground/85">{props.basis}</span></p>
+          ) : null}
+          {props.source ? (
+            <p className="flex gap-2"><span className="w-10 shrink-0 text-muted">{d.whySource}</span><span className="min-w-0 text-foreground/85">{props.source}</span></p>
+          ) : null}
+        </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => { void feedback("ignore"); }}>{d.fbLess}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => { void feedback("later"); }}>{d.fbLater}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => { void feedback("wrong"); }}>{d.fbWrong}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -513,6 +1275,7 @@ function BriefPrefsView(props: {
   prefs: BriefPrefs;
   onChange: (next: BriefPrefs) => void;
   onBack: () => void;
+  onOpenSettings: () => void;
 }) {
   const copy = useCopy();
   return (
@@ -536,7 +1299,68 @@ function BriefPrefsView(props: {
         onToggle={() => props.onChange({ ...props.prefs, eveningOn: !props.prefs.eveningOn })}
         onTime={(eveningAt) => props.onChange({ ...props.prefs, eveningAt })}
       />
+      <QuietPrefs />
+      <p className="mt-4 px-1 text-[12px] leading-5 text-muted">
+        <button type="button" className="underline-offset-2 hover:underline" onClick={props.onOpenSettings}>{copy.desk.prefsMore}</button>
+      </p>
     </div>
+  );
+}
+
+/** QuietPrefs 列出今天仍被按住的开口类别，一类一行，可以打开。公开检索便条另有一个开关。 */
+function QuietPrefs() {
+  const copy = useCopy();
+  const [mutes, setMutes] = useState<DeskMute[]>(() => deskMutes());
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const pull = () => setMutes(deskMutes());
+    window.addEventListener(DESK_EVENT, pull);
+    void refreshDesk();
+    return () => window.removeEventListener(DESK_EVENT, pull);
+  }, []);
+  const labels: Record<string, string> = {
+    calendar: copy.work.classCalendar,
+    source: copy.work.classSource,
+    line: copy.work.classLine,
+    git: copy.work.classGit,
+    power: copy.work.classPower,
+    net: copy.work.classNet,
+    reach: copy.work.classReach,
+    poi: copy.work.classPoi,
+  };
+  const reachOff = mutes.some((row) => row.class === "reach" && row.until === "9999-12-31");
+  const others = mutes.filter((row) => row.class !== "reach" || !reachOff);
+  async function send(className: string, kind: "mute" | "unmute") {
+    if (busy) return;
+    setBusy(true);
+    await sendFeedback(className, kind);
+    setBusy(false);
+  }
+  return (
+    <section className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="quiet-prefs">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[16px] font-semibold">{copy.work.reachSwitch}</h2>
+          <p className="mt-1 text-[12px] leading-5 text-muted">{copy.work.reachSwitchHint}</p>
+        </div>
+        <PillSwitch on={!reachOff} label={copy.work.reachSwitch} disabled={busy} onChange={() => { void send("reach", reachOff ? "unmute" : "mute"); }} />
+      </div>
+      <h2 className="mt-5 text-[13px] font-medium">{copy.work.quietTitle}</h2>
+      <p className="mt-1 text-[12px] leading-5 text-muted">{others.length ? copy.work.quietLede : copy.work.quietEmpty}</p>
+      {others.length ? (
+        <ul className="mt-2 divide-y divide-border/50">
+          {others.map((row) => (
+            <li key={row.class} className="flex items-center justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-[13px]">{labels[row.class] || row.class}</p>
+                <p className="text-[12px] text-muted">{row.until === "9999-12-31" ? copy.work.quietOff : copy.work.quietToday}</p>
+              </div>
+              <TextButton quiet onClick={() => { void send(row.class, "unmute"); }}>{copy.work.quietOn}</TextButton>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
@@ -552,15 +1376,34 @@ function BriefPrefCard(props: {
     <section className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-[16px] font-semibold">{props.title}</h2>
-        <button type="button" role="switch" aria-checked={props.on} aria-label={copy.work.briefStatus} className={cn("relative h-7 w-12 shrink-0 rounded-full transition-colors", props.on ? "bg-accent" : "bg-lift")} onClick={props.onToggle}>
-          <span className={cn("absolute top-0.5 size-6 rounded-full bg-white shadow-sm transition-[left]", props.on ? "left-5" : "left-0.5")} />
-        </button>
+        <PillSwitch on={props.on} label={copy.work.briefStatus} onChange={props.onToggle} />
       </div>
       <label className={cn("mt-4 flex items-center justify-between gap-3", !props.on && "opacity-50")}>
         <span className="text-[13px] text-muted">{copy.work.briefSchedule}</span>
         <input type="time" value={props.at} disabled={!props.on} className="h-10 rounded-full bg-lift px-4 text-[14px] outline-none" onChange={(event) => props.onTime(event.target.value)} />
       </label>
     </section>
+  );
+}
+
+/** PillSwitch 是这一栏自己的圆开关。small 用在一行高的药丸里。 */
+function PillSwitch(props: { on: boolean; label: string; disabled?: boolean; small?: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.on}
+      aria-label={props.label}
+      disabled={props.disabled}
+      className={cn("relative shrink-0 rounded-full transition-colors disabled:opacity-50", props.small ? "h-6 w-10" : "h-7 w-12", props.on ? "bg-accent" : "bg-lift")}
+      onClick={() => props.onChange(!props.on)}
+    >
+      <span className={cn(
+        "absolute top-0.5 rounded-full bg-white shadow-sm transition-[left]",
+        props.small ? "size-5" : "size-6",
+        props.on ? (props.small ? "left-[18px]" : "left-5") : "left-0.5",
+      )} />
+    </button>
   );
 }
 
@@ -721,17 +1564,20 @@ export function briefPhrases(work: ReturnType<typeof useCopy>["work"]): BriefPhr
 }
 
 function Tasks(props: {
-  open: Ticket[];
-  ended: Ticket[];
+  sections: Record<TaskSection, Ticket[]>;
+  observed: { id: string; text: string; at: string }[];
   selected: string;
   onSelect: (id: string) => void;
   onNewTask: (text?: string) => void;
   held: { id: string; name: string; detail?: string }[];
   notes: { id: string; title: string }[];
   rules: Rule[];
+  mode: string;
   onRules: (rules: Rule[]) => Promise<void>;
+  onMoreSchedules?: () => void;
 }) {
   const copy = useCopy();
+  const d = copy.desk;
   const [compose, setCompose] = useState<null | { kind: "task" | "schedule"; text: string; ruleId?: string }>(null);
   const [query, setQuery] = useState("");
   const [scheduled, setScheduled] = useState(false);
@@ -742,10 +1588,17 @@ function Tasks(props: {
     if (!item || !needle) return true;
     return `${item.title} ${item.text}`.toLowerCase().includes(needle);
   });
-  const shown = filterTickets([...props.open, ...props.ended], "all", query);
-  const openShown = shown.filter((ticket) => ticket.stage !== "ended");
-  const endedShown = shown.filter((ticket) => ticket.stage === "ended");
+  const order: { id: TaskSection; title: string }[] = [
+    { id: "person", title: copy.work.sectionPerson },
+    { id: "working", title: copy.work.sectionWorking },
+    { id: "idle", title: copy.work.sectionIdle },
+  ];
+  const groups = order
+    .map((group) => ({ ...group, tickets: filterTickets(props.sections[group.id], "all", query) }))
+    .filter((group) => group.tickets.length > 0);
+  const ended = filterTickets(props.sections.ended, "all", query);
   const rules = props.rules.filter((rule) => !needle || rule.text.toLowerCase().includes(needle));
+  const ruleMeta = (rule: Rule) => !rule.enabled ? d.ruleOff : props.mode === "auto" ? d.ruleAuto : props.mode === "off" ? d.ruleOff : d.ruleObserve;
   if (compose) {
     const scheduled = compose.kind === "schedule";
     const starters = scheduled
@@ -757,9 +1610,9 @@ function Tasks(props: {
         ];
     return (
       <TaskCompose
-        title={scheduled ? copy.work.createScheduled : copy.work.newTask}
-        placeholder={scheduled ? copy.work.scheduleDraftPh : copy.work.taskDraftPh}
-        hint={scheduled ? copy.work.scheduleDraftHint : copy.work.taskDraftHint}
+        title={scheduled ? copy.work.ruleAdd : copy.work.newTask}
+        placeholder={scheduled ? copy.work.ruleText : copy.work.taskDraftPh}
+        hint={scheduled ? copy.work.ruleDraftHint : copy.work.taskDraftHint}
         empty={copy.work.noSubtasks}
         submitLabel={scheduled ? copy.work.saveSchedule : copy.work.startTask}
         suggestions={starters}
@@ -803,7 +1656,7 @@ function Tasks(props: {
           onClick={() => setCompose(scheduled ? { kind: "schedule", text: "" } : { kind: "task", text: "" })}
         >
           <Plus className="size-3.5" />
-          {scheduled ? copy.work.createScheduled : copy.work.createTask}
+          {scheduled ? copy.work.ruleAdd : copy.work.createTask}
         </button>
       </div>
       <div className="mt-4 grid h-10 grid-cols-2 gap-2">
@@ -830,27 +1683,47 @@ function Tasks(props: {
           )}
           onClick={() => setScheduled(true)}
         >
-          <Clock className="size-3.5" />
-          {copy.work.scheduled}
+          <ListChecks className="size-3.5" />
+          {copy.work.rules}
+          {props.rules.length ? <span className="tabular-nums text-[11px] text-muted">{props.rules.filter((rule) => rule.enabled).length}</span> : null}
         </button>
       </div>
       {scheduled ? (
-        <div className="mt-6">
+        <div className="mt-6" data-testid="task-rules">
           {rules.length > 0 ? (
             <ul className="space-y-2">
               {rules.map((rule) => (
                 <li key={rule.id}>
-                  <TaskPill
+                  <RulePill
                     label={suggestions[rule.id]?.title || rule.text}
-                    muted={!rule.enabled}
-                    onClick={() => setCompose({ kind: "schedule", text: rule.text, ruleId: rule.id })}
+                    meta={ruleMeta(rule)}
+                    on={rule.enabled}
+                    onOpen={() => setCompose({ kind: "schedule", text: rule.text, ruleId: rule.id })}
+                    onToggle={(on) => { void props.onRules(props.rules.map((row) => row.id === rule.id ? { ...row, enabled: on } : row)); }}
                   />
                 </li>
               ))}
             </ul>
           ) : null}
+          {props.observed.length > 0 ? (
+            <section className={rules.length > 0 ? "mt-6" : ""} data-testid="would-accept">
+              <h2 className="flex items-center gap-1.5 px-1 text-[15px] font-medium">
+                {copy.work.wouldAccept}
+                <span className="tabular-nums text-[11px] font-normal text-muted">{props.observed.length}</span>
+              </h2>
+              <p className="mt-1 px-1 text-[12px] leading-5 text-muted">{copy.work.observedHint}</p>
+              <ul className="mt-2.5 divide-y divide-border/50 rounded-[20px] bg-card px-4 shadow-[var(--shadow-card)]">
+                {props.observed.map((row) => (
+                  <li key={row.id} className="py-2.5">
+                    <p className="line-clamp-2 text-[13px] leading-5">{row.text}</p>
+                    {row.at ? <p className="mt-0.5 text-[12px] text-muted">{agoLabel(row.at, copy.work)}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {missing.length > 0 ? (
-            <section className={rules.length > 0 ? "mt-6" : ""}>
+            <section className={rules.length > 0 || props.observed.length > 0 ? "mt-6" : ""}>
               <h2 className="px-1 text-[15px] font-medium">{copy.work.recommended}</h2>
               <ul className="mt-2.5 space-y-2">
                 {missing.map((id) => {
@@ -877,13 +1750,22 @@ function Tasks(props: {
               </ul>
             </section>
           ) : null}
-          {rules.length === 0 && missing.length === 0 ? <Empty title={copy.work.tasksEmpty} hint={copy.work.tasksHint} /> : null}
+          {rules.length === 0 && missing.length === 0 && props.observed.length === 0 ? <Empty title={copy.work.tasksEmpty} hint={copy.work.tasksHint} /> : null}
+          {props.onMoreSchedules ? (
+            <button type="button" className="mt-5 w-full rounded-full py-2 text-[12px] text-muted hover:bg-lift hover:text-foreground" onClick={props.onMoreSchedules}>
+              {d.moreSchedules}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div>
-          {openShown.length > 0 ? <TicketList tickets={openShown} onSelect={props.onSelect} /> : null}
-          {endedShown.length > 0 ? <TicketList title={copy.work.earlier} tickets={endedShown} onSelect={props.onSelect} /> : null}
-          {openShown.length === 0 && endedShown.length === 0 ? <Empty title={copy.work.tasksEmpty} hint={copy.work.tasksHint} /> : null}
+          {groups.map((group) => (
+            <TicketList key={group.id} title={group.title} count={group.tickets.length} person={group.id === "person"} tickets={group.tickets} onSelect={props.onSelect} />
+          ))}
+          {ended.length > 0 ? (
+            <TicketList title={copy.work.sectionEnded} count={ended.length} tickets={ended} onSelect={props.onSelect} folded />
+          ) : null}
+          {groups.length === 0 && ended.length === 0 ? <Empty title={copy.work.tasksEmpty} hint={copy.work.tasksHint} /> : null}
         </div>
       )}
     </div>
@@ -957,46 +1839,100 @@ function suggestionCopy(copy: ReturnType<typeof useCopy>): Record<string, { titl
   };
 }
 
+/** TicketList 是一组任务。folded 的一组默认收起，点标题展开。 */
 function TicketList(props: {
-  title?: string;
+  title: string;
+  count: number;
+  person?: boolean;
+  folded?: boolean;
   tickets: Ticket[];
   onSelect: (id: string) => void;
 }) {
+  const [open, setOpen] = useState(!props.folded);
+  const head = (
+    <>
+      {props.title}
+      <span className={cn("tabular-nums text-[11px] font-normal", props.person ? "text-warning" : "text-muted")}>{props.count}</span>
+    </>
+  );
   return (
-    <section className="mt-6">
-      {props.title ? <h2 className="px-1 text-[15px] font-medium">{props.title}</h2> : null}
-      <ul className={cn("space-y-2", props.title && "mt-2.5")}>
-        {props.tickets.map((ticket) => (
-          <li key={ticket.id}>
-            <TaskPill label={ticket.title || ticket.id} onClick={() => props.onSelect(ticket.id)} />
-          </li>
-        ))}
-      </ul>
+    <section className="mt-6" data-testid="task-section">
+      {props.folded ? (
+        <button type="button" aria-expanded={open} className="flex items-center gap-1.5 px-1 text-[15px] font-medium hover:text-foreground/80" onClick={() => setOpen((on) => !on)}>
+          {head}
+          <ChevronDown className={cn("size-3.5 text-muted transition-transform duration-200", !open && "-rotate-90")} />
+        </button>
+      ) : (
+        <h2 className="flex items-center gap-1.5 px-1 text-[15px] font-medium">{head}</h2>
+      )}
+      {open ? (
+        <ul className="mt-2.5 space-y-2">
+          {props.tickets.map((ticket) => (
+            <li key={ticket.id}>
+              <TaskRow ticket={ticket} onClick={() => props.onSelect(ticket.id)} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }
 
-function TaskPill(props: { label: string; muted?: boolean; onClick: () => void }) {
+/** TaskRow 说清这张工单在等谁、需要什么，以及最近一句。等你的那一张用 warning 标出来。 */
+function TaskRow(props: { ticket: Ticket; onClick: () => void }) {
+  const copy = useCopy();
+  const ticket = props.ticket;
+  const section = taskSection(ticket);
+  const status = taskStatus(ticket, copy.work);
+  const when = ticket.updatedAt ? agoLabel(ticket.updatedAt, copy.work) : "";
+  const line = ticketLine(ticket);
+  const failed = ticket.outcome === "failed" || ticket.outcome === "dropped" || (section === "person" && (ticket.action === "failed" || ticket.action === "blocked"));
   return (
     <button
       type="button"
-      className={cn(
-        "flex h-11 w-full items-center rounded-full bg-card px-4 text-left text-[14px] shadow-[var(--shadow-card)]",
-        props.muted && "text-muted",
-      )}
+      data-testid="task-row"
+      className="flex w-full items-start gap-3 rounded-[20px] bg-card px-4 py-3 text-left shadow-[var(--shadow-card)]"
       onClick={props.onClick}
     >
-      <span className="truncate">{props.label}</span>
+      {section === "working" ? (
+        <span className="pulse-dot is-accent mt-[7px]" aria-hidden />
+      ) : (
+        <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", failed ? "bg-danger" : section === "person" ? "bg-warning" : "bg-muted/50")} aria-hidden />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-medium">{ticket.title || ticket.id}</span>
+        <span className={cn("mt-0.5 block truncate text-[12px] leading-5", section === "person" ? "text-warning" : "text-muted")}>
+          {[status, when].filter(Boolean).join(" · ")}
+        </span>
+        {line ? <span className="mt-0.5 block truncate text-[12px] leading-5 text-muted">{line}</span> : null}
+      </span>
     </button>
   );
 }
 
-function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<void> }) {
+/** RulePill 是一条定时：点名字改写，右边的开关就地开关。 */
+function RulePill(props: { label: string; meta: string; on: boolean; onOpen: () => void; onToggle: (on: boolean) => void }) {
+  return (
+    <div className="flex h-11 w-full items-center gap-2 rounded-full bg-card pl-4 pr-2.5 shadow-[var(--shadow-card)]">
+      <button type="button" className={cn("flex min-w-0 flex-1 items-baseline gap-2 text-left", !props.on && "text-muted")} onClick={props.onOpen}>
+        <span className="truncate text-[14px]">{props.label}</span>
+        <span className="shrink-0 text-[11.5px] text-muted">{props.meta}</span>
+      </button>
+      <PillSwitch small on={props.on} label={props.label} onChange={props.onToggle} />
+    </div>
+  );
+}
+
+const FOLDER_PAGE = 30;
+
+function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<void>; onForget: (id: string) => Promise<void>; onEdit: (id: string, text: string) => Promise<boolean> }) {
   const copy = useCopy();
   const [folder, setFolder] = useState<MemoryFolder | "">("");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [all, setAll] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const portrait = memoryPortrait(props.rows);
   const sep = /[\u4e00-\u9fff]/.test(copy.work.memoryProjectsLine) ? "、" : ", ";
   const said = portrait.said.filter((text) => text !== portrait.name);
@@ -1004,7 +1940,7 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
     ? copy.work.memoryLeadMachine
     : said[0] || portrait.noted[0] || copy.work.memoryLeadEmpty;
   const title = portrait.name ? copy.work.memoryAbout.replace("{name}", portrait.name) : copy.work.memoryAboutYou;
-  const when = portrait.updated ? memoryAgo(portrait.updated, copy.work) : copy.work.memoryNotYet;
+  const when = portrait.updated ? agoLabel(portrait.updated, copy.work) : copy.work.memoryNotYet;
   const folders: { id: MemoryFolder; label: string; icon: LucideIcon }[] = [
     { id: "device", label: copy.work.folderDevices, icon: Monitor },
     { id: "work", label: copy.work.folderWork, icon: Clock },
@@ -1014,7 +1950,15 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
   ];
   const notes = memoryFolderRows(props.rows, "notes");
   if (notes.length) folders.push({ id: "notes", label: copy.work.folderNotes, icon: Folder });
-  const shown = folder ? memoryFolderRows(props.rows, folder) : [];
+  const inFolder = folder ? memoryFolderRows(props.rows, folder) : [];
+  const shown = all ? inFolder : inFolder.slice(0, FOLDER_PAGE);
+  const origins: Record<string, string> = {
+    said: copy.work.originSaid,
+    machine: copy.work.originMachine,
+    task: copy.work.originTask,
+    noted: copy.work.originNoted,
+    chat: copy.work.originChat,
+  };
   async function add(event: { preventDefault: () => void }) {
     event.preventDefault();
     const text = draft.trim();
@@ -1044,7 +1988,7 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
           </div>
         </form>
       ) : null}
-      <article className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
+      <article className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="memory-about">
         <h2 className="text-[18px] font-semibold leading-7 tracking-[-0.03em]">{title}</h2>
         <p className="mt-1 text-[12px] text-muted">{portrait.updated ? copy.work.memoryUpdated.replace("{when}", when) : copy.work.memoryNotYet}</p>
         <p className="mt-4 text-[12px] text-muted">{copy.work.memorySummary}</p>
@@ -1072,7 +2016,7 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
               key={item.id}
               type="button"
               className={cn("rounded-2xl bg-card px-4 py-4 text-left shadow-[var(--shadow-card)]", on && "ring-1 ring-accent")}
-              onClick={() => setFolder(on ? "" : item.id)}
+              onClick={() => { setFolder(on ? "" : item.id); setAll(false); }}
             >
               <Icon className="size-4 text-muted" />
               <p className="mt-3 text-[14px] font-medium">{item.label}</p>
@@ -1083,17 +2027,120 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
       </div>
       {folder ? (
         shown.length === 0 ? <p className="mt-4 px-1 text-[13px] text-muted">{copy.work.memoryFolderEmpty}</p> : (
-          <ul className="mt-4 space-y-2">
-            {shown.map((row) => (
-              <li key={row.id} className="rounded-2xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]">
-                <p className="text-[14px] leading-6">{memoryRowTitle(row, copy.work)}</p>
-                {memoryRowDetail(row, copy.work) ? <p className="mt-1 text-[12px] leading-5 text-muted">{memoryRowDetail(row, copy.work)}</p> : null}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="mt-4 space-y-2">
+              {shown.map((row) => {
+                const origin = origins[memoryOrigin(row)] || "";
+                const touched = memoryTouched(row);
+                const at = touched ? agoLabel(touched, copy.work) : "";
+                const past = memoryPast(row);
+                const before = [...(row.history ?? [])].reverse().map((rev) => copy.work.memoryBefore.replace("{text}", rev.text));
+                const meta = [
+                  origin,
+                  past ? copy.work.memoryPast : row.valid_until ? copy.work.memoryUntil.replace("{date}", row.valid_until) : "",
+                  at,
+                  before.length ? copy.work.memoryChanged.replace("{n}", String(before.length)) : "",
+                  (row.seen ?? 0) > 1 ? copy.work.memorySeen.replace("{n}", String(row.seen)) : "",
+                ];
+                const open = editing?.id === row.id;
+                return (
+                  <li key={row.id} className="group/memory rounded-2xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid="memory-row">
+                    {open ? (
+                      <form
+                        onSubmit={async (event) => {
+                          event.preventDefault();
+                          const text = editing.text.trim();
+                          if (!text || text === row.text) {
+                            setEditing(null);
+                            return;
+                          }
+                          if (await props.onEdit(row.id, text)) setEditing(null);
+                        }}
+                      >
+                        <textarea
+                          autoFocus
+                          rows={2}
+                          value={editing.text}
+                          onChange={(event) => setEditing({ id: row.id, text: event.target.value })}
+                          onKeyDown={(event) => { if (event.key === "Escape") setEditing(null); }}
+                          className="w-full resize-none rounded-lg bg-lift/60 px-2.5 py-2 text-[14px] leading-6 outline-none"
+                        />
+                        <div className="mt-1.5 flex justify-end gap-1.5">
+                          <TextButton quiet onClick={() => setEditing(null)}>{copy.work.memoryEditCancel}</TextButton>
+                          <button type="submit" disabled={!editing.text.trim()} className="h-7 rounded-lg bg-foreground px-2.5 text-[12px] font-medium text-background disabled:opacity-40">{copy.work.save}</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <p className={cn("text-[14px] leading-6", past && "text-muted")}>{memoryRowTitle(row, copy.work)}</p>
+                        {memoryRowDetail(row, copy.work) ? <p className="mt-1 text-[12px] leading-5 text-muted">{memoryRowDetail(row, copy.work)}</p> : null}
+                        <div className="mt-1.5 flex min-h-6 items-center justify-between gap-2">
+                          <p className="min-w-0 truncate text-[11.5px] text-muted/80" data-testid="memory-meta" title={before.length ? before.join("\n") : undefined}>{meta.filter(Boolean).join(" · ")}</p>
+                          {memoryForgettable(row) ? (
+                            <span className="flex shrink-0 items-center gap-0.5">
+                              <button
+                                type="button"
+                                className="h-6 rounded-md px-2 text-[11px] font-medium text-muted opacity-0 transition-colors duration-[var(--duration-fast)] hover:bg-lift hover:text-foreground focus-visible:opacity-100 group-hover/memory:opacity-100 [@media(hover:none)]:opacity-100"
+                                onClick={() => setEditing({ id: row.id, text: row.text })}
+                              >
+                                {copy.work.memoryEdit}
+                              </button>
+                              <ForgetButton onForget={() => props.onForget(row.id)} />
+                            </span>
+                          ) : null}
+                        </div>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {!all && inFolder.length > shown.length ? (
+              <button type="button" className="mt-2 w-full rounded-full py-2 text-[12px] text-muted hover:bg-lift hover:text-foreground" onClick={() => setAll(true)}>
+                {copy.work.memoryMore.replace("{n}", String(inFolder.length - shown.length))}
+              </button>
+            ) : null}
+          </>
         )
       ) : null}
     </div>
+  );
+}
+
+/** ForgetButton 要点两次。第一次变成确认，三秒内不再点就收回。 */
+function ForgetButton(props: { onForget: () => Promise<void> }) {
+  const copy = useCopy();
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setArmed(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [armed]);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      className={cn(
+        "h-6 shrink-0 rounded-md px-2 text-[11px] font-medium transition-colors duration-[var(--duration-fast)] disabled:opacity-50",
+        armed ? "bg-danger/10 text-danger" : "text-muted opacity-0 hover:bg-lift hover:text-danger focus-visible:opacity-100 group-hover/memory:opacity-100 [@media(hover:none)]:opacity-100",
+      )}
+      onClick={async () => {
+        if (!armed) {
+          setArmed(true);
+          return;
+        }
+        setBusy(true);
+        try {
+          await props.onForget();
+        } finally {
+          setBusy(false);
+          setArmed(false);
+        }
+      }}
+    >
+      {armed ? copy.work.memoryForgetConfirm : copy.work.memoryForget}
+    </button>
   );
 }
 
@@ -1122,7 +2169,8 @@ function memoryRowDetail(row: MemoryRow, work: ReturnType<typeof useCopy>["work"
   return [state, row.evidence, row.when].filter(Boolean).join(" · ");
 }
 
-function memoryAgo(iso: string, work: ReturnType<typeof useCopy>["work"]): string {
+/** agoLabel 把一个时刻写成多久以前。工单和记忆用同一套说法。 */
+function agoLabel(iso: string, work: ReturnType<typeof useCopy>["work"]): string {
   const at = Date.parse(iso);
   if (Number.isNaN(at)) return work.memoryNotYet;
   const mins = Math.max(0, Math.round((Date.now() - at) / 60000));
@@ -1149,7 +2197,7 @@ function TextButton(props: { children: string; onClick: () => void; quiet?: bool
     <button
       type="button"
       className={cn(
-        "h-7 rounded-lg px-2.5 text-[12px] font-medium",
+        "h-7 shrink-0 rounded-lg px-2.5 text-[12px] font-medium",
         props.quiet ? "text-muted hover:bg-lift hover:text-foreground" : "bg-foreground text-background",
       )}
       onClick={props.onClick}

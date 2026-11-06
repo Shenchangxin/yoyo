@@ -13,6 +13,25 @@ import (
 	"testing"
 )
 
+// TestJoinTokensKeepsChineseTogether 确认中文词之间不加空格，只有拉丁字母和数字之间才隔开。
+func TestJoinTokensKeepsChineseTogether(t *testing.T) {
+	cases := map[string][]string{
+		"差点走了":          {"差点", "走了"},
+		"今天聊iPhone 18": {"今天", "聊", "iPhone", "18"},
+		"Hello world.":  {"Hello", "world."},
+		"world. Next":   {"world.", "Next"},
+	}
+	for want, toks := range cases {
+		var words []Word
+		for _, s := range toks {
+			words = append(words, Word{Text: s})
+		}
+		if got := joinTokens(words); got != want {
+			t.Errorf("%v: got %q want %q", toks, got, want)
+		}
+	}
+}
+
 // TestContractHasNoPendingRows 锁住清单没有待定行，已实现和排除都有，而且编号不重复。
 func TestContractHasNoPendingRows(t *testing.T) {
 	if rows := Pending(); len(rows) != 0 {

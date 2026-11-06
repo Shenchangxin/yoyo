@@ -62,7 +62,7 @@ export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () 
         data-testid={`video-shell-${item.id}`}
         aria-current={on ? "page" : undefined}
         className={cn(
-          "relative flex items-center gap-2 text-left text-[13px] transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
+          "relative flex items-center gap-2 text-left text-ui-body transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
           bar
             ? "h-8 shrink-0 rounded-full px-3"
             : "mb-px min-h-8 w-full rounded-lg px-2.5 py-[6px]",
@@ -102,10 +102,10 @@ export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () 
 
   return (
     <nav aria-label={copy.video.shell} data-testid="video-shell-nav" className="relative shrink-0 px-1.5 pb-1">
-      <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted">{copy.video.shell}</div>
+      <div className="px-2.5 pb-1 pt-1.5 text-ui-caption font-medium text-muted">{copy.video.shell}</div>
       {PRIMARY.map(row)}
       <div className="mx-2 my-1.5 h-px bg-border" />
-      <div className="px-2.5 pb-1 text-[11px] font-medium text-muted">{copy.video.shellLibrary}</div>
+      <div className="px-2.5 pb-1 text-ui-caption font-medium text-muted">{copy.video.shellLibrary}</div>
       {library.map(row)}
     </nav>
   );

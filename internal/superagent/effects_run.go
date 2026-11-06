@@ -4,6 +4,8 @@
 package superagent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -191,7 +193,8 @@ func (rt *Runtime) queueReport(ticketID, state, summary, question string) {
 		return
 	}
 	raw, _ := json.Marshal(relayBody{Ticket: ticketID, State: state, Summary: summary, Question: question})
-	key := ticketID + "\n" + state + "\n" + clip(summary+question, 80)
+	sum := sha256.Sum256([]byte(summary + "\n" + question))
+	key := ticketID + "\n" + state + "\n" + hex.EncodeToString(sum[:8])
 	rt.effects.Enqueue("relay", key, string(raw))
 	rt.effects.Pump(time.Now())
 }

@@ -70,15 +70,15 @@ export function ConfirmDialog(props: {
         role="dialog"
         aria-modal="true"
         aria-labelledby="yoyo-confirm-title"
-        className="dialog-sheet w-[min(420px,calc(100%-2rem))] rounded-2xl border border-border bg-popover p-6 shadow-[var(--shadow-popover)]"
+        className="dialog-sheet w-[min(420px,calc(100%-2rem))] rounded-xl border border-border bg-popover p-6 shadow-[var(--shadow-popover)]"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <h2 id="yoyo-confirm-title" className="text-[15px] font-semibold">{props.title}</h2>
+        <h2 id="yoyo-confirm-title" className="text-ui-title-s font-semibold">{props.title}</h2>
         {typeof props.body === "string" ? (
-          <p className="text-[13px] leading-[1.55] text-muted">{props.body}</p>
+          <p className="text-ui-body leading-[1.55] text-muted">{props.body}</p>
         ) : (
-          <div className="text-[13px] leading-[1.55] text-muted">{props.body}</div>
+          <div className="text-ui-body leading-[1.55] text-muted">{props.body}</div>
         )}
         <div className="dialog-actions">
           <Button

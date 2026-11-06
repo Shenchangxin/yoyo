@@ -10,6 +10,7 @@ import { useCreateMode } from "./video/create-mode";
 import { isFilmMode, type FilmMode } from "./video/film-cast";
 import { useCutDesk, useCutReadiness } from "./video/cut-desk";
 import { useFilmDesk } from "./video/film-desk";
+import { useRemakeDesk } from "./video/remake-desk";
 import { cn } from "../lib/utils";
 import { useMedia } from "../lib/media";
 
@@ -123,7 +124,7 @@ export function HomeHero(_props: {
       {createDesk && !bound ? null : (
         <>
           <PresenceAnchor id="home" size={createDesk ? 72 : narrow ? 96 : 148} className="mx-auto cursor-pointer" />
-          <p className={cn("text-center text-[13px] tracking-[-0.01em] text-muted", createDesk ? "mt-3" : "mt-5")}>
+          <p className={cn("text-center text-ui-body tracking-[-0.01em] text-muted", createDesk ? "mt-3" : "mt-5")}>
             {hello(copy)}
           </p>
         </>
@@ -131,18 +132,18 @@ export function HomeHero(_props: {
       {createDesk && (filmOpen || filmLead) ? null : (
         <h1 className={cn(
           "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
-          createDesk ? "mt-1 text-[19px]" : "mt-1.5 text-[21px]",
+          createDesk ? "mt-1 text-ui-display" : "mt-1.5 text-ui-display",
         )}>
           {bound ? c.copilotTitle : readyOf(copy, videoing, videoMode, createDesk)}
         </h1>
       )}
       {createDesk && bound ? (
         <>
-          {boundTitle ? <p className="mt-1 text-center text-[13px] text-foreground">{boundTitle}</p> : null}
-          <p className="mx-auto mt-1.5 max-w-[40ch] text-center text-[12px] leading-[1.5] text-muted">{c.finishHint}</p>
+          {boundTitle ? <p className="mt-1 text-center text-ui-body text-foreground">{boundTitle}</p> : null}
+          <p className="mx-auto mt-1.5 max-w-[40ch] text-center text-ui-footnote leading-[1.5] text-muted">{c.finishHint}</p>
         </>
       ) : createDesk && !bound && !filmOpen && !filmLead ? (
-        <p className="mx-auto mt-1.5 max-w-[36ch] text-center text-[13px] leading-[1.5] text-muted">
+        <p className="mx-auto mt-1.5 max-w-[36ch] text-center text-ui-body leading-[1.5] text-muted">
           {c.lead}
         </p>
       ) : null}
@@ -151,23 +152,22 @@ export function HomeHero(_props: {
 }
 
 /**
- * HomeStarters 在创作桌、未绑定且导入、翻拍、成片、交接、打开剪辑都传入时才挂 CreateHome。案例只在创作桌未绑定且有 onPrompt 时出现。按钮延迟从 80 毫秒起，每个再加 50。
- * props 读取 onContinueLast、onPrompt、onImportClip、onRemake、onFilm、onHandoff 等，调用 onContinueLast，调用 onPrompt。
+ * HomeStarters 在创作桌、未绑定且传入打开剪辑时挂 CreateHome，用来接着改已经打开的成片或翻拍稿。案例只在创作桌未绑定且有 onPrompt 时出现。按钮延迟从 80 毫秒起，每个再加 50。
+ * props 读取 onContinueLast、onPrompt、onOpenCut，调用 onContinueLast，调用 onPrompt。
  */
 export function HomeStarters(props: {
   onPrompt?: (text: string) => void;
   onContinueLast?: () => void;
-  onImportClip?: () => void;
-  onRemake?: () => void;
-  onFilm?: (structure: FilmMode, description?: string) => void;
-  onHandoff?: (dest: "studio" | "drama" | "canvas") => void;
   onOpenCut?: (id: string) => void;
   draftKey?: string;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
   const project = useCutDesk((s) => (createDesk ? s.project : null));
+  const resumeId = useCutDesk((s) => (createDesk && s.parked ? s.resumeId : ""));
+  const resumeTitle = useCutDesk((s) => (createDesk && s.parked ? s.resumeTitle : ""));
   const mode = useCreateMode((s) => s.mode);
   const filmOpen = useFilmDesk((s) => !!s.project?.id);
+  const remakeOpen = useRemakeDesk((s) => !!s.draft?.id);
   const filmMode = isFilmMode(mode);
   const starters = startersOf(copy, videoing, videoMode, createDesk);
   const bound = !!project?.source_hash && !!project.id;
@@ -181,10 +181,23 @@ export function HomeStarters(props: {
           <div className="mt-3 flex justify-center">
             <button
               type="button"
-              className="text-[12px] text-muted hover:text-foreground"
+              className="text-ui-footnote text-muted hover:text-foreground"
               onClick={() => props.onContinueLast?.()}
             >
               {copy.rail.continueLast}
+            </button>
+          </div>
+        ) : null}
+        {createDesk && !bound && !filmOpen && !remakeOpen && resumeId && props.onOpenCut ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              data-testid="continue-cut"
+              className="text-ui-footnote text-muted hover:text-foreground"
+              title={copy.video.conductor.handoffContinueHint}
+              onClick={() => props.onOpenCut?.(resumeId)}
+            >
+              {resumeTitle ? `${copy.video.conductor.handoffContinue} · ${resumeTitle}` : copy.video.conductor.handoffContinue}
             </button>
           </div>
         ) : null}
@@ -210,17 +223,7 @@ export function HomeStarters(props: {
         </div>
         ) : null}
       </div>
-      {createDesk && !bound && props.onImportClip && props.onRemake && props.onFilm && props.onHandoff && props.onOpenCut ? (
-        <CreateHome
-          onImport={props.onImportClip}
-          onRemake={props.onRemake}
-          onFilm={props.onFilm}
-          onHandoff={props.onHandoff}
-          onOpenCut={props.onOpenCut}
-          onPrompt={props.onPrompt}
-          draftKey={props.draftKey}
-        />
-      ) : null}
+      {createDesk && !bound && props.onOpenCut ? <CreateHome onOpenCut={props.onOpenCut} /> : null}
       {createDesk && !bound && !filmOpen && !filmMode && props.onPrompt ? <FeaturedCases onPrompt={props.onPrompt} /> : null}
     </>
   );

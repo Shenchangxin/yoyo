@@ -10,6 +10,7 @@ import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { filmInFlight } from "./studio-topic";
+import { playbackSrc } from "./playback-src";
 import type { StudioCatalog, StudioProject } from "./studio-model";
 import { Clapperboard } from "lucide-react";
 
@@ -58,8 +59,8 @@ export function DeliveryShelf(props: {
   const live = filmInFlight(phase);
   const failed = phase === "failed" && !cur.result_hash;
   const ready = !!cur.result_hash && !live;
-  const videoSrc = cur.media_url || props.mediaSrc(cur.result_hash);
-  const poster = cur.cover_url || cur.poster_url || props.mediaSrc(cur.cover_hash || cur.poster_hash);
+  const videoSrc = playbackSrc(cur.media_url) || props.mediaSrc(cur.result_hash);
+  const poster = playbackSrc(cur.cover_url || cur.poster_url) || props.mediaSrc(cur.cover_hash || cur.poster_hash);
   const plan = filmPlan(cur, props.catalog, s.filmSeconds);
   const portrait = (cur.aspect || "9:16") !== "16:9";
   const square = cur.aspect === "1:1";
@@ -70,11 +71,11 @@ export function DeliveryShelf(props: {
     <div className="flex flex-col gap-4" data-testid="studio-delivery-shelf">
       {props.films.length > 1 ? (
         <div className="flex flex-col gap-2">
-          <p className="text-[12px] text-muted">{s.filmShelf}</p>
+          <p className="text-ui-footnote text-muted">{s.filmShelf}</p>
           <ul className="flex gap-2 overflow-x-auto pb-1">
             {props.films.map(/** film 画缩略图和标题，id 和当前成片相同就标成选中，点了交给 onSelect。 */ (film) => {
               const on = film.id === cur.id;
-              const thumb = film.cover_url || film.poster_url || props.mediaSrc(film.cover_hash || film.poster_hash || film.result_hash);
+              const thumb = playbackSrc(film.cover_url || film.poster_url) || props.mediaSrc(film.cover_hash || film.poster_hash || film.result_hash);
               const label = phaseText(s, d, film.auto_phase, !!film.result_hash);
               return (
                 <li key={film.id} className="w-[6.75rem] shrink-0">
@@ -90,11 +91,11 @@ export function DeliveryShelf(props: {
                   >
                     <span className={cn("relative block overflow-hidden rounded-lg bg-black", film.aspect === "16:9" ? "aspect-video" : film.aspect === "1:1" ? "aspect-square" : "aspect-[9/16]")}>
                       {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" /> : (
-                        <span className="grid h-full place-items-center px-1 text-center text-[10px] leading-[1.35] text-white/70">{label}</span>
+                        <span className="grid h-full place-items-center px-1 text-center text-ui-caption leading-[1.35] text-white/70">{label}</span>
                       )}
                     </span>
-                    <span className="mt-1.5 block line-clamp-2 text-[12px] font-medium leading-[1.35] text-foreground">{film.title}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-muted">{label}</span>
+                    <span className="mt-1.5 block line-clamp-2 text-ui-footnote font-medium leading-[1.35] text-foreground">{film.title}</span>
+                    <span className="mt-0.5 block truncate text-ui-caption text-muted">{label}</span>
                   </button>
                 </li>
               );
@@ -106,10 +107,10 @@ export function DeliveryShelf(props: {
       <section className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-medium text-foreground">{cur.title}</h2>
-            {plan ? <p className="mt-1 text-[12px] leading-[1.45] text-muted">{s.filmPlan.replace("{plan}", plan)}</p> : null}
+            <h2 className="truncate text-ui-title-s font-medium text-foreground">{cur.title}</h2>
+            {plan ? <p className="mt-1 text-ui-footnote leading-[1.45] text-muted">{s.filmPlan.replace("{plan}", plan)}</p> : null}
           </div>
-          <Button size="sm" variant="ghost" className="h-7 shrink-0 text-[12px]" onClick={props.onEdit}>{s.filmEdit}</Button>
+          <Button size="sm" variant="ghost" className="h-7 shrink-0 text-ui-footnote" onClick={props.onEdit}>{s.filmEdit}</Button>
         </div>
 
         <div
@@ -131,8 +132,8 @@ export function DeliveryShelf(props: {
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-5 text-center">
-              <p className="text-[13px] font-medium text-white">{phaseText(s, d, phase, ready)}</p>
-              {ready || failed ? null : <p className="text-[12px] leading-[1.45] text-white/65">{phase === "queued" ? s.filmQueued : s.filmWorking}</p>}
+              <p className="text-ui-body font-medium text-white">{phaseText(s, d, phase, ready)}</p>
+              {ready || failed ? null : <p className="text-ui-footnote leading-[1.45] text-white/65">{phase === "queued" ? s.filmQueued : s.filmWorking}</p>}
             </div>
           )}
         </div>
@@ -144,7 +145,7 @@ export function DeliveryShelf(props: {
               const past = stepAt > i;
               const label = id === "script" ? d.phaseScript : id === "voice" ? d.phaseVoice : id === "visuals" ? d.phaseVisuals : d.phaseCompose;
               return (
-                <li key={id} className={cn("inline-flex items-center gap-1.5 text-[12px]", on ? "font-medium text-foreground" : past ? "text-foreground" : "text-muted")}>
+                <li key={id} className={cn("inline-flex items-center gap-1.5 text-ui-footnote", on ? "font-medium text-foreground" : past ? "text-foreground" : "text-muted")}>
                   <span className={cn("size-1.5 rounded-full", on || past ? "bg-foreground" : "bg-border")} />
                   {label}
                 </li>
@@ -155,22 +156,24 @@ export function DeliveryShelf(props: {
 
         {failed ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2.5">
-            <p className="min-w-0 text-[12px] leading-[1.45] text-danger">{cur.auto_error || d.phaseFailed}</p>
-            <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={!!props.busy} onClick={props.onRetry}>{s.filmRetry}</Button>
+            <p className="min-w-0 text-ui-footnote leading-[1.45] text-danger">{cur.auto_error || d.phaseFailed}</p>
+            <Button size="sm" variant="default" className="h-7 text-ui-footnote" disabled={!!props.busy} onClick={props.onRetry}>{s.filmRetry}</Button>
           </div>
         ) : null}
       </section>
 
       {ready ? (
         <section className="flex flex-col gap-3 border-t border-border/80 pt-4" data-testid="studio-delivery-post">
-          <div>
-            <h3 className="text-[13px] font-medium text-foreground">{s.filmPost}</h3>
-            <p className="mt-1 text-[12px] leading-[1.45] text-muted">{publishable ? s.filmReady : (cur.delivery?.note || d.draftPack)}</p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="text-ui-body font-medium text-foreground">{s.filmPost}</h3>
+              <p className="mt-1 text-ui-footnote text-muted">{publishable ? s.filmReady : (cur.delivery?.note || d.draftPack)}</p>
+            </div>
+            {!publishable ? (
+              <Button size="sm" variant="ghost" className="h-7 text-ui-footnote" disabled={!!props.busy} onClick={props.onPack}>{d.package}</Button>
+            ) : null}
           </div>
-          {!publishable ? (
-            <Button size="sm" variant="default" className="h-7 self-start text-[12px]" disabled={!!props.busy} onClick={props.onPack}>{d.package}</Button>
-          ) : (
-            <>
+          <>
               <div className="flex flex-wrap items-center gap-1.5">
                 {props.platforms.map(/** p 的 id 和当前平台比较，点了交给 onPlatform，label 空着就显示 id。 */ (p) => {
                   const on = props.platform === p.id;
@@ -181,13 +184,13 @@ export function DeliveryShelf(props: {
                       data-testid={`studio-delivery-platform-${p.id}`}
                       aria-pressed={on}
                       className={cn(
-                        "inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12px]",
+                        "inline-flex h-8 items-center gap-1 rounded-full px-3 text-ui-footnote",
                         on ? "bg-foreground text-background" : "border border-border bg-card text-foreground hover:bg-lift/70",
                       )}
                       onClick={() => props.onPlatform(p.id)}
                     >
                       {p.label || p.id}
-                      {props.suggested === p.id ? <span className={cn("text-[10px]", on ? "text-background/70" : "text-muted")}>{s.filmSuggest}</span> : null}
+                      {props.suggested === p.id ? <span className={cn("text-ui-caption", on ? "text-background/70" : "text-muted")}>{s.filmSuggest}</span> : null}
                     </button>
                   );
                 })}
@@ -195,22 +198,21 @@ export function DeliveryShelf(props: {
               <Input className="h-8" placeholder={s.caption} value={props.caption} onChange={/** e 取出 target.value 交给 onCaption。 */ (e) => props.onCaption(e.target.value)} />
               <Input className="h-8" placeholder={s.tags} value={props.tags} onChange={/** e 取出 target.value 交给 onTags。 */ (e) => props.onTags(e.target.value)} />
               <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="default" className="h-8 text-[12px]" disabled={!!props.busy || !props.platform} title={props.platform ? undefined : s.filmPickPlatform} onClick={props.onSave}>{s.draftPublish}</Button>
-                {!props.platform ? <p className="text-[12px] text-muted">{s.filmPickPlatform}</p> : null}
+                <Button size="sm" variant="default" className="h-8 text-ui-footnote" disabled={!!props.busy || !props.platform} title={props.platform ? undefined : s.filmPickPlatform} onClick={props.onSave}>{s.draftPublish}</Button>
+                {!props.platform ? <p className="text-ui-footnote text-muted">{s.filmPickPlatform}</p> : null}
               </div>
-              <p className="text-[12px] leading-[1.45] text-muted">{s.neverPublish}</p>
-            </>
-          )}
+              <p className="text-ui-footnote leading-[1.45] text-muted">{s.neverPublish}</p>
+          </>
         </section>
       ) : null}
 
       {props.drafts ? (
         <section className="flex flex-col gap-2 border-t border-border/80 pt-4">
-          <h3 className="text-[13px] font-medium text-foreground">{s.filmDrafts}</h3>
+          <h3 className="text-ui-body font-medium text-foreground">{s.filmDrafts}</h3>
           {props.drafts}
         </section>
       ) : ready ? (
-        <p className="text-[12px] text-muted">{s.filmNoDrafts}</p>
+        <p className="text-ui-footnote text-muted">{s.filmNoDrafts}</p>
       ) : null}
     </div>
   );

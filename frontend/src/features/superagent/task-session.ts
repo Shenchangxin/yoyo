@@ -166,6 +166,38 @@ function userItem(sessionId: string, id: string, text: string): Item {
   };
 }
 
+const WROTE = [
+  /^wrote \d+ citations to (.+)$/,
+  /^replaced \d+ occurrence\(s\) in (.+)$/,
+  /^appended \d+ bytes to (.+?) \(file is now \d+ bytes\)$/,
+  /^moved .+ -> (.+)$/,
+  /^(?:wrote|edited|updated|downloaded) (.+)$/,
+];
+
+/** taskFiles 是工人在这张工单里改过的文件，最近改的在前。路径照工具回报的写：相对工作目录，或绝对路径。没写成的和命令行输出都不算。 */
+export function taskFiles(lines: TaskLine[]): string[] {
+  const out: string[] = [];
+  for (const line of lines) {
+    if (line.role !== "tool_result" || line.error || /shell|bash|command|terminal/i.test(line.name || "")) continue;
+    for (const row of (line.text || "").split("\n")) {
+      const path = writtenPath(row.trim());
+      if (!path) continue;
+      const at = out.indexOf(path);
+      if (at >= 0) out.splice(at, 1);
+      out.unshift(path);
+    }
+  }
+  return out;
+}
+
+function writtenPath(row: string): string {
+  for (const pattern of WROTE) {
+    const hit = row.match(pattern);
+    if (hit) return hit[1].trim();
+  }
+  return "";
+}
+
 function toolPath(name: string, text: string): string {
   const wrote = text.match(/^wrote\s+(\S+)/i);
   if (wrote && (!name || name === "write_file" || name === "create_file" || name === "str_replace" || name === "edit_file")) return wrote[1];

@@ -7,6 +7,7 @@ import "time"
 
 // Services 是偶像桌面要调用的模型服务。ChatModel 是会话文本模型，形如 connectionId::model，空则用当前聊天连接。
 // 语音、转写和图像可以写内置供应商；端点为空时回落到生成连接。密钥在保险库里。ChatBaseURL 是旧的端点覆盖。
+// NoBargeIn 为真时通话里不能开口打断她，只能打字打断；外放时她总被自己的声音打断就打开它。
 type Services struct {
 	ChatBaseURL    string `json:"chat_base_url"`
 	ChatModel      string `json:"chat_model"`
@@ -26,6 +27,7 @@ type Services struct {
 	PhoneTexture   bool   `json:"phone_texture"`
 	WorkEnabled    bool   `json:"work_enabled"`
 	WorkProfileID  string `json:"work_profile_id"`
+	NoBargeIn      bool   `json:"no_barge_in,omitempty"`
 }
 
 // UserCard 是每位偶像称呼这位操作者的方式。它不是工作区里的 harness 配置。
@@ -77,28 +79,42 @@ type Circle struct {
 	Members []string `json:"members,omitempty"`
 }
 
-// Segment 是一轮回复里的一句。Spoken 给语音，Subtitle 给字幕。
+// Segment 是一轮回复里的一句。Spoken 给语音和显示，已去掉语气提示；Subtitle 给字幕。
+// Cue 是她写在这一句开头的语气提示（方括号里的英文），只给语音合成和立绘表情用，不显示。
 type Segment struct {
 	Spoken   string `json:"spoken"`
 	Subtitle string `json:"subtitle"`
+	Cue      string `json:"cue,omitempty"`
 }
 
-// Record 是对话里的一条。Kind 取 turn、reach、event、work_said。
+// Record 是对话里的一条。Kind 取 turn、reach、reply、event、work_said。
+// event 的 Event 取 gift、hung_up 或 ended。Call 是这一轮所在通话的 id，打字时为空。
+// Hurt 和 OutOfLine 是判断模型对这一轮的结论，给之后判断她是否告别用。
+// PhotoState 为 pending 时照片还在生成，为 failed 时没有发出去；PhotoTag 是她写的画面描述。
 type Record struct {
 	ID          string    `json:"id"`
-	Kind        string    `json:"kind"` // turn、reach、event、work_said
+	Kind        string    `json:"kind"`
 	At          time.Time `json:"at"`
 	User        string    `json:"user,omitempty"`
 	Segments    []Segment `json:"segments,omitempty"`
 	Emotion     string    `json:"emotion,omitempty"`
 	PhotoID     string    `json:"photo_id,omitempty"`
+	PhotoTag    string    `json:"photo_tag,omitempty"`
+	PhotoState  string    `json:"photo_state,omitempty"`
 	WorkSession string    `json:"work_session,omitempty"`
 	WorkError   string    `json:"work_error,omitempty"`
+	WorkText    string    `json:"work_text,omitempty"`
 	GiftID      string    `json:"gift_id,omitempty"`
+	Liked       bool      `json:"liked,omitempty"`
+	Event       string    `json:"event,omitempty"`
 	Delta       int       `json:"delta,omitempty"`
+	Call        string    `json:"call,omitempty"`
+	Hurt        float64   `json:"hurt,omitempty"`
+	OutOfLine   bool      `json:"out_of_line,omitempty"`
 }
 
 // Conversation 是一位偶像的一段对话。Current 为真表示当前这段；Ended 为真时 Turn 拒绝再写。
+// OutOfLine 和 NegStreak 是旧版本的计数，只为读旧文件保留，不再使用。
 type Conversation struct {
 	ID        string    `json:"id"`
 	IdolID    string    `json:"idol_id"`
@@ -122,12 +138,18 @@ type Memory struct {
 	At           time.Time `json:"at"`
 }
 
-// Affinity 是一位偶像对用户的好感。Score 由 clampScore 限制在 0 到 100，Tier 由 TierOf 填写。
+// Affinity 是一位偶像对用户的好感。Score 在 0 到 100 之间，带小数，是 At 时的值；读的人用 recovered 补上之后的回暖。
+// InCooldown 为真时她在冷却里，CooldownUntil 是回暖到解冻线的时刻；两者和 Tier 都由 derived 算出。
+// GainedToday 是 GainedOn 那天（用户时区）说话已经加了多少分。
 type Affinity struct {
 	IdolID        string    `json:"idol_id"`
-	Score         int       `json:"score"`
+	Score         float64   `json:"score"`
 	Tier          string    `json:"tier"`
 	CooldownUntil time.Time `json:"cooldown_until,omitempty"`
+	At            time.Time `json:"at,omitempty"`
+	InCooldown    bool      `json:"cooling,omitempty"`
+	GainedToday   float64   `json:"gained_today,omitempty"`
+	GainedOn      string    `json:"gained_on,omitempty"`
 }
 
 // Stock 是背包里一种礼物的数量。
@@ -171,6 +193,7 @@ type ReachMark struct {
 }
 
 // State 是 state.json 的整份偶像桌面。PresetRev 达到 presetRevision 后，Open 不再重灌目录。
+// AffinityRev 低于 affinityRevision 时 Open 把旧的好感换成现在的刻度。
 type State struct {
 	Services      Services       `json:"services"`
 	User          UserCard       `json:"user"`
@@ -190,4 +213,5 @@ type State struct {
 	ResetCards    int            `json:"reset_cards"`
 	Tasks         DayMark        `json:"tasks"`
 	PresetRev     int            `json:"preset_rev,omitempty"`
+	AffinityRev   int            `json:"affinity_rev,omitempty"`
 }

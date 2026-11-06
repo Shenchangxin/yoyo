@@ -64,20 +64,20 @@ export function PlanChip({
             )}
             aria-hidden
           />
-          <span className="shrink-0 text-[13px] font-medium tracking-[-0.01em] text-foreground/90">{copy.transcript.plan}</span>
+          <span className="shrink-0 text-ui-body font-medium tracking-[-0.01em] text-foreground/90">{copy.transcript.plan}</span>
           {!open && focus ? (
-            <span className="min-w-0 flex-1 truncate text-[13px] text-muted" title={focus.step}>
+            <span className="min-w-0 flex-1 truncate text-ui-body text-muted" title={focus.step}>
               {focus.step}
             </span>
           ) : (
             <span className="min-w-0 flex-1" />
           )}
-          <span className="shrink-0 tabular-nums text-[11px] text-muted/80">{progress}</span>
+          <span className="shrink-0 tabular-nums text-ui-caption text-muted/80">{progress}</span>
           {onBuild && !running && done < total ? (
             <span
               role="button"
               tabIndex={0}
-              className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/10"
+              className="shrink-0 rounded-md px-1.5 py-0.5 text-ui-caption font-medium text-accent hover:bg-accent/10"
               data-testid="build-plan"
               onClick={(e) => {
                 e.preventDefault();
@@ -116,7 +116,7 @@ export function PlanChip({
             className="overflow-hidden"
           >
             {plan.explanation && !compact ? (
-              <p className="px-3.5 pb-1 pl-8 text-[12px] leading-[1.4] text-muted">{plan.explanation}</p>
+              <p className="px-3.5 pb-1 pl-8 text-ui-footnote leading-[1.4] text-muted">{plan.explanation}</p>
             ) : null}
             <ol className={cn("min-w-0", compact ? "max-h-28 overflow-y-auto pb-1.5" : "max-h-40 overflow-y-auto pb-2")}>
               {plan.steps.map((step, i) => (
@@ -155,7 +155,7 @@ function PlanStepRow({
       <PlanGlyph status={step.status} live={live} />
       <span
         className={cn(
-          "min-w-0 flex-1 text-[13px] leading-[1.35] tracking-[-0.011em]",
+          "min-w-0 flex-1 text-ui-body leading-[1.35] tracking-[-0.011em]",
           compact && "line-clamp-1",
           !compact && "line-clamp-2",
           step.status === "in_progress" && "font-medium text-foreground",

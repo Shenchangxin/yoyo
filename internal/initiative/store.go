@@ -5,9 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
-// Store 把开口的记忆写在 dir/initiative.json。
+// Store 把开口的记忆写在 dir/initiative.json。一台机器上只该有一份打开的 Store，判断、送达和反馈都经过它的锁。
 type Store struct {
 	mu   sync.Mutex
 	path string
@@ -58,7 +59,7 @@ func (s *Store) Seen() map[string]string {
 	return out
 }
 
-// Assess 用这一轮材料判断，并把更新后的记录写回磁盘。
+// Assess 用这一轮材料判断。新见到的基线和当天的承诺写回磁盘，这一轮不算已经开口。
 func (s *Store) Assess(in Input) Briefing {
 	if s == nil {
 		briefing, _ := Assess(in)
@@ -73,6 +74,17 @@ func (s *Store) Assess(in Input) Briefing {
 	return briefing
 }
 
+// Deliver 记下 signals 里已经送到的话，并写回磁盘。
+func (s *Store) Deliver(signals []Signal, now time.Time) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.book = Deliver(s.book, signals, now)
+	_ = s.flush()
+}
+
 // Feedback 记下反应。wrong 时返回要忘掉的记忆编号。
 func (s *Store) Feedback(className, memoryID, kind, day string) string {
 	if s == nil {
@@ -84,6 +96,16 @@ func (s *Store) Feedback(className, memoryID, kind, day string) string {
 	s.book = book
 	_ = s.flush()
 	return forget
+}
+
+// Quiet 复制 day 这一天仍被按住的类别。
+func (s *Store) Quiet(day string) map[string]Mute {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return Quiet(s.book, day)
 }
 
 // NoteSchedule 记下一条到期的日程。

@@ -88,7 +88,7 @@ export function HighlightedCodeBlockBody({
   const style = maxHeight != null && maxHeight !== Infinity ? { maxHeight } : undefined;
   return (
     <pre className={className} style={style} tabIndex={0}>
-      <code className="code-hl block min-h-full whitespace-pre font-mono text-[12px] leading-[1.55]">
+      <code className="code-hl block min-h-full whitespace-pre font-mono text-ui-footnote leading-[1.55]">
         {tokens
           ? tokens.map((line, i) => (
               <Fragment key={i}>

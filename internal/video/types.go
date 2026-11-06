@@ -22,10 +22,12 @@ func Modes() []Mode {
 }
 
 // Provider 是一条供应商配置，含服务类型、基址、保险库键名和模型。
+// Protocol 是连接登记的请求协议。生图按它分发，同一种协议可以出自不同厂商。
 type Provider struct {
 	ID          string `json:"id"`
 	ServiceType string `json:"service_type"`
 	Provider    string `json:"provider"`
+	Protocol    string `json:"protocol,omitempty"`
 	Name        string `json:"name"`
 	BaseURL     string `json:"base_url"`
 	VaultKey    string `json:"vault_key"`
@@ -52,6 +54,7 @@ type Style struct {
 }
 
 // Job 是一次生成任务，记下供应商、远程标识、结果哈希和所属的剧、集、镜头或资产。
+// PollMisses 是轮询连续碰上一时错误的次数，PollMissAt 是这一串里第一次的时间；轮询一成功就清掉。
 type Job struct {
 	ID           string `json:"id"`
 	Type         string `json:"type"`
@@ -74,6 +77,8 @@ type Job struct {
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 	CompletedAt  string `json:"completed_at"`
+	PollMisses   int    `json:"poll_misses,omitempty"`
+	PollMissAt   string `json:"poll_miss_at,omitempty"`
 }
 
 // Drama 是一部短剧的标题、类型、画幅和集数。
@@ -274,6 +279,8 @@ type JobParams struct {
 
 // EnqueueImage 是入队一张静帧时的提示词、模型、尺寸和引用。
 type EnqueueImage struct {
+	// ID 非空时用作任务编号。调用方先把编号记到镜头上再入队，结果回来时才认得出是不是这一镜等的那个任务。
+	ID              string
 	Prompt          string
 	Model           string
 	ProviderID      string

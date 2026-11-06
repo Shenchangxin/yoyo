@@ -13,9 +13,24 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/film"
 )
 
-// assembleFilm 按词把画面收成一条 mp4，并写成产物 film.mp4。没有 ffmpeg、没有可用的帧，或编码失败，就原样返回工程。垫乐有的话混在人声下面。
+// filmFailNotes 是合成失败时写进备注的开头。再合成成功时清掉这些备注，别的备注（比如还没有词轴）留着。
+var filmFailNotes = []string{"本机还没有 ffmpeg", "没有画出可用的画面帧", "成片没合成出来", "没做出画面", "上次做画面没跑完"}
+
+// clearFilmFailNote 在备注是上一次合成失败的说明时清掉它。
+func clearFilmFailNote(p *film.Project) {
+	for _, prefix := range filmFailNotes {
+		if strings.HasPrefix(p.Note, prefix) {
+			p.Note = ""
+			return
+		}
+	}
+}
+
+// assembleFilm 按词把画面收成一条 mp4，并写成产物 film.mp4。垫乐有的话混在人声下面。
+// 没有 ffmpeg、没有可用的帧，或编码失败时不写 film.mp4，把原因写进备注，界面上看得到为什么只有静帧。
 func (e *Engine) assembleFilm(p film.Project) film.Project {
 	if strings.TrimSpace(e.FFMPEG) == "" {
+		p.Note = "本机还没有 ffmpeg，只画出了画面帧，没有合成成片。到剪辑台装好 ffmpeg 再做一次。"
 		return p
 	}
 	dir, err := os.MkdirTemp(e.Dir, "film-mux-*")
@@ -49,6 +64,7 @@ func (e *Engine) assembleFilm(p film.Project) film.Project {
 		}
 	}
 	if n == 0 {
+		p.Note = "没有画出可用的画面帧，成片没合成。先补上台词或画面需要的连接再做一次。"
 		return p
 	}
 	lines = append(lines, "file '"+escapeConcat(last)+"'")
@@ -76,16 +92,20 @@ func (e *Engine) assembleFilm(p film.Project) film.Project {
 	}
 	out := filepath.Join(dir, "film.mp4")
 	if err := e.muxFilm(list, speech, bed, srt, out); err != nil {
+		p.Note = "成片没合成出来：" + err.Error()
 		return p
 	}
 	raw, err := os.ReadFile(out)
 	if err != nil || len(raw) == 0 {
+		p.Note = "成片没合成出来：ffmpeg 没有写出文件"
 		return p
 	}
 	hash, err := e.PutBytes(raw)
 	if err != nil || hash == "" {
+		p.Note = "成片没合成出来：存不进内容库"
 		return p
 	}
+	clearFilmFailNote(&p)
 	p.Artifacts = append(p.Artifacts, film.Artifact{Name: "film.mp4", Hash: hash, MediaType: "video/mp4"})
 	return p
 }

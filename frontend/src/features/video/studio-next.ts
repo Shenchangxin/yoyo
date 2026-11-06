@@ -2,7 +2,7 @@
  * 本文件拥有短片工作台下一步该去哪一栏的纯判断，以及按钮文案的取词。
  * 不拥有工作台界面。它不请求服务端，也不改服务端状态。
  */
-import { projectShots, shotReady, type StudioGate, type StudioProject } from "./studio-model.ts";
+import { projectShots, visualsReady, type StudioGate, type StudioProject } from "./studio-model.ts";
 
 /** StudioPane 是雷达、选题、制作、发布四栏。 */
 export type StudioPane = "radar" | "topics" | "assemble" | "publish";
@@ -27,7 +27,7 @@ export type StudioNext = {
   gate?: StudioGate;
 };
 
-/** studioNext 按当前短片和所在栏决定下一步。没绑短片时雷达去收集，其他栏去选题开拍。current 没有时按栏返回收集或开拍，有则按阶段、成片、剧本、声音和镜头决定下一步。pane 只在没有短片时区分雷达和其他栏。 */
+/** studioNext 按当前短片和所在栏决定下一步。没绑短片时雷达去收集，其他栏去选题开拍。current 没有时按栏返回收集或开拍，有则按阶段、成片、剧本、声音和镜头决定下一步；镜头要每一镜都有画面且没过期才去合成。pane 只在没有短片时区分雷达和其他栏。 */
 export function studioNext(current: StudioProject | null | undefined, pane: StudioPane): StudioNext {
   if (!current) {
     if (pane === "topics" || pane === "assemble" || pane === "publish") return { key: "produce", pane: "topics" };
@@ -55,7 +55,7 @@ export function studioNext(current: StudioProject | null | undefined, pane: Stud
   if (!current.skip_audio && !current.narration_hash) {
     return { key: "audio", pane: "assemble", gate: "audio" };
   }
-  if (!projectShots(current).some(shotReady)) {
+  if (!visualsReady(projectShots(current))) {
     return { key: "visuals", pane: "assemble", gate: "visuals" };
   }
   return { key: "compose", pane: "assemble", gate: "compose" };

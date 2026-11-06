@@ -161,18 +161,45 @@ func (t *WorkspaceTools) memorySearch(q, kind string) ToolResult {
 // kind 放进写入项的 Kind。
 // text 放进能力检查的命令文本，并作为写入项的 Text。
 // project 放进写入项的 Project。
-func (t *WorkspaceTools) memoryWrite(kind, text, project string) ToolResult {
+// replaces 非空时用这一条换掉那一条的说法。结果里列出相近的旧记忆，留给模型判断是不是改口。
+func (t *WorkspaceTools) memoryWrite(kind, text, project, replaces string) ToolResult {
 	if err := t.check(capability.MemoryWrite, "memory_write", "", text); err != nil {
 		return ToolResult{Err: err}
 	}
 	if t.Memory == nil {
 		return ToolResult{Err: fmt.Errorf("no memory store")}
 	}
-	it := t.Memory.Write(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project, Source: "model"})
-	if it.ID == "" {
+	kept := t.Memory.Keep(memory.Item{Kind: memory.Kind(kind), Text: text, Project: project, Source: "model", Origin: t.memoryOrigin()}, replaces)
+	it := kept.Item
+	var out string
+	switch kept.Action {
+	case "refused":
 		return ToolResult{Content: "not kept"}
+	case "same":
+		out = fmt.Sprintf("already kept as %s (kind=%s).", it.ID, it.Kind)
+	case "merged", "replaced":
+		out = fmt.Sprintf("updated memory %s (kind=%s): %q -> %q.", it.ID, it.Kind, kept.Before, it.Text)
+	default:
+		out = fmt.Sprintf("kept memory %s (kind=%s).", it.ID, it.Kind)
 	}
-	return ToolResult{Content: fmt.Sprintf("kept memory %s (kind=%s).", it.ID, it.Kind)}
+	if it.ValidUntil != "" {
+		out += " It describes a plan that ends on " + it.ValidUntil + "; after that it is treated as past."
+	}
+	if len(kept.Related) > 0 {
+		out += "\nSimilar memories already kept. If the new one changes one of them, call memory_write again with replaces set to that id, or memory_forget it:"
+		for _, old := range kept.Related {
+			out += "\n" + old.ID + " " + old.Text
+		}
+	}
+	return ToolResult{Content: out}
+}
+
+// memoryOrigin 是写进记忆的出处：这条会话。没有会话时为空。
+func (t *WorkspaceTools) memoryOrigin() string {
+	if t.SessionID == "" {
+		return ""
+	}
+	return "session:" + t.SessionID
 }
 
 // memoryForget 以 MemoryWrite、动作 memory_forget 审批。未知 ID 返回错误。

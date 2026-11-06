@@ -5,7 +5,11 @@ package video
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -93,8 +97,12 @@ func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
 		return Job{}, err
 	}
 	now := Now()
+	id := strings.TrimSpace(in.ID)
+	if id == "" {
+		id = NewID()
+	}
 	j := Job{
-		ID: NewID(), Type: "image", Status: "queued",
+		ID: id, Type: "image", Status: "queued",
 		Provider: p.Provider, Model: ResolveProviderModel(p, in.Model), VaultKey: p.VaultKey,
 		Prompt: in.Prompt, Params: marshalJSON(JobParams{
 			Size: first(in.Size, "1920x1080"), AspectRatio: in.AspectRatio, ReferenceImages: in.Refs,
@@ -246,8 +254,9 @@ func (e *Engine) pump(ctx context.Context) {
 		return
 	}
 	var pending []Job
+	now := time.Now()
 	for _, j := range loadCol[Job](e, colJobs) {
-		if j.Status == "queued" || j.Status == "polling" {
+		if j.Status == "queued" || (j.Status == "polling" && !pollResting(j, now)) {
 			pending = append(pending, j)
 		}
 	}
@@ -360,6 +369,10 @@ func (e *Engine) runPoll(ctx context.Context, j Job) error {
 	if e.abandoned(j.ID) {
 		return nil
 	}
+	if err != nil && transientPollErr(err) && j.keepPolling(time.Now()) {
+		j.Status = "polling"
+		return e.saveJob(j)
+	}
 	if err != nil {
 		j.Status = "failed"
 		j.Error = err.Error()
@@ -370,7 +383,52 @@ func (e *Engine) runPoll(ctx context.Context, j Job) error {
 		e.markStudioJobFailed(j)
 		return err
 	}
+	j.PollMisses, j.PollMissAt = 0, ""
 	return e.saveJob(j)
+}
+
+// pollGrace 是轮询连续碰上一时错误时还接着等的时长。供应商偶尔限流或网络抖一下，任务不该就此判死。
+const pollGrace = 2 * time.Minute
+
+// transientPollErr 判断轮询错误是不是一时的：连不上、超时、读到一半断开、限流 429 或服务端 5xx。
+// err 先按 httpStatusError 看状态码，再看是不是网络错误。
+func transientPollErr(err error) bool {
+	var he *httpStatusError
+	if errors.As(err, &he) {
+		return he.Code == http.StatusTooManyRequests || he.Code >= 500
+	}
+	var ne net.Error
+	return errors.As(err, &ne) || errors.Is(err, io.ErrUnexpectedEOF)
+}
+
+// keepPolling 记下一次一时的轮询错误。从这一串里第一次出错算起还没过 pollGrace 时返回真，任务接着轮询。
+// now 是这次出错的时间；PollMissAt 读不出时从 now 起算。
+func (j *Job) keepPolling(now time.Time) bool {
+	first, err := time.Parse(time.RFC3339, j.PollMissAt)
+	if err != nil {
+		first = now
+		j.PollMissAt = now.UTC().Format(time.RFC3339)
+	}
+	j.PollMisses++
+	return now.Sub(first) < pollGrace
+}
+
+// pollResting 判断任务刚轮询出错、还在退避，这一轮先不领。退避从 1 秒起每次翻倍，最多 20 秒。
+// j 的 PollMisses 为 0 或 UpdatedAt 读不出时不退避。
+// now 和 UpdatedAt 比较。
+func pollResting(j Job, now time.Time) bool {
+	if j.PollMisses <= 0 {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339, j.UpdatedAt)
+	if err != nil {
+		return false
+	}
+	wait := 20 * time.Second
+	if j.PollMisses <= 5 {
+		wait = time.Second << (j.PollMisses - 1)
+	}
+	return now.Sub(at) < wait
 }
 
 // finishMedia 把字节写入 CAS。视频能抽出封面时写入 PosterHash，图像则尝试缩略图。带画布工程或类型为 canvas 时再交给 finishCanvasMedia。成功后状态为 succeeded，并 writeBack。

@@ -90,7 +90,7 @@ export function WorkspacePicker(props: {
           <Folder size={16} strokeWidth={1} className="shrink-0 opacity-80" />
           <span className="min-w-0 flex-1 truncate text-left">
             <span className="block truncate">{workspaceLabel(path)}</span>
-            <span className="block truncate text-[11px] font-normal text-muted">{path}</span>
+            <span className="block truncate text-ui-caption font-normal text-muted">{path}</span>
           </span>
           {path === props.selected ? <Check size={14} strokeWidth={1} className="shrink-0" /> : null}
         </button>

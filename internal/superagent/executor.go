@@ -122,12 +122,15 @@ type Executor struct {
 	// LogLoad 读出这张工单上次的会话日志。没有时返回 nil。
 	LogLoad func(ticketID string) []byte
 	// LogSave 记下这张工单的会话日志。重启后续到同一个代理上。
-	LogSave    func(ticketID string, body []byte)
+	LogSave func(ticketID string, body []byte)
+	// Profile 返回操作者已经留下的偏好和说过的话。空串表示没有。它进工人的系统提示，只读。
+	Profile    func() string
 	Foreground time.Duration
 
 	mu     sync.Mutex
 	agents map[string]*dsh.Agent
 	live   map[string]bool
+	held   map[string]bool
 	bgMu   sync.Mutex
 	bg     map[string]int
 	bgNote map[string]chan struct{}
@@ -160,6 +163,41 @@ func (e *Executor) Interrupt(ticketID string) {
 		return
 	}
 	agent.Cancel(dsh.CancelCause{Kind: "steer", Reason: "interrupted"}, true)
+}
+
+// pausedSummary 是人让工人先停下之后，这张工单最后的那一句。
+const pausedSummary = "人让它先停下，在等下一条消息"
+
+// Pause 停下 ticketID 正在跑的这一轮，工单留着。这一轮不再催工人做下去，记成在等下一条消息。
+// 还没送进去的话留在收件箱里，下一轮一起读。没有在跑时返回假。
+func (e *Executor) Pause(ticketID string) bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	agent := e.agents[ticketID]
+	running := agent != nil && e.live[ticketID]
+	if running {
+		if e.held == nil {
+			e.held = map[string]bool{}
+		}
+		e.held[ticketID] = true
+	}
+	e.mu.Unlock()
+	if !running {
+		return false
+	}
+	agent.Cancel(dsh.CancelCause{Kind: "steer", Reason: "paused"}, true)
+	return true
+}
+
+// takeHeld 在人让 ticketID 先停下时为真，并清掉这个记号。
+func (e *Executor) takeHeld(ticketID string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	held := e.held[ticketID]
+	delete(e.held, ticketID)
+	return held
 }
 
 // Launch 启动 ticketID 上待运行的派工。没有空槽时返回 ErrBusy。派工不是 pending 时释放刚占的槽并返回 not_pending。
@@ -230,14 +268,21 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	e.mu.Lock()
 	e.agents[ticketID] = agent
 	e.live[ticketID] = true
+	delete(e.held, ticketID)
 	e.mu.Unlock()
 	restored := e.restoreAgent(agent, ticketID)
 	resumed := e.Engine.TakeResume(ticketID) && restored
-	e.ackSnapshot(ticketID, ticket)
 	if resumed {
+		// 日志里已经有的输入不再重发。重启前还没送到的话跟在「继续」后面，送到了才标成已投递。
+		texts, ids := e.Engine.PendingInputs(ticketID)
 		agent.Followup(dsh.UserMessage{Text: "继续。", Source: "retry"})
+		for _, text := range texts {
+			agent.Followup(dsh.UserMessage{Text: text, Source: "human"})
+		}
+		e.Engine.AckInputs(ticketID, ids)
 	} else {
-		agent.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir), Source: "assignment"})
+		e.ackSnapshot(ticketID, ticket)
+		agent.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir, e.mandateLine(ticket)), Source: "assignment"})
 	}
 	stopSave := make(chan struct{})
 	defer close(stopSave)
@@ -260,6 +305,10 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 			continue
 		}
 		if e.busyLeft(ticketID, jobs) == 0 {
+			if e.takeHeld(ticketID) {
+				e.park(ticketID, pausedSummary)
+				return
+			}
 			if nudges < maxWorkerNudges && e.openWork(ticketID) {
 				nudges++
 				agent.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
@@ -324,6 +373,11 @@ func (e *Executor) openWork(ticketID string) bool {
 
 // settle 在一轮做完且没有后台命令时，补一条 waiting。上一份完成报告之后又有新输入时，也要记下这一轮已经停下。
 func (e *Executor) settle(ticketID string) {
+	e.park(ticketID, "这一轮做完了，在等下一条消息")
+}
+
+// park 用 summary 补一条 waiting，把这一轮记成停下。工单已经结束，或上一份停下的报告之后没有新输入时不补。
+func (e *Executor) park(ticketID, summary string) {
 	ticket, ok := e.Engine.Ticket(ticketID)
 	if !ok || ticket.Ended != nil || len(ticket.Assignments) == 0 {
 		return
@@ -338,7 +392,7 @@ func (e *Executor) settle(ticketID string) {
 			}
 		}
 	}
-	_ = e.Engine.Report(ticketID, Report{State: "waiting", Summary: "这一轮做完了，在等下一条消息"})
+	_ = e.Engine.Report(ticketID, Report{State: "waiting", Summary: summary})
 }
 
 // beginBackground 记 ticketID 上一个还没结束的后台命令。
@@ -471,6 +525,7 @@ func (e *Executor) HasAgent(ticketID string) bool {
 }
 
 // DeliverPending 把还没投递的输入送进 ticketID 的代理。代理还没创建时返回 ErrLater。
+// 只把真正送进去的标成已投递。槽满送不进去时返回 ErrBusy，剩下的留给下一次投递。
 func (e *Executor) DeliverPending(ticketID string) error {
 	if e == nil || e.Engine == nil {
 		return nil
@@ -482,41 +537,47 @@ func (e *Executor) DeliverPending(ticketID string) error {
 	if !e.HasAgent(ticketID) {
 		return ErrLater
 	}
-	for _, text := range texts {
-		e.Deliver(ticketID, text)
+	for i, text := range texts {
+		if !e.Deliver(ticketID, text) {
+			e.Engine.AckInputs(ticketID, ids[:i])
+			return ErrBusy
+		}
 	}
 	e.Engine.AckInputs(ticketID, ids)
 	return nil
 }
 
 // Deliver 把 text 交给 ticketID 的代理，作为人的下一步消息。代理还在跑时直接送入。
-// 这一轮已经结束时，用人的额外槽再开一轮。代理还没启动时什么都不做。
-func (e *Executor) Deliver(ticketID, text string) {
+// 这一轮已经结束时，先占人的额外槽，再开一轮。代理还没启动、正文为空或槽满时返回假，这句没有送出。
+func (e *Executor) Deliver(ticketID, text string) bool {
 	e.mu.Lock()
 	agent := e.agents[ticketID]
 	running := e.live[ticketID]
 	e.mu.Unlock()
 	if agent == nil || text == "" {
-		return
+		return false
 	}
 	if running {
 		agent.Steer(dsh.UserMessage{Text: text, Source: "human"})
-		return
+		return true
+	}
+	fresh, err := e.Slots.Reserve(ticketID, "person")
+	if err != nil {
+		return false
+	}
+	if !fresh {
+		agent.Steer(dsh.UserMessage{Text: text, Source: "human"})
+		return true
 	}
 	go e.wake(ticketID, agent, text)
+	return true
 }
 
-// wake 用人的额外槽把 text 送进已经停过一轮的代理。槽满时这次不启动。
+// wake 在已经占好的人的额外槽里，把 text 送进停过一轮的代理，跑到这一轮停下。
 func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
-	fresh, err := e.Slots.Reserve(ticketID, "person")
-	if err != nil || !fresh {
-		if err == nil && agent != nil {
-			agent.Steer(dsh.UserMessage{Text: text, Source: "human"})
-		}
-		return
-	}
 	e.mu.Lock()
 	e.live[ticketID] = true
+	delete(e.held, ticketID)
 	e.mu.Unlock()
 	e.Slots.Running(ticketID)
 	stopSave := make(chan struct{})
@@ -537,6 +598,10 @@ func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
 			return
 		} else if again {
 			continue
+		}
+		if e.takeHeld(ticketID) {
+			e.park(ticketID, pausedSummary)
+			return
 		}
 		if nudges < maxWorkerNudges && e.openWork(ticketID) {
 			nudges++
@@ -662,12 +727,16 @@ func (e *Executor) ticketDir(ticketID string) (string, error) {
 	return dir, nil
 }
 
-// assignmentText 把 ticket 的编号、目录和输入拼成派工正文。dir 为空时不写目录。
-func assignmentText(ticket Ticket, dir string) string {
+// assignmentText 把 ticket 的编号、目录、授权说明和输入拼成派工正文。dir 为空时不写目录，mandate 为空时不写授权。
+func assignmentText(ticket Ticket, dir, mandate string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "工单 %s\n", ticket.ID)
 	if dir != "" {
 		fmt.Fprintf(&b, "工作目录 %s\n", dir)
+	}
+	if mandate = strings.TrimSpace(mandate); mandate != "" {
+		b.WriteString(mandate)
+		b.WriteByte('\n')
 	}
 	for _, in := range ticket.Inputs {
 		if in.Text == "" || strings.TrimSpace(in.Text) == hostRestartNote {
@@ -679,3 +748,18 @@ func assignmentText(ticket Ticket, dir string) string {
 	b.WriteString("完成后调用 orchestrator_report。")
 	return b.String()
 }
+
+// mandateLine 写明推断接下的工单依据哪几条规则。人明确交代的工单不写。超出这些规则就报 dropped，不去问人。
+func (e *Executor) mandateLine(ticket Ticket) string {
+	if e == nil || e.Engine == nil || ticket.Mandate.Strength != "inferred" {
+		return ""
+	}
+	texts := e.Engine.RuleTexts(ticket.Mandate.Rules)
+	if len(texts) == 0 {
+		return ""
+	}
+	return mandatePrefix + strings.Join(texts, "；") + "。做的事超出这些规则时，用 orchestrator_report 报 dropped，不要问人。"
+}
+
+// mandatePrefix 是派工正文里授权那一行的开头。任务页按它把这一行从对话里拿掉。
+const mandatePrefix = "这张工单是按规则主动接下的："

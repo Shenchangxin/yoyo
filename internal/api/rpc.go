@@ -1249,6 +1249,13 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.MemoryForget(p.ID), nil
+	case "memory.edit":
+		var p struct {
+			ID   string `json:"id"`
+			Text string `json:"text"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryEdit(p.ID, p.Text), nil
 	case "memory.write":
 		var p struct {
 			Kind    string `json:"kind"`
@@ -1698,6 +1705,24 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, fmt.Errorf("app is not running")
 		}
 		return map[string]any{"ok": a.DeskPush(note)}, nil
+	case "desk.state":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.DeskState(), nil
+	case "desk.feedback":
+		var fb struct {
+			ClassName string `json:"className"`
+			Kind      string `json:"kind"`
+			MemoryID  string `json:"memoryId"`
+		}
+		if err := json.Unmarshal(params, &fb); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": a.DeskFeedback(fb.ClassName, fb.Kind, fb.MemoryID)}, nil
 	case "brief.list":
 		if a == nil {
 			return nil, fmt.Errorf("app is not running")

@@ -241,7 +241,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
           {rows.map((p) => {
             const open = draft?.id === p.id;
             return (
-              <div key={p.id} className={cn("-mx-1 rounded-[10px] px-1", open && "bg-lift/55")}>
+              <div key={p.id} className={cn("-mx-1 rounded-lg px-1", open && "bg-lift/55")}>
                 <div className="flex items-center gap-3 py-2">
                   <button
                     type="button"
@@ -255,14 +255,14 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                     <ProviderMark id={p.vendor} className="size-8" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
-                        <span className="truncate text-[13px] font-medium leading-[1.4] text-foreground">{p.name || p.vendor}</span>
+                        <span className="truncate text-ui-body font-medium leading-[1.4] text-foreground">{p.name || p.vendor}</span>
                         {p.isDefault ? (
-                          <span className="shrink-0 rounded-full bg-background px-1.5 py-px text-[10px] font-medium text-muted">
+                          <span className="shrink-0 rounded-full bg-background px-1.5 py-px text-ui-badge font-medium text-muted">
                             {copy.settings.defaultBadge}
                           </span>
                         ) : null}
                       </span>
-                      <span className="mt-0.5 block truncate text-[12px] leading-[1.4] text-muted">
+                      <span className="mt-0.5 block truncate text-ui-footnote leading-[1.4] text-muted">
                         {[p.model, hostOf(p.endpoint)].filter(Boolean).join(" · ") || hostOf(p.endpoint) || "—"}
                       </span>
                     </span>
@@ -273,14 +273,14 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                   </button>
                   <div className="flex shrink-0 items-center gap-1">
                     {p.hasKey ? null : (
-                      <span className="rounded-full bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger">
+                      <span className="rounded-full bg-danger/10 px-2 py-0.5 text-ui-caption font-medium text-danger">
                         {copy.settings.noKey}
                       </span>
                     )}
                     {p.isDefault ? null : (
                       <button
                         type="button"
-                        className="rounded-full px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-background hover:text-foreground"
+                        className="rounded-full px-2 py-0.5 text-ui-caption font-medium text-muted hover:bg-background hover:text-foreground"
                         onClick={() => void setDefault(p)}
                       >
                         {copy.settings.setDefault}
@@ -312,8 +312,8 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                   >
                     <ProviderMark id={p.id} className="size-8" />
                     <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-medium text-foreground">{p.label}</span>
-                      <span className="block truncate text-[11px] text-muted">{p.id === "custom" ? copy.settings.customProvider : p.model || hostOf(p.baseUrl)}</span>
+                      <span className="block truncate text-ui-body font-medium text-foreground">{p.label}</span>
+                      <span className="block truncate text-ui-caption text-muted">{p.id === "custom" ? copy.settings.customProvider : p.model || hostOf(p.baseUrl)}</span>
                     </span>
                   </button>
                 ))}
@@ -443,7 +443,7 @@ function ProviderEditor({
       id="provider-edit"
       title={draft.id ? (draft.name || selected?.name || copy.settings.sections.providerAccount) : copy.settings.editorNew}
     >
-      {hint ? <p className="-mt-1 text-[12px] leading-[1.5] text-muted">{hint}</p> : null}
+      {hint ? <p className="-mt-1 text-ui-footnote leading-[1.5] text-muted">{hint}</p> : null}
 
       <Field label={copy.settings.providerName}>
         <Input className={CONTROL_LG} value={draft.name} onChange={(e) => patch({ name: e.target.value })} />
@@ -473,8 +473,8 @@ function ProviderEditor({
 
       <div className="flex flex-col gap-[var(--space-item)]">
         <div>
-          <div className="text-[13px] font-medium leading-[1.4] text-foreground">{copy.settings.modelsCsv}</div>
-          <p className="mt-1 text-[12px] leading-[1.45] text-muted">{copy.settings.composerModelsHint}</p>
+          <div className="text-ui-body font-medium leading-[1.4] text-foreground">{copy.settings.modelsCsv}</div>
+          <p className="mt-1 text-ui-footnote leading-[1.45] text-muted">{copy.settings.composerModelsHint}</p>
         </div>
         <ModelTokens
           models={draft.models}
@@ -539,7 +539,7 @@ function ModelTokens({
             key={id}
             role="listitem"
             className={cn(
-              "inline-flex max-w-full items-center gap-0.5 rounded-full pl-2.5 pr-1 text-[12px] font-mono",
+              "inline-flex max-w-full items-center gap-0.5 rounded-full pl-2.5 pr-1 text-ui-footnote font-mono",
               on ? "bg-foreground text-background" : "bg-lift text-foreground",
             )}
           >
@@ -642,7 +642,7 @@ function CatalogBrowse({
     <div>
       <button
         type="button"
-        className="flex w-full items-center justify-between rounded-lg py-1 text-left text-[12px] font-medium text-muted hover:text-foreground"
+        className="flex w-full items-center justify-between rounded-lg py-1 text-left text-ui-footnote font-medium text-muted hover:text-foreground"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -684,10 +684,10 @@ function CatalogBrowse({
                       onClick={() => onPick(m.id)}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-[13px] text-foreground">{m.name || m.id}</span>
-                        <span className="block truncate font-mono text-[11px] text-muted">{m.id}</span>
+                        <span className="block truncate text-ui-body text-foreground">{m.name || m.id}</span>
+                        <span className="block truncate font-mono text-ui-caption text-muted">{m.id}</span>
                       </span>
-                      <span className="flex shrink-0 items-center gap-2 text-[11px] tabular-nums text-muted">
+                      <span className="flex shrink-0 items-center gap-2 text-ui-caption tabular-nums text-muted">
                         {formatTokens(m.contextWindow)}
                         {on || inList ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
                       </span>
@@ -697,7 +697,7 @@ function CatalogBrowse({
               })}
             </ul>
           ) : (
-            <p className="px-1 text-[12px] text-muted">{error || "—"}</p>
+            <p className="px-1 text-ui-footnote text-muted">{error || "—"}</p>
           )}
         </div>
       ) : null}
@@ -708,10 +708,10 @@ function CatalogBrowse({
 /** 画一带说明的字段。label 用作标签，作为子节点渲染。hint 为真时才继续，作为子节点渲染。children 作为子节点渲染。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label className="flex w-full flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+    <label className="flex w-full flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
       <span>
         {label}
-        {hint ? <span className="mt-0.5 block text-[12px] font-normal leading-[1.45] text-muted">{hint}</span> : null}
+        {hint ? <span className="mt-0.5 block text-ui-footnote font-normal leading-[1.45] text-muted">{hint}</span> : null}
       </span>
       {children}
     </label>

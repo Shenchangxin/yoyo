@@ -81,7 +81,7 @@ func (e *Engine) doRaw(req *http.Request, limit int64) (int, string, []byte, err
 	return res.StatusCode, res.Header.Get("Content-Type"), raw, nil
 }
 
-// doJSON 读取至多 32 MiB。正文以 { 开头时按对象解析。状态码大于等于 400 时依次取 error 字符串、error.message、message，都没有再用状态文本。成功且没有对象时返回空 map。
+// doJSON 读取至多 32 MiB。正文以 { 开头时按对象解析。状态码大于等于 400 时依次取 error 字符串、error.message、message，都没有再用状态文本，包成带状态码的 httpStatusError。成功且没有对象时返回空 map。
 // req 交给 HTTP 客户端发送。
 func (e *Engine) doJSON(req *http.Request) (map[string]any, int, []byte, error) {
 	client := e.HTTP
@@ -117,13 +117,22 @@ func (e *Engine) doJSON(req *http.Request) (map[string]any, int, []byte, error) 
 		if msg == "" {
 			msg = res.Status
 		}
-		return m, res.StatusCode, raw, fmt.Errorf("%s", msg)
+		return m, res.StatusCode, raw, &httpStatusError{Code: res.StatusCode, Msg: msg}
 	}
 	if m == nil {
 		m = map[string]any{}
 	}
 	return m, res.StatusCode, raw, nil
 }
+
+// httpStatusError 是供应商回了 4xx 或 5xx。文本只是供应商给的错误，状态码留给调用方判断能不能重试。
+type httpStatusError struct {
+	Code int
+	Msg  string
+}
+
+// Error 返回供应商给的错误文本。
+func (e *httpStatusError) Error() string { return e.Msg }
 
 // jsonReq 把 body 编成 JSON。body 为 nil 时没有正文。Content-Type 是 application/json。key 非空时写上 Authorization Bearer。
 // method 传给 NewRequest。

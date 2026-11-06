@@ -1,11 +1,15 @@
-// 本文件拥有小写 yoyo 字标和空状态用的静置印记。不拥有旁边的导航或标题。左上角传 live，焦点在两个 yo 之间移动。ThreadRail、BootSkeleton、SkillsWorkspace 用 YoyoMark；About 和 Transcript 用 MarkWell。
+// 本文件拥有小写 yoyo 字标和空状态用的静置印记。不拥有旁边的导航或标题。左上角传 live：启动时焦点在两个 yo 之间走一圈，悬停时再走一圈，其余时间静止。ThreadRail、BootSkeleton、SkillsWorkspace 用 YoyoMark；About 和 Transcript 用 MarkWell。
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import TrueFocus from "./TrueFocus";
 
 const MARK_SCALE_X = 1.72;
 const MARK_SCALE_Y = 1.08;
+const FOCUS_STEP_S = 0.48;
+const FOCUS_PAUSE_S = 1.15;
+// 两步回到第一个 yo，再多留一点让框落定。
+const FOCUS_ROUND_MS = Math.round(2 * (FOCUS_STEP_S + FOCUS_PAUSE_S) * 1000) + 160;
 
 type MarkProps = {
   className?: string;
@@ -22,7 +26,7 @@ export function YoyoMark({ className, compact, live }: MarkProps) {
     <span
       className={cn(
         "yoyo-mark inline-flex shrink-0 items-center font-semibold tracking-[-0.04em] text-foreground",
-        compact ? "text-[15px] leading-none" : "text-[17px] leading-none",
+        compact ? "text-ui-title-s leading-none" : "text-ui-title leading-none",
         className,
       )}
     >
@@ -35,6 +39,18 @@ export function YoyoMark({ className, compact, live }: MarkProps) {
 function LiveMark({ className }: { className?: string }) {
   const innerRef = useRef<HTMLSpanElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
+  const [rest, setRest] = useState(false);
+  const roundTimer = useRef(0);
+  const playRound = useCallback(() => {
+    setRest(false);
+    window.clearTimeout(roundTimer.current);
+    roundTimer.current = window.setTimeout(() => setRest(true), FOCUS_ROUND_MS);
+  }, []);
+
+  useEffect(() => {
+    playRound();
+    return () => window.clearTimeout(roundTimer.current);
+  }, [playRound]);
 
   useLayoutEffect(() => {
     const el = innerRef.current;
@@ -51,6 +67,7 @@ function LiveMark({ className }: { className?: string }) {
       className={cn("yoyo-mark yoyo-mark-live shrink-0 text-foreground", className)}
       role="img"
       aria-label="yoyo"
+      onMouseEnter={() => { if (rest) playRound(); }}
       style={box.w > 0 ? { width: Math.ceil(box.w * MARK_SCALE_X), height: Math.ceil(box.h * MARK_SCALE_Y) } : undefined}
     >
       <span
@@ -72,8 +89,9 @@ function LiveMark({ className }: { className?: string }) {
           cornerSize={5}
           borderWidth={1.25}
           frameGap={3}
-          animationDuration={0.48}
-          pauseBetweenAnimations={1.15}
+          animationDuration={FOCUS_STEP_S}
+          pauseBetweenAnimations={FOCUS_PAUSE_S}
+          rest={rest}
         />
       </span>
     </span>

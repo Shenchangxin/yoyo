@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -746,24 +747,25 @@ func (s *Service) RevealJournal() error {
 	return RevealPath(path)
 }
 
-// NotifyAllowed 在通知总开关关闭时返回假。NotifyWhenUnfocusedOnly 为真且主窗口正聚焦时也返回假。
+// NotifyAllowed 在通知总开关关闭时返回假。主窗口正聚焦时也返回假：人已经在应用里，徽标和今天栏会接住。
+// 旧配置里的 NotifyWhenUnfocusedOnly 不再起作用，留着只为读得懂旧文件。
 func (s *Service) NotifyAllowed() bool {
 	cfg := s.GetConfig()
 	if !cfg.NotificationsEnabled {
 		return false
 	}
-	if cfg.NotifyWhenUnfocusedOnly && s.win != nil && s.win.IsFocused() {
+	if s.win != nil && s.win.IsFocused() {
 		return false
 	}
 	return true
 }
 
-// toastAllowed 先看 NotifyAllowed。kind 为 done 且主窗口正聚焦时返回假，因为人已经在应用里，铃铛还留着记录。审批和错误不受这条聚焦限制。
+// toastAllowed 先看 NotifyAllowed，再看主动与通知里的安静时段和周末。
 func (s *Service) toastAllowed(kind string) bool {
 	if !s.NotifyAllowed() {
 		return false
 	}
-	return !(kind == "done" && s.win != nil && s.win.IsFocused())
+	return !s.GetConfig().Desk.HoldToast(kind, time.Now())
 }
 
 // PickFolder 打开只能选目录的对话框，标题用当前语言的选择工作区。有主窗口时附在窗口上。没有 gui 时返回 native dialog unavailable。

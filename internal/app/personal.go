@@ -323,15 +323,19 @@ func (a *App) ProjectCreate(p project.Project) project.Project {
 	return a.Projects.Create(p)
 }
 
-// MemoryList 按查询和种类搜索记忆，最多 50 条。记忆库为空时返回 nil。
+// MemoryList 按查询和种类搜索记忆，最多 memoryListMax 条。记忆库为空时返回 nil。
+// 画像和夹都从这一份里算，条数不能小到让工单经历把本人说过的话挤出去。
 // q 传给 Memory.Search。
 // kind 转成 memory.Kind 后传给 Memory.Search。
 func (a *App) MemoryList(q, kind string) []memory.Item {
 	if a.Memory == nil {
 		return nil
 	}
-	return a.Memory.Search(q, memory.Kind(kind), 50)
+	return a.Memory.Search(q, memory.Kind(kind), memoryListMax)
 }
+
+// memoryListMax 是记忆页一次读回的上限。
+const memoryListMax = 500
 
 // MemoryPromote 把 id 交给 Memory.Promote。记忆库为空返回 false。晋升条件由记忆库决定。
 func (a *App) MemoryPromote(id string) bool {

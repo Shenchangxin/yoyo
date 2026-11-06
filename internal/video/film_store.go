@@ -489,6 +489,67 @@ func (e *Engine) RewriteFilmLine(id, lineID, text string) (film.Project, error) 
 	return e.saveFilm(film.ReplaceLine(p, lineID, text))
 }
 
+// StartFilmBuild 在后台构建片子，立即返回标了正在构建的工程；同一部已经在构建时直接返回它。
+// 做完清掉标记、推一条 film_state；构建出错时把原因写进备注，界面上看得到为什么没出片。
+func (e *Engine) StartFilmBuild(id string) (film.Project, error) {
+	id = strings.TrimSpace(id)
+	if _, loaded := e.filmBuilds.LoadOrStore(id, true); loaded {
+		return e.GetFilm(id)
+	}
+	p, err := e.GetFilm(id)
+	if err != nil {
+		e.filmBuilds.Delete(id)
+		return film.Project{}, err
+	}
+	p.Building = Now()
+	if p, err = e.saveFilm(p); err != nil {
+		e.filmBuilds.Delete(id)
+		return film.Project{}, err
+	}
+	e.emitFilm(p)
+	go func() {
+		defer e.filmBuilds.Delete(id)
+		var buildErr error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					buildErr = fmt.Errorf("意外中断：%v", r)
+				}
+			}()
+			_, buildErr = e.BuildFilm(id)
+		}()
+		cur, err := e.GetFilm(id)
+		if err != nil {
+			return
+		}
+		cur.Building = ""
+		if buildErr != nil {
+			cur.Note = "没做出画面：" + buildErr.Error()
+		}
+		if saved, err := e.saveFilm(cur); err == nil {
+			e.emitFilm(saved)
+		}
+	}()
+	return p, nil
+}
+
+// recoverFilmBuilds 在打开时清掉上次没跑完的构建标记，并在备注里说明，免得界面一直显示正在做。
+func (e *Engine) recoverFilmBuilds() {
+	for _, p := range e.ListFilms() {
+		if p.Building == "" {
+			continue
+		}
+		p.Building = ""
+		p.Note = "上次做画面没跑完应用就关了。再点一次「做出画面」。"
+		_, _ = e.saveFilm(p)
+	}
+}
+
+// emitFilm 推一条 film_state，带上编号、是否在构建和备注，成片台据此刷新。
+func (e *Engine) emitFilm(p film.Project) {
+	e.hub("film_state", map[string]any{"id": p.ID, "building": p.Building != "", "note": p.Note})
+}
+
 // BuildFilm 按计划构建。代码画面在本机画出，图、语音、抠像和配乐交给已启用的连接。
 // 本机有浏览器时再存一张页面截图。然后尝试合成成片。生成的配乐如果还没写上垫乐，会把音乐产物当成垫乐。
 // id 传给 GetFilm。
@@ -585,11 +646,11 @@ func (e *Engine) dispatchFilmNeed(n film.Need) (string, error) {
 	case "video":
 		err = e.submitVideo(ctx, j)
 	case "speech":
-		raw, _, _, err2 := e.speakAudio(n.Prompt, "alloy", 1)
+		spoken, err2 := e.speakAudio(n.Prompt, "", 1)
 		if err2 != nil {
 			return "", err2
 		}
-		return e.PutBytes(raw)
+		return e.PutBytes(spoken.Audio)
 	default:
 		return "", fmt.Errorf("unknown need %s", n.Kind)
 	}

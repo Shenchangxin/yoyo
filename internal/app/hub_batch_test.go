@@ -15,6 +15,30 @@ func publishN(h *Hub, sid string, n int) {
 	}
 }
 
+// TestKeepHubEventKeepsVideoRouting 确认背压下视频路由和剪辑状态仍会送到界面，其他视频系统事件照旧可丢，路由通知能内联。
+func TestKeepHubEventKeepsVideoRouting(t *testing.T) {
+	for _, kind := range []string{"video_route", "cut_state", "studio_state", "canvas_patch"} {
+		if !KeepHubEvent(trace.Event{Type: trace.TypeSystem, Source: "video", ItemKind: kind}) {
+			t.Fatalf("%s dropped under backpressure", kind)
+		}
+	}
+	n0 := NoticeOf(trace.Event{Seq: 6, Type: trace.TypeSystem, Source: "video", ItemKind: "studio_state", Payload: map[string]any{
+		"id": "0123456789abcdef", "task": "speak", "status": "draft", "auto_phase": "", "result_hash": "", "narration_hash": "", "revision": 12,
+	}})
+	if n0.Event == nil || n0.Event.Payload["task"] != "speak" {
+		t.Fatalf("studio notice must inline its payload: %+v", n0)
+	}
+	if KeepHubEvent(trace.Event{Type: trace.TypeSystem, Source: "video", ItemKind: "video_job"}) {
+		t.Fatal("job progress should stay droppable")
+	}
+	n := NoticeOf(trace.Event{Seq: 7, Type: trace.TypeSystem, Source: "video", ItemKind: "video_route", Payload: map[string]any{
+		"dest": "studio", "pane": "studio", "id": "0123456789abcdef", "title": "通勤穿搭", "session_id": "sess-0123456789",
+	}})
+	if n.Event == nil || n.Event.ItemKind != "video_route" || n.Event.Payload["pane"] != "studio" {
+		t.Fatalf("route notice must inline its payload: %+v", n)
+	}
+}
+
 // TestBatchReturnsContiguousTailWithoutGap 确认游标还在环内时按会话返回后续事件，且不标空洞。
 func TestBatchReturnsContiguousTailWithoutGap(t *testing.T) {
 	h := NewHub()

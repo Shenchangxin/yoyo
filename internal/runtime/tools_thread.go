@@ -218,5 +218,5 @@ func consolidateMemory(req RunRequest, notes SessionNotes) {
 			return
 		}
 	}
-	req.Tools.Memory.Write(memory.Item{Kind: memory.KindEpisodic, Text: text})
+	req.Tools.Memory.Write(memory.Item{Kind: memory.KindEpisodic, Text: text, Origin: req.Tools.memoryOrigin()})
 }

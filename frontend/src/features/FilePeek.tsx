@@ -50,7 +50,7 @@ export function FilePeek(props: {
   return (
     <div className="glass-chrome flex h-full min-h-0 flex-col overflow-hidden" data-testid="review-file-preview">
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border/50 pl-3 pr-1.5">
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground" title={shown}>
+        <span className="min-w-0 flex-1 truncate font-mono text-ui-footnote text-foreground" title={shown}>
           {name}
         </span>
         {canDiff ? (
@@ -61,7 +61,7 @@ export function FilePeek(props: {
                 type="button"
                 aria-pressed={view === id}
                 className={cn(
-                  "h-6 rounded-[5px] px-2 text-[11px] font-medium transition-colors",
+                  "h-6 rounded-sm px-2 text-ui-caption font-medium transition-colors",
                   view === id ? "bg-background text-foreground" : "text-muted hover:text-foreground",
                 )}
                 onClick={() => setView(id)}
@@ -80,7 +80,7 @@ export function FilePeek(props: {
                   aria-pressed={props.mode === m}
                   aria-label={label}
                   className={cn(
-                    "grid size-6 place-items-center rounded-[5px] transition-colors",
+                    "grid size-6 place-items-center rounded-sm transition-colors",
                     props.mode === m ? "bg-background text-foreground" : "text-muted hover:text-foreground",
                   )}
                   onClick={() => props.onMode(m)}
@@ -114,7 +114,7 @@ export function FilePeek(props: {
           <div className="h-full overflow-auto">
             {fileHunks.map((h) => (
               <div key={h.id} className="border-b border-border/40 last:border-b-0">
-                <div className="px-3 py-1.5 font-mono text-[11px] text-muted/75">{h.header || h.id}</div>
+                <div className="px-3 py-1.5 font-mono text-ui-caption text-muted/75">{h.header || h.id}</div>
                 <DiffBlock
                   src={h.body.slice(0, 8000)}
                   mode={props.mode}

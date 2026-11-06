@@ -16,7 +16,8 @@ import { hexAlpha, imageURL } from "./model";
 import { standURL } from "./stand/StandView";
 import { useIdolCall, type CallPhase, type CallWho } from "./useIdolCall";
 
-/** IdolCall 渲染陪伴窗里的紧凑通话。挂断、静音和发送都进 useIdolCall。props 读取 paused、name、color、portrait、kind、stand 等。 */
+/** IdolCall 渲染陪伴窗里的紧凑通话。挂断、静音和发送都进 useIdolCall。props 读取 paused、name、color、portrait、kind、stand 等。
+ * 「让她去干活」默认关着：紧凑画面里没有这个开关，她靠听懂你要她办事（她会写 work 标签）才交给 Yoyo，不会把每句话都当成任务。 */
 export function IdolCall(props: {
   paused?: boolean;
   approvals?: number;
@@ -27,7 +28,7 @@ export function IdolCall(props: {
   stand?: string;
   onHangup: () => void;
 }) {
-  const [work, setWork] = useState(true);
+  const [work, setWork] = useState(false);
   const session = useIdolCall({
     active: !props.paused,
     companion: true,
@@ -112,9 +113,21 @@ export function CallSurface(props: {
     />
   );
   if (props.compact) {
+    const line = props.notice || (props.phase === "speaking" || props.phase === "ended" ? props.caption : "");
     return (
       <div className="idol-call-screen is-compact" data-testid="idol-call">
         {figure}
+        {line ? (
+          <p
+            role="status"
+            className={cn(
+              "absolute inset-x-2 bottom-[72px] z-[2] line-clamp-2 rounded-lg bg-black/55 px-2 py-1 text-center text-ui-caption leading-snug",
+              props.notice ? "text-amber-100" : "text-white/90",
+            )}
+          >
+            {line}
+          </p>
+        ) : null}
         <button type="button" className="idol-call-hangup" aria-label={c.hangup} onClick={props.onHangup}>
           <PhoneOff className="size-5" />
         </button>
@@ -127,7 +140,7 @@ export function CallSurface(props: {
       {!posed && props.who.portrait ? <img className="idol-call-blur" alt="" src={imageURL(props.who.portrait)} /> : null}
       {figure}
       <div className="idol-call-shade" aria-hidden />
-      <div className="relative z-[2] flex items-center justify-between gap-2 px-4 pt-3 text-[12px] text-white/80">
+      <div className="relative z-[2] flex items-center justify-between gap-2 px-4 pt-3 text-ui-footnote text-white/80">
         <span className="min-w-0 truncate">{props.who.name || c.title}</span>
         <span className="shrink-0 tabular-nums">{props.phase === "dialing" ? c.dialing : <RollTime ms={props.elapsed} kind="clock" live />}</span>
         {props.onCollapse ? (
@@ -135,19 +148,19 @@ export function CallSurface(props: {
         ) : null}
       </div>
       <div className="relative z-[2] mt-auto flex w-full flex-col items-center gap-2 px-4 pb-4">
-        <div role="status" className="text-[12px] text-white/75">{phaseLabel}</div>
-        {props.approvals ? <div className="text-center text-[12px] text-amber-200">{c.approval}</div> : null}
-        {props.notice ? <div role="status" className="max-w-sm text-center text-[13px] text-amber-100">{props.notice}</div> : null}
-        <p className={cn("max-w-md overflow-auto text-center text-white/95", props.compact ? "max-h-16 text-[13px]" : "max-h-28 text-[16px] leading-relaxed")}>
+        <div role="status" className="text-ui-footnote text-white/75">{phaseLabel}</div>
+        {props.approvals ? <div className="text-center text-ui-footnote text-amber-200">{c.approval}</div> : null}
+        {props.notice ? <div role="status" className="max-w-sm text-center text-ui-body text-amber-100">{props.notice}</div> : null}
+        <p className={cn("max-w-md overflow-auto text-center text-white/95", props.compact ? "max-h-16 text-ui-body" : "max-h-28 text-ui-title-s leading-relaxed")}>
           {props.caption || (props.phase === "dialing" ? c.dialing : c.listening)}
         </p>
         {props.showWork ? (
-          <label className="flex items-center justify-center gap-2 text-[11px] text-white/70">
+          <label className="flex items-center justify-center gap-2 text-ui-caption text-white/70">
             <input type="checkbox" checked={!!props.work} onChange={(e) => props.onWork?.(e.target.checked)} />
             {c.work}
           </label>
         ) : null}
-        <ChatBorder className="chat-border-fit w-full" tone="dark">
+        <ChatBorder className="chat-border-fit w-full" tone="dark" active={props.phase === "thinking" || props.phase === "speaking"}>
           <PromptBar
             slim
             className="is-call"
@@ -183,7 +196,7 @@ export function CallSurface(props: {
 export function CallBar(props: { name: string; elapsed: number; dialing: boolean; onExpand: () => void; onHangup: () => void }) {
   const c = useCopy().idol;
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 px-3 text-[13px] text-white" style={{ background: "#1c1c1f" }}>
+    <div className="flex h-10 shrink-0 items-center gap-2 px-3 text-ui-body text-white" style={{ background: "#1c1c1f" }}>
       <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={props.onExpand}>
         <span className={cn("size-2 shrink-0 rounded-full bg-white", props.dialing && "animate-pulse")} />
         <span className="truncate">{props.name}</span>

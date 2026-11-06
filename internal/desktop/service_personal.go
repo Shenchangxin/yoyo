@@ -101,6 +101,16 @@ func (s *Service) MemoryForget(id string) bool {
 	return s.App.MemoryForget(id)
 }
 
+// MemoryEdit 在 RPC 非空时调用 memory.edit，否则走 App.MemoryEdit。改不了时返回零值。
+func (s *Service) MemoryEdit(id, text string) memory.Item {
+	if s.RPC != nil {
+		v, _ := s.call("memory.edit", map[string]any{"id": id, "text": text})
+		out, _ := decode[memory.Item](v, nil)
+		return out
+	}
+	return s.App.MemoryEdit(id, text)
+}
+
 // ScheduleList 在 RPC 非空时调用 schedule.list，否则走 App.ScheduleList。
 func (s *Service) ScheduleList() []schedule.Job {
 	if s.RPC != nil {

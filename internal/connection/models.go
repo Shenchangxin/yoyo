@@ -21,7 +21,7 @@ var imageModelNeedles = []string{
 	"seedream", "gpt-image", "dall-e", "dalle", "imagen", "flux", "sdxl",
 	"stable-diffusion", "midjourney", "nano-banana", "nanobanana", "ideogram",
 	"recraft", "playground", "leonardo",
-	"qwen-image", "jimeng_t2i", "kolors", "cogview", "hunyuan-image",
+	"qwen-image", "jimeng_t2i", "kolors", "cogview", "hunyuan-image", "hy-image",
 }
 
 // speechModelNeedles 是语音合成模型 id 里要匹配的子串。

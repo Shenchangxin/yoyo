@@ -182,7 +182,7 @@ func (e *Engine) ExportPublish(id string) (Publish, error) {
 		return Publish{}, err
 	}
 	if p.MediaHash == "" {
-		return Publish{}, fmt.Errorf("no assembled video on this draft — assemble first")
+		return Publish{}, fmt.Errorf("这封草稿还没有成片，先合成一条短片")
 	}
 	raw, err := e.GetBytes(p.MediaHash)
 	if err != nil {

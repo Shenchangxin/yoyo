@@ -1,22 +1,23 @@
 /**
- * 拥有：壳层三栏宽度的读取、夹紧和写回。
+ * 拥有：壳层三栏宽度的读取、夹紧和写回。今天栏和各模块的导航栏各记各的宽度。
  * 不拥有：拖拽分割条的手势。
  */
 
-/** ShellLayout 轨道、主栏和检查器的百分比。 */
-export type ShellLayout = { rail: number; main: number; inspect: number };
+/** ShellLayout 导航栏、今天栏、主栏和检查器的百分比。rail 是模块导航，day 是会话表面左边的今天栏。 */
+export type ShellLayout = { rail: number; day: number; main: number; inspect: number };
 
 const KEY = "yoyo-layout-v1";
-/** 审阅要放下一块差异。1440 宽的窗口上 30% 大约是 430 像素的块。 */
-const FALLBACK: ShellLayout = { rail: 19, main: 51, inspect: 30 };
+/** 审阅要放下一块差异。1440 宽的窗口上 30% 大约是 430 像素的块。今天栏要放下简报卡，默认宽一些。 */
+const FALLBACK: ShellLayout = { rail: 19, day: 34, main: 51, inspect: 30 };
 
-/** readLayout 从本地读出三栏。缺字段或损坏时用缺省。轨道夹在 14 到 42，主栏 30 到 80，检查器 18 到 42。 */
+/** readLayout 从本地读出各栏。缺字段或损坏时用缺省。导航栏夹在 14 到 34，今天栏 24 到 42，主栏 30 到 80，检查器 18 到 42。 */
 export function readLayout(): ShellLayout {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "");
     if (v && typeof v.rail === "number" && typeof v.main === "number") {
       return {
-        rail: clamp(v.rail, 14, 42),
+        rail: clamp(v.rail, 14, 34),
+        day: clamp(v.day ?? FALLBACK.day, 24, 42),
         main: clamp(v.main, 30, 80),
         inspect: clamp(v.inspect ?? FALLBACK.inspect, 18, 42),
       };
@@ -27,11 +28,12 @@ export function readLayout(): ShellLayout {
   return FALLBACK;
 }
 
-/** writeLayout 与当前值合并、夹紧后写回，并返回合并结果。写入失败时仍返回合并值。next 读取 rail、main、inspect。 */
+/** writeLayout 与当前值合并、夹紧后写回，并返回合并结果。写入失败时仍返回合并值。next 读取 rail、day、main、inspect。 */
 export function writeLayout(next: Partial<ShellLayout>) {
   const cur = readLayout();
   const merged: ShellLayout = {
-    rail: clamp(next.rail ?? cur.rail, 14, 42),
+    rail: clamp(next.rail ?? cur.rail, 14, 34),
+    day: clamp(next.day ?? cur.day, 24, 42),
     main: clamp(next.main ?? cur.main, 30, 80),
     inspect: clamp(next.inspect ?? cur.inspect, 18, 42),
   };

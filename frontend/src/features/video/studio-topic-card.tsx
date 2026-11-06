@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
 import { TopicScoreSheet } from "./studio-chrome";
-import { filmInFlight, topicCanFilm, topicIsScheduled, type ScoreKey } from "./studio-topic";
+import { filmInFlight, SCHEDULE_SLOTS, topicCanFilm, topicIsScheduled, type ScheduleSlot, type ScoreKey } from "./studio-topic";
 
 /** TopicRow 是选题卡要显示的标题、来源、角度、分数、状态和可选切口。 */
 export type TopicRow = {
@@ -31,6 +31,9 @@ type TopicCopy = {
   writeAngle: string;
   angle: string;
   schedule: string;
+  scheduleHour: string;
+  scheduleTonight: string;
+  scheduleMorning: string;
   unschedule: string;
   scheduleHint: string;
   scoreAvg: string;
@@ -49,22 +52,25 @@ type TopicCopy = {
   desk: { expand: string; choose: string };
 };
 
-/** TopicCard 按成片阶段显示打开、看进度、重试或开拍。已完成或制作中的角度不可改。props 读 topic、film、copy、busy、picked、statusLabel、scoreLabels 和 deleteLabel，并把勾选、开拍、取消排期、改卡、展开、排期、人设、选切口和删除交给对应回调。 */
+/** TopicCard 按成片阶段显示打开、看进度、重试或开拍。已完成或制作中的角度不可改。props 读 topic、film、copy、busy、picked、statusLabel、scoreLabels 和 deleteLabel，并把勾选、开拍、进制作台、取消排期、改卡、展开、排期、人设、选切口和删除交给对应回调。 */
 export function TopicCard(props: {
   topic: TopicRow;
   busy: boolean;
   picked: boolean;
   statusLabel: string;
+  /** sourceLabel 是来源平台的中文名，没有就显示平台 id。 */
+  sourceLabel?: string;
   deleteLabel: string;
   scoreLabels: Record<ScoreKey, string>;
   film?: { auto_phase?: string; result_hash?: string };
   copy: TopicCopy;
   onPick: () => void;
   onProduce: () => void;
+  onOpenDesk?: () => void;
   onUnschedule: () => void;
   onPatch: (extra: Partial<TopicRow>) => void;
   onExpand: () => void;
-  onSchedule: () => void;
+  onSchedule: (slot: ScheduleSlot) => void;
   onPersona: () => void;
   onChoose: (optionId: string) => void;
   onDelete: () => void;
@@ -100,19 +106,19 @@ export function TopicCard(props: {
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-foreground">{t.title}</p>
-          <p className="mt-0.5 text-[12px] text-muted">
-            {[t.source_platform, props.statusLabel, t.angle, t.persona_page_id ? s.personaDone : ""].filter(Boolean).join(" · ")}
+          <p className="text-ui-body font-medium text-foreground">{t.title}</p>
+          <p className="mt-0.5 text-ui-footnote text-muted">
+            {[props.sourceLabel || t.source_platform, props.statusLabel, t.angle, t.persona_page_id ? s.personaDone : ""].filter(Boolean).join(" · ")}
           </p>
-          {t.note ? <p className="mt-1 line-clamp-2 text-[12px] leading-[1.5] text-muted">{t.note}</p> : null}
+          {t.note ? <p className="mt-1 line-clamp-2 text-ui-footnote leading-[1.5] text-muted">{t.note}</p> : null}
         </div>
         <div className="flex shrink-0 items-start gap-0.5">
           <div className="flex flex-col items-end gap-1">
-            <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={props.busy} data-testid={opening ? "studio-topic-open" : "studio-topic-produce"} onClick={props.onProduce}>
+            <Button size="sm" variant="default" className="h-7 text-ui-footnote" disabled={props.busy} data-testid={opening ? "studio-topic-open" : "studio-topic-produce"} onClick={props.onProduce}>
               {label}
             </Button>
             {queued ? (
-              <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={props.busy} data-testid="studio-topic-unschedule" onClick={props.onUnschedule}>
+              <Button size="sm" variant="ghost" className="h-7 text-ui-footnote" disabled={props.busy} data-testid="studio-topic-unschedule" onClick={props.onUnschedule}>
                 {s.unschedule}
               </Button>
             ) : null}
@@ -124,13 +130,24 @@ export function TopicCard(props: {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
+              {props.onOpenDesk && !live ? (
+                <DropdownMenuItem disabled={props.busy} data-testid="studio-topic-desk" onSelect={props.onOpenDesk}>
+                  {s.openShort}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem disabled={props.busy} onSelect={props.onExpand}>
                 {s.desk.expand}
               </DropdownMenuItem>
               {!queued && !t.studio_project_id ? (
-                <DropdownMenuItem disabled={props.busy} data-testid="studio-topic-schedule" onSelect={props.onSchedule}>
-                  {s.schedule}
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuSeparator />
+                  {SCHEDULE_SLOTS.map(/** slot 是一个开拍时间，点了交给 onSchedule。 */ (slot) => (
+                    <DropdownMenuItem key={slot} disabled={props.busy} title={s.scheduleHint} data-testid={slot === "soon" ? "studio-topic-schedule" : `studio-topic-schedule-${slot}`} onSelect={() => props.onSchedule(slot)}>
+                      {{ soon: s.schedule, hour: s.scheduleHour, tonight: s.scheduleTonight, morning: s.scheduleMorning }[slot]}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </>
               ) : null}
               <DropdownMenuItem disabled={props.busy} title={s.personaHint} onSelect={props.onPersona}>
                 {s.persona}
@@ -145,7 +162,8 @@ export function TopicCard(props: {
       </div>
       {!locked ? (
         <Input
-          className="mt-1.5 h-7 border-transparent bg-transparent px-0 text-[12px] shadow-none focus-visible:border-border focus-visible:bg-card focus-visible:px-2"
+          key={`${t.id}-${t.updated_at || ""}-${t.angle || ""}`}
+          className="mt-1.5 h-7 border-transparent bg-transparent px-0 text-ui-footnote shadow-none focus-visible:border-border focus-visible:bg-card focus-visible:px-2"
           placeholder={s.writeAngle}
           defaultValue={t.angle || ""}
           data-testid="studio-topic-angle"
@@ -158,7 +176,7 @@ export function TopicCard(props: {
           }}
         />
       ) : null}
-      {queued ? <p className="mt-1.5 text-[11px] text-muted">{s.scheduleHint}</p> : null}
+      {queued ? <p className="mt-1.5 text-ui-caption text-muted">{s.scheduleHint}</p> : null}
       <TopicScoreSheet
         scores={t.scores}
         labels={props.scoreLabels}
@@ -170,15 +188,15 @@ export function TopicCard(props: {
       />
       {(t.options || []).length ? (
         <div className="mt-2 border-t border-border/70 pt-2" data-testid="studio-topic-options">
-          <p className="px-0.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{s.angles}</p>
+          <p className="px-0.5 pb-1 text-ui-caption font-medium uppercase tracking-[0.08em] text-muted/80">{s.angles}</p>
           <ul className="divide-y divide-border/70">
             {t.options!.map(/** opt 显示 title、angle 和 summary，点选时把 id 交给 onChoose。 */ (opt) => (
               <li key={opt.id} className="flex items-start gap-2 py-2">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-medium text-foreground">{opt.title}</p>
-                  <p className="text-[11px] leading-[1.45] text-muted">{[opt.angle, opt.summary].filter(Boolean).join(" · ")}</p>
+                  <p className="text-ui-footnote font-medium text-foreground">{opt.title}</p>
+                  <p className="text-ui-caption leading-[1.45] text-muted">{[opt.angle, opt.summary].filter(Boolean).join(" · ")}</p>
                 </div>
-                <Button size="sm" variant="ghost" className="h-7 shrink-0 text-[12px]" disabled={props.busy} onClick={() => props.onChoose(opt.id)}>
+                <Button size="sm" variant="ghost" className="h-7 shrink-0 text-ui-footnote" disabled={props.busy} onClick={() => props.onChoose(opt.id)}>
                   {s.desk.choose}
                 </Button>
               </li>

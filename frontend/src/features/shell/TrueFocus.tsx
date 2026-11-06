@@ -28,6 +28,8 @@ export type TrueFocusProps = {
   borderWidth?: number;
   frameGap?: number;
   unfocusedOpacity?: number;
+  /** rest 为真时不再轮转：每个词都清晰，焦点框淡出。 */
+  rest?: boolean;
   className?: string;
 };
 
@@ -49,6 +51,7 @@ export default function TrueFocus({
   borderWidth = 3,
   frameGap = 10,
   unfocusedOpacity = 1,
+  rest = false,
   className = '',
 }: TrueFocusProps) {
   const words = sentence.split(separator).filter((word) => word.trim() !== '');
@@ -65,7 +68,7 @@ export default function TrueFocus({
     : { duration, ease: SMOOTH_EASE };
 
   useEffect(() => {
-    if (manualMode || words.length < 2) return undefined;
+    if (manualMode || rest || words.length < 2) return undefined;
     const interval = setInterval(() => {
       const roll = Math.random();
       setCurrentIndex((prev) => {
@@ -76,7 +79,7 @@ export default function TrueFocus({
       });
     }, (animationDuration + pauseBetweenAnimations) * 1000);
     return () => clearInterval(interval);
-  }, [manualMode, animationDuration, pauseBetweenAnimations, words.length, order]);
+  }, [manualMode, rest, animationDuration, pauseBetweenAnimations, words.length, order]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -159,7 +162,7 @@ export default function TrueFocus({
       ) : null}
 
       {words.map((word, index) => {
-        const isActive = index === activeIndex;
+        const isActive = rest || index === activeIndex;
         return (
           <span
             key={index}
@@ -206,7 +209,7 @@ export default function TrueFocus({
                 key={corner}
                 className={`corner ${corner}`}
                 initial={{ ...corners[corner], opacity: 0 }}
-                animate={{ ...corners[corner], opacity: 1 }}
+                animate={{ ...corners[corner], opacity: rest ? 0 : 1 }}
                 transition={transition}
               />
             ))

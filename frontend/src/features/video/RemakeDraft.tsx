@@ -2,7 +2,7 @@
  * 本文件拥有翻拍草稿的文案、换画面和配音按钮。不拥有剪辑时间线。
  * 保存字幕、换画面和配音会改服务端上的剪辑工程。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import * as api from "../../lib/client";
@@ -16,11 +16,11 @@ function cueText(project: CutProject | null) {
   return cutCues(project).map(/** cue 取出 text 并去掉空白。 */ (cue) => String(cue.text || "").trim()).filter(Boolean).join("\n");
 }
 
-/** 不足 60 秒显示秒，否则显示分和秒。无效时长显示破折号。n 转成秒，无效就显示破折号。 */
-function lengthLabel(n: number | undefined) {
+/** 不足 60 秒按「12 秒」写，否则写成分和秒。无效时长显示破折号。n 转成秒，无效就显示破折号。secondsLabel 是带 {n} 的「秒」文案。 */
+function lengthLabel(n: number | undefined, secondsLabel: string) {
   const s = Number(n || 0);
   if (!(s > 0) || !Number.isFinite(s)) return "—";
-  if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
+  if (s < 60) return secondsLabel.replace("{n}", String(s < 10 ? Math.round(s * 10) / 10 : Math.round(s)));
   const m = Math.floor(s / 60);
   const r = Math.round(s - m * 60);
   return `${m}:${String(r).padStart(2, "0")}`;
@@ -36,10 +36,35 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
   const ready = useCutReadiness();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState("");
+  // 同步锁：busy 是异步状态，连点两下时第二下还看不到它。
+  const running = useRef(false);
+
+  /** 一次只跑一件事。fn 是要跑的操作；已经有一件在跑就丢掉这次点击。 */
+  async function once<T>(fn: () => Promise<T>): Promise<T | undefined> {
+    if (running.current) return undefined;
+    running.current = true;
+    try {
+      return await fn();
+    } finally {
+      running.current = false;
+    }
+  }
 
   useEffect(() => {
     setText(cueText(draft));
   }, [draft?.id, draft?.captions]);
+
+  const leave = useRef(back);
+  leave.current = back;
+  useEffect(() => {
+    /** Escape 和「回到创作」同一条路：先存改过的文案，再收起稿。 */
+    const onLeave = () => {
+      if (!useRemakeDesk.getState().draft?.id) return;
+      void once(() => leave.current());
+    };
+    window.addEventListener("yoyo:leave-create-overlay", onLeave);
+    return () => window.removeEventListener("yoyo:leave-create-overlay", onLeave);
+  }, []);
 
   if (!draft?.id) return null;
   const id = draft.id;
@@ -87,12 +112,13 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
     }
   }
 
-  /** 用当前文本给这条剪辑配音。 */
+  /** 用当前文本给这条剪辑配音。配好了提示一句，底下的剪辑台能听到。 */
   async function dub() {
     setBusy("dub");
     try {
       const next = await api.video.cutDub(id, text) as CutProject;
       if (next?.id) setDraft(next);
+      toast.success(c.dubDone);
     } catch (e) {
       toast.error(api.errMessage(e));
     } finally {
@@ -100,43 +126,55 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
     }
   }
 
+  /** 文案有改动且非空时先保存。保存失败返回假。 */
+  async function keepCopy() {
+    if (text.trim() && text !== cueText(draft)) return saveCopy();
+    return true;
+  }
+
   /** 文案有改动就先保存，然后清掉草稿并打开剪辑。 */
   async function finish() {
-    if (text.trim() && text !== cueText(draft)) {
-      const saved = await saveCopy();
-      if (!saved) return;
-    }
+    if (!(await keepCopy())) return;
     clear();
     props.onOpenCut(id);
   }
 
+  /** 回到创作前先把改过的文案存下，免得一返回就丢。 */
+  async function back() {
+    if (!(await keepCopy())) return;
+    clear();
+  }
+
   return (
     <section className="creation-remake" data-testid="remake-draft" aria-label={c.remakeDraft}>
-      <button type="button" className="cut-back" onClick={() => clear()}>{c.backHome}</button>
+      <button type="button" className="cut-back" onClick={() => void once(back)}>{c.backHome}</button>
       <header>
         <strong>{draft.title || c.remakeDraft}</strong>
-        <small>{lengthLabel(draft.duration)}</small>
+        <small>{lengthLabel(draft.duration, copy.video.studio.filmSeconds)}</small>
       </header>
       <p>{mine ? c.remakePictureMine : c.remakePictureRef}</p>
+      {draft.note ? <p className="text-ui-footnote text-warning" data-testid="remake-note">{draft.note}</p> : null}
       <label>
         <span>{c.remakeCopy}</span>
         <textarea value={text} onChange={/** ev 取出 target.value 写进文案。 */ (ev) => setText(ev.target.value)} placeholder={cues === 0 ? c.remakeNoCues : ""} />
       </label>
       <div className="creation-remake-actions">
         {mine ? (
-          <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void finish()}>{c.remakeSend}</Button>
+          <Button size="sm" variant="default" disabled={!!busy} onClick={() => void once(finish)}>{c.remakeSend}</Button>
         ) : (
-          <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void replacePicture()}>{busy === "replace" ? c.remakeReplacing : c.remakeReplace}</Button>
+          <Button size="sm" variant="default" disabled={!!busy} onClick={() => void once(replacePicture)}>{busy === "replace" ? c.remakeReplacing : c.remakeReplace}</Button>
         )}
         {mine ? (
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void replacePicture()}>{c.remakeReplace}</Button>
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void once(replacePicture)}>{c.remakeReplace}</Button>
         ) : (
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void finish()}>{c.remakeSend}</Button>
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void once(finish)}>{c.remakeSend}</Button>
         )}
+        <Button size="sm" variant="ghost" disabled={!!busy || !text.trim() || text === cueText(draft)} onClick={() => void once(saveCopy)}>{c.remakeSaveCopy}</Button>
       </div>
       <details className="creation-more">
         <summary>{c.captionsDub}</summary>
-        <Button size="sm" variant="ghost" disabled={!!busy || !!speechReason || !text.trim()} title={speechReason || c.remakeDub} onClick={() => void dub()}>{c.makeVoice}</Button>
+        {speechReason ? <p className="text-ui-footnote text-muted">{speechReason}</p> : null}
+        <Button size="sm" variant="ghost" disabled={!!busy || !!speechReason || !text.trim()} title={speechReason || c.remakeDub} onClick={() => void once(dub)}>{c.makeVoice}</Button>
       </details>
     </section>
   );

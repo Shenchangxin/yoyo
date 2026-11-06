@@ -58,10 +58,10 @@ export function ContextPane(props: {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="context-pane">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/50 px-2.5">
-        <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">{copy.review.contextTab}</span>
+        <span className="text-ui-caption font-medium uppercase tracking-[0.06em] text-muted/70">{copy.review.contextTab}</span>
         <button
           type="button"
-          className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+          className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-ui-caption text-muted hover:bg-lift hover:text-foreground"
           onClick={() => props.onRefresh?.()}
           aria-label={copy.review.refreshContext}
         >
@@ -93,19 +93,19 @@ export function ContextPane(props: {
                     tone={hit == null ? undefined : hit >= 70 ? "good" : hit >= 40 ? undefined : "warn"}
                   />
                 </div>
-                <p className="text-[11px] leading-[1.5] text-muted">
+                <p className="text-ui-caption leading-[1.5] text-muted">
                   {br.cacheReported
                     ? (br.cacheStable ? copy.review.usageStable : copy.review.usageUnstable)
                     : copy.composer.ctxCacheUnknown}
                   {br.elided > 0 ? ` · ${copy.review.elided} ${br.elided}` : ""}
                   {br.layers.length ? ` · ${br.layers.join(" + ")}` : ""}
                 </p>
-                {br.note ? <p className="text-[11px] text-muted">{br.note}</p> : null}
+                {br.note ? <p className="text-ui-caption text-muted">{br.note}</p> : null}
               </section>
             ) : null}
 
             <section className="flex flex-col gap-2.5" data-testid="usage-timing">
-              <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">{copy.trace.duration}</h3>
+              <h3 className="text-ui-caption font-medium uppercase tracking-[0.06em] text-muted/70">{copy.trace.duration}</h3>
               <div className="grid grid-cols-2 gap-1.5">
                 <Fact label={copy.review.usageLastCall} value={<RollTime ms={stats.last?.elapsedMs || 0} kind="meter" />} />
                 <Fact label={copy.review.usageFirstToken} value={<RollTime ms={stats.last?.ttftMs || 0} kind="meter" />} />
@@ -113,7 +113,7 @@ export function ContextPane(props: {
                 <Fact label={copy.review.usageTurn} value={<RollTime ms={turnMs} kind="meter" />} />
               </div>
               {sessionMs > 0 ? (
-                <p className="text-[11px] tabular-nums text-muted">
+                <p className="text-ui-caption tabular-nums text-muted">
                   {copy.review.usageSession} <RollTime ms={sessionMs} kind="meter" />
                   {stats.avgTtft ? <> · {copy.review.usageFirstToken} <RollTime ms={stats.avgTtft} kind="meter" /></> : null}
                 </p>
@@ -122,7 +122,7 @@ export function ContextPane(props: {
 
             {calls.length ? (
               <section className="flex flex-col gap-1.5" data-testid="usage-calls">
-                <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">
+                <h3 className="text-ui-caption font-medium uppercase tracking-[0.06em] text-muted/70">
                   {copy.review.usageRecent}
                   <span className="ml-1.5 font-normal normal-case tracking-normal text-muted/55">{calls.length}</span>
                 </h3>
@@ -131,13 +131,13 @@ export function ContextPane(props: {
                     const pct = cacheHitPct(c.cachedTokens, c.promptTokens, c.cacheReported);
                     const label = c.round.replace(/^.*:r/, "r") || `#${calls.length - i}`;
                     return (
-                      <li key={`${c.round}-${c.ts}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 text-[12px]">
-                        <span className="w-8 shrink-0 font-mono text-[11px] text-muted">{label}</span>
+                      <li key={`${c.round}-${c.ts}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 text-ui-footnote">
+                        <span className="w-8 shrink-0 font-mono text-ui-caption text-muted">{label}</span>
                         <span className="min-w-0 flex-1 truncate tabular-nums text-foreground/85">
                           <RollTime ms={c.elapsedMs} kind="meter" />
                           {c.ttftMs ? <> · {copy.review.usageFirstToken} <RollTime ms={c.ttftMs} kind="meter" /></> : null}
                         </span>
-                        <span className="shrink-0 tabular-nums text-[11px] text-muted">{formatHitPct(pct)}</span>
+                        <span className="shrink-0 tabular-nums text-ui-caption text-muted">{formatHitPct(pct)}</span>
                       </li>
                     );
                   })}
@@ -157,8 +157,8 @@ function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; co
   const legend = br.slices.filter((s) => s.id !== "free" && (s.tokens > 0 || s.id === "chat"));
   return (
     <div>
-      <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[12px] tabular-nums">
-        <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">{copy.composer.ctxWindow}</span>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2 text-ui-footnote tabular-nums">
+        <span className="text-ui-caption font-medium uppercase tracking-[0.06em] text-muted/70">{copy.composer.ctxWindow}</span>
         <span className={cn(br.pct >= 90 ? "text-danger" : "text-foreground/85")}>
           {br.pct}% · {formatTokens(br.used)} / {formatTokens(br.capacity)}
         </span>
@@ -179,7 +179,7 @@ function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; co
           />
         ))}
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] tabular-nums text-muted">
+      <div className="mt-2 flex flex-wrap gap-x-2.5 gap-y-1 text-ui-caption tabular-nums text-muted">
         {legend.map((s) => (
           <span key={s.id} className="inline-flex items-center gap-1.5">
             <i className={cn("size-1.5 rounded-full", SLICE_TONE[s.id])} aria-hidden />
@@ -212,10 +212,10 @@ function sliceLabel(id: CtxSliceId, copy: Copy): string {
 function Fact({ label, value, tone }: { label: string; value: ReactNode; tone?: "good" | "warn" }) {
   return (
     <div className="rounded-lg border border-border/60 bg-lift/30 px-2.5 py-2">
-      <div className="text-[10px] font-medium uppercase tracking-[0.05em] text-muted/70">{label}</div>
+      <div className="text-ui-badge font-medium uppercase tracking-[0.05em] text-muted/70">{label}</div>
       <div
         className={cn(
-          "mt-0.5 text-[13px] font-medium tabular-nums",
+          "mt-0.5 text-ui-body font-medium tabular-nums",
           tone === "good" && "text-emerald-500",
           tone === "warn" && "text-amber-500",
           !tone && "text-foreground/90",
@@ -231,8 +231,8 @@ function Fact({ label, value, tone }: { label: string; value: ReactNode; tone?: 
 function Empty({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center">
-      <p className="text-[13px] font-medium text-foreground/85">{title}</p>
-      <p className="mt-1 max-w-[22rem] text-[12px] leading-[1.55] text-muted">{hint}</p>
+      <p className="text-ui-body font-medium text-foreground/85">{title}</p>
+      <p className="mt-1 max-w-[22rem] text-ui-footnote leading-[1.55] text-muted">{hint}</p>
     </div>
   );
 }

@@ -18,7 +18,7 @@ type Drama = { id: string; title: string };
 type Episode = { id: string; drama_id: string; title: string; episode_number?: number };
 
 const ghost =
-  "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
+  "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
 /** DramaProjectChip 列出系列和集，并能新建或打开看板。props 的 disabled 传给触发按钮。 */
 export function DramaProjectChip(props: { disabled?: boolean }) {
@@ -167,7 +167,7 @@ function DramaGroup(props: {
           {props.activeEpisode === ep.id ? <Check className="size-3.5 shrink-0" /> : null}
         </DropdownMenuItem>
       )) : (
-        <div className="px-2.5 py-1 text-[11px] text-muted">{props.copyLabel}</div>
+        <div className="px-2.5 py-1 text-ui-caption text-muted">{props.copyLabel}</div>
       )}
     </>
   );

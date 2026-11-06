@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
+  Bell,
   Blocks,
   Brain,
   Link2,
@@ -24,9 +25,10 @@ import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import type { SettingsTab } from "../../lib/protocol";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
-import { SETTINGS_GROUPS, SETTINGS_SECTIONS, SETTINGS_TABS, tabsInGroup } from "./registry";
+import { navTabs, SETTINGS_GROUPS, SETTINGS_SECTIONS, tabsInGroup } from "./registry";
 
 const ICONS = {
+  bell: Bell,
   sliders: SlidersHorizontal,
   palette: Palette,
   cpu: Cpu,
@@ -90,7 +92,7 @@ export function SettingsSidebar(props: {
   if (props.compact && props.variant !== "rail") {
     return (
       <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-3 [scrollbar-width:none]" aria-label={copy.settings.title}>
-        {SETTINGS_TABS.map((t) => {
+        {navTabs().map((t) => {
           const Icon = iconFor(t.icon);
           const on = props.tab === t.key;
           return (
@@ -100,7 +102,7 @@ export function SettingsSidebar(props: {
               aria-current={on ? "page" : undefined}
               onClick={() => props.onTab(t.key)}
               className={cn(
-                "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium",
+                "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-ui-body font-medium",
                 on ? "bg-lift text-foreground" : "text-muted",
               )}
             >
@@ -136,7 +138,7 @@ export function SettingsSidebar(props: {
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-            className="no-drag h-8 w-full rounded-[9px] border border-border bg-background pl-8 pr-7 text-[13px] text-foreground placeholder:text-muted outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15 [&::-webkit-search-cancel-button]:hidden"
+            className="no-drag h-8 w-full rounded-md border border-border bg-background pl-8 pr-7 text-ui-body text-foreground placeholder:text-muted outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15 [&::-webkit-search-cancel-button]:hidden"
           />
           {query ? (
             <button
@@ -160,23 +162,23 @@ export function SettingsSidebar(props: {
                   <button
                     type="button"
                     onClick={() => props.onSection(s.tab, s.id)}
-                    className="flex w-full flex-col items-start gap-0.5 rounded-[9px] px-2.5 py-[7px] text-left transition-colors hover:bg-lift"
+                    className="flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-[7px] text-left transition-colors hover:bg-lift"
                   >
-                    <span className="text-[13px] font-medium text-foreground">
+                    <span className="text-ui-body font-medium text-foreground">
                       {copy.settings.sections[s.titleKey]}
                     </span>
-                    <span className="text-[11px] text-muted">{copy.settings.tabs[s.tab]}</span>
+                    <span className="text-ui-caption text-muted">{copy.settings.tabs[s.tab]}</span>
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="px-2.5 py-6 text-center text-[12px] text-muted">{copy.settings.searchEmpty}</p>
+            <p className="px-2.5 py-6 text-center text-ui-footnote text-muted">{copy.settings.searchEmpty}</p>
           )
         ) : (
           SETTINGS_GROUPS.map((group) => (
             <div key={group} className="pt-2.5 first:pt-1">
-              <div className="px-2.5 pb-1 text-[11px] font-medium text-muted">
+              <div className="px-2.5 pb-1 text-ui-caption font-medium text-muted">
                 {copy.settings.groups[group]}
               </div>
               {tabsInGroup(group).map((t) => (
@@ -215,7 +217,7 @@ function TabButton(props: {
       title={props.compact ? props.label : undefined}
       onClick={props.onClick}
       className={cn(
-        "relative flex w-full items-center gap-2.5 rounded-[9px] text-left text-[13px] font-medium transition-colors",
+        "relative flex w-full items-center gap-2.5 rounded-md text-left text-ui-body font-medium transition-colors",
         props.compact ? "justify-center px-0 py-1.5" : "mb-px px-2 py-[5px]",
         props.active ? "text-foreground" : "text-muted hover:text-foreground",
       )}
@@ -223,13 +225,13 @@ function TabButton(props: {
       {props.active ? (
         <motion.span
           layoutId="settings-nav-pill"
-          className="absolute inset-0 rounded-[9px] bg-lift"
+          className="absolute inset-0 rounded-md bg-lift"
           transition={motionTransition(reduced, DURATION)}
         />
       ) : null}
       <span
         className={cn(
-          "relative z-10 flex size-[22px] shrink-0 items-center justify-center rounded-[7px] transition-colors",
+          "relative z-10 flex size-[22px] shrink-0 items-center justify-center rounded-sm transition-colors",
           props.active ? "bg-accent text-accent-fg" : "bg-lift text-foreground/65",
         )}
       >

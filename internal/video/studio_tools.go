@@ -50,13 +50,17 @@ func StudioToolSpecs() []ToolSpec {
 		})},
 		{Name: "studio_catalog", ReadOnly: true, Desc: "List shorts presets, templates, character/style contracts, and TTS voices.", Params: obj(map[string]any{})},
 		{Name: "studio_preflight", ReadOnly: true, Desc: "Report which adapters a gate will spend before running it.", Params: obj(map[string]any{"id": str, "gate": str})},
-		{Name: "studio_approve_script", Desc: "Lock the spoken script (needs_review → approved) so TTS and image gen may spend.", Params: obj(map[string]any{"id": str})},
+		{Name: "studio_approve_script", Desc: "Lock the spoken script (needs_review → approved) so TTS and image gen may spend. Pass script to save and lock that text in one call. Shots you wrote stay; shots split from an older script follow the new one.", Params: obj(map[string]any{"id": str, "script": str})},
 		{Name: "studio_skip_audio", Desc: "Skip TTS after the script is approved and continue to visuals.", Params: obj(map[string]any{"id": str})},
+		{Name: "studio_bgm_list", ReadOnly: true, Desc: "List background music files in the local shorts BGM folder, plus the folder path the operator can drop mp3 files into.", Params: obj(map[string]any{})},
+		{Name: "studio_bgm_use", Desc: "Attach a BGM file from the folder to the bound short. name empty or random picks one. Music sits under the voiceover at low volume.", Params: obj(map[string]any{"id": str, "name": str})},
+		{Name: "studio_bgm_clear", Desc: "Remove the short's BGM and remember that this short has no music, so one-click film will not add one.", Params: obj(map[string]any{"id": str})},
+		{Name: "studio_bgm_generate", Desc: "Generate an instrumental BGM track with the enabled music connection (spends credits, may take minutes) and attach it. prompt empty derives one from tone, style and title.", Params: obj(map[string]any{"id": str, "prompt": str})},
 		{Name: "studio_apply_preset", Desc: "Lock 9:16 Douyin / 16:9 Bilibili (or other) output preset on the bound project.", Params: obj(map[string]any{"id": str, "preset_id": str}, "preset_id")},
 		{Name: "studio_apply_template", Desc: "Start from a shorts template (explainer, UGC hook, product, news, story, howto).", Params: obj(map[string]any{"id": str, "template_id": str}, "template_id")},
 		{Name: "studio_set_identity", Desc: "Set character/style identity contract (preserve/prohibit) used in shot prompts.", Params: obj(map[string]any{"id": str, "character_id": str, "style_id": str})},
-		{Name: "studio_generate_shot", Desc: "Enqueue image generation for one shot. Writes a real CAS hash when the job finishes. Never invent hashes.", Params: obj(map[string]any{"id": str, "shot_id": str})},
-		{Name: "studio_generate_missing", Desc: "Enqueue image generation for shots that lack media or are stale. Never invent hashes.", Params: obj(map[string]any{"id": str})},
+		{Name: "studio_generate_shot", Desc: "Enqueue image generation for one shot. Asynchronous: the real CAS hash lands on the shot when the job finishes (studio_get shows it). Never invent hashes.", Params: obj(map[string]any{"id": str, "shot_id": str})},
+		{Name: "studio_generate_missing", Desc: "Enqueue image generation for shots that lack media or are stale. Asynchronous: do not studio_assemble until every shot has media; studio_auto waits for them for you. Never invent hashes.", Params: obj(map[string]any{"id": str})},
 		{Name: "studio_cover", Desc: "Enqueue a thumbnail candidate for the bound short.", Params: obj(map[string]any{"id": str})},
 		{Name: "studio_pick_cover", Desc: "Choose a cover CAS hash from generated candidates.", Params: obj(map[string]any{"id": str, "hash": str}, "hash")},
 		{Name: "studio_copy", Desc: "Write platform publish copy from the script. Does not fabricate experience or efficacy.", Params: obj(map[string]any{"id": str, "platform": str})},
@@ -74,8 +78,8 @@ func StudioToolSpecs() []ToolSpec {
 		{Name: "studio_burnin", Desc: "Burn an SRT (CAS hash) into a video.", Params: obj(map[string]any{"hash": str, "subtitle_hash": str}, "hash", "subtitle_hash")},
 		{Name: "studio_slideshow", Desc: "Ken Burns slideshow from image CAS hashes.", Params: obj(map[string]any{"hashes": arr, "aspect": str, "duration": num}, "hashes")},
 		{Name: "studio_speak", Desc: "TTS via the configured speech connection. Writes audio CAS + optional SRT onto the bound project.", Params: obj(map[string]any{"text": str, "id": str}, "text")},
-		{Name: "studio_publish_draft", Desc: "Create a social publish draft (xhs/douyin/kuaishou/channels/zhihu/bilibili). Does not post. Yoyo never clicks Publish.", Params: obj(map[string]any{
-			"platform": str, "title": str, "caption": str, "tags": str, "id": str, "topic_id": str, "media_hash": str,
+		{Name: "studio_publish_draft", Desc: "Create a social publish draft (xhs/douyin/kuaishou/channels/zhihu/bilibili). Does not post. Yoyo never clicks Publish. id (or project_id) is the short; empty uses the bound one, and its finished mp4 and script fill media_hash and caption when omitted.", Params: obj(map[string]any{
+			"platform": str, "title": str, "caption": str, "tags": str, "id": str, "project_id": str, "topic_id": str, "media_hash": str,
 		}, "platform", "title")},
 		{Name: "studio_publish_list", ReadOnly: true, Desc: "List shorts publish drafts and posted records.", Params: obj(map[string]any{"platform": str})},
 		{Name: "studio_publish_export", Desc: "Write the assembled mp4 next to the video home so the operator can drop it on the creator page.", Params: obj(map[string]any{"publish_id": str}, "publish_id")},
@@ -173,38 +177,42 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 		if id == "" {
 			return "", fmt.Errorf("no studio project bound")
 		}
-		p, err := e.GetStudioProject(id)
-		if err != nil {
-			return "", err
+		// 只拿参数里给了的字段做补丁。整份旧工程交上去会把期间刚落地的配音、画面和闸门冲回旧值。
+		in := StudioProject{
+			ID:            id,
+			Title:         strAnyMap(args, "title"),
+			Aspect:        strAnyMap(args, "aspect"),
+			Style:         strAnyMap(args, "style"),
+			Script:        strAnyMap(args, "script"),
+			ResultHash:    strAnyMap(args, "result_hash"),
+			NarrationHash: strAnyMap(args, "narration_hash"),
+			SubtitleHash:  strAnyMap(args, "subtitle_hash"),
+			BGMHash:       strAnyMap(args, "bgm_hash"),
+			Hook:          strAnyMap(args, "hook"),
+			CTA:           strAnyMap(args, "cta"),
+			Platform:      strAnyMap(args, "platform"),
+			Tone:          strAnyMap(args, "tone"),
+			Voice:         strAnyMap(args, "voice"),
+			PresetID:      strAnyMap(args, "preset_id"),
+			TemplateID:    strAnyMap(args, "template_id"),
+			Gate:          strAnyMap(args, "gate"),
+			Audience:      strAnyMap(args, "audience"),
 		}
-		p.Title = firstNonEmpty(strAnyMap(args, "title"), p.Title)
-		p.Aspect = firstNonEmpty(strAnyMap(args, "aspect"), p.Aspect)
-		p.Style = firstNonEmpty(strAnyMap(args, "style"), p.Style)
-		p.Script = firstNonEmpty(strAnyMap(args, "script"), p.Script)
-		p.ResultHash = firstNonEmpty(strAnyMap(args, "result_hash"), p.ResultHash)
-		p.NarrationHash = firstNonEmpty(strAnyMap(args, "narration_hash"), p.NarrationHash)
-		p.SubtitleHash = firstNonEmpty(strAnyMap(args, "subtitle_hash"), p.SubtitleHash)
-		p.BGMHash = firstNonEmpty(strAnyMap(args, "bgm_hash"), p.BGMHash)
-		p.Hook = firstNonEmpty(strAnyMap(args, "hook"), p.Hook)
-		p.CTA = firstNonEmpty(strAnyMap(args, "cta"), p.CTA)
-		p.Platform = firstNonEmpty(strAnyMap(args, "platform"), p.Platform)
-		p.Tone = firstNonEmpty(strAnyMap(args, "tone"), p.Tone)
-		p.Voice = firstNonEmpty(strAnyMap(args, "voice"), p.Voice)
-		p.PresetID = firstNonEmpty(strAnyMap(args, "preset_id"), p.PresetID)
-		p.TemplateID = firstNonEmpty(strAnyMap(args, "template_id"), p.TemplateID)
-		p.Gate = firstNonEmpty(strAnyMap(args, "gate"), p.Gate)
-		p.Audience = firstNonEmpty(strAnyMap(args, "audience"), p.Audience)
 		if d := intAny(args["target_duration"]); d > 0 {
-			p.TargetDuration = d
+			in.TargetDuration = d
 		}
 		if sp := floatAny(args["voice_speed"]); sp > 0 {
-			p.VoiceSpeed = sp
+			in.VoiceSpeed = sp
 		}
 		if shots := args["shots"]; shots != nil {
 			b, _ := json.Marshal(shots)
-			_ = json.Unmarshal(b, &p.Storyboard.Shots)
+			_ = json.Unmarshal(b, &in.Storyboard.Shots)
+			if in.Storyboard.Shots == nil {
+				in.Storyboard.Shots = []StudioShot{}
+			}
 		}
-		out, err := e.UpdateStudioProject(p)
+		_, scriptSet := args["script"].(string)
+		out, err := e.UpdateStudioProjectWith(in, scriptSet)
 		if err != nil {
 			return "", err
 		}
@@ -213,7 +221,7 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 		if id == "" {
 			return "", fmt.Errorf("no studio project bound")
 		}
-		p, err := e.AssembleStudio(id)
+		p, err := e.runStudioTaskSync(id, "assemble", func() (StudioProject, error) { return e.AssembleStudio(id) })
 		if err != nil {
 			return "", err
 		}
@@ -261,7 +269,8 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 		if id == "" {
 			return "", fmt.Errorf("no studio project bound")
 		}
-		p, err := e.SpeakStudio(id, strAnyMap(args, "text"))
+		text := strAnyMap(args, "text")
+		p, err := e.runStudioTaskSync(id, "speak", func() (StudioProject, error) { return e.SpeakStudio(id, text) })
 		if err != nil {
 			return "", err
 		}
@@ -270,8 +279,10 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 		var pub Publish
 		b, _ := json.Marshal(args)
 		_ = json.Unmarshal(b, &pub)
+		// 这个工具只新建草稿。id 和其他 studio_* 工具一样指短片，不能当成发布记录的编号，否则草稿拿不到成片和文案。
+		pub.ID = ""
 		if pub.ProjectID == "" {
-			pub.ProjectID = strAnyMap(args, "project_id")
+			pub.ProjectID = strings.TrimSpace(strAnyMap(args, "id"))
 		}
 		if pub.ProjectID == "" {
 			if bound, ok := e.StudioSessionBind(sessionID); ok {
@@ -322,7 +333,7 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 	case "studio_persona_template":
 		return PersonaTemplate(strAnyMap(args, "name", "title")), nil
 	case "studio_catalog":
-		return marshalJSON(StudioCatalog()), nil
+		return marshalJSON(e.StudioCatalogLive()), nil
 	case "studio_preflight":
 		out, err := e.StudioPreflight(id, strAnyMap(args, "gate"))
 		if err != nil {
@@ -333,7 +344,7 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 		if id == "" {
 			return "", fmt.Errorf("no studio project bound")
 		}
-		out, err := e.ApproveStudioScript(id)
+		out, err := e.ApproveStudioScriptText(id, strAnyMap(args, "script"))
 		if err != nil {
 			return "", err
 		}
@@ -343,6 +354,27 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 			return "", fmt.Errorf("no studio project bound")
 		}
 		out, err := e.SkipStudioAudio(id)
+		if err != nil {
+			return "", err
+		}
+		return marshalJSON(out), nil
+	case "studio_bgm_list":
+		return marshalJSON(e.ListStudioBGM()), nil
+	case "studio_bgm_use", "studio_bgm_clear", "studio_bgm_generate":
+		if id == "" {
+			return "", fmt.Errorf("no studio project bound")
+		}
+		var out StudioProject
+		var err error
+		switch name {
+		case "studio_bgm_use":
+			out, err = e.AttachStudioBGM(id, strAnyMap(args, "name"))
+		case "studio_bgm_clear":
+			out, err = e.ClearStudioBGM(id)
+		default:
+			prompt := strAnyMap(args, "prompt")
+			out, err = e.runStudioTaskSync(id, "bgm", func() (StudioProject, error) { return e.GenerateStudioBGM(id, prompt) })
+		}
 		if err != nil {
 			return "", err
 		}

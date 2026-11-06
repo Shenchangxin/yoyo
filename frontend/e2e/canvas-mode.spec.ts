@@ -105,9 +105,8 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await page.getByTestId("create-skill-cut-dub").click();
   await expect(page.getByTestId("composer-input")).toContainText("@skill:cut-dub");
   await expect(page.getByTestId("creation-cases")).toBeVisible();
-  await expect(page.getByTestId("creation-cases-source")).toContainText("yoyo.creation-cases");
-  await expect(page.getByTestId("creation-cases-source")).toContainText("22 briefs");
-  await expect(page.getByTestId("creation-cases-source")).toContainText("/short-drama-styles");
+  await expect(page.getByTestId("creation-cases-source")).toContainText("not finished films");
+  await expect(page.getByTestId("creation-cases-source")).not.toContainText("yoyo.creation-cases");
   const rain = page.getByTestId("creation-case-rain-clinic");
   await expect(rain).toBeVisible();
   await expect(rain).toContainText("cyberpunk-neon.jpg");

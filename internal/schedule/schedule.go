@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +17,7 @@ import (
 type Kind string
 
 const (
-	// KindCron 按 hourly、daily、weekly 或一段时长重复，值为 cron。
+	// KindCron 按本地时刻或一段时长重复，值为 cron。写法见 cronDue。
 	KindCron Kind = "cron"
 	// KindOnce 在 Spec 的 RFC3339 时间到达后跑一次，值为 once。
 	KindOnce Kind = "once"
@@ -274,7 +275,7 @@ func due(j Job, now time.Time) bool {
 		}
 		return now.Sub(anchor) >= d
 	case KindCron:
-		return cronDue(j.Spec, j.LastRun, now)
+		return cronDue(j.Spec, j.LastRun, j.CreatedAt, now)
 	case KindWebhook:
 		return false
 	default:
@@ -295,29 +296,200 @@ func IsStudioJob(j Job) bool {
 	return strings.HasPrefix(p, "做成短片")
 }
 
-// cronDue 把 hourly、daily、weekly、0 18 * * 5、weekday-1800 或一段时长换成是否到期。daily 还要求小时为 18。
-// spec 去掉空白并转成小写后与 hourly、daily、0 18 * * 5、weekday-1800、weekly 比较，否则按 time.ParseDuration 解析。
-// last 为零，或与 now 的间隔达到对应时长时，参与返回 true。
-// now 与 last 算间隔。daily、0 18 * * 5 和 weekday-1800 还要求 Hour 为 18；last 为零时还要求 Minute 小于 5。
-func cronDue(spec string, last, now time.Time) bool {
+// cronGrace 是错过一个排好的时刻之后还补跑的时长。电脑睡过了头，醒来六小时内补一次，再晚就等下一次。
+const cronGrace = 6 * time.Hour
+
+// cronDue 判断一条 cron 任务在 now 是否到期。
+// 按间隔的写法：hourly、weekly，或 time.ParseDuration 认得的一段时长，离上一次运行够久就到期。
+// 按本地时刻的写法：daily@HH:MM、weekdays@HH:MM、weekly@D@HH:MM（D 取 0–6，0 是周日），五段 cron「分 时 日 月 周」，
+// 以及旧写法 daily（每天 18:00）和 weekday-1800（工作日 18:00）。最近一个排到的时刻晚于上一次运行和创建时刻、
+// 并且离 now 不超过 cronGrace 时到期。时刻按本机时区算，now 是 UTC 也一样。
+func cronDue(spec string, last, created, now time.Time) bool {
 	spec = strings.TrimSpace(strings.ToLower(spec))
-	if spec == "hourly" {
+	switch spec {
+	case "hourly":
 		return last.IsZero() || now.Sub(last) >= time.Hour
-	}
-	if spec == "daily" || spec == "0 18 * * 5" || spec == "weekday-1800" {
-		if last.IsZero() {
-			return now.Hour() == 18 && now.Minute() < 5
-		}
-		return now.Sub(last) >= 20*time.Hour && now.Hour() == 18
-	}
-	if spec == "weekly" {
+	case "weekly":
 		return last.IsZero() || now.Sub(last) >= 7*24*time.Hour
+	}
+	if m, ok := parseClock(spec); ok {
+		slot := m.lastSlot(now.In(time.Local))
+		if slot.IsZero() {
+			return false
+		}
+		anchor := last
+		if created.After(anchor) {
+			anchor = created
+		}
+		return slot.After(anchor) && now.Sub(slot) <= cronGrace
 	}
 	d, err := time.ParseDuration(spec)
 	if err == nil {
 		return last.IsZero() || now.Sub(last) >= d
 	}
 	return false
+}
+
+// clock 是一组按本地时刻排的分钟。按 Vixie cron 的习惯：日和周有一段以 * 开头时两段都要对上，否则任一对上就算。
+type clock struct {
+	minute  [60]bool
+	hour    [24]bool
+	dom     [32]bool
+	month   [13]bool
+	dow     [7]bool
+	starDom bool
+	starDow bool
+}
+
+// parseClock 认按本地时刻排的写法。认不出时 ok 为假。
+func parseClock(spec string) (clock, bool) {
+	switch spec {
+	case "daily":
+		spec = "0 18 * * *"
+	case "weekday-1800":
+		spec = "0 18 * * 1-5"
+	}
+	if strings.Contains(spec, "@") {
+		return parseAt(spec)
+	}
+	fields := strings.Fields(spec)
+	if len(fields) != 5 {
+		return clock{}, false
+	}
+	var c clock
+	ok := fillField(c.minute[:], fields[0], 0, 59) &&
+		fillField(c.hour[:], fields[1], 0, 23) &&
+		fillField(c.dom[:], fields[2], 1, 31) &&
+		fillField(c.month[:], fields[3], 1, 12)
+	if !ok {
+		return clock{}, false
+	}
+	var dow [8]bool
+	if !fillField(dow[:], fields[4], 0, 7) {
+		return clock{}, false
+	}
+	for d := 0; d < 7; d++ {
+		c.dow[d] = dow[d]
+	}
+	if dow[7] {
+		c.dow[0] = true
+	}
+	c.starDom = strings.HasPrefix(fields[2], "*")
+	c.starDow = strings.HasPrefix(fields[4], "*")
+	return c, true
+}
+
+// parseAt 认 daily@HH:MM、weekdays@HH:MM 和 weekly@D@HH:MM。
+func parseAt(spec string) (clock, bool) {
+	parts := strings.Split(spec, "@")
+	hm := parts[len(parts)-1]
+	h, m, ok := parseHM(hm)
+	if !ok {
+		return clock{}, false
+	}
+	days := "*"
+	switch {
+	case len(parts) == 2 && parts[0] == "daily":
+	case len(parts) == 2 && parts[0] == "weekdays":
+		days = "1-5"
+	case len(parts) == 3 && parts[0] == "weekly":
+		days = parts[1]
+	default:
+		return clock{}, false
+	}
+	return parseClock(strconv.Itoa(m) + " " + strconv.Itoa(h) + " * * " + days)
+}
+
+func parseHM(text string) (int, int, bool) {
+	hs, ms, ok := strings.Cut(strings.TrimSpace(text), ":")
+	if !ok {
+		return 0, 0, false
+	}
+	h, err1 := strconv.Atoi(hs)
+	m, err2 := strconv.Atoi(ms)
+	if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
+		return 0, 0, false
+	}
+	return h, m, true
+}
+
+// fillField 按一段 cron 字段标出 out 里的取值。认 *、单个数、a-b、a,b 和 /n 步长。越界或写错时返回假。
+func fillField(out []bool, field string, lo, hi int) bool {
+	for _, part := range strings.Split(field, ",") {
+		step := 1
+		if base, s, ok := strings.Cut(part, "/"); ok {
+			n, err := strconv.Atoi(s)
+			if err != nil || n < 1 {
+				return false
+			}
+			part, step = base, n
+		}
+		from, to := lo, hi
+		switch {
+		case part == "*":
+		case strings.Contains(part, "-"):
+			a, b, _ := strings.Cut(part, "-")
+			x, err1 := strconv.Atoi(a)
+			y, err2 := strconv.Atoi(b)
+			if err1 != nil || err2 != nil {
+				return false
+			}
+			from, to = x, y
+		default:
+			x, err := strconv.Atoi(part)
+			if err != nil {
+				return false
+			}
+			from, to = x, x
+			if step > 1 {
+				to = hi
+			}
+		}
+		if from < lo || to > hi || from > to {
+			return false
+		}
+		for v := from; v <= to; v += step {
+			out[v] = true
+		}
+	}
+	return true
+}
+
+// lastSlot 返回不晚于 now 的最近一个排到的时刻。往回看八天，都没有时返回零。
+func (c clock) lastSlot(now time.Time) time.Time {
+	for back := 0; back <= 8; back++ {
+		day := time.Date(now.Year(), now.Month(), now.Day()-back, 0, 0, 0, 0, now.Location())
+		if !c.onDay(day) {
+			continue
+		}
+		for h := 23; h >= 0; h-- {
+			if !c.hour[h] {
+				continue
+			}
+			for m := 59; m >= 0; m-- {
+				if !c.minute[m] {
+					continue
+				}
+				at := time.Date(day.Year(), day.Month(), day.Day(), h, m, 0, 0, now.Location())
+				if !at.After(now) {
+					return at
+				}
+			}
+		}
+	}
+	return time.Time{}
+}
+
+func (c clock) onDay(day time.Time) bool {
+	if !c.month[int(day.Month())] {
+		return false
+	}
+	dom := c.dom[day.Day()]
+	dow := c.dow[int(day.Weekday())]
+	if c.starDom || c.starDow {
+		return dom && dow
+	}
+	return dom || dow
 }
 
 // load 读取 jobs.json 并解进任务切片。

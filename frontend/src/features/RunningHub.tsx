@@ -45,7 +45,7 @@ export function RunningHub(props: {
     <div className="relative hidden sm:block">
       <button
         type="button"
-        className="inline-flex items-center gap-1.5 rounded-full bg-lift px-2 py-0.5 text-[11px] tabular-nums text-foreground transition-[background-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:bg-lift/80 active:scale-[0.98]"
+        className="inline-flex items-center gap-1.5 rounded-full bg-lift px-2 py-0.5 text-ui-caption tabular-nums text-foreground transition-[background-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:bg-lift/80 active:scale-[0.98]"
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => setOpen((v) => !v)}
@@ -73,8 +73,8 @@ export function RunningHub(props: {
                   setOpen(false);
                 }}
               >
-                <span className="block truncate text-[12px]">{t.title || t.id.slice(0, 8)}</span>
-                <span className="mt-0.5 flex items-center gap-2 text-[11px] tabular-nums text-muted">
+                <span className="block truncate text-ui-footnote">{t.title || t.id.slice(0, 8)}</span>
+                <span className="mt-0.5 flex items-center gap-2 text-ui-caption tabular-nums text-muted">
                   {Number.isFinite(started) ? <RollTime ms={Math.max(0, now - started)} kind="clock" live /> : null}
                   {st?.lastTool ? <span className="truncate">{st.lastTool}</span> : <span>{copy.titlebar.waiting}</span>}
                 </span>

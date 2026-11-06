@@ -9,31 +9,60 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/poi"
 )
 
-// assessDesk 把这一轮清点、编排台和本机状态收成要不要开口的判断。记录写不成时 ok 为假，调用方就不要假装已经判断过。
-func (a *App) assessDesk(snap poi.Snapshot) (initiative.Briefing, bool) {
+// deskBook 返回这台机器上唯一打开的开口记录。判断、送达和反馈都经过它，两份记录不会互相盖掉对方写下的按住。
+func (a *App) deskBook() (*initiative.Store, error) {
 	if a == nil || a.Home == nil {
-		return initiative.Briefing{}, false
+		return nil, errString("home unavailable")
+	}
+	a.bookMu.Lock()
+	defer a.bookMu.Unlock()
+	if a.book != nil {
+		return a.book, nil
 	}
 	store, err := initiative.Open(a.Home.Memory())
 	if err != nil {
+		return nil, err
+	}
+	a.book = store
+	return store, nil
+}
+
+// assessDesk 把这一轮清点、编排台和本机状态收成要不要开口的判断。它不记成已经开口，送达由 deliverSpeaks 记。
+// 记录打不开时 ok 为假，调用方就不要假装已经判断过。
+func (a *App) assessDesk(snap poi.Snapshot) (initiative.Briefing, bool) {
+	store, err := a.deskBook()
+	if err != nil {
 		return initiative.Briefing{}, false
 	}
+	now := time.Now()
 	facts, idle := initiative.LocalFacts(poi.DefaultRoots())
-	facts = append(facts, a.reachFacts(store.Seen(), time.Now())...)
+	facts = append(facts, a.reachFacts(store.Seen(), now)...)
 	facts = append(facts, lineFacts(snap.Census)...)
 	facts = append(facts, poiFacts(snap)...)
 	facts = append(facts, a.connectorFacts()...)
-	facts = append(facts, a.orchestratorFacts(time.Now())...)
-	return store.Assess(initiative.Input{Now: time.Now(), Idle: idle, Facts: facts}), true
+	facts = append(facts, a.orchestratorFacts(now)...)
+	briefing := store.Assess(initiative.Input{Now: now, Idle: idle, Facts: facts})
+	a.keepBriefing(briefing, now)
+	return briefing, true
+}
+
+// keepBriefing 记下最近一轮判断。界面读它，不再为了读而重跑清点。
+func (a *App) keepBriefing(b initiative.Briefing, at time.Time) {
+	a.bookMu.Lock()
+	a.deskSeen = b
+	a.deskSeenAt = at
+	a.bookMu.Unlock()
 }
 
 // DeskFeedback 记下人对某一类开口的反应。wrong 会忘掉对应的记忆。
-// className 是这一类的名字。kind 取 used、ignore、later、wrong。memoryID 只在 wrong 时使用。
+// className 是这一类的名字。kind 取 used、ignore、later、wrong、mute、unmute。memoryID 只在 wrong 时使用。
 func (a *App) DeskFeedback(className, kind, memoryID string) bool {
-	if a == nil || a.Home == nil {
+	switch strings.TrimSpace(kind) {
+	case "used", "ignore", "later", "wrong", "mute", "unmute":
+	default:
 		return false
 	}
-	store, err := initiative.Open(a.Home.Memory())
+	store, err := a.deskBook()
 	if err != nil {
 		return false
 	}
@@ -45,10 +74,7 @@ func (a *App) DeskFeedback(className, kind, memoryID string) bool {
 }
 
 func (a *App) noteSchedule(id, title string) {
-	if a == nil || a.Home == nil {
-		return
-	}
-	store, err := initiative.Open(a.Home.Memory())
+	store, err := a.deskBook()
 	if err != nil {
 		return
 	}
@@ -168,6 +194,7 @@ func (a *App) orchestratorFacts(now time.Time) []initiative.Fact {
 			State: state, Sig: state + "|" + row.Due, Rank: rank, Eligible: eligible,
 		})
 	}
+	// 等人、卡住和失败的工单由交接写进主会话，这里只作为感知，不再占一次开口。
 	for _, ticket := range view.Tickets {
 		if ticket.Stage == "ended" {
 			continue
@@ -189,7 +216,7 @@ func (a *App) orchestratorFacts(now time.Time) []initiative.Fact {
 		}
 		facts = append(facts, initiative.Fact{
 			ID: "ticket:" + ticket.ID, Code: "ticket", Class: "ticket", Name: name,
-			State: state, Sig: state, Rank: rank, Eligible: true,
+			State: state, Sig: state, Rank: rank,
 		})
 	}
 	for _, src := range view.Sources {

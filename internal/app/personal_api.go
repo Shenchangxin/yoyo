@@ -51,6 +51,19 @@ func (a *App) MemoryWrite(kind, text, project string) memory.Item {
 	return it
 }
 
+// MemoryEdit 把 id 这一条改成 text。本机清点和像密钥的文本不改，返回零值。
+func (a *App) MemoryEdit(id, text string) memory.Item {
+	if a.Memory == nil {
+		return memory.Item{}
+	}
+	it, ok := a.Memory.Edit(id, text)
+	if !ok {
+		return memory.Item{}
+	}
+	a.touchPoi()
+	return it
+}
+
 // ConnectorUse 按目录连上一个应用并读一页。令牌进保险库。
 func (a *App) ConnectorUse(provider, token, endpoint string) (connector.UseResult, error) {
 	if a == nil || a.Connectors == nil {

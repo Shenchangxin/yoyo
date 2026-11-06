@@ -8,6 +8,7 @@
     "build:dev": "tsc && vite build --minify false --mode development",
     "build": "tsc && vite build --mode production",
     "preview": "vite preview",
+    "lint:tokens": "node scripts/check-tokens.mjs",
     "test:e2e": "playwright test",
     "test:presence": "node --experimental-strip-types --test src/features/presence/*.test.ts src/vendor/emotion-ball/*.test.ts",
     "test:scale": "node --experimental-strip-types --test src/lib/scale.test.ts",

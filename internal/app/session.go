@@ -26,8 +26,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// profilePinBytes 是写进提示的画像摘录字节上限，大约对应两百个已确认事实的 token。
-const profilePinBytes = 800
+// profilePinBytes 是写进提示的画像字节上限。当事人说过的和偏好排在前面，本机的名字和时间排在最后，预算不够时先舍掉后面的。
+const profilePinBytes = 2000
 
 // SessionMeta 是一份会话的持久元数据。Isolate 为真时表示使用工作区副本。
 type SessionMeta struct {
@@ -932,6 +932,14 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			}
 			inject += extra
 		}
+		if a.memoryOn(sessionID) {
+			if note := memoryRecallNote(a.Memory, message, time.Now()); note != "" {
+				if inject != "" {
+					inject += "\n"
+				}
+				inject += note
+			}
+		}
 	}
 	if routeNote != "" {
 		if inject != "" {
@@ -941,10 +949,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	userParts := runtime.ImageParts(toolRoot, toRuntimeAtts(atts))
 	profile := ""
-	if a.Memory != nil {
-		if p := a.sessionProfile(sessionID); p == nil || p.Memory {
-			profile = a.Memory.ProfilePin(profilePinBytes)
-		}
+	if a.memoryOn(sessionID) {
+		profile = a.Memory.ProfilePin(profilePinBytes)
 	}
 	tools.OperatorVoice = voice
 	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConduct(runtime.ConductOpts{Plan: loop.PlanMode, Methodology: runtime.HasMethodologyPack(tools.Packs)})...)

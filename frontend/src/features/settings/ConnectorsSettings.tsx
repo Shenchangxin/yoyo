@@ -19,7 +19,7 @@ import { SettingEmpty, SettingRow, SettingSection } from "./SettingChrome";
 
 function Field(props: { label: string; value: string; onChange: (v: string) => void; secret?: boolean; placeholder?: string }) {
   return (
-    <label className="flex flex-col gap-1 text-[13px] font-medium">
+    <label className="flex flex-col gap-1 text-ui-body font-medium">
       <span>{props.label}</span>
       <Input className="h-8 font-normal" type={props.secret ? "password" : "text"} value={props.value} placeholder={props.placeholder} autoComplete="off" spellCheck={false} onChange={(e) => props.onChange(e.target.value)} />
     </label>
@@ -111,7 +111,7 @@ export function ConnectorsSettings() {
     }
     if (mode === "im") {
       setPicked(null);
-      openSettings("messaging");
+      openSettings("connectors", "messaging-policy");
       toast(copy.settings.connectorsIm);
       return;
     }
@@ -150,7 +150,7 @@ export function ConnectorsSettings() {
               <Field label={copy.settings.oauthClientId} value={clientId} onChange={setClientId} />
               <Field label={copy.settings.oauthSecret} value={secret} onChange={setSecret} secret />
               <Field label={copy.settings.oauthCode} value={code} onChange={setCode} />
-              {problem ? <p className="text-[12px] leading-5 text-danger">{problem}</p> : null}
+              {problem ? <p className="text-ui-footnote leading-5 text-danger">{problem}</p> : null}
               <div className="dialog-actions">
                 <Button size="sm" variant="lift" disabled={busy} onClick={() => setPicked(null)}>{copy.dialog.cancel}</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
@@ -189,8 +189,8 @@ export function ConnectorsSettings() {
                 />
               ) : null}
               <Field label={mail ? copy.settings.connectorsPassword : copy.settings.connectorsToken} value={token} onChange={setToken} secret />
-              {problem ? <p className="text-[12px] leading-5 text-danger">{problem}</p> : null}
-              {seen.length ? <p className="text-[12px] leading-5 text-muted">{seen.slice(0, 4).join(" · ")}</p> : null}
+              {problem ? <p className="text-ui-footnote leading-5 text-danger">{problem}</p> : null}
+              {seen.length ? <p className="text-ui-footnote leading-5 text-muted">{seen.slice(0, 4).join(" · ")}</p> : null}
               <div className="dialog-actions">
                 <Button size="sm" variant="lift" disabled={busy} onClick={() => setPicked(null)}>{copy.dialog.cancel}</Button>
                 <Button size="sm" disabled={!token.trim() || busy} onClick={() => void run(picked.provider, token.trim(), endpoint.trim())}>

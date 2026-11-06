@@ -4,9 +4,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { Info, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
+import { Tooltip } from "../../components/ui/tooltip";
 import { Input } from "../../components/ui/input";
 import { EmptyState } from "../../components/ui/empty-state";
 import { cn } from "../../lib/utils";
@@ -247,7 +248,14 @@ export function SkillsWorkspace(props: {
     <div className="flex h-full min-h-0 flex-col" data-testid="skills-workspace">
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
-          <p className="mb-4 max-w-[46ch] text-[13px] leading-[1.55] text-pretty text-muted">{copy.skills.hint}</p>
+          <p className="mb-4 flex items-center gap-1 text-ui-body text-muted">
+            <span>{copy.skills.hint}</span>
+            <Tooltip content={<span className="block max-w-[44ch]">{copy.skills.hintMore}</span>}>
+              <button type="button" className="grid size-6 place-items-center rounded-full text-muted hover:text-foreground" aria-label={copy.skills.hintMore}>
+                <Info className="size-3.5" />
+              </button>
+            </Tooltip>
+          </p>
           <div className="mb-5 flex flex-wrap items-center gap-3">
             {props.navInRail ? null : <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist" aria-label={copy.skills.title}>
               {(["installed", "market", "packs"] as Pane[]).map((id) => (
@@ -257,7 +265,7 @@ export function SkillsWorkspace(props: {
                   role="tab"
                   aria-selected={pane === id}
                   className={cn(
-                    "relative flex h-10 cursor-pointer items-center px-2.5 text-[13px] font-medium transition-colors",
+                    "relative flex h-10 cursor-pointer items-center px-2.5 text-ui-body font-medium transition-colors",
                     pane === id ? "text-foreground" : "text-muted hover:text-foreground",
                   )}
                   onClick={() => selectPane(id)}
@@ -278,7 +286,7 @@ export function SkillsWorkspace(props: {
                 <div className="relative min-w-[10rem] max-w-[18rem] flex-1">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
                   <Input
-                    className="h-8 rounded-lg border-transparent bg-lift/50 pl-8 text-[13px]"
+                    className="h-8 rounded-lg border-transparent bg-lift/50 pl-8 text-ui-body"
                     placeholder={hubSearches ? copy.skills.searchRemote : copy.skills.search}
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
@@ -295,8 +303,8 @@ export function SkillsWorkspace(props: {
               </div>
             ) : null}
           </div>
-          {err ? <p className="mb-4 text-[13px] text-danger" role="alert">{err}</p> : null}
-          {!err && catalog.warning ? <p className="mb-4 text-[13px] text-muted" role="status">{catalog.warning}</p> : null}
+          {err ? <p className="mb-4 text-ui-body text-danger" role="alert">{err}</p> : null}
+          {!err && catalog.warning ? <p className="mb-4 text-ui-body text-muted" role="status">{catalog.warning}</p> : null}
           {pane === "installed" ? (
             <InstalledList
               skills={props.installed}
@@ -377,8 +385,8 @@ function InstalledList(props: {
       {[...groups.entries()].map(([source, items]) => (
         <section key={source}>
           <div className="mb-2 flex items-baseline justify-between px-0.5">
-            <h3 className="text-[13px] font-medium text-foreground">{sourceLabel(source, copy)}</h3>
-            <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
+            <h3 className="text-ui-body font-medium text-foreground">{sourceLabel(source, copy)}</h3>
+            <span className="text-ui-caption tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
           </div>
           <div className="flex flex-col gap-1">
             {items.map((s) => {
@@ -392,11 +400,11 @@ function InstalledList(props: {
                     <SkillAvatar name={s.displayName || s.name} icon={s.icon} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] font-medium text-foreground">{s.displayName || s.name}</span>
-                        {isLoaded ? <span className="text-[11px] text-muted">{copy.skills.loaded}</span> : null}
-                        {s.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
+                        <span className="text-ui-body font-medium text-foreground">{s.displayName || s.name}</span>
+                        {isLoaded ? <span className="text-ui-caption text-muted">{copy.skills.loaded}</span> : null}
+                        {s.incomplete ? <span className="text-ui-caption text-warning">{copy.skills.incomplete}</span> : null}
                       </div>
-                      <p className="mt-0.5 truncate text-[12px] leading-5 text-muted">{s.description || copy.skills.none}</p>
+                      <p className="mt-0.5 truncate text-ui-footnote leading-5 text-muted">{s.description || copy.skills.none}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
                       {s.incomplete && s.source === "market" ? (
@@ -415,10 +423,10 @@ function InstalledList(props: {
                   {expanded ? (
                     <div className="mt-2 space-y-2">
                       {fileCount ? (
-                        <p className="text-[11px] tabular-nums text-muted">{copy.skills.files.replace("{n}", String(fileCount))}</p>
+                        <p className="text-ui-caption tabular-nums text-muted">{copy.skills.files.replace("{n}", String(fileCount))}</p>
                       ) : null}
                       {s.body ? (
-                        <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-lift/30 p-2.5 font-mono text-[11px] leading-4 text-muted">{s.body}</pre>
+                        <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-lift/30 p-2.5 font-mono text-ui-caption leading-4 text-muted">{s.body}</pre>
                       ) : null}
                     </div>
                   ) : null}
@@ -473,7 +481,7 @@ function MarketList(props: {
         </div>
       ) : null}
       {!empty ? (
-        <p className="mb-3 text-[11px] tabular-nums text-muted">{countLabel}{props.truncated ? " · …" : ""}</p>
+        <p className="mb-3 text-ui-caption tabular-nums text-muted">{countLabel}{props.truncated ? " · …" : ""}</p>
       ) : null}
       {props.categories.length > 1 ? (
         <div className="mb-5 flex flex-wrap gap-1.5">
@@ -494,10 +502,10 @@ function MarketList(props: {
           {!props.query && !props.cat && props.featured.length ? (
             <section className="mb-6">
               <div className="mb-2 flex items-baseline justify-between px-0.5">
-                <h3 className="text-[13px] font-medium">{copy.skills.featured}</h3>
-                <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
+                <h3 className="text-ui-body font-medium">{copy.skills.featured}</h3>
+                <span className="text-ui-caption tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
               </div>
-              <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
+              <div className="overflow-hidden rounded-xl bg-card shadow-[var(--shadow-card)]">
                 {props.featured.map((it, i) => (
                   <MarketRow
                     key={itemInstallID(it)}
@@ -515,10 +523,10 @@ function MarketList(props: {
           {props.grouped.map(([category, items]) => (
             <section key={category} className="mb-6">
               <div className="mb-2 flex items-baseline justify-between px-0.5">
-                <h3 className="text-[13px] font-medium">{category}</h3>
-                <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
+                <h3 className="text-ui-body font-medium">{category}</h3>
+                <span className="text-ui-caption tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
               </div>
-              <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
+              <div className="overflow-hidden rounded-xl bg-card shadow-[var(--shadow-card)]">
                 {items.map((it, i) => (
                   <MarketRow
                     key={itemInstallID(it)}
@@ -535,7 +543,7 @@ function MarketList(props: {
           ))}
         </>
       )}
-      <p className="mt-2 max-w-[68ch] text-[12px] leading-5 text-muted">{props.attribution || copy.skills.attribution}</p>
+      <p className="mt-2 max-w-[68ch] text-ui-footnote leading-5 text-muted">{props.attribution || copy.skills.attribution}</p>
     </div>
   );
 }
@@ -562,16 +570,16 @@ function MarketRow(props: {
       <SkillAvatar name={title} icon={it.icon} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="text-[13px] font-medium text-foreground">{title}</div>
-          {it.hasScripts ? <span className="text-[11px] text-muted">{copy.skills.hasScripts}</span> : null}
-          {props.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
+          <div className="text-ui-body font-medium text-foreground">{title}</div>
+          {it.hasScripts ? <span className="text-ui-caption text-muted">{copy.skills.hasScripts}</span> : null}
+          {props.incomplete ? <span className="text-ui-caption text-warning">{copy.skills.incomplete}</span> : null}
         </div>
-        <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-muted">{it.purpose || it.slug}</p>
+        <p className="mt-0.5 line-clamp-2 text-ui-body leading-5 text-muted">{it.purpose || it.slug}</p>
         {meta.length ? (
-          <p className="mt-1 text-[11px] leading-4 text-muted">{meta.join(" · ")}</p>
+          <p className="mt-1 text-ui-caption leading-4 text-muted">{meta.join(" · ")}</p>
         ) : null}
         {it.prerequisites && it.prerequisites !== "无" ? (
-          <p className="mt-1 text-[11px] leading-4 text-muted">{it.prerequisites}</p>
+          <p className="mt-1 text-ui-caption leading-4 text-muted">{it.prerequisites}</p>
         ) : null}
       </div>
       {props.incomplete ? (
@@ -579,7 +587,7 @@ function MarketRow(props: {
           {props.busy ? copy.skills.repairing : copy.skills.repair}
         </Button>
       ) : props.installed ? (
-        <span className="mt-0.5 shrink-0 text-[11px] text-muted">{copy.skills.installedBadge}</span>
+        <span className="mt-0.5 shrink-0 text-ui-caption text-muted">{copy.skills.installedBadge}</span>
       ) : (
         <Button size="sm" variant="outline" className="mt-0.5 shrink-0 rounded-md" disabled={props.busy} onClick={() => props.onInstall(id)}>
           {props.busy ? copy.skills.installing : copy.skills.install}
@@ -596,7 +604,7 @@ function SkillAvatar(props: { name: string; icon?: string }) {
   const initials = skillInitials(props.name);
   return (
     <span
-      className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-lift text-[11px] font-medium text-foreground/85"
+      className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-lift text-ui-caption font-medium text-foreground/85"
       aria-hidden
     >
       {showImg ? (
@@ -665,7 +673,7 @@ function Chip(props: { on: boolean; onClick: () => void; children: string; title
       type="button"
       title={props.title}
       className={cn(
-        "rounded-md border px-2 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "rounded-md border px-2 py-1 text-ui-footnote transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         props.on ? "border-border bg-lift text-foreground" : "border-transparent text-muted hover:bg-lift/50 hover:text-foreground",
       )}
       aria-pressed={props.on}
@@ -708,7 +716,7 @@ function PacksList(props: {
   }
   return (
     <div className="space-y-4">
-      <p className="max-w-[68ch] text-[12px] leading-5 text-muted">{copy.skills.packHint}</p>
+      <p className="max-w-[68ch] text-ui-footnote leading-5 text-muted">{copy.skills.packHint}</p>
       {props.packs.map((p) => {
         const installing = props.busy === p.id;
         const updating = props.busy === p.id + ":update";
@@ -716,33 +724,33 @@ function PacksList(props: {
         const togglingGlobal = props.busy === p.id + ":global";
         const togglingInherit = props.busy === p.id + ":inherit";
         return (
-          <section key={p.id} className="rounded-2xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid={`pack-${p.id}`}>
+          <section key={p.id} className="rounded-xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid={`pack-${p.id}`}>
             <div className="flex items-start gap-3">
               <SkillAvatar name={p.name} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-[14px] font-medium text-foreground">{p.name}</h3>
+                  <h3 className="text-ui-body-l font-medium text-foreground">{p.name}</h3>
                   {p.methodology ? (
-                    <span className="text-[11px] text-muted">{copy.skills.methodology}</span>
+                    <span className="text-ui-caption text-muted">{copy.skills.methodology}</span>
                   ) : p.known ? (
-                    <span className="text-[11px] text-muted">{copy.skills.domain}</span>
+                    <span className="text-ui-caption text-muted">{copy.skills.domain}</span>
                   ) : null}
                   {p.enabled ? (
-                    <span className="text-[11px] text-muted">{copy.skills.packEnabled}</span>
+                    <span className="text-ui-caption text-muted">{copy.skills.packEnabled}</span>
                   ) : p.installed ? (
-                    <span className="text-[11px] text-muted">{copy.skills.defaultOff}</span>
+                    <span className="text-ui-caption text-muted">{copy.skills.defaultOff}</span>
                   ) : (
-                    <span className="text-[11px] text-muted">{copy.skills.packDisabled}</span>
+                    <span className="text-ui-caption text-muted">{copy.skills.packDisabled}</span>
                   )}
                 </div>
-                <p className="mt-0.5 text-[13px] leading-5 text-muted">{p.description}</p>
-                <p className="mt-1 text-[11px] tabular-nums text-muted">
+                <p className="mt-0.5 text-ui-body leading-5 text-muted">{p.description}</p>
+                <p className="mt-1 text-ui-caption tabular-nums text-muted">
                   {copy.skills.skillCount.replace("{n}", String(p.skillCount || p.skills?.length || 0))}
                   {p.license ? ` · ${copy.skills.packLicense} ${p.license}` : ""}
                   {p.origin?.repo ? ` · ${p.origin.repo}` : ""}
                 </p>
                 {p.skills?.length ? (
-                  <p className="mt-1 truncate text-[11px] text-muted">{p.skills.join(" · ")}</p>
+                  <p className="mt-1 truncate text-ui-caption text-muted">{p.skills.join(" · ")}</p>
                 ) : null}
               </div>
             </div>

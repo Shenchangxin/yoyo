@@ -1,6 +1,6 @@
 /**
- * 拥有：记忆、任务、工作和目标的设置。
- * 不拥有：偶像服务，也不再编辑身份档案。增删改会调用 api 改状态。
+ * 拥有：定时、目标、盯梢、想法、个人事务和发送审阅这几块表单。设置的「主动与通知」页把它们排在一起。
+ * 不拥有：记忆。记忆在今天栏的记忆页里改。增删改会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
 import { useCopy } from "../../lib/i18n";
@@ -8,90 +8,9 @@ import * as api from "../../lib/client";
 import { str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { SettingEmpty, SettingRow, SettingSection, SettingsGroupLabel } from "./SettingChrome";
-/** PersonalSettings 把记忆、任务和工作各段拼在一起。主会话不再切换身份。 */
-export function PersonalSettings() {
-  const copy = useCopy();
-  return (
-    <>
-      <MemorySection />
-      <SettingsGroupLabel>{copy.settings.sections.personalActivity}</SettingsGroupLabel>
-      <JobSection />
-      <WorkSection />
-      <ProposalSection />
-      <IdeaSection />
-      <GoalSection />
-      <WatchSection />
-    </>
-  );
-}
-
-/** 编辑记忆条目。 */
-function MemorySection() {
-  const copy = useCopy();
-  const [items, setItems] = useState<any[]>([]);
-  const [text, setText] = useState("");
-  /** 重新拉取记忆。 */
-  const refresh = () => {
-    void api.memoryList().then(setItems).catch(() => {});
-  };
-  useEffect(() => {
-    refresh();
-  }, []);
-  return (
-    <SettingSection id="personal-memory" title={copy.settings.sections.personalMemory} footnote={copy.settings.memoryHint}>
-      <SettingRow title={copy.settings.sections.personalMemory} stack>
-        <Input
-          aria-label={copy.settings.sections.personalMemory}
-          className="h-8 w-full text-[13px]"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={copy.settings.memoryPlaceholder}
-        />
-        <div className="flex w-full justify-end">
-          <Button
-            size="sm"
-            disabled={!text.trim()}
-            onClick={async () => {
-              if (!text.trim()) return;
-              await api.memoryWrite("profile", text.trim());
-              setText("");
-              refresh();
-            }}
-          >
-            {copy.settings.save}
-          </Button>
-        </div>
-      </SettingRow>
-      {items.length === 0 ? (
-        <SettingEmpty>{copy.settings.noMemory}</SettingEmpty>
-      ) : (
-        items.map((it: any, i: number) => (
-          <SettingRow
-            key={str(it.id || i)}
-            list
-            title={str(it.text).slice(0, 96)}
-            description={str(it.kind) + " · " + copy.settings.memoryPinned}
-          >
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                await api.memoryForget(it.id);
-                refresh();
-              }}
-            >
-              {copy.settings.forget}
-            </Button>
-          </SettingRow>
-        ))
-      )}
-    </SettingSection>
-  );
-}
-
+import { SettingEmpty, SettingRow, SettingSection } from "./SettingChrome";
 /** 编辑定时任务。 */
-function JobSection() {
+export function JobSection() {
   const copy = useCopy();
   const [jobs, setJobs] = useState<any[]>([]);
   const [prompt, setPrompt] = useState("");
@@ -107,13 +26,13 @@ function JobSection() {
     <SettingSection id="personal-jobs" title={copy.settings.sections.personalJobs} footnote={copy.settings.automationsHint}>
       <SettingRow stack>
         <div className="flex w-full flex-col gap-[var(--space-group)]">
-          <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+          <label className="flex flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
             <span>{copy.settings.scheduleSpec}</span>
-            <Input className="h-8 w-full text-[13px] font-normal" value={spec} onChange={(e) => setSpec(e.target.value)} />
+            <Input className="h-8 w-full text-ui-body font-normal" value={spec} onChange={(e) => setSpec(e.target.value)} />
           </label>
-          <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+          <label className="flex flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
             <span>{copy.settings.schedulePrompt}</span>
-            <Input className="h-8 w-full text-[13px] font-normal" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+            <Input className="h-8 w-full text-ui-body font-normal" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
           </label>
           <div className="flex justify-end gap-2">
             <Button
@@ -205,7 +124,7 @@ function usePersonalSnap() {
 }
 
 /** 投影工作文档。 */
-function WorkSection() {
+export function WorkSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
   const [answer, setAnswer] = useState("");
@@ -224,7 +143,7 @@ function WorkSection() {
           >
             {str(t.status) === "waiting_input" ? (
               <>
-                <Input className="h-8 w-40 text-[13px]" value={answer} onChange={(e) => setAnswer(e.target.value)} />
+                <Input className="h-8 w-40 text-ui-body" value={answer} onChange={(e) => setAnswer(e.target.value)} />
                 <Button
                   size="sm"
                   disabled={!answer.trim()}
@@ -292,7 +211,7 @@ function WorkSection() {
 }
 
 /** 投影等待审阅的提案。 */
-function ProposalSection() {
+export function ProposalSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
   const items = (Array.isArray(snap.proposals) ? snap.proposals : []).filter((p: any) => str(p.status) === "awaiting_review");
@@ -330,7 +249,7 @@ function ProposalSection() {
 }
 
 /** 投影新的想法。 */
-function IdeaSection() {
+export function IdeaSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
   const items = (Array.isArray(snap.ideas) ? snap.ideas : []).filter((it: any) => str(it.status) === "new");
@@ -368,7 +287,7 @@ function IdeaSection() {
 }
 
 /** 编辑目标。 */
-function GoalSection() {
+export function GoalSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
   const [title, setTitle] = useState("");
@@ -376,7 +295,7 @@ function GoalSection() {
   return (
     <SettingSection id="personal-goals" title={copy.settings.sections.personalGoals}>
       <SettingRow stack>
-        <Input className="h-8 w-full text-[13px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
+        <Input className="h-8 w-full text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
         <div className="flex w-full justify-end">
           <Button
             size="sm"
@@ -444,7 +363,7 @@ function GoalSection() {
 }
 
 /** 编辑监视项。 */
-function WatchSection() {
+export function WatchSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
   const [title, setTitle] = useState("");
@@ -453,8 +372,8 @@ function WatchSection() {
   return (
     <SettingSection id="personal-watch" title={copy.settings.sections.personalWatch}>
       <SettingRow stack>
-        <Input className="h-8 w-full text-[13px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
-        <Input className="h-8 w-full text-[13px]" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={copy.settings.watchUrl} />
+        <Input className="h-8 w-full text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
+        <Input className="h-8 w-full text-ui-body" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={copy.settings.watchUrl} />
         <div className="flex w-full justify-end">
           <Button
             size="sm"

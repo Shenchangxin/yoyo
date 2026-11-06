@@ -17,7 +17,7 @@ export function AlertDialogContent({ className, ...props }: ComponentProps<typeo
       <AlertDialogPrimitive.Overlay className="overlay-scrim fixed inset-0 z-50" />
       <AlertDialogPrimitive.Content
         className={cn(
-          "dialog-sheet fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-popover p-5 shadow-[var(--shadow-popover)] focus:outline-none",
+          "dialog-sheet fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-popover p-5 shadow-[var(--shadow-popover)] focus:outline-none",
           className,
         )}
         {...props}

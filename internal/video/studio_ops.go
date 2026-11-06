@@ -107,12 +107,20 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 		sb.BGM = p.BGMHash
 	}
 	if len(sb.Shots) == 0 {
-		return StudioProject{}, fmt.Errorf("storyboard has no shots")
+		return StudioProject{}, fmt.Errorf("分镜里还没有镜头。先锁定口播拆出镜头，或加一张静帧")
 	}
-	for _, shot := range sb.Shots {
-		if shot.Stale && (strings.TrimSpace(shot.ImageHash) != "" || strings.TrimSpace(shot.VideoHash) != "") {
-			return StudioProject{}, fmt.Errorf("shot %s is stale; regenerate before assemble", firstNonEmpty(shot.ID, shot.Caption))
+	var empty []string
+	for i, shot := range sb.Shots {
+		hasMedia := strings.TrimSpace(shot.ImageHash) != "" || strings.TrimSpace(shot.VideoHash) != ""
+		if shot.Stale && hasMedia {
+			return StudioProject{}, fmt.Errorf("第 %d 镜的画面说明改过了，重新生成后再合成", i+1)
 		}
+		if !hasMedia {
+			empty = append(empty, strconv.Itoa(i+1))
+		}
+	}
+	if len(empty) > 0 {
+		return StudioProject{}, fmt.Errorf("第 %s 镜还没有画面。生成、上传一张图，或删掉这一镜再合成", strings.Join(empty, "、"))
 	}
 	if err := e.EnsureFFmpeg(context.Background()); err != nil {
 		return StudioProject{}, err
@@ -124,6 +132,7 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 	}
 	defer os.RemoveAll(tmp)
 
+	var warns []string
 	var clips []string
 	for i, shot := range sb.Shots {
 		dur := shot.Duration
@@ -139,16 +148,14 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 		if shot.VideoHash != "" {
 			src, err := e.materialize(shot.VideoHash, ".mp4")
 			if err != nil {
-				p.Status, p.Error = StudioFailed, err.Error()
-				_ = e.putDoc(colStudioProjects, p.ID, p)
-				return p, err
+				return e.failStudio(id, err)
 			}
 			defer os.Remove(src)
 			if e.FFProbe != "" {
 				if srcDur, perr := probeFileSeconds(e.FFProbe, src); perr == nil {
 					if _, warn := clipShouldLoop(srcDur, dur); warn {
 						label := firstNonEmpty(shot.Caption, shot.ID)
-						e.warnStudio(&p, GateCompose, fmt.Sprintf("镜头「%s」只有 %.1f 秒，已循环补到 %.1f 秒。", label, srcDur, dur))
+						warns = append(warns, fmt.Sprintf("镜头「%s」只有 %.1f 秒，已循环补到 %.1f 秒。", label, srcDur, dur))
 					}
 				}
 			}
@@ -162,16 +169,12 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 				}
 				return nil
 			}); err != nil {
-				p.Status, p.Error = StudioFailed, err.Error()
-				_ = e.putDoc(colStudioProjects, p.ID, p)
-				return p, err
+				return e.failStudio(id, err)
 			}
-		} else if shot.ImageHash != "" {
+		} else {
 			src, err := e.materialize(shot.ImageHash, ".png")
 			if err != nil {
-				p.Status, p.Error = StudioFailed, err.Error()
-				_ = e.putDoc(colStudioProjects, p.ID, p)
-				return p, err
+				return e.failStudio(id, err)
 			}
 			defer os.Remove(src)
 			vf := stillFilter(w, h, dur, motion, fit)
@@ -185,35 +188,24 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 				}
 				return nil
 			}); err != nil {
-				p.Status, p.Error = StudioFailed, err.Error()
-				_ = e.putDoc(colStudioProjects, p.ID, p)
-				return p, err
+				return e.failStudio(id, err)
 			}
-		} else {
-			continue
 		}
 		clips = append(clips, clip)
 	}
-	if len(clips) == 0 {
-		return StudioProject{}, fmt.Errorf("no usable shots (need image_hash or video_hash)")
-	}
 	merged, err := e.Concat(clips)
 	if err != nil {
-		p.Status, p.Error = StudioFailed, err.Error()
-		_ = e.putDoc(colStudioProjects, p.ID, p)
-		return p, err
+		return e.failStudio(id, err)
 	}
 	base := filepath.Join(tmp, "base.mp4")
 	if err := os.WriteFile(base, merged, 0o600); err != nil {
-		return StudioProject{}, err
+		return e.failStudio(id, err)
 	}
 	final := base
 	if sb.Narration != "" || sb.BGM != "" {
 		mixed, err := e.mixAudio(tmp, base, sb.Narration, sb.BGM, sb.BGMVolume)
 		if err != nil {
-			p.Status, p.Error = StudioFailed, err.Error()
-			_ = e.putDoc(colStudioProjects, p.ID, p)
-			return p, err
+			return e.failStudio(id, err)
 		}
 		final = mixed
 	}
@@ -221,44 +213,63 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 		burned, err := e.burnSubtitles(tmp, final, sb.Subtitle, w, h)
 		if err == nil {
 			final = burned
+		} else {
+			warns = append(warns, "字幕没有烧进画面，成片先不带字幕："+err.Error())
 		}
 	}
-	raw, err := os.ReadFile(final)
+	hash, _, err := e.PutPath(final)
 	if err != nil {
-		return StudioProject{}, err
+		return e.failStudio(id, err)
 	}
-	hash, err := e.PutBytes(raw)
-	if err != nil {
-		return StudioProject{}, err
-	}
-	p.ResultHash = hash
-	p.Status = StudioAssembled
-	p.Error = ""
-	p.Gate = GateCompose
+	posterHash := ""
 	if poster, err := e.Poster(final); err == nil {
 		if ph, err := e.PutBytes(poster); err == nil {
-			p.PosterHash = ph
-			if p.CoverHash == "" {
-				p.CoverHash = ph
-			}
+			posterHash = ph
 		}
 	}
-	e.noteStudio(&p, "assemble", "cut ready")
-	p.Versions = append(p.Versions, StudioSnapshot{
-		N: len(p.Versions) + 1, ResultHash: p.ResultHash, PosterHash: p.PosterHash,
-		NarrationHash: p.NarrationHash, SubtitleHash: p.SubtitleHash, CoverHash: p.CoverHash,
-		Note: "assemble", CreatedAt: Now(),
+	saved, err := e.mutateStudio(id, func(p *StudioProject) error {
+		clearStudioIssues(p, GateCompose)
+		for _, w := range warns {
+			e.warnStudio(p, GateCompose, w)
+		}
+		p.ResultHash = hash
+		p.Status = StudioAssembled
+		p.Error = ""
+		p.Gate = GateCompose
+		if posterHash != "" {
+			p.PosterHash = posterHash
+			if p.CoverHash == "" {
+				p.CoverHash = posterHash
+			}
+		}
+		e.noteStudio(p, "assemble", "cut ready")
+		p.Versions = append(p.Versions, StudioSnapshot{
+			N: len(p.Versions) + 1, ResultHash: p.ResultHash, PosterHash: p.PosterHash,
+			NarrationHash: p.NarrationHash, SubtitleHash: p.SubtitleHash, CoverHash: p.CoverHash,
+			Note: "assemble", CreatedAt: Now(),
+		})
+		return nil
 	})
-	saved, err := e.saveStudio(p)
 	if err != nil {
-		return p, err
+		return saved, err
 	}
 	published, err := e.PublishStudioAsset(saved)
 	if err != nil {
-		_ = e.putDoc(colStudioProjects, saved.ID, saved)
 		return saved, err
 	}
 	return published, nil
+}
+
+// failStudio 把合成失败记到工程上，再原样返回这个错误。写回走 mutateStudio，不冲掉合成期间别处的改动。
+// id 传给 mutateStudio。
+// cause 写进 Error，并作为返回的错误。
+func (e *Engine) failStudio(id string, cause error) (StudioProject, error) {
+	p, _ := e.mutateStudio(id, func(p *StudioProject) error {
+		p.Status = StudioFailed
+		p.Error = cause.Error()
+		return nil
+	})
+	return p, cause
 }
 
 // shotCacheKey 用种类、内容编号、时长、运镜、适配和尺寸算出镜头缓存的键。

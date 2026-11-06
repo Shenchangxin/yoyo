@@ -22,6 +22,10 @@ import { shownSeriesTitle } from "./drama-lib";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { defaultDramaStyle, useStudioSelection } from "./workshop-store";
 import type { CutProject } from "./cut-desk";
+import { useFilmDesk } from "./film-desk";
+import { useRemakeDesk } from "./remake-desk";
+import { useCreateMode } from "./create-mode";
+import { useUI } from "../../lib/store";
 
 const YingceApp = lazy(() => import("./canvas-host/YingceApp"));
 
@@ -47,6 +51,8 @@ export function VideoHistory(props: {
   const canvases = useMemo(() => props.projects.filter(/** p 看 kind 是不是 canvas。 */ (p) => p.kind === "canvas"), [props.projects]);
   const studios = useMemo(() => props.projects.filter(/** p 看 kind 是不是 studio。 */ (p) => p.kind === "studio"), [props.projects]);
   const [cuts, setCuts] = useState<CutProject[]>([]);
+  const [cutsErr, setCutsErr] = useState("");
+  const [cutsTick, setCutsTick] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -55,9 +61,27 @@ export function VideoHistory(props: {
       const rows = (Array.isArray(list) ? list : []) as CutProject[];
       rows.sort(/** a 用 updated_at 参与比较，空的当空字符串。b 用 updated_at 和 a 比较，空的当空字符串。 */ (a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
       setCuts(rows.filter(/** row 要有 id 和 source_hash。 */ (row) => row.id && row.source_hash));
-    }).catch(() => { if (alive) setCuts([]); });
+      setCutsErr("");
+    }).catch(/** e 是拉剪辑列表失败的原因，和「还没有」分开显示。 */ (e) => {
+      if (!alive) return;
+      setCuts([]);
+      setCutsErr(api.errMessage(e));
+    });
     return () => { alive = false; };
-  }, [props.projects, props.sessionId]);
+  }, [props.projects, props.sessionId, cutsTick]);
+
+  /** 打开一条剪辑。还没出片的翻拍稿回到翻拍稿上继续换画面，和侧栏一致；其余进剪辑台。 row 是点中的剪辑。 */
+  function openCutRow(row: CutProject) {
+    if (!row.id) return;
+    if (row.kind === "remake" && !row.result_hash) {
+      useFilmDesk.getState().clear();
+      useRemakeDesk.getState().setDraft(row);
+      useCreateMode.getState().setEngaged(false);
+      useUI.getState().openVideoPane("create");
+      return;
+    }
+    props.onOpenCut?.(row.id);
+  }
 
   /** 新建一块画布，有会话就绑定并打开。 */
   async function newCanvas() {
@@ -140,10 +164,10 @@ export function VideoHistory(props: {
     <div className="flex h-full min-h-0 flex-col" data-testid="video-history" data-skin-pane>
       <div className="flex shrink-0 items-center gap-2 px-5 py-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-[16px] font-semibold tracking-[-0.03em]">{copy.video.shellTasks}</h1>
-          <p className="mt-0.5 text-[13px] text-muted">{copy.video.historyHint}</p>
+          <h1 className="text-ui-title-s font-semibold tracking-[-0.03em]">{copy.video.shellTasks}</h1>
+          <p className="mt-0.5 text-ui-body text-muted">{copy.video.historyHint}</p>
         </div>
-        <div className="relative flex rounded-lg bg-lift p-0.5 text-[13px]">
+        <div className="relative flex rounded-lg bg-lift p-0.5 text-ui-body">
           {(["projects", "jobs"] as const).map(/** id 用来判断选中并切换页，projects 显示项目文案，否则显示任务文案。 */ (id) => {
             const on = tab === id;
             return (
@@ -177,7 +201,7 @@ export function VideoHistory(props: {
               <div className="flex h-full flex-col gap-3 p-5" aria-busy="true">
                 <span className="sr-only">{copy.video.shellTasks}</span>
                 <div className="skeleton-sweep h-10 w-48 rounded-xl" />
-                <div className="skeleton-sweep is-soft min-h-0 flex-1 rounded-2xl" />
+                <div className="skeleton-sweep is-soft min-h-0 flex-1 rounded-xl" />
               </div>
             }
           >
@@ -188,31 +212,38 @@ export function VideoHistory(props: {
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-6">
           <section className="mb-6">
             <div className="mb-2 flex items-center gap-2">
-              <h2 className="text-[12px] font-medium text-muted">{copy.video.conductor.cutTitle}</h2>
+              <h2 className="text-ui-footnote font-medium text-muted">{copy.video.conductor.cutTitle}</h2>
             </div>
             {cuts.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-                {cuts.map(/** row 用 id 当 key，点击时交给 onOpenCut，显示 title，有 duration 就显示秒数。 */ (row) => (
+                {cuts.map(/** row 用 id 当 key，点击时交给 openCutRow，显示 title，有 duration 就显示秒数。 */ (row) => (
                   <li key={row.id}>
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] hover:bg-lift"
-                      onClick={() => row.id && props.onOpenCut?.(row.id)}
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-ui-body hover:bg-lift"
+                      onClick={() => openCutRow(row)}
                     >
                       <span className="truncate">{row.title || copy.video.conductor.cutTitle}</span>
-                      {row.duration ? <span className="shrink-0 text-[12px] tabular-nums text-muted">{row.duration.toFixed(1)}s</span> : null}
+                      {row.duration ? <span className="shrink-0 text-ui-footnote tabular-nums text-muted">{copy.video.studio.filmSeconds.replace("{n}", String(Math.round(row.duration)))}</span> : null}
                     </button>
                   </li>
                 ))}
               </ul>
+            ) : cutsErr ? (
+              <EmptyState
+                icon={<Scissors className="size-5" />}
+                title={copy.video.historyLoadFailed}
+                body={cutsErr}
+                action={<Button size="sm" variant="ghost" onClick={() => setCutsTick(/** n 加一，重新拉列表。 */ (n) => n + 1)}>{copy.video.studio.refresh}</Button>}
+              />
             ) : (
               <EmptyState icon={<Scissors className="size-5" />} title={copy.video.conductor.cutTitle} body={copy.video.historyEmptyCuts} />
             )}
           </section>
           <section className="mb-6">
             <div className="relative mb-2 flex items-center gap-2">
-              <h2 className="text-[12px] font-medium text-muted">{copy.video.shellDrama}</h2>
-              <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "drama"} data-testid="video-history-new-drama" onClick={() => void newDrama()}>
+              <h2 className="text-ui-footnote font-medium text-muted">{copy.video.shellDrama}</h2>
+              <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-ui-footnote" disabled={busy === "drama"} data-testid="video-history-new-drama" onClick={() => void newDrama()}>
                 <Plus className="size-3.5" aria-hidden />
                 {copy.video.newDrama}
               </Button>
@@ -230,7 +261,7 @@ export function VideoHistory(props: {
           </section>
           <section className="mb-6">
             <div className="relative mb-2 flex items-center gap-2">
-              <h2 className="text-[12px] font-medium text-muted">{copy.video.shellStudio}</h2>
+              <h2 className="text-ui-footnote font-medium text-muted">{copy.video.shellStudio}</h2>
               {busy === "studio" ? <ProgressHairline className="absolute inset-x-0 -bottom-px rounded-none" indeterminate /> : null}
             </div>
             <div className="mb-3">
@@ -263,8 +294,8 @@ export function VideoHistory(props: {
           </section>
           <section>
             <div className="relative mb-2 flex items-center gap-2">
-              <h2 className="text-[12px] font-medium text-muted">{copy.video.shellCanvas}</h2>
-              <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "canvas"} data-testid="video-history-new-canvas" onClick={() => void newCanvas()}>
+              <h2 className="text-ui-footnote font-medium text-muted">{copy.video.shellCanvas}</h2>
+              <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-ui-footnote" disabled={busy === "canvas"} data-testid="video-history-new-canvas" onClick={() => void newCanvas()}>
                 <Plus className="size-3.5" aria-hidden />
                 {copy.video.newCanvas}
               </Button>
@@ -340,7 +371,7 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
         data-testid={`video-project-${p.kind}-${p.id}`}
         aria-current={props.active ? "page" : undefined}
         className={cn(
-          "flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3 text-left text-[13px]",
+          "flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3 text-left text-ui-body",
           props.active ? "bg-lift text-foreground" : "u-row-hover text-foreground",
         )}
         onClick={props.onSelect}
@@ -349,13 +380,13 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
         <span className="min-w-0 flex-1">
           <span className="block truncate">{p.kind === "drama" ? shownSeriesTitle(p.title, props.fallback) : displayTitle(p.title, props.fallback)}</span>
           {p.kind === "studio" ? (
-            <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
+            <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-ui-caption text-muted">
               {meta.length ? <span>{meta.join(" · ")}</span> : null}
               <span className="truncate font-mono" title={copy.video.studio.inspectHint}>{p.id}</span>
               {p.sessionId ? <span className="truncate font-mono" title={copy.video.studio.sessionId}>{p.sessionId}</span> : null}
             </span>
           ) : p.updatedAt ? (
-            <span className="mt-0.5 block text-[11px] text-muted">{p.updatedAt.slice(0, 10)}</span>
+            <span className="mt-0.5 block text-ui-caption text-muted">{p.updatedAt.slice(0, 10)}</span>
           ) : null}
         </span>
       </button>

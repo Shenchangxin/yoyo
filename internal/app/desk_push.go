@@ -11,7 +11,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// DeskNote 是推进主会话的一条简报或兴趣变化。Brief 是简报 JSON，兴趣变化时留空。
+// DeskNote 是推进主会话的一条简报、开口短讯或兴趣变化。Brief 是简报 JSON，其余时候留空。
+// Class、Why、Name、Detail、State 和 MemoryID 只在开口短讯上有：界面按它们写这一行，反馈记到 Class 这一类。
 type DeskNote struct {
 	SessionID string `json:"sessionId"`
 	Kind      string `json:"kind"`
@@ -20,6 +21,14 @@ type DeskNote struct {
 	Text      string `json:"text"`
 	Chip      string `json:"chip"`
 	Brief     string `json:"brief"`
+	Class     string `json:"class,omitempty"`
+	Why       string `json:"why,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	State     string `json:"state,omitempty"`
+	MemoryID  string `json:"memoryId,omitempty"`
+	// Quiet 只用在简报上：这封信写下来留档，拉开今天能读到，但不往会话里放芯片。
+	Quiet bool `json:"quiet,omitempty"`
 }
 
 // DeskPush 把一条通知写进会话。同一 id 已经在轨迹里时不再写，但仍然返回真，表示这条已经送达。
@@ -40,6 +49,10 @@ func (a *App) DeskPush(note DeskNote) bool {
 		if a.briefRecorded(note.Slot, note.Day) {
 			return true
 		}
+		if note.Quiet {
+			a.rememberBrief(note, time.Now().UTC())
+			return a.briefRecorded(note.Slot, note.Day)
+		}
 	}
 	id := deskNoteID(note)
 	if a.traceHasID(sessionID, id) {
@@ -52,20 +65,28 @@ func (a *App) DeskPush(note DeskNote) bool {
 	if len(brief) > 1<<20 {
 		return false
 	}
+	payload := map[string]any{
+		"text":  text,
+		"id":    id,
+		"kind":  strings.TrimSpace(note.Kind),
+		"slot":  strings.TrimSpace(note.Slot),
+		"day":   strings.TrimSpace(note.Day),
+		"chip":  strings.TrimSpace(note.Chip),
+		"brief": brief,
+	}
+	for key, value := range map[string]string{
+		"class": note.Class, "why": note.Why, "name": note.Name, "detail": note.Detail, "state": note.State, "memoryId": note.MemoryID,
+	} {
+		if value = strings.TrimSpace(value); value != "" {
+			payload[key] = value
+		}
+	}
 	ev := trace.Event{
 		TS:        time.Now().UTC(),
 		Type:      trace.TypeAssistant,
 		Source:    "desk",
 		SessionID: sessionID,
-		Payload: map[string]any{
-			"text":  text,
-			"id":    id,
-			"kind":  strings.TrimSpace(note.Kind),
-			"slot":  strings.TrimSpace(note.Slot),
-			"day":   strings.TrimSpace(note.Day),
-			"chip":  strings.TrimSpace(note.Chip),
-			"brief": brief,
-		},
+		Payload:   payload,
 	}
 	if err := a.Traces.AppendDurable(ev); err != nil {
 		return false

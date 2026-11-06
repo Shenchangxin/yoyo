@@ -248,9 +248,19 @@ func InferProtocol(vendor, cap string) string {
 	case CapSpeech:
 		switch v {
 		case "azure", "microsoft":
-			return "openai-audio"
+			return "azure-tts"
 		case "elevenlabs":
-			return "openai-audio"
+			return "elevenlabs-tts"
+		case "minimax", "hailuo":
+			return "minimax-t2a"
+		case "volcengine", "doubao":
+			return "volcengine-tts"
+		case "aliyun", "dashscope", "qwen":
+			return "dashscope-tts"
+		case "tencent":
+			return "tencent-tts"
+		case "spark", "xfyun", "iflytek":
+			return "xfyun-tts"
 		default:
 			return "openai-audio"
 		}

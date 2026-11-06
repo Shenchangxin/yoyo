@@ -32,6 +32,13 @@ describe("studio next action", () => {
       script: "hello",
       script_status: "approved",
       narration_hash: "n",
+      shots: [{ image_hash: "h" }, { caption: "还没出图" }],
+    }, "assemble").key, "visuals");
+    assert.equal(studioNext({
+      ...base,
+      script: "hello",
+      script_status: "approved",
+      narration_hash: "n",
       shots: [{ image_hash: "h" }],
       result_hash: "v",
     }, "assemble").key, "pack");

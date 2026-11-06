@@ -107,7 +107,7 @@ export function WorkingLine({
   const now = useNow(!!since);
   return (
     <div
-      className="flex h-7 min-w-0 items-center gap-2.5 text-[13px]"
+      className="flex h-7 min-w-0 items-center gap-2.5 text-ui-body"
       role="status"
       aria-live="polite"
       data-testid="working-line"
@@ -116,13 +116,13 @@ export function WorkingLine({
         <span className="pulse-dot" />
       </span>
       <span className="shimmer-text shrink-0 font-medium">{label || copy.transcript.working}</span>
-      {detail ? <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">{detail}</span> : null}
+      {detail ? <span className="min-w-0 truncate font-mono text-ui-footnote text-muted/80">{detail}</span> : null}
       {since && now > since ? (
-        <span className="shrink-0 text-[12px] text-muted/70">
+        <span className="shrink-0 text-ui-footnote text-muted/70">
           <RollTime ms={now - since} kind="clock" live />
         </span>
       ) : null}
-      {hint ? <span className="ml-auto shrink-0 text-[11px] text-muted/55">{hint}</span> : null}
+      {hint ? <span className="ml-auto shrink-0 text-ui-caption text-muted/55">{hint}</span> : null}
     </div>
   );
 }
@@ -182,7 +182,7 @@ export const ProcessGroup = memo(function ProcessGroup({
     <div className="u-chrome min-w-0" data-testid="process-group" data-live={live ? "true" : "false"}>
       <button
         type="button"
-        className="group/head flex h-7 w-full min-w-0 items-center gap-2.5 rounded-md text-left text-[13px]"
+        className="group/head flex h-7 w-full min-w-0 items-center gap-2.5 rounded-md text-left text-ui-body"
         data-testid={live ? undefined : "process-summary"}
         aria-expanded={open}
         title={open ? copy.transcript.hideSteps : copy.transcript.showSteps}
@@ -240,7 +240,7 @@ export const ProcessGroup = memo(function ProcessGroup({
           </AnimatePresence>
         </span>
         {live && start ? (
-          <span className="shrink-0 text-[12px] text-muted/70">
+          <span className="shrink-0 text-ui-footnote text-muted/70">
             <RollTime ms={spanMs} kind="clock" live />
           </span>
         ) : null}
@@ -266,7 +266,7 @@ export const ProcessGroup = memo(function ProcessGroup({
               {hidden > 0 ? (
                 <button
                   type="button"
-                  className="mb-1 h-7 w-full rounded-md px-2 text-left text-[12px] text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
+                  className="mb-1 h-7 w-full rounded-md px-2 text-left text-ui-footnote text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
                   data-testid="process-earlier"
                   onClick={() => setShown((n) => n + PROCESS_PAGE)}
                 >
@@ -311,7 +311,7 @@ function LiveLabel({ pair, t, detail }: { pair?: ToolPair; t: TranscriptCopy; de
   return (
     <>
       <span className="shrink-0 shimmer-text font-medium">{verb}</span>
-      {extra ? <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">{extra}</span> : null}
+      {extra ? <span className="min-w-0 truncate font-mono text-ui-footnote text-muted/80">{extra}</span> : null}
     </>
   );
 }
@@ -415,14 +415,14 @@ function StepRow({
     <div data-testid={testId} className={cn("step-row -mx-1.5 rounded-md px-1.5", className)}>
       <button
         type="button"
-        className="group/row flex w-full min-w-0 items-center gap-2.5 py-1 pr-0.5 text-left text-[13px]"
+        className="group/row flex w-full min-w-0 items-center gap-2.5 py-1 pr-0.5 text-left text-ui-body"
         aria-expanded={open}
         onClick={onToggle}
       >
         {glyph}
-        <span className={cn("shrink-0 font-mono text-[12px] font-medium", labelTone || "text-foreground/85")}>{label}</span>
-        {detail ? <span className="min-w-0 truncate font-mono text-[12px] text-muted/75">{detail}</span> : null}
-        <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums text-[11px] text-muted/70">
+        <span className={cn("shrink-0 font-mono text-ui-footnote font-medium", labelTone || "text-foreground/85")}>{label}</span>
+        {detail ? <span className="min-w-0 truncate font-mono text-ui-footnote text-muted/75">{detail}</span> : null}
+        <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums text-ui-caption text-muted/70">
           {meta}
           <ChevronRight
             className={cn(
@@ -475,7 +475,7 @@ function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
   return (
     <pre
       data-testid="shell-terminal"
-      className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background px-2.5 py-2 font-mono text-[11px] leading-[1.55] text-foreground/90"
+      className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background px-2.5 py-2 font-mono text-ui-caption leading-[1.55] text-foreground/90"
     >
       {text}
       {live ? <span className="ml-px inline-block h-[1.1em] w-[0.45em] translate-y-px bg-foreground/70" aria-hidden /> : null}
@@ -495,7 +495,7 @@ function TypedToolBody(props: {
   if (props.kind === "read") {
     return (
       <div data-testid="tool-card-read">
-        {props.path ? <div className="mb-1 truncate font-mono text-[11px] text-muted">{props.path}</div> : null}
+        {props.path ? <div className="mb-1 truncate font-mono text-ui-caption text-muted">{props.path}</div> : null}
         <CodePreview text={props.text} lang={props.lang} />
       </div>
     );
@@ -504,17 +504,17 @@ function TypedToolBody(props: {
     const hits = props.text.split(/\r?\n/).filter((l) => l.trim()).slice(0, 40);
     return (
       <div data-testid="tool-card-search" className="space-y-0.5">
-        {props.query ? <div className="mb-1 font-mono text-[11px] text-muted">{props.query}</div> : null}
+        {props.query ? <div className="mb-1 font-mono text-ui-caption text-muted">{props.query}</div> : null}
         {hits.map((line, i) => (
-          <div key={i} className="truncate font-mono text-[11px] leading-[1.5] text-foreground/85">{line}</div>
+          <div key={i} className="truncate font-mono text-ui-caption leading-[1.5] text-foreground/85">{line}</div>
         ))}
       </div>
     );
   }
   return (
     <div data-testid="tool-card-web" className="space-y-1">
-      {props.url ? <div className="truncate font-mono text-[11px] text-accent">{props.url}</div> : null}
-      <div className="whitespace-pre-wrap break-words text-[12px] leading-[1.55] text-foreground/85">{props.text}</div>
+      {props.url ? <div className="truncate font-mono text-ui-caption text-accent">{props.url}</div> : null}
+      <div className="whitespace-pre-wrap break-words text-ui-footnote leading-[1.55] text-foreground/85">{props.text}</div>
     </div>
   );
 }
@@ -567,7 +567,7 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<MessageSquare className="size-3 text-muted/70" />} />}
         label={copy.transcript.progressNote}
-        labelTone="font-sans text-[13px] text-muted"
+        labelTone="font-sans text-ui-body text-muted"
         detail={preview}
         open={open && !!body}
         onToggle={() => setOpen((v) => !v)}
@@ -587,16 +587,16 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<Bot className="size-3 text-muted/70" />} />}
         label={copy.transcript.subagent}
-        labelTone="font-sans text-[13px] text-muted"
+        labelTone="font-sans text-ui-body text-muted"
         detail={body.split(/\r?\n/)[0]?.slice(0, 120)}
         open={open && !!(body || child)}
         onToggle={() => setOpen((v) => !v)}
       >
-        {body ? <div className="min-w-0 max-w-full whitespace-pre-wrap break-words text-[13px] leading-6 text-muted">{body}</div> : null}
+        {body ? <div className="min-w-0 max-w-full whitespace-pre-wrap break-words text-ui-body leading-6 text-muted">{body}</div> : null}
         {child ? (
           <button
             type="button"
-            className="mt-1 text-[12px] text-muted underline decoration-muted/40 underline-offset-2 hover:text-foreground"
+            className="mt-1 text-ui-footnote text-muted underline decoration-muted/40 underline-offset-2 hover:text-foreground"
             data-testid="open-child"
             onClick={() => {
               if (onOpenChild) {
@@ -610,7 +610,7 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
             }}
           >
             {copy.transcript.openChild}
-            <span className="ml-1 font-mono text-[11px] text-muted">{child}</span>
+            <span className="ml-1 font-mono text-ui-caption text-muted">{child}</span>
           </button>
         ) : null}
       </StepRow>
@@ -626,7 +626,7 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<AtSign className="size-3 text-muted/70" />} />}
         label={label}
-        labelTone="font-sans text-[13px] text-muted"
+        labelTone="font-sans text-ui-body text-muted"
         open={open && !!body}
         onToggle={() => setOpen((v) => !v)}
       >
@@ -800,7 +800,7 @@ export function ToolLine({
         {clipped.hidden > 0 ? (
           <button
             type="button"
-            className="h-6 text-left text-[11px] text-muted hover:text-foreground"
+            className="h-6 text-left text-ui-caption text-muted hover:text-foreground"
             data-testid="tool-more-lines"
             onClick={() => setFullOut(true)}
           >

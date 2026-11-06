@@ -1,5 +1,5 @@
 // 本文件拥有礼物目录、抽卡、送礼和重置卡。Catalog 里的中文名是数据。
-// 不调用模型。送礼改好感并写一条 kind 为 event 的记录，再记每日任务 gift。
+// 不调用模型。送礼改好感并写一条 kind 为 event 的记录，再记每日任务 gift；她在下一次回话或回应时知道这件事（见 prompt.go 的旁白）。
 
 package idol
 
@@ -76,8 +76,8 @@ type DrawResult struct {
 	Left      int   `json:"left"`
 }
 
-// Draw 消耗一次抽卡。先用 BonusDraws，没有再用 Draws。0 到 99 里小于 3 得到重置卡；否则 95 及以上 rare，70 及以上 uncommon，其余 common，再从该稀有度里随机一件放进背包。
-// rng 调用 IntN(100) 决定重置卡和稀有度，再调用 IntN 从该稀有度里取一件。
+// Draw 消耗一次抽卡。先用 BonusDraws，没有再用 Draws。一次掷 0 到 99：0 是重置卡（1%），1 到 69 普通（69%），70 到 94 少见（25%），95 及以上稀有（5%），
+// 再从该稀有度里随机一件放进背包。rng 先决定结果，再从该稀有度里取一件。
 func (st *State) Draw(rng *rand.Rand) (DrawResult, error) {
 	left := st.Draws + st.BonusDraws
 	if left <= 0 {
@@ -88,11 +88,11 @@ func (st *State) Draw(rng *rand.Rand) (DrawResult, error) {
 	} else {
 		st.Draws--
 	}
-	if rng.IntN(100) < 3 {
+	roll := rng.IntN(100)
+	if roll == 0 {
 		st.ResetCards++
 		return DrawResult{ResetCard: true, Left: st.Draws + st.BonusDraws}, nil
 	}
-	roll := rng.IntN(100)
 	rarity := "common"
 	if roll >= 95 {
 		rarity = "rare"
@@ -113,22 +113,6 @@ func (st *State) Draw(rng *rand.Rand) (DrawResult, error) {
 	return DrawResult{Gift: &g, Left: st.Draws + st.BonusDraws}, nil
 }
 
-// giftDelta 计算送礼加的分数。common 是 2，uncommon 是 4，rare 是 7，喜欢的礼物再加 4。
-// liked 为真时在稀有度分数上再加 4。
-func giftDelta(g Gift, liked bool) int {
-	n := 2
-	switch g.Rarity {
-	case "uncommon":
-		n = 4
-	case "rare":
-		n = 7
-	}
-	if liked {
-		n += 4
-	}
-	return n
-}
-
 // liked 看这位偶像的 LikedGifts 里有没有这件礼物。
 // idol 的 LikedGifts 逐项与 giftID 比较。
 // giftID 与 idol.LikedGifts 的每一项做相等比较。
@@ -141,56 +125,53 @@ func liked(idol Idol, giftID string) bool {
 	return false
 }
 
-// Give 从背包拿出一件礼物送给偶像，加上 giftDelta，并写一条 event 记录。当前对话已结束就另开一段。冷却中也继续送出。
-// idolID 传给 idol、affinityOf、ApplyDelta、ensureCurrent 和 forceNew。
-// giftID 传给 GiftByID、stock、addStock 和 liked，并写入记录的 GiftID。
-// now 传给 Cooling、ApplyDelta、ensureCurrent、forceNew，写入记录的 At，并传给 markTask 和 unlock。
-func (st *State) Give(idolID, giftID string, now time.Time) (Record, Affinity, error) {
+// Give 从背包拿出一件礼物送给偶像，按 receiveGift 加分，并写一条 event 记录。当前对话已结束就另开一段。冷却中也能送，只是加得少。
+// 返回这条记录、送礼后的好感和好感怎么变了。
+func (st *State) Give(idolID, giftID string, now time.Time) (Record, Affinity, *Change, error) {
 	g, ok := GiftByID(giftID)
 	if !ok {
-		return Record{}, Affinity{}, errf("unknown gift")
+		return Record{}, Affinity{}, nil, errf("unknown gift")
 	}
 	if st.stock(giftID) <= 0 {
-		return Record{}, Affinity{}, errf("not holding that gift")
+		return Record{}, Affinity{}, nil, errf("not holding that gift")
 	}
 	idol, ok := st.idol(idolID)
 	if !ok {
-		return Record{}, Affinity{}, errf("idol not found")
-	}
-	if aff := st.affinityOf(idolID); aff.Cooling(now) {
-		// 冷却期间礼物仍然送出，分数上来后可以解除冷却
+		return Record{}, Affinity{}, nil, errf("idol not found")
 	}
 	st.addStock(giftID, -1)
-	delta := giftDelta(g, liked(idol, giftID))
-	aff := st.ApplyDelta(idolID, delta, now, 0)
+	isLiked := liked(idol, giftID)
+	before, after := st.receiveGift(idolID, g.Rarity, isLiked, now)
 	con := st.ensureCurrent(idolID, now)
 	if con.Ended {
 		con = st.forceNew(idolID, now)
 	}
 	rec := Record{
-		ID: newID(), Kind: "event", At: now, GiftID: giftID, Delta: delta,
+		ID: newID(), Kind: "event", Event: "gift", At: now, GiftID: giftID, Liked: isLiked,
+		Delta:    roundDelta(after.Score - before.Score),
 		Segments: []Segment{{Spoken: "收到了" + g.Name, Subtitle: "收到了" + g.Name}},
 	}
 	st.appendRecord(con.ID, rec)
-	st.markTask(now, idolTZ(st.User), "gift")
+	st.markTask(now, "gift")
 	st.unlock(now)
-	return rec, aff, nil
+	return rec, after, changeOf(before, after), nil
 }
 
-// UseReset 消耗一张重置卡，把分数低于 50 或仍在冷却的偶像设回 50 并清掉冷却。没有低于 trust 的人就返回错误，卡不消耗。返回值是改过的人数。
-// now 传给 Cooling。
+// UseReset 消耗一张重置卡，把低于信任（冷淡或疏远，冷却中也算）的偶像都拉回常值 50 并结束冷却，她们不会察觉。
+// 没有低于信任的人就返回错误，卡不消耗。返回值是改过的人数。
 func (st *State) UseReset(now time.Time) (int, error) {
 	if st.ResetCards <= 0 {
 		return 0, errf("no reset card")
 	}
 	n := 0
 	for _, idol := range st.Idols {
-		a := st.affinityOf(idol.ID)
-		if a.Score >= 50 && !a.Cooling(now) {
+		a := st.affinityOf(idol.ID, now)
+		if !belowTrust(a.Tier) && !a.InCooldown {
 			continue
 		}
-		a.Score = 50
-		a.CooldownUntil = time.Time{}
+		a.Score = affinityNormal
+		a.InCooldown = false
+		a.At = now
 		st.setAffinity(a)
 		n++
 	}

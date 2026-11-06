@@ -15,7 +15,7 @@ import { useUI } from "../../lib/store";
 type CanvasSummary = { id: string; title?: string };
 
 const ghost =
-  "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
+  "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-ui-caption font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
 /** CanvasProjectChip 列出画布工程，并能新建、选中或打开画布。props 的 disabled 传给触发按钮。 */
 export function CanvasProjectChip(props: { disabled?: boolean }) {

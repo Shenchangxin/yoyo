@@ -114,7 +114,7 @@ export function CommandOverlay(props: {
               onHover={() => props.onHover?.(i)}
             />
           )) : props.empty ? (
-            <div className="px-3 py-2 text-[11px] text-muted">{props.empty}</div>
+            <div className="px-3 py-2 text-ui-caption text-muted">{props.empty}</div>
           ) : null}
         </div>
       </div>

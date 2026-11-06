@@ -3,7 +3,10 @@
 package video
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
@@ -26,13 +29,44 @@ type CutProject struct {
 	Captions      cut.Captions  `json:"captions"`
 	Note          string        `json:"note,omitempty"`
 	Stale         bool          `json:"stale,omitempty"`
-	CreatedAt     string        `json:"created_at,omitempty"`
-	UpdatedAt     string        `json:"updated_at,omitempty"`
+	// 下面是成片的配方。每次渲染都从源片按配方重做，调色和烧字幕不会叠加，重新合成也不会丢掉配音。
+
+	// UseCuts 为真时成片按剪辑表拼。合成过一次之后保持为真。
+	UseCuts bool `json:"use_cuts,omitempty"`
+	// Grade 是调色预设。
+	Grade string `json:"grade,omitempty"`
+	// Enhance 是原声增强预设。
+	Enhance string `json:"enhance,omitempty"`
+	// Burn 为真时把字幕烧进成片。
+	Burn bool `json:"burn,omitempty"`
+	// DubReplace 为真时配音替换原声，否则原声压低垫在配音下面。
+	DubReplace bool `json:"dub_replace,omitempty"`
+	// DuckOff 为真时混音不在人声下压低音乐和原声。
+	DuckOff   bool   `json:"duck_off,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
-// cutBin 用引擎上的 ffmpeg、ffprobe 和 whisper 路径组成剪辑命令。
+// cutBin 用引擎上的 ffmpeg、ffprobe、whisper 和它的模型组成剪辑命令。命令跟着引擎的上下文，引擎关闭时一起停下。WHISPER_LANG 可以指定转写语言。
 func (e *Engine) cutBin() cut.Bin {
-	return cut.Bin{FFmpeg: e.FFMPEG, FFprobe: e.FFProbe, Whisper: e.WHISPER}
+	return cut.Bin{
+		FFmpeg: e.FFMPEG, FFprobe: e.FFProbe, Whisper: e.WHISPER,
+		WhisperModel: e.whisperModel(),
+		WhisperLang:  strings.TrimSpace(os.Getenv("WHISPER_LANG")),
+		Ctx:          e.ctx,
+	}
+}
+
+// whisperModel 找 whisper.cpp 的模型。没有 whisper 时返回空串。视频目录下的 models 也会找。
+func (e *Engine) whisperModel() string {
+	if strings.TrimSpace(e.WHISPER) == "" {
+		return ""
+	}
+	var extra []string
+	if e.Dir != "" {
+		extra = append(extra, filepath.Join(e.Dir, "models"))
+	}
+	return LookWhisperModel(e.WHISPER, extra...)
 }
 
 // ListCutProjects 读出全部剪辑工程。没有时返回空切片。
@@ -147,7 +181,7 @@ func (e *Engine) CreateCutProject(in CutProject) (CutProject, error) {
 	return in, nil
 }
 
-// saveCut 更新时间后写回工程，并通知 cut_state。
+// saveCut 更新时间后写回工程，并通知 cut_state。只用在新建的工程，或已经拿着这条工程锁的地方；其余改动走 mutateCut。
 // p 写上 UpdatedAt 后，用 p.ID 调用 putDoc，并传给 emitCut。
 func (e *Engine) saveCut(p CutProject) (CutProject, error) {
 	p.UpdatedAt = Now()
@@ -158,10 +192,30 @@ func (e *Engine) saveCut(p CutProject) (CutProject, error) {
 	return p, nil
 }
 
+// mutateCut 在这条剪辑工程的锁里读出最新的一份，交给 fn 改，再写回。fn 返回错误时不写，返回读到的那份和错误。ffmpeg 这类长活要在锁外做完，再用它把结果写上。fn 里不能再调用 mutateCut。
+// id 去掉首尾空白后用来加锁和读取。
+func (e *Engine) mutateCut(id string, fn func(p *CutProject) error) (CutProject, error) {
+	id = strings.TrimSpace(id)
+	unlock := e.lockDoc(colCutProjects, id)
+	defer unlock()
+	p, err := e.GetCutProject(id)
+	if err != nil {
+		return CutProject{}, err
+	}
+	if err := fn(&p); err != nil {
+		if errors.Is(err, errUnchanged) {
+			return p, nil
+		}
+		return p, err
+	}
+	return e.saveCut(p)
+}
+
 // DeleteCutProject 删掉指向该工程的会话绑定，再删除工程文档。
 // id 去掉空白后，从绑定表里删掉值等于它的项，并传给 delDoc。
 func (e *Engine) DeleteCutProject(id string) error {
 	id = strings.TrimSpace(id)
+	e.bindMu.Lock()
 	m := e.loadCutBinds()
 	for sid, pid := range m {
 		if pid == id {
@@ -169,6 +223,9 @@ func (e *Engine) DeleteCutProject(id string) error {
 		}
 	}
 	_ = e.saveCutBinds(m)
+	e.bindMu.Unlock()
+	unlock := e.lockDoc(colCutProjects, id)
+	defer unlock()
 	return e.delDoc(colCutProjects, id)
 }
 
@@ -181,16 +238,17 @@ func (e *Engine) BindCutSession(sessionID, projectID string) error {
 	if sessionID == "" || projectID == "" {
 		return fmt.Errorf("session and project required")
 	}
-	p, err := e.GetCutProject(projectID)
-	if err != nil {
+	if _, err := e.mutateCut(projectID, func(p *CutProject) error {
+		if p.SessionID == sessionID {
+			return errUnchanged
+		}
+		p.SessionID = sessionID
+		return nil
+	}); err != nil {
 		return err
 	}
-	if p.SessionID != sessionID {
-		p.SessionID = sessionID
-		if _, err := e.saveCut(p); err != nil {
-			return err
-		}
-	}
+	e.bindMu.Lock()
+	defer e.bindMu.Unlock()
 	m := e.loadCutBinds()
 	next := make(map[string]string, len(m)+1)
 	for sid, pid := range m {
@@ -210,6 +268,8 @@ func (e *Engine) ReleaseCutBind(sessionID string) {
 	if sessionID == "" {
 		return
 	}
+	e.bindMu.Lock()
+	defer e.bindMu.Unlock()
 	m := e.loadCutBinds()
 	if _, ok := m[sessionID]; !ok {
 		return
