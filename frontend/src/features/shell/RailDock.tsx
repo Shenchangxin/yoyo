@@ -72,8 +72,8 @@ function dockSize(width: number) {
   return size;
 }
 
-/** 侧栏一变宽就重算边长。basis 是模块栏占窗口的百分比：给了就按模块栏的宽度排这一行并居中，
- *  会话页的今天栏更宽时图标也和其他模块一样大。row 为 0 时铺满整栏。 */
+/** 侧栏一变宽就重算边长。basis 是模块栏占窗口的百分比：给了就按模块栏的宽度排这一行，靠左，
+ *  和模块栏同一起点。会话页的今天栏更宽时，图标大小和间距仍跟其他模块一致。row 为 0 时铺满整栏。 */
 function useRowSize(basis?: number) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState(28);
@@ -129,7 +129,7 @@ export function RailDock(props: {
   ];
   return (
     <div ref={hostRef} className="rail-glass-host">
-      <div style={row ? { width: row, marginInline: "auto" } : undefined}>
+      <div style={row ? { width: row } : undefined}>
         <GlassIcons
           className="rail-glass"
           items={items.map((item) => ({
