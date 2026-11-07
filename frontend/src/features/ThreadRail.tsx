@@ -256,7 +256,7 @@ export function ThreadRail(props: {
   day?: ReactNode;
   /** needs 是等你决定的条数，挂在底部坞的会话图标上。 */
   needs?: number;
-  /** dockBasis 是模块栏占窗口的百分比。底部坞按它排，会话页和其他模块一样大。 */
+  /** dockBasis 是模块栏占窗口的百分比。底部坞按它排，靠左，会话页和其他模块一样大。 */
   dockBasis?: number;
 }) {
   const copy = useCopy();
