@@ -1822,3 +1822,150 @@ html[data-theme="dark"] .window {
     border: 1px solid ButtonText;
   }
 }
+
+.hero-home {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 100svh;
+  padding: calc(var(--header) + 8px) var(--margin) 0;
+}
+
+.hero-home .hero-copy {
+  width: min(38rem, 100%);
+}
+
+.hero-shot {
+  flex: 1 1 auto;
+  min-height: 220px;
+  margin: 28px calc(var(--margin) * -1) 0;
+  overflow: hidden;
+}
+
+.hero-shot img,
+.room-shot img {
+  display: block;
+  width: 100%;
+}
+
+.hero-shot img {
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+}
+
+.rooms {
+  display: grid;
+  gap: 16px;
+}
+
+.room-list {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.room-list button {
+  flex: none;
+  min-height: 44px;
+  padding: 8px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.room-list button + button {
+  margin-left: 16px;
+}
+
+.room-list button[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.room-line {
+  max-width: 62ch;
+  min-height: 3.2em;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.room-shot {
+  margin: 0;
+}
+
+.room-shot img {
+  height: auto;
+  animation: shot-in 420ms var(--ease) both;
+}
+
+@keyframes shot-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (min-width: 960px) {
+  .hero-home {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.22fr);
+    align-items: center;
+    gap: 40px;
+    height: 100svh;
+    min-height: 0;
+    padding-top: calc(var(--header) + 12px);
+    padding-bottom: 20px;
+  }
+
+  .hero-shot {
+    height: auto;
+    min-height: 0;
+    align-self: stretch;
+    margin: 0 calc(var(--margin) * -1) 0 0;
+  }
+
+  .rooms {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    column-gap: 40px;
+    align-items: start;
+  }
+
+  .room-copy {
+    position: sticky;
+    top: calc(var(--header) + 28px);
+  }
+
+  .room-list {
+    flex-direction: column;
+    gap: 0;
+    overflow: visible;
+  }
+
+  .room-list button,
+  .room-list button + button {
+    margin-left: 0;
+    width: 100%;
+    padding: 12px 0 12px 14px;
+    border-bottom: 0;
+    border-left: 2px solid transparent;
+    text-align: left;
+  }
+
+  .room-list button[aria-selected="true"] {
+    border-left-color: var(--ink);
+    border-bottom-color: transparent;
+  }
+}
