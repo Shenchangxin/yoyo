@@ -770,6 +770,7 @@ func jsonString(s string) string {
 }
 
 // captureFilmBrowser 用本机浏览器把代码画面截成 PNG 存进产物。broll 跳过。写文件或截图失败就跳过这一镜，不中断其余镜头。
+// 浏览器 12 秒还不退出就放弃这一镜，免得构建标记一直不消。
 func (e *Engine) captureFilmBrowser(p film.Project) film.Project {
 	for _, shot := range p.Shots {
 		if shot.Visual == "broll" {
@@ -786,9 +787,12 @@ func (e *Engine) captureFilmBrowser(p film.Project) film.Project {
 			os.RemoveAll(dir)
 			continue
 		}
-		cmd := exec.Command(e.BrowserBin, film.BrowserCommand(e.BrowserBin, page, png)[1:]...)
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		cmd := exec.CommandContext(ctx, e.BrowserBin, film.BrowserCommand(e.BrowserBin, page, png)[1:]...)
 		cmd.Dir = dir
-		if err := cmd.Run(); err != nil {
+		err = cmd.Run()
+		cancel()
+		if err != nil {
 			os.RemoveAll(dir)
 			continue
 		}

@@ -125,9 +125,11 @@ func TestForkLeavesTheOriginalAndLanguageWaitsForChat(t *testing.T) {
 }
 
 // TestStartFilmBuildRunsInBackground 确认后台构建马上返回带标记的工程，做完清掉标记；没有 ffmpeg 时备注写明为什么只有静帧。
+// 不调用本机浏览器，避免 CI 上的 Edge 把这一次构建拖过截止时间。
 func TestStartFilmBuildRunsInBackground(t *testing.T) {
 	e := testEngine(t)
 	e.FFMPEG = ""
+	e.BrowserBin = ""
 	p, err := e.DescribeFilm("podcast", "", "")
 	if err != nil {
 		t.Fatal(err)

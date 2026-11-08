@@ -291,7 +291,7 @@ func TestProviderTemplatesIncludeMusicStockAsr(t *testing.T) {
 		{"video", "tencent", "Hunyuan Video"},
 		{"video", "zhipu", "CogVideoX"},
 		{"video", "kling", "Kling Video"},
-		{"tts", "aliyun", "Qwen CosyVoice"},
+		{"tts", "aliyun", "Qwen TTS"},
 		{"tts", "spark", "Spark Speech"},
 		{"music", "mureka", "Mureka"},
 		{"matting", "volcengine", "Volcengine Cutout"},
