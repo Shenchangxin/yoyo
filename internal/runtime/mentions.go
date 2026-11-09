@@ -1,4 +1,5 @@
 // 把用户消息里的 @file、@folder、@skill、@harness、@session 和裸 @路径收成有界注入块。字节预算默认 2400。主文件不占这份预算。不负责会话片段排版，那在 tools_thread.go 的 FormatSessionMentions。
+// @agent:<编号> 只是点名哪个 agent 来做，这里认出它、交给路由，不注入任何内容。
 
 package runtime
 
@@ -15,12 +16,14 @@ import (
 
 // Mention 是用户点名的工作记忆，不是 harness 钉。展开成有界注入块，而不是把仓库倒进提示。
 type Mention struct {
-	Kind string `json:"kind"` // file、folder、harness、skill、session
+	Kind string `json:"kind"` // file、folder、harness、skill、session、agent
 	Ref  string `json:"ref"`
 }
 
-// reFile、reFolder、reSkill、reSession、reHarness、reBareQuoted、reBareAt 是解析 @ 提及的正则。带类型的每类最多 8 处，folder 最多 4 处，裸 @ 也最多 8 处。
+// reFile、reFolder、reSkill、reSession、reAgent、reHarness、reBareQuoted、reBareAt 是解析 @ 提及的正则。带类型的每类最多 8 处，folder 最多 4 处，裸 @ 也最多 8 处。
 var (
+	// reAgent 匹配 @agent: 后的编号：字母或数字开头，再跟最多 63 个字母、数字、点、下划线或连字符。不分大小写。
+	reAgent = regexp.MustCompile(`(?i)@agent:([a-z0-9][a-z0-9._-]{0,63})`)
 	// reFile 匹配 @file: 后的非空白。
 	reFile = regexp.MustCompile(`@file:(\S+)`)
 	// reFolder 匹配 @folder: 后的非空白。
@@ -37,8 +40,8 @@ var (
 	reBareAt = regexp.MustCompile(`(?:^|\s)@([^\s"]+)`)
 )
 
-// ParseMentions 只解析带类型的 @file、@folder、@skill、@session 和 @harness。同类同引用只留一次。不解析裸 @路径。
-// text 交给各条 @ 正则；file、skill、session 最多 8 处，folder 最多 4 处。
+// ParseMentions 只解析带类型的 @file、@folder、@skill、@session、@agent 和 @harness。同类同引用只留一次。不解析裸 @路径。
+// text 交给各条 @ 正则；file、skill、session、agent 最多 8 处，folder 最多 4 处。
 func ParseMentions(text string) []Mention {
 	var out []Mention
 	seen := map[string]bool{}
@@ -62,13 +65,32 @@ func ParseMentions(text string) []Mention {
 	for _, m := range reSession.FindAllStringSubmatch(text, 8) {
 		add(Mention{Kind: "session", Ref: strings.Trim(m[1], `'"`)})
 	}
+	for _, id := range MentionAgents(text) {
+		add(Mention{Kind: "agent", Ref: id})
+	}
 	if reHarness.MatchString(text) {
 		add(Mention{Kind: "harness", Ref: "active"})
 	}
 	return out
 }
 
-// parseBareWorkspaceMentions 把还没被带类型语法占住的裸 @ 解析成工作区文件或目录。workspace 或 text 为空则返回 nil。跳过 harness 和 file、folder、skill、session 这四种已带冒号的前缀。
+// MentionAgents 按出现顺序返回 text 里 @agent:<编号> 点到的编号，小写、去重，最多 8 个。
+// 句末跟着的点、下划线和连字符不算进编号。
+func MentionAgents(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range reAgent.FindAllStringSubmatch(text, 8) {
+		id := strings.ToLower(strings.TrimRight(m[1], "._-"))
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
+// parseBareWorkspaceMentions 把还没被带类型语法占住的裸 @ 解析成工作区文件或目录。workspace 或 text 为空则返回 nil。跳过 harness 和 file、folder、skill、session、agent 这五种已带冒号的前缀。
 // seen 里已有的 kind 加引用会跳过，新命中会写进去。
 func parseBareWorkspaceMentions(workspace, text string, seen map[string]bool) []Mention {
 	if workspace == "" || text == "" {
@@ -80,8 +102,8 @@ func parseBareWorkspaceMentions(workspace, text string, seen map[string]bool) []
 			continue
 		}
 		if i := strings.IndexByte(raw, ':'); i >= 0 {
-			switch raw[:i] {
-			case "file", "folder", "skill", "session":
+			switch strings.ToLower(raw[:i]) {
+			case "file", "folder", "skill", "session", "agent":
 				continue
 			}
 		}
@@ -352,7 +374,7 @@ func lookupSkillMention(skills, skillDirs map[string]string, ref string) (body, 
 	return "", "", false
 }
 
-// mentionChunk 在 remain 小于 32 时返回空串。skill 没有目录时写 no skill catalog，未知技能写 unknown skill，正文经 DecorateSkillBody 再按 remain 截断。harness 用 harnessNote，空则写 refs/active。session 返回空串。folder 最多列 40 项。普通文件按 mentionFileRunes 截断；字节看起来像主文件时改走 mentionPrimaryFile。
+// mentionChunk 在 remain 小于 32 时返回空串。skill 没有目录时写 no skill catalog，未知技能写 unknown skill，正文经 DecorateSkillBody 再按 remain 截断。harness 用 harnessNote，空则写 refs/active。session 和 agent 返回空串。folder 最多列 40 项。普通文件按 mentionFileRunes 截断；字节看起来像主文件时改走 mentionPrimaryFile。
 // workspace 在 folder 和文件分支传给 jailPath。
 // skills 传给 lookupSkillMention；为 nil 时 skill 分支返回 no skill catalog。
 // skillDirs 传给 lookupSkillMention。
@@ -382,7 +404,7 @@ func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]st
 			note = "refs/active"
 		}
 		return "## @harness\n" + note + "\n"
-	case "session":
+	case "session", "agent":
 		return ""
 	case "folder":
 		p, err := jailPath(workspace, m.Ref)

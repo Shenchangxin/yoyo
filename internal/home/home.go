@@ -70,6 +70,7 @@ func Open(root string) (*Dir, error) {
 		d.VideoWorkspace(),
 		d.Idols(),
 		d.Runtime(),
+		d.Buddies(),
 		d.Logs(),
 		filepath.Join(d.Logs(), "crash"),
 		filepath.Join(d.Logs(), "mcp"),
@@ -194,6 +195,9 @@ func (d *Dir) Idols() string { return filepath.Join(d.Root, "idols") }
 
 // Runtime 指向 runtime。
 func (d *Dir) Runtime() string { return filepath.Join(d.Root, "runtime") }
+
+// Buddies 指向 buddies。外部 agent 的托管安装、状态、日志和图标缓存都在这里。
+func (d *Dir) Buddies() string { return filepath.Join(d.Root, "buddies") }
 
 // VideoWorkspace 指向 video/workspace。
 func (d *Dir) VideoWorkspace() string {

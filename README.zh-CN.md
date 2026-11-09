@@ -303,6 +303,7 @@ flowchart LR
 | [技能包](docs/architecture/skill-packs.md) | 方法论包和领域包怎么载入 |
 | [上下文](docs/architecture/context.md) | 一轮里什么会被注入、什么会被裁掉 |
 | [持久化](docs/architecture/persist.md) | home、连接和保管库 |
+| [Buddy](docs/architecture/buddy.md) | 外部 agent 当工人，以及多 agent 任务组 |
 | [威胁模型](docs/architecture/threat-model.md) | 信任边界 |
 
 ## 命令

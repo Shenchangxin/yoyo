@@ -19,7 +19,7 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 }
 
 // MessagesFromEventsOpts 同样重建消息。检查点若存了 tail_id 且 spill 能取回非空正文，用这份热尾，不再读 payload 里的 tail。
-// delta 为真的事件跳过。prompt-update 和 repeat-tool-reminder 在正文非空白时原样变成用户消息。mention 贴进尚未被别的消息隔开的上一条用户消息，否则先攒着，最后仍没有用户消息就单独成条。其他来源的注入丢弃。
+// delta 为真的事件跳过。prompt-update、repeat-tool-reminder 和唤醒路由的 wake 在正文非空白时原样变成用户消息。mention 贴进尚未被别的消息隔开的上一条用户消息，否则先攒着，最后仍没有用户消息就单独成条。其他来源的注入丢弃。
 // 同一工具 id 的再次 tool_call 丢弃。同一 id 的再次 tool_result 只在原结果正文为空白、新正文非空白时补上。用户文本为空但带了 parts 时，文本写成 (image attached)。
 // evs 从最后一条 checkpoint 之后重建；该条之前的内容被摘要和尾部替换。
 func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
@@ -104,7 +104,7 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 				}
 			}
 			text, _ := ev.Payload["text"].(string)
-			if src == "prompt-update" || src == "repeat-tool-reminder" {
+			if src == "prompt-update" || src == "repeat-tool-reminder" || src == "wake" {
 				if strings.TrimSpace(text) == "" {
 					break
 				}

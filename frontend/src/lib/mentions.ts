@@ -3,15 +3,16 @@
  * 不拥有：提及菜单的渲染，以及宿主如何展开标记。
  */
 
-/** MentionKind 文件、文件夹、技能、harness 或会话。 */
-export type MentionKind = "file" | "folder" | "skill" | "harness" | "session";
+/** MentionKind 文件、文件夹、技能、harness、会话或 agent。 */
+export type MentionKind = "file" | "folder" | "skill" | "harness" | "session" | "agent";
 
-/** MentionPin 一枚提及。token 写进草稿，detail 是路径或 id。 */
+/** MentionPin 一枚提及。token 写进草稿，detail 是路径或 id。icon 是 agent 的图标，只给芯片画字形，不进草稿。 */
 export type MentionPin = {
   token: string;
   kind: MentionKind;
   label: string;
   detail: string;
+  icon?: string;
 };
 
 /** MentionQuery 光标处的查询。kind 为 any 时还没选定种类。quoted 表示用了引号。 */
@@ -35,7 +36,15 @@ export type MentionFileHit = {
   kind: string;
 };
 
-const COMPLETE_RE = /@(?:file|folder|skill|session):\S+|@harness\b/g;
+/** AGENT_ID 是 agent 编号的写法，和 Go 的 runtime.MentionAgents 一致，同一句话两边切在同一个位置。 */
+const AGENT_ID = "[A-Za-z0-9][A-Za-z0-9._-]{0,63}";
+
+const COMPLETE_RE = new RegExp(`@(?:file|folder|skill|session):\\S+|@agent:${AGENT_ID}|@harness\\b`, "g");
+
+/** withoutMentions 把完整的提及换成空格，只留正文。 */
+export function withoutMentions(text: string): string {
+  return text.replace(new RegExp(COMPLETE_RE.source, "g"), " ");
+}
 
 /** activeAtTail `before` 末尾正在输入的 `@`，含未闭合的 `@"。行首或空白之后才算。没有则空。 */
 export function activeAtTail(before: string): string | null {
@@ -45,9 +54,9 @@ export function activeAtTail(before: string): string | null {
   return plain?.[1] ?? null;
 }
 
-/** keepMentionOpen 正好是 `@file:`、`@folder:`、`@skill:` 或 `@session:` 时菜单保持打开。token 是 @file:、@folder:、@skill: 或 @session: 时返回真。 */
+/** keepMentionOpen 正好是 `@file:`、`@folder:`、`@skill:`、`@session:` 或 `@agent:` 时菜单保持打开。 */
 export function keepMentionOpen(token: string) {
-  return token === "@file:" || token === "@folder:" || token === "@skill:" || token === "@session:";
+  return token === "@file:" || token === "@folder:" || token === "@skill:" || token === "@session:" || token === "@agent:";
 }
 
 /** mentionKind 从标记前缀认出种类。只有整词 `@harness` 才是 harness，其余返回空。token 为 @harness 时返回 harness；看开头。 */
@@ -56,29 +65,35 @@ export function mentionKind(token: string): MentionKind | null {
   if (token.startsWith("@folder:")) return "folder";
   if (token.startsWith("@skill:")) return "skill";
   if (token.startsWith("@session:")) return "session";
+  if (token.startsWith("@agent:")) return "agent";
   if (token === "@harness") return "harness";
   return null;
 }
 
-/** mentionLabel harness 显示 harness。会话显示冒号后的原文。文件和技能显示最后一段，文件夹末尾加斜杠。没有引用时退回种类或标记本身。token 做替换，作为后备值，传给 mentionKind。 */
-export function mentionLabel(token: string): string {
+/**
+ * mentionLabel harness 显示 harness。会话显示冒号后的原文。agent 显示 names 里的名字，没有时显示编号。
+ * 文件和技能显示最后一段，文件夹末尾加斜杠。没有引用时退回种类或标记本身。
+ */
+export function mentionLabel(token: string, names?: Record<string, string>): string {
   const kind = mentionKind(token);
   if (kind === "harness") return "harness";
-  const ref = token.replace(/^@(?:file|folder|skill|session):/, "");
+  const ref = token.replace(/^@(?:file|folder|skill|session|agent):/, "");
   if (!ref) return kind || token;
+  if (kind === "agent") return names?.[ref.toLowerCase()] || ref;
   if (kind === "session") return ref;
   const parts = ref.replace(/\\/g, "/").split("/");
   const name = parts[parts.length - 1] || ref;
   return kind === "folder" ? `${name}/` : name;
 }
 
-/** mentionDetail 文件和文件夹是路径，技能和会话是冒号后的部分，其余空串。token 看开头，做替换，截取。 */
+/** mentionDetail 文件和文件夹是路径，技能、会话和 agent 是冒号后的部分，其余空串。agent 编号转成小写。 */
 export function mentionDetail(token: string): string {
   if (token.startsWith("@file:") || token.startsWith("@folder:")) {
     return token.replace(/^@(?:file|folder):/, "");
   }
   if (token.startsWith("@skill:")) return token.slice("@skill:".length);
   if (token.startsWith("@session:")) return token.slice("@session:".length);
+  if (token.startsWith("@agent:")) return token.slice("@agent:".length).toLowerCase();
   return "";
 }
 
@@ -88,9 +103,9 @@ export function pinFromToken(token: string, label?: string): MentionPin {
   return { token, kind, label: label || mentionLabel(token), detail: mentionDetail(token) };
 }
 
-/** isCompleteMention 带非空白引用的 file、folder、skill、session，或正好是 `@harness`。token 与 @harness 比较是否相等，传给 test。 */
+/** isCompleteMention 带非空白引用的 file、folder、skill、session，写法合格的 agent 编号，或正好是 `@harness`。 */
 export function isCompleteMention(token: string): boolean {
-  return /@(?:file|folder|skill|session):\S+/.test(token) || token === "@harness";
+  return /@(?:file|folder|skill|session):\S+/.test(token) || new RegExp(`^@agent:${AGENT_ID}$`).test(token) || token === "@harness";
 }
 
 /** mentionQueryOf 按前缀拆出种类和查询。`@harness` 的查询是 harness。`@"` 开头为引号查询并去掉结尾引号。其余去掉一个 `@` 后当作 any。token 与 @harness 比较是否相等，看开头，截取，作为分支结果。 */
@@ -99,6 +114,7 @@ export function mentionQueryOf(token: string): MentionQuery {
   if (token.startsWith("@folder:")) return { kind: "folder", query: token.slice("@folder:".length), quoted: false };
   if (token.startsWith("@skill:")) return { kind: "skill", query: token.slice("@skill:".length), quoted: false };
   if (token.startsWith("@session:")) return { kind: "session", query: token.slice("@session:".length), quoted: false };
+  if (token.startsWith("@agent:")) return { kind: "agent", query: token.slice("@agent:".length), quoted: false };
   if (token === "@harness") {
     return { kind: "harness", query: "harness", quoted: false };
   }

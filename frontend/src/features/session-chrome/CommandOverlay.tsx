@@ -6,11 +6,12 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Ref } from
 import { AtSign, BookOpen, Boxes, Camera, ChevronRight, Clipboard, FileText, Folder, MessageSquare, Paperclip, Terminal } from "lucide-react";
 import type { MentionCrumb, MentionKind } from "../../lib/mentions";
 import { cn } from "../../lib/utils";
+import { BuddyMark } from "../buddy/BuddyMark";
 
 /** OverlayKind 是浮层一行的种类。 */
 export type OverlayKind = MentionKind | "command" | "clipboard" | "screenshot" | "attach";
 
-/** OverlayItem 是浮层里的一行：记号、说明和种类。 */
+/** OverlayItem 是浮层里的一行：记号、说明和种类。mark 是 agent 的字形。disabled 的行置灰，但仍可点，由外面决定点了做什么。 */
 export type OverlayItem = {
   token: string;
   hint: string;
@@ -20,6 +21,8 @@ export type OverlayItem = {
   alias?: string;
   drill?: boolean;
   drillPath?: string;
+  mark?: { name: string; icon?: string };
+  disabled?: boolean;
 };
 
 /** OverlayCrumb 沿用提及的面包屑。 */
@@ -184,8 +187,9 @@ function PopupRow(props: {
       type="button"
       role="option"
       aria-selected={props.active}
+      aria-disabled={props.item.disabled || undefined}
       aria-label={`${title} ${props.item.hint || ""}`.trim()}
-      className={cn("sc-popup-row", props.active && "is-active")}
+      className={cn("sc-popup-row", props.active && "is-active", props.item.disabled && "is-disabled")}
       data-active={props.active ? "true" : "false"}
       onMouseDown={(e) => {
         e.preventDefault();
@@ -193,7 +197,9 @@ function PopupRow(props: {
       }}
       onMouseMove={props.active ? undefined : props.onHover}
     >
-      <span className="sc-popup-icon" aria-hidden><Glyph kind={props.item.kind} /></span>
+      <span className="sc-popup-icon" aria-hidden>
+        {props.item.mark ? <BuddyMark v={props.item.mark} className="size-3.5 text-ui-badge" /> : <Glyph kind={props.item.kind} />}
+      </span>
       <span className="sc-popup-name">{title}</span>
       {props.item.alias ? <span className="sc-popup-alias">{props.item.alias}</span> : null}
       {props.item.hint ? <span className="sc-popup-hint">{props.item.hint}</span> : null}

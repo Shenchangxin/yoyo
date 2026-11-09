@@ -355,6 +355,11 @@ func (l *Logger) debugOK(cat string) bool {
 	return m[strings.ToLower(strings.TrimSpace(cat))]
 }
 
+// DebugOn 在默认日志会写出分类 cat 的调试行时为真，还没有默认日志时为假。只为调试行准备的开销（打码、截断）先问它。
+func DebugOn(cat string) bool {
+	return Default().debugOK(cat)
+}
+
 // Logger 返回底层 slog。l 为 nil 时返回 slog.Default。
 func (l *Logger) Logger() *slog.Logger {
 	if l == nil {

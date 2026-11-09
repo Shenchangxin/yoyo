@@ -6,13 +6,35 @@
 export type Source = { name: string; state: string; detail: string; repo?: string; chat?: string; app?: string; api?: string; account?: string; hasSecret?: boolean };
 export type Input = { id: string; text: string; human: boolean; delivered: boolean };
 export type Follow = { thread: string; own: boolean; closed?: string };
-export type ReportLine = { state: string; summary?: string; question?: string };
-export type Assignment = { id: string; state: string; report?: string; summary?: string; lines?: ReportLine[] };
+/** ReportLine 是派工上的一条报告。at 是 RFC3339，旧报告没有。need 为 login 时人要先去 Buddy 登录。 */
+export type ReportLine = { state: string; summary?: string; question?: string; at?: string; need?: string };
+/** Assignment 是一次派工。agent 是这次交给的 agent，yoyo 自己做时是 yoyo。 */
+export type Assignment = { id: string; state: string; report?: string; summary?: string; lines?: ReportLine[]; agent?: string };
+/** Usage 是外部 agent 最近报的用量。used 和 size 是 token 数，cost 按 currency 计。 */
+export type Usage = { used?: number; size?: number; cost?: number; currency?: string };
+/**
+ * Ticket 是一张工单。agent 是做它的 agent，agentPinned 表示人点名了它。
+ * group 是所在的任务组，role 是分工，dependsOn 是要先做完的同组工单。held 为 deps 时在等它们，为 deps_failed 时它们有没做成的。
+ */
 export type Ticket = {
   id: string; stage: string; action: string; person: boolean; origin: string; outcome?: string;
   strength?: string; sender?: string; attention?: string; deliveryError?: string; originUrl?: string;
   title: string; directory?: string; openedAt?: string; updatedAt?: string;
   inputs?: Input[]; follows?: Follow[]; assignments?: Assignment[];
+  agent?: string; agentPinned?: boolean; usage?: Usage;
+  group?: string; role?: string; dependsOn?: string[]; held?: string;
+};
+/** AgentLoad 是一个 agent 正在跑和排队的工单数。 */
+export type AgentLoad = { agent: string; running: number; queued: number };
+/**
+ * Group 是交给几个 agent 一起做的一件事。mode 为 split（分工）或 compare（对比）；state 取 running、attention、done、failed、stopped。
+ * tickets 按拆分时的顺序。done 是做完的成员数，winner 是对比里采用的工单，recommended 是路由比较后推荐的工单，
+ * verdict 是路由最后的汇总。session 是发起它的主会话。
+ */
+export type Group = {
+  id: string; mode: string; title: string; session?: string; tickets: string[];
+  state: string; done: number; total: number; winner?: string; recommended?: string; verdict?: string; sharedDir?: string;
+  openedAt?: string; updatedAt?: string;
 };
 export type Trigger = {
   id: string; source: string; sender: string; text: string; addressed: boolean;
@@ -48,6 +70,8 @@ export type DeskView = {
   rules?: Rule[];
   flow?: Flow;
   load?: Load;
+  agents?: AgentLoad[];
+  groups?: Group[];
 };
 
 export type Rule = { id: string; text: string; enabled: boolean };

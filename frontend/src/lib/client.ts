@@ -3224,6 +3224,84 @@ export const runtime = {
   pwshInstall: () => videoCall("runtime.pwsh.install"),
 };
 
+/** BuddyState 是一个 agent 在 Buddy 里的状态，和 Go 的 buddy.State 一一对应。 */
+export type BuddyState =
+  | "not_installed" | "installing" | "probing" | "needs_auth" | "needs_config"
+  | "online" | "recently_lost" | "offline" | "error" | "unsupported";
+
+/** BuddySecret 是一把密钥的状态。只有 hasKey，没有值；reusable 表示 yoyo 有同类提供商的钥匙，reuse 表示已经打开复用。 */
+export type BuddySecret = { name: string; label?: string; optional?: boolean; hasKey: boolean; reusable?: boolean; reuse?: boolean };
+
+/** BuddyView 是 Buddy 栏目里的一项，字段和 Go 的 buddy.View 对齐。不含任何密钥值。 */
+export type BuddyView = {
+  id: string; name: string; vendor?: string; builtin?: boolean; featured?: boolean; custom?: boolean; order?: number;
+  registryId?: string; description?: string; icon?: string; docs?: string; version?: string; latest?: string; aliases?: string[];
+  install: { kind: "managed" | "system" | "custom" | "none"; source?: "npm" | "binary" | "uvx" | "path"; path?: string; sizeBytes?: number; unverified?: boolean };
+  canManage?: boolean;
+  system?: { path: string; version?: string };
+  cliOnly?: boolean;
+  state: BuddyState; detail?: string; checkedAt?: string; working?: number;
+  progress?: { phase: string; percent?: number; line?: string };
+  auth?: { methods: { id: string; name: string; type: "agent" | "terminal"; description?: string }[] };
+  caps?: { resume?: boolean; load?: boolean; close?: boolean; systemPrompt?: boolean; mcpHttp?: boolean; image?: boolean; dirs?: boolean; logout?: boolean };
+  config: {
+    enabled: boolean; mode: "managed" | "system"; model?: string; models?: { id: string; name: string }[];
+    approval: "yoyo" | "ask"; maxParallel: number; args?: string[]; env?: Record<string, string>; strengths?: string;
+    secrets: BuddySecret[];
+  };
+  systemInstall?: { available: boolean; command?: string; reason?: string };
+};
+
+/** BuddyPrefs 是 Buddy 的偏好，字段和 Go 的 buddy.Prefs 对齐。 */
+export type BuddyPrefs = { npmRegistry: string; pyIndex: string; defaultAgent: string; autoPick: boolean; turnMinutes: number };
+
+/** BuddyConfigPatch 是 buddy.configure 的参数。没给的字段不改；secrets 里给空串表示删掉那把钥匙。 */
+export type BuddyConfigPatch = {
+  enabled?: boolean; mode?: "managed" | "system"; model?: string; approval?: "yoyo" | "ask"; maxParallel?: number;
+  args?: string[]; env?: Record<string, string>; secrets?: Record<string, string>; reuse?: string[]; strengths?: string;
+};
+
+/** BuddyDisk 是 Buddy 占的磁盘（字节）：items 按 agent 列托管安装，runtime 是托管 Node 和 uv，cache 是能清掉的部分。 */
+export type BuddyDisk = { total: number; runtime: number; cache: number; items: Record<string, number> };
+
+/** BuddyLoginResult 是 buddy.login 的结果：started 表示已开始；terminal 表示开了终端窗口；copy 是开不了终端时给人复制的命令。 */
+export type BuddyLoginResult = { started: boolean; terminal?: boolean; copy?: string; buddy: BuddyView };
+
+/** buddy 把 Buddy 栏目的读写转到 videoCall，不在这里管界面状态。 */
+export const buddy = {
+  /** list 走 videoCall("buddy.list")。第一次调用会让后台开始检测；detecting 为真表示第一次检测还没做完。 */
+  list: (): Promise<{ buddies: BuddyView[]; prefs: BuddyPrefs; detecting?: boolean }> => videoCall("buddy.list"),
+  /** get 走 videoCall("buddy.get")。id 写入字段 id。 */
+  get: (id: string): Promise<BuddyView> => videoCall("buddy.get", { id }),
+  /** logTail 走 videoCall("buddy.log.tail")。id 写入字段 id。lines 写入字段 lines。 */
+  logTail: (id: string, lines = 200): Promise<{ text: string }> => videoCall("buddy.log.tail", { id, lines }),
+  /** refresh 走 videoCall("buddy.refresh")。force 为真时同时刷新 ACP 注册表。 */
+  refresh: (force = false): Promise<{ buddies: BuddyView[]; prefs: BuddyPrefs; detecting?: boolean }> => videoCall("buddy.refresh", { force }),
+  /** probe 走 videoCall("buddy.probe")。id 写入字段 id。 */
+  probe: (id: string): Promise<BuddyView> => videoCall("buddy.probe", { id }),
+  /** install 走 videoCall("buddy.install")。id 写入字段 id。mode 写入字段 mode。 */
+  install: (id: string, mode: "managed" | "system" = "managed"): Promise<BuddyView> => videoCall("buddy.install", { id, mode }),
+  /** cancel 走 videoCall("buddy.cancel")。id 写入字段 id。 */
+  cancel: (id: string): Promise<{ ok: boolean }> => videoCall("buddy.cancel", { id }),
+  /** uninstall 走 videoCall("buddy.uninstall")。id 写入字段 id。 */
+  uninstall: (id: string): Promise<BuddyView> => videoCall("buddy.uninstall", { id }),
+  /** configure 走 videoCall("buddy.configure")。id 写入字段 id，patch 的字段原样展开。 */
+  configure: (id: string, patch: BuddyConfigPatch): Promise<BuddyView> => videoCall("buddy.configure", { id, ...patch }),
+  /** login 走 videoCall("buddy.login")。id 写入字段 id。method 写入字段 method。 */
+  login: (id: string, method = ""): Promise<BuddyLoginResult> => videoCall("buddy.login", { id, method }),
+  /** logout 走 videoCall("buddy.logout")。id 写入字段 id。 */
+  logout: (id: string): Promise<BuddyView> => videoCall("buddy.logout", { id }),
+  /** prefs 走 videoCall("buddy.prefs")。patch 的字段原样展开。 */
+  prefs: (patch: Partial<BuddyPrefs>): Promise<BuddyPrefs> => videoCall("buddy.prefs", { ...patch }),
+  /** add 走 videoCall("buddy.add")。添加一个自定义 ACP agent。 */
+  add: (agent: { name: string; command: string; args?: string[]; env?: Record<string, string> }): Promise<BuddyView> =>
+    videoCall("buddy.add", { name: agent.name, command: agent.command, args: agent.args ?? [], env: agent.env ?? {} }),
+  /** disk 走 videoCall("buddy.disk.get")。要把目录走一遍，偏好页打开时才调。 */
+  disk: (): Promise<BuddyDisk> => videoCall("buddy.disk.get"),
+  /** clearCache 走 videoCall("buddy.cache.clear")。只删能重新下载的缓存。 */
+  clearCache: (): Promise<{ freed: number }> => videoCall("buddy.cache.clear"),
+};
+
 /** video 把短剧、剪辑和工作室调用转到 videoCall，不在这里实现画面。 */
 export const video = {
   /** status 走 videoCall("video.status")。 */

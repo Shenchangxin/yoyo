@@ -1,7 +1,7 @@
 /**
  * 拥有：任务栏里这一页怎么把一张工单读成一条会话。在等你时问题放在最上面，回答就在原处。
  * 输入框里的停只停这一轮，工单留着；顶上的停止才结束工单，要点两次。
- * 不拥有：身份、模型和权限。那些留在主会话。下一句仍交给这张工单自己的工人。
+ * 不拥有：身份、模型和权限。那些留在主会话。下一句仍交给这张工单自己的工人。谁在做、换人和审批条在 TaskAgent.tsx。
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -19,15 +19,19 @@ import { latestTaskPlan } from "../../lib/plan";
 import type { Attachment, FileHit, SkillInfo } from "../../lib/protocol";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
+import { external, ticketAgent, ticketNeed } from "./agent-model";
 import type { Ticket } from "./desk-model";
+import { useNeeds } from "./needs";
+import { TaskAgentRow, TaskApprovals } from "./TaskAgent";
 import { taskFiles, taskSessionItems, type TaskLine } from "./task-session";
 import { stageKey, ticketLine } from "./work-model";
 
-/** TaskRead 把工单读在侧栏里，stage 时铺在中间。底下是这条会话的输入，不带身份设置。 */
+/** TaskRead 把工单读在侧栏里，stage 时铺在中间。底下是这条会话的输入，不带身份设置。任务组成员的标题上方有回到任务组的面包屑。 */
 export function TaskRead(props: {
   ticket: Ticket | null;
   onBack: () => void;
   onFocus?: (id: string) => void;
+  onOpenGroup?: (id: string) => void;
   stage?: boolean;
   onSent?: () => void;
   skills?: SkillInfo[];
@@ -40,6 +44,7 @@ export function TaskRead(props: {
 }) {
   const copy = useCopy();
   const ticket = props.ticket;
+  const group = useNeeds((s) => (ticket?.group ? s.view?.groups?.find((row) => row.id === ticket.group) ?? null : null));
   const [lines, setLines] = useState<TaskLine[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [moved, setMoved] = useState(0);
@@ -97,6 +102,7 @@ export function TaskRead(props: {
   const quiet = running && since > 0 ? Math.floor((now - since) / 60000) : 0;
   const status = [taskStatus(ticket, copy.work), quiet >= 2 ? copy.work.taskStale.replace("{n}", String(quiet)) : ""].filter(Boolean).join(" · ");
   const ask = taskAsk(ticket, copy.work);
+  const crumb = group ? [copy.tasks.groupCrumb.replace("{title}", group.title || group.id), ticket.role || ""].filter(Boolean).join(" · ") : "";
   async function act(kind: "stop" | "retry" | "pause") {
     try {
       await orchestratorAct(kind, ticket!.id, "", "", "");
@@ -114,8 +120,16 @@ export function TaskRead(props: {
           <ChevronLeft className="size-4" />
         </button>
         <div className="min-w-0 flex-1">
+          {crumb && group && props.onOpenGroup ? (
+            <button type="button" data-testid="task-group-crumb" className="block max-w-full truncate text-left text-ui-caption text-muted hover:text-foreground" onClick={() => props.onOpenGroup?.(group.id)}>
+              {crumb}
+            </button>
+          ) : crumb ? (
+            <p data-testid="task-group-crumb" className="truncate text-ui-caption text-muted">{crumb}</p>
+          ) : null}
           <h1 className="truncate text-[16px] font-semibold">{ticket.title || copy.work.taskEmpty}</h1>
           <p className={cn("truncate text-[12px]", ticket.person && open ? "text-warning" : "text-muted")} data-testid="task-status">{status}</p>
+          <TaskAgentRow ticket={ticket} onSent={props.onSent} />
         </div>
         <div className="flex shrink-0 items-center">
           {props.onFocus && !props.stage ? (
@@ -161,10 +175,16 @@ export function TaskRead(props: {
           ) : null}
         </div>
       </div>
+      <TaskApprovals ticket={ticket} className={props.stage ? "mx-3" : "mx-2"} />
       {ask ? (
         <div className={cn("mt-2 shrink-0 rounded-[16px] border-l-2 border-warning bg-card px-3 py-2.5", props.stage ? "mx-3" : "mx-2")} data-testid="task-ask">
           <p className="text-[12.5px] font-medium text-foreground/85">{ask.title}</p>
           {ask.detail ? <p className="mt-1 line-clamp-4 whitespace-pre-line text-[13px] leading-5">{ask.detail}</p> : null}
+          {ticketNeed(ticket) === "login" ? (
+            <Button size="sm" variant="outline" className="mt-2" data-testid="task-go-login" onClick={() => useUI.getState().openBuddy(ticketAgent(ticket))}>
+              {copy.tasks.goLogin}
+            </Button>
+          ) : null}
           {ticket.action === "review" ? <TaskReview ticket={ticket} files={taskFiles(lines)} onDone={() => props.onSent?.()} /> : null}
         </div>
       ) : null}
@@ -192,7 +212,7 @@ export function TaskRead(props: {
           plus
           compact={!props.stage}
           flush
-          placeholder={open && ticket.action === "answer" ? copy.work.taskAnswerPh : copy.work.taskSayPh}
+          placeholder={open && ticket.action === "answer" ? copy.work.taskAnswerPh : running && external(ticket) ? copy.tasks.afterStep : copy.work.taskSayPh}
           draftKey={draftKey}
           taskPlan={latestTaskPlan(items)}
           running={running}
@@ -228,6 +248,7 @@ export function TaskRead(props: {
 export function TaskPage(props: {
   ticket: Ticket | null;
   onBack: () => void;
+  onOpenGroup?: (id: string) => void;
   onSent?: () => void;
   skills?: SkillInfo[];
   files?: FileHit[];

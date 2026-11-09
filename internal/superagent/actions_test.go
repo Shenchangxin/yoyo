@@ -84,7 +84,7 @@ func TestAssignFoldsShortReply(t *testing.T) {
 	if WaitsForPerson(&ticket) {
 		t.Fatal("still waiting")
 	}
-	body := assignmentText(ticket, "", "")
+	body := assignmentText(ticket, "", "", "")
 	if strings.Contains(body, "新建吧") || strings.Count(body, "gugu-mart") != 1 {
 		t.Fatal(body)
 	}
@@ -136,6 +136,45 @@ func TestDecideBriefReplacesWorkerText(t *testing.T) {
 	tr, ok := eng.Trigger("m1")
 	if !ok || tr.Text != "新建吧" {
 		t.Fatalf("%+v", tr)
+	}
+}
+
+// TestDecideBriefForSetsAgentBeforeLaunch 锁住接受时新工单带上 agent 和点名，派工开始时已经写好；重复接受不改已开的工单。
+func TestDecideBriefForSetsAgentBeforeLaunch(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	var seen []string
+	eng.OnLaunch = func(id string) {
+		ticket, _ := eng.Ticket(id)
+		seen = append(seen, ticket.Agent)
+	}
+	if eng.Receive(human("m1", "让 codex 修")) != "stored" {
+		t.Fatal("stored")
+	}
+	d, err := eng.DecideBriefFor("m1", "accept", "fix", "修好登录页", nil, " codex ", true)
+	if err != nil || d.TicketID == "" {
+		t.Fatal(err)
+	}
+	ticket, _ := eng.Ticket(d.TicketID)
+	if ticket.Agent != "codex" || !ticket.AgentPinned || len(seen) != 1 || seen[0] != "codex" {
+		t.Fatalf("ticket %+v, launched with %v", ticket, seen)
+	}
+	if _, err := eng.DecideBriefFor("m1", "accept", "fix", "", nil, "claude", false); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := eng.Ticket(d.TicketID); again.Agent != "codex" || !again.AgentPinned {
+		t.Fatalf("re-accept changed the agent: %+v", again)
+	}
+	other := human("m2", "随便谁")
+	other.Threads, other.Primary = []string{"room2"}, "room2"
+	if eng.Receive(other) != "stored" {
+		t.Fatal("stored")
+	}
+	d2, err := eng.DecideBrief("m2", "accept", "any", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain, _ := eng.Ticket(d2.TicketID); plain.Agent != "" || plain.AgentPinned {
+		t.Fatalf("DecideBrief set an agent: %+v", plain)
 	}
 }
 

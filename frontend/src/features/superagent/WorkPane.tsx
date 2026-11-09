@@ -14,11 +14,15 @@ import { cn } from "../../lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { triggerText, type Rule, type Ticket } from "./desk-model";
 import { BRIEF_EVENT, DESK_EVENT, briefEditions, deskMutes, latestInitiative, refreshDesk, runDeskFeed, sendFeedback, type BriefEdition } from "./desk-feed";
-import { TaskRead, taskStatus } from "./TaskPage";
+import { TaskRead } from "./TaskPage";
+import { agoLabel, TaskRow } from "./TaskRow";
+import { GroupRow } from "./GroupRow";
+import { GroupPage } from "./GroupPage";
+import { useBuddy } from "../buddy/buddy-store";
 import { onFocusBrief, onOpenDesk, refreshQueue, useNeeds, type BriefTarget, type DeskTarget } from "./needs";
 import { needItems, type NeedItem } from "./needs-model";
 import { actionLabel, briefLayout, briefProgress, cardHandled, checkedCount, itemKey, shortKicker } from "./brief-board";
-import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueDelta, filterTickets, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, offerSlot, parseBriefPrefs, refStatus, serializeStoredBrief, taskSection, taskSections, tasksBadge, ticketLine, unseenSuggestions, wouldAccept, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief, type TaskSection } from "./work-model";
+import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueDelta, filterItems, groupRows, itemSections, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, offerSlot, parseBriefPrefs, refStatus, serializeStoredBrief, tasksBadge, unseenSuggestions, wouldAccept, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief, type TaskItem, type TaskSection } from "./work-model";
 import { BRIEF_PREFS_EVENT, type ProactiveLevel } from "../../lib/proactive";
 
 type Tab = "now" | "tasks" | "memory";
@@ -39,6 +43,7 @@ export function WorkPane(props: {
   openTaskId: string;
   onOpenTask: (id: string) => void;
   onFocusTask?: (id: string) => void;
+  onFocusGroup?: (id: string) => void;
   onResolve?: (id: string, decision: string) => void;
   onOpenThread?: (id: string) => void;
   notices?: Notice[];
@@ -59,6 +64,8 @@ export function WorkPane(props: {
 }) {
   const copy = useCopy();
   const [tab, setTab] = useState<Tab>("now");
+  // groupId 是任务栏里打开的任务组。从任务组点进成员时留着，读完工单返回时回到任务组。
+  const [groupId, setGroupId] = useState("");
   const view = useNeeds((s) => s.view);
   const queue = useNeeds((s) => s.queue);
   const [err, setErr] = useState("");
@@ -105,7 +112,14 @@ export function WorkPane(props: {
     const go = (target: DeskTarget) => {
       props.onReview(false);
       setTab(target.tab);
-      if (target.tab === "tasks") props.onOpenTask(target.ticket);
+      if (target.tab !== "tasks") return;
+      if ("group" in target) {
+        setGroupId(target.group);
+        props.onOpenTask("");
+      } else {
+        setGroupId("");
+        props.onOpenTask(target.ticket);
+      }
     };
     const state = useNeeds.getState();
     state.setPaneMounted(true);
@@ -147,12 +161,13 @@ export function WorkPane(props: {
   const openProactive = (section?: string) => (props.onOpenProactive ? props.onOpenProactive(section) : props.onOpenSettings());
   const tickets = view?.tickets ?? [];
   const needs = needItems(view, queue);
-  const sections = taskSections(tickets);
+  const sections = itemSections(groupRows(tickets, view?.groups ?? []));
   const taskCount = tasksBadge(tickets);
   const observed = view
     ? wouldAccept(view.decisions ?? []).map((row) => ({ id: row.id, text: triggerText(view, row.triggerId) || row.thread || row.triggerId, at: row.at || "" }))
     : [];
-  const reading = tab === "tasks" && !!props.openTaskId;
+  const reading = tab === "tasks" && (!!props.openTaskId || !!groupId);
+  const openGroup = groupId ? (view?.groups ?? []).find((row) => row.id === groupId) ?? null : null;
   const tabs: { id: Tab; label: string; count?: number; person?: boolean }[] = [
     { id: "now", label: copy.work.now, count: needs.length, person: needs.length > 0 },
     { id: "tasks", label: copy.work.tasks, count: taskCount.count, person: taskCount.person },
@@ -218,7 +233,7 @@ export function WorkPane(props: {
                 props.onResolve?.(id, decision);
                 window.setTimeout(() => { void refreshQueue(); }, 400);
               }}
-              onOpenTask={(id) => { pick("tasks"); props.onOpenTask(id); }}
+              onOpenTask={(id) => { pick("tasks"); setGroupId(""); props.onOpenTask(id); }}
               onOpenThread={props.onOpenThread}
               onOpenSettings={() => openProactive()}
               onBriefTimes={props.onBriefTimes}
@@ -229,6 +244,7 @@ export function WorkPane(props: {
               ticket={(view.tickets ?? []).find((row) => row.id === props.openTaskId) ?? null}
               onBack={() => props.onOpenTask("")}
               onFocus={props.onFocusTask}
+              onOpenGroup={(id) => { setGroupId(id); props.onOpenTask(""); }}
               onSent={() => { void load(); }}
               skills={props.skills}
               files={props.files}
@@ -239,12 +255,24 @@ export function WorkPane(props: {
               onScreenshot={props.onScreenshot}
             />
           ) : null}
-          {view && tab === "tasks" && !props.openTaskId ? (
+          {view && tab === "tasks" && !props.openTaskId && groupId ? (
+            <GroupPage
+              group={openGroup}
+              tickets={tickets}
+              onBack={() => setGroupId("")}
+              onOpenTask={(id) => props.onOpenTask(id)}
+              onOpenMain={props.onOpenThread}
+              onFocus={props.onFocusGroup ? (id) => { setGroupId(""); props.onFocusGroup?.(id); } : undefined}
+              onSent={() => { void load(); }}
+            />
+          ) : null}
+          {view && tab === "tasks" && !props.openTaskId && !groupId ? (
             <Tasks
               sections={sections}
               observed={observed}
               selected={props.openTaskId}
               onSelect={(id) => props.onOpenTask(id)}
+              onOpenGroup={setGroupId}
               onNewTask={props.onNewTask}
               held={(desk?.signals || []).filter((signal) => signal.held)}
               notes={(desk?.open || []).filter((item) => item.class === "schedule")}
@@ -1564,10 +1592,11 @@ export function briefPhrases(work: ReturnType<typeof useCopy>["work"]): BriefPhr
 }
 
 function Tasks(props: {
-  sections: Record<TaskSection, Ticket[]>;
+  sections: Record<TaskSection, TaskItem[]>;
   observed: { id: string; text: string; at: string }[];
   selected: string;
   onSelect: (id: string) => void;
+  onOpenGroup: (id: string) => void;
   onNewTask: (text?: string) => void;
   held: { id: string; name: string; detail?: string }[];
   notes: { id: string; title: string }[];
@@ -1578,10 +1607,12 @@ function Tasks(props: {
 }) {
   const copy = useCopy();
   const d = copy.desk;
+  const buddies = useBuddy((s) => s.list);
   const [compose, setCompose] = useState<null | { kind: "task" | "schedule"; text: string; ruleId?: string }>(null);
   const [query, setQuery] = useState("");
   const [scheduled, setScheduled] = useState(false);
   const suggestions = suggestionCopy(copy);
+  const agentName = (id: string) => buddies.find((row) => row.id === id)?.name || id;
   const needle = query.trim().toLowerCase();
   const missing = unseenSuggestions(props.rules.map((rule) => rule.id)).filter((id) => {
     const item = suggestions[id];
@@ -1594,9 +1625,9 @@ function Tasks(props: {
     { id: "idle", title: copy.work.sectionIdle },
   ];
   const groups = order
-    .map((group) => ({ ...group, tickets: filterTickets(props.sections[group.id], "all", query) }))
-    .filter((group) => group.tickets.length > 0);
-  const ended = filterTickets(props.sections.ended, "all", query);
+    .map((group) => ({ ...group, items: filterItems(props.sections[group.id], query, agentName) }))
+    .filter((group) => group.items.length > 0);
+  const ended = filterItems(props.sections.ended, query, agentName);
   const rules = props.rules.filter((rule) => !needle || rule.text.toLowerCase().includes(needle));
   const ruleMeta = (rule: Rule) => !rule.enabled ? d.ruleOff : props.mode === "auto" ? d.ruleAuto : props.mode === "off" ? d.ruleOff : d.ruleObserve;
   if (compose) {
@@ -1760,10 +1791,10 @@ function Tasks(props: {
       ) : (
         <div>
           {groups.map((group) => (
-            <TicketList key={group.id} title={group.title} count={group.tickets.length} person={group.id === "person"} tickets={group.tickets} onSelect={props.onSelect} />
+            <TicketList key={group.id} title={group.title} count={group.items.length} person={group.id === "person"} items={group.items} onSelect={props.onSelect} onOpenGroup={props.onOpenGroup} />
           ))}
           {ended.length > 0 ? (
-            <TicketList title={copy.work.sectionEnded} count={ended.length} tickets={ended} onSelect={props.onSelect} folded />
+            <TicketList title={copy.work.sectionEnded} count={ended.length} items={ended} onSelect={props.onSelect} onOpenGroup={props.onOpenGroup} folded />
           ) : null}
           {groups.length === 0 && ended.length === 0 ? <Empty title={copy.work.tasksEmpty} hint={copy.work.tasksHint} /> : null}
         </div>
@@ -1839,14 +1870,15 @@ function suggestionCopy(copy: ReturnType<typeof useCopy>): Record<string, { titl
   };
 }
 
-/** TicketList 是一组任务。folded 的一组默认收起，点标题展开。 */
+/** TicketList 是一组任务，任务组占一项。folded 的一组默认收起，点标题展开。 */
 function TicketList(props: {
   title: string;
   count: number;
   person?: boolean;
   folded?: boolean;
-  tickets: Ticket[];
+  items: TaskItem[];
   onSelect: (id: string) => void;
+  onOpenGroup: (id: string) => void;
 }) {
   const [open, setOpen] = useState(!props.folded);
   const head = (
@@ -1867,46 +1899,20 @@ function TicketList(props: {
       )}
       {open ? (
         <ul className="mt-2.5 space-y-2">
-          {props.tickets.map((ticket) => (
-            <li key={ticket.id}>
-              <TaskRow ticket={ticket} onClick={() => props.onSelect(ticket.id)} />
-            </li>
-          ))}
+          {props.items.map((item) =>
+            item.kind === "group" ? (
+              <li key={`group:${item.group.id}`}>
+                <GroupRow group={item.group} members={item.members} onOpen={props.onOpenGroup} onSelect={props.onSelect} />
+              </li>
+            ) : (
+              <li key={item.ticket.id}>
+                <TaskRow ticket={item.ticket} onClick={() => props.onSelect(item.ticket.id)} />
+              </li>
+            ),
+          )}
         </ul>
       ) : null}
     </section>
-  );
-}
-
-/** TaskRow 说清这张工单在等谁、需要什么，以及最近一句。等你的那一张用 warning 标出来。 */
-function TaskRow(props: { ticket: Ticket; onClick: () => void }) {
-  const copy = useCopy();
-  const ticket = props.ticket;
-  const section = taskSection(ticket);
-  const status = taskStatus(ticket, copy.work);
-  const when = ticket.updatedAt ? agoLabel(ticket.updatedAt, copy.work) : "";
-  const line = ticketLine(ticket);
-  const failed = ticket.outcome === "failed" || ticket.outcome === "dropped" || (section === "person" && (ticket.action === "failed" || ticket.action === "blocked"));
-  return (
-    <button
-      type="button"
-      data-testid="task-row"
-      className="flex w-full items-start gap-3 rounded-[20px] bg-card px-4 py-3 text-left shadow-[var(--shadow-card)]"
-      onClick={props.onClick}
-    >
-      {section === "working" ? (
-        <span className="pulse-dot is-accent mt-[7px]" aria-hidden />
-      ) : (
-        <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", failed ? "bg-danger" : section === "person" ? "bg-warning" : "bg-muted/50")} aria-hidden />
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] font-medium">{ticket.title || ticket.id}</span>
-        <span className={cn("mt-0.5 block truncate text-[12px] leading-5", section === "person" ? "text-warning" : "text-muted")}>
-          {[status, when].filter(Boolean).join(" · ")}
-        </span>
-        {line ? <span className="mt-0.5 block truncate text-[12px] leading-5 text-muted">{line}</span> : null}
-      </span>
-    </button>
   );
 }
 
@@ -2167,20 +2173,6 @@ function memoryRowDetail(row: MemoryRow, work: ReturnType<typeof useCopy>["work"
   if (row.kind !== "project") return "";
   const state = row.state === "stalled" ? work.lineStalled : row.state === "quiet" ? work.lineQuiet : row.state === "moving" ? work.lineMoving : "";
   return [state, row.evidence, row.when].filter(Boolean).join(" · ");
-}
-
-/** agoLabel 把一个时刻写成多久以前。工单和记忆用同一套说法。 */
-function agoLabel(iso: string, work: ReturnType<typeof useCopy>["work"]): string {
-  const at = Date.parse(iso);
-  if (Number.isNaN(at)) return work.memoryNotYet;
-  const mins = Math.max(0, Math.round((Date.now() - at) / 60000));
-  if (mins < 1) return work.memoryJustNow;
-  if (mins < 60) return work.memoryMinutes.replace("{n}", String(mins));
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return work.memoryHoursAgo.replace("{n}", String(hours));
-  const days = Math.round(hours / 24);
-  if (days < 14) return work.memoryDaysAgo.replace("{n}", String(days));
-  return work.memoryWeeksAgo.replace("{n}", String(Math.round(days / 7)));
 }
 
 function Empty(props: { title: string; hint: string }) {

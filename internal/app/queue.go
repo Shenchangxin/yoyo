@@ -247,10 +247,12 @@ func fromSessionQueuedList(in []session.QueuedTurn) []QueuedTurn {
 }
 
 // kickQueue 取出下一条排队回合并发送。Resume 为真时按续跑启动，不把排队正文当成新的用户消息。
+// 队列空了时让这条会话上等着的任务组唤醒马上再试。
 // sessionID 传给 popQueue 和 recordInbox，再传给 launchSend 或 StartSendOpts。
 func (a *App) kickQueue(sessionID string) {
 	next, ok := a.popQueue(sessionID)
 	if !ok {
+		a.pumpWake(sessionID)
 		return
 	}
 	a.recordInbox(sessionID, "claim", "next-turn", next.ID, next.Text)

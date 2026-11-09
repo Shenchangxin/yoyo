@@ -81,6 +81,8 @@ DEBUG 默认关。`YOYO_DEBUG=rpc,mcp,hooks` 或 `config.log.debug` 开类别，
 
 Settings → Advanced 拆成 **Diagnostics**（A 的 tail，level 过滤）和 **Journal**（C 的尾，标注 agent 不能改）。Copy path / Reveal folder / Export support bundle / Diagnose this turn（脱敏 inject，`TypeInject`）。Doctor 增加 `logs.dir`、`last_error`、`disk_ok`、`worker_alive`。
 
+Doctor 的 `buddy` 一节：`summary` 里有 Buddy 开没开始、是否还在第一次检测、各状态的个数，以及内置和已装各项的编号、状态、安装方式、版本、在做的工单数、是否未校验和打码后的详情；`control` 是控制面在不在听、登记着几张工单；`frames` 是 `acp` 帧日志开没开。读 Doctor 不会开始检测，也不会启动控制面；没人打开过 Buddy 时 `summary.started` 为假。
+
 CLI：
 
 ```
@@ -107,6 +109,13 @@ yoyo doctor --export FILE.zip
 | `otel_endpoint` | 空 | 被 `YOYO_OTEL_ENDPOINT` 覆盖 |
 
 DEBUG 类别 `payload` 才允许 ≤512 rune 的已脱敏预览。禁止 `--verbose` 把 prompt 打进磁盘。
+
+DEBUG 类别 `acp` 记外部 agent 的 ACP 协议帧（`agent`、`dir` 取 send 或 recv）和控制面的每次工具调用（只有工单、工具名和成败）。帧先整帧打码：启动环境里注入给这个 agent 的密钥值、通用规则，以及名字像密钥的 `name`/`value` 条目（交给桥的控制面 token 就在这里）；打码后再截到 2 KB，注明原来多少字节。类别关着时每帧只问一次开关，不做打码。
+
+Buddy 的两个组件：
+
+- `buddy`：每一项的状态变化（没装的项第一次出现不记，同状态刷新不重复，出错是警告）和人做的操作（安装、取消、卸载、配置、登录、退出、添加、清缓存）。配置只记改了哪些字段和密钥名，不记值。
+- `acp`：外部 agent 的连接诊断：打开工人、连接失败、坏行、一轮失败、挂起、换模型失败，以及控制面拒绝的非本机请求。错误文本都经过同一套打码。
 
 ---
 

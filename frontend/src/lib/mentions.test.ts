@@ -1,5 +1,5 @@
 /**
- * 拥有：附件钉、同一回合的提及增补、裸路径改写、文件夹面包屑，以及技能词法提示。
+ * 拥有：附件钉、同一回合的提及增补、裸路径改写、文件夹面包屑、@agent 的切分和标签，以及技能词法提示。
  * 不拥有：提及菜单的渲染。
  */
 
@@ -10,15 +10,45 @@ import {
   childPaths,
   composeDraft,
   formatTriggerPath,
+  isCompleteMention,
+  keepMentionOpen,
   mentionCrumbs,
+  mentionLabel,
   mentionQueryOf,
   mentionTokenAt,
   mergeMentionPins,
+  peelCompletedMentions,
   pinsFromAttachments,
   sameUserTurnText,
   settleBareAtPaths,
   suggestSkills,
+  withoutMentions,
 } from "./mentions.ts";
+
+/** @agent 和路由切在同一处：编号后面紧跟的中文标点不算编号。detail 是小写编号，标签用名字表，没有时用编号。 */
+test("agent mentions peel where the router reads them", () => {
+  const peeled = peelCompletedMentions("@agent:codex，修一下 @agent:Claude");
+  assert.deepEqual(peeled.chips.map((c) => c.token), ["@agent:codex", "@agent:Claude"]);
+  assert.deepEqual(peeled.chips.map((c) => c.kind), ["agent", "agent"]);
+  assert.equal(peeled.chips[1].detail, "claude");
+  assert.equal(peeled.text.trim(), "，修一下");
+  assert.equal(mentionLabel("@agent:codex", { codex: "Codex" }), "Codex");
+  assert.equal(mentionLabel("@agent:Claude", { claude: "Claude Code" }), "Claude Code");
+  assert.equal(mentionLabel("@agent:qwen"), "qwen");
+  assert.equal(withoutMentions("@agent:codex 修登录页").trim(), "修登录页");
+  assert.equal(composeDraft([peeled.chips[0]], "修一下"), "@agent:codex\n修一下");
+});
+
+/** 只有写法合格的编号才算完整的 @agent；正好是 `@agent:` 时菜单留着，只查 agent。裸路径改写不碰它。 */
+test("agent tokens are complete only with a valid id", () => {
+  assert.equal(isCompleteMention("@agent:codex"), true);
+  assert.equal(isCompleteMention("@agent:"), false);
+  assert.equal(isCompleteMention("@agent:-x"), false);
+  assert.equal(isCompleteMention("@agent:codex，修"), false);
+  assert.equal(keepMentionOpen("@agent:"), true);
+  assert.deepEqual(mentionQueryOf("@agent:cod"), { kind: "agent", query: "cod", quoted: false });
+  assert.equal(settleBareAtPaths("@agent:codex fix", [{ path: "agent:codex", kind: "file" }]), "@agent:codex fix");
+});
 
 /** 图片附件丢掉。其余用文件名做标签，路径写进 @file。 */
 test("pinsFromAttachments skips images and uses the basename", () => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Decision, Ticket, Trigger } from "./desk-model.ts";
-import { applySenses, auditBrief, briefDay, briefDue, briefPrompt, clockMinute, compareEditions, composeBrief, defaultBriefPrefs, dueDelta, dueItems, filterTickets, latestBrief, manuscriptNames, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, nowTickets, offerSlot, parseStoredBrief, quietBrief, refStatus, serializeStoredBrief, runningCount, shouldPush, slotDue, slotsCrossed, speakClass, speakSentence, visibleSlot, stageKey, taskGroups, taskSections, tasksBadge, ticketLine, todayBadge, unseenSuggestions, visibleIncoming, wouldAccept, type BriefPhrases, type SenseLabels, type SpeakPhrases } from "./work-model.ts";
+import type { Decision, Group, Ticket, Trigger } from "./desk-model.ts";
+import { applySenses, askingMember, auditBrief, briefDay, briefDue, briefPrompt, canPick, clockMinute, compareEditions, composeBrief, defaultBriefPrefs, dueDelta, dueItems, durationLabel, filterItems, filterTickets, groupActive, groupActivity, groupProgress, groupRows, groupSection, groupTone, itemSections, latestBrief, manuscriptNames, memberLabel, memberMinutes, memberStatus, memberTone, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, nowTickets, offerSlot, parseStoredBrief, quietBrief, refStatus, retryableMembers, serializeStoredBrief, runningCount, shouldPush, slotDue, slotsCrossed, speakClass, speakSentence, visibleSlot, stageKey, taskGroups, taskSections, tasksBadge, ticketLine, todayBadge, topoOrder, unseenSuggestions, visibleIncoming, waitingOn, wouldAccept, type BriefPhrases, type SenseLabels, type SpeakPhrases } from "./work-model.ts";
 
 function ticket(partial: Partial<Ticket> & Pick<Ticket, "id" | "stage">): Ticket {
   return {
@@ -661,5 +661,197 @@ describe("pushed notes and memory provenance", () => {
     assert.equal(dueDelta("2026-11-05", now), -1);
     assert.equal(dueDelta(new Date(2026, 10, 6, 23, 0, 0).toISOString(), now), 0);
     assert.equal(dueDelta("not a date", now), null);
+  });
+});
+
+function group(partial: Partial<Group> & Pick<Group, "id" | "tickets">): Group {
+  return { mode: "split", title: partial.id, state: "running", done: 0, total: partial.tickets.length, ...partial };
+}
+
+describe("task groups", () => {
+  /** 成员收进任务组，不再单独成项；成员都不在快照里的任务组不列。任务组排进成员里最急的分区，按成员最近的变化排。 */
+  it("folds members into their group and files the group by its most urgent member", () => {
+    const rows = [
+      ticket({ id: "tkt-1", stage: "ended", outcome: "completed", group: "grp-1", updatedAt: "2026-11-09T01:00:00Z" }),
+      ticket({ id: "tkt-2", stage: "person", action: "answer", person: true, group: "grp-1", updatedAt: "2026-11-09T03:00:00Z" }),
+      ticket({ id: "tkt-3", stage: "working", action: "running", updatedAt: "2026-11-09T02:00:00Z" }),
+      ticket({ id: "tkt-4", stage: "ended", outcome: "completed", group: "grp-2", updatedAt: "2026-11-09T00:30:00Z" }),
+    ];
+    const groups = [group({ id: "grp-1", tickets: ["tkt-1", "tkt-2"] }), group({ id: "grp-2", tickets: ["tkt-4"], state: "done" }), group({ id: "grp-9", tickets: ["tkt-99"] })];
+    const items = groupRows(rows, groups);
+    assert.deepEqual(items.map((item) => (item.kind === "group" ? item.group.id : item.ticket.id)), ["grp-1", "grp-2", "tkt-3"]);
+    const first = items[0];
+    assert.equal(first.kind === "group" && first.members.map((row) => row.id).join(","), "tkt-1,tkt-2");
+    const sections = itemSections(items);
+    assert.deepEqual(sections.person.map((item) => (item.kind === "group" ? item.group.id : item.ticket.id)), ["grp-1"]);
+    assert.deepEqual(sections.working.map((item) => (item.kind === "group" ? item.group.id : item.ticket.id)), ["tkt-3"]);
+    assert.deepEqual(sections.ended.map((item) => (item.kind === "group" ? item.group.id : item.ticket.id)), ["grp-2"]);
+    assert.equal(groupSection([rows[0], rows[2]]), "working");
+    assert.equal(groupSection([rows[0]]), "ended");
+  });
+
+  /** 搜索对上任务组标题、成员的分工或 agent 名，就整组留下。 */
+  it("keeps a group when its title, a role or an agent name matches", () => {
+    const rows = [
+      ticket({ id: "tkt-1", stage: "working", group: "grp-1", role: "后端", agent: "codex" }),
+      ticket({ id: "tkt-2", stage: "working", group: "grp-1", role: "前端" }),
+      ticket({ id: "tkt-3", stage: "working", title: "写周报" }),
+    ];
+    const items = groupRows(rows, [group({ id: "grp-1", title: "做 todo 应用", tickets: ["tkt-1", "tkt-2"] })]);
+    const ids = (query: string) => filterItems(items, query, (id) => (id === "codex" ? "Codex CLI" : id)).map((item) => (item.kind === "group" ? item.group.id : item.ticket.id));
+    assert.deepEqual(ids(""), ["grp-1", "tkt-3"]);
+    assert.deepEqual(ids("todo"), ["grp-1"]);
+    assert.deepEqual(ids("前端"), ["grp-1"]);
+    assert.deepEqual(ids("codex cli"), ["grp-1"]);
+    assert.deepEqual(ids("周报"), ["tkt-3"]);
+    assert.deepEqual(filterTickets(rows, "all", "后端").map((row) => row.id), ["tkt-1"]);
+  });
+
+  /** 前置排在前面，深度是前置链的长度。组外的依赖不算，成环的按没有前置排在后面。 */
+  it("orders members by their dependencies", () => {
+    const rows = [
+      ticket({ id: "c", stage: "idle", dependsOn: ["a", "b"] }),
+      ticket({ id: "a", stage: "working" }),
+      ticket({ id: "b", stage: "idle", dependsOn: ["a", "outside"] }),
+    ];
+    assert.deepEqual(topoOrder(rows).map((row) => `${row.ticket.id}:${row.depth}`), ["a:0", "b:1", "c:2"]);
+    const loop = [ticket({ id: "x", stage: "idle", dependsOn: ["y"] }), ticket({ id: "y", stage: "idle", dependsOn: ["x"] }), ticket({ id: "z", stage: "idle" })];
+    assert.deepEqual(topoOrder(loop).map((row) => `${row.ticket.id}:${row.depth}`), ["z:0", "x:0", "y:0"]);
+  });
+
+  /** 进度只数做成的，merged 也算。依赖提示只列还没做成的前置，用分工称呼；组里找不到的写编号。 */
+  it("counts progress and names the members still being waited on", () => {
+    const back = ticket({ id: "tkt-1", stage: "ended", outcome: "merged", role: "后端" });
+    const docs = ticket({ id: "tkt-2", stage: "working", title: "写文档" });
+    const front = ticket({ id: "tkt-3", stage: "working", action: "queued", role: "前端", held: "deps", dependsOn: ["tkt-1", "tkt-2", "tkt-9"] });
+    const stopped = ticket({ id: "tkt-4", stage: "ended", outcome: "stopped" });
+    assert.deepEqual(groupProgress([back, docs, front, stopped]), { done: 1, total: 4 });
+    assert.deepEqual(waitingOn(front, [back, docs, front]), ["写文档", "tkt-9"]);
+    assert.equal(memberLabel(front), "前端");
+    assert.equal(memberLabel(ticket({ id: "tkt-5", stage: "idle", title: "" })), "tkt-5");
+    assert.equal(groupActive("attention"), true);
+    assert.equal(groupActive("done"), false);
+    assert.equal(groupTone("attention"), "needs");
+    assert.equal(groupTone("stopped"), "idle");
+    assert.equal(memberTone(back), "done");
+    assert.equal(memberTone(stopped), "idle");
+    assert.equal(memberTone(ticket({ id: "tkt-6", stage: "ended", outcome: "failed" })), "failed");
+    assert.equal(memberTone(front), "idle");
+    assert.equal(memberTone({ ...front, held: "deps_failed" }), "failed");
+    assert.equal(memberTone(docs), "live");
+    assert.equal(memberTone(ticket({ id: "tkt-7", stage: "person", person: true })), "needs");
+  });
+
+  /** 只重试还开着、报了失败或卡住、又不是挂着等前置的成员。 */
+  it("retries only open members that failed or got blocked", () => {
+    const rows = [
+      ticket({ id: "a", stage: "person", person: true, action: "failed" }),
+      ticket({ id: "b", stage: "person", person: true, action: "blocked" }),
+      ticket({ id: "c", stage: "person", person: true, action: "failed", held: "deps_failed" }),
+      ticket({ id: "d", stage: "ended", action: "failed", outcome: "failed" }),
+      ticket({ id: "e", stage: "working", action: "running" }),
+    ];
+    assert.deepEqual(retryableMembers(rows).map((row) => row.id), ["a", "b"]);
+  });
+
+  /** 对比里还没采用、没被停掉时可以采用；做成的和还在做的都行，失败或被停下的不行。分工不给采用。 */
+  it("offers picking only in an open comparison", () => {
+    const compare = { mode: "compare", state: "attention" };
+    const done = ticket({ id: "a", stage: "ended", outcome: "completed" });
+    const running = ticket({ id: "b", stage: "working" });
+    const failed = ticket({ id: "c", stage: "ended", outcome: "failed" });
+    assert.equal(canPick(compare, done), true);
+    assert.equal(canPick(compare, running), true);
+    assert.equal(canPick(compare, failed), false);
+    assert.equal(canPick({ ...compare, winner: "a" }, done), false);
+    assert.equal(canPick({ ...compare, state: "stopped" }, done), false);
+    assert.equal(canPick({ mode: "split", state: "done" }, done), false);
+  });
+
+  /** 动态按时间合成一条，新的在前；占位和没有时间的不收。只有还在等回答的成员，最后一个问题才给「去回答」。 */
+  it("merges member reports into one activity feed", () => {
+    const asking = ticket({
+      id: "a",
+      stage: "person",
+      person: true,
+      action: "answer",
+      role: "后端",
+      assignments: [{
+        id: "asg-1",
+        state: "question",
+        lines: [
+          { state: "running", summary: "running", at: "2026-11-09T01:00:00Z" },
+          { state: "question", question: "用哪个数据库？", at: "2026-11-09T01:05:00Z" },
+          { state: "progress", summary: "建好表了", at: "2026-11-09T01:10:00Z" },
+          { state: "question", question: "端口用 8080 吗？", at: "2026-11-09T01:20:00Z" },
+        ],
+      }],
+    });
+    const finished = ticket({
+      id: "b",
+      stage: "ended",
+      outcome: "completed",
+      action: "answer",
+      role: "前端",
+      assignments: [{ id: "asg-2", state: "ready", lines: [{ state: "ready", summary: "页面写好了", at: "2026-11-09T01:15:00Z" }, { state: "ready", summary: "旧报告没有时间" }] }],
+    });
+    const feed = groupActivity([asking, finished]);
+    assert.deepEqual(feed.map((row) => `${row.ticket.id}:${row.text}:${row.ask}`), [
+      "a:端口用 8080 吗？:true",
+      "b:页面写好了:false",
+      "a:建好表了:false",
+      "a:用哪个数据库？:false",
+    ]);
+    assert.equal(groupActivity([asking, finished], 2).length, 2);
+  });
+
+  /** 时长从开工算到结束；有前置时从最后一个前置结束算起；挂着的不算。超过一小时写成几小时几分钟。 */
+  it("measures member durations without the time spent waiting", () => {
+    const now = Date.parse("2026-11-09T03:00:00Z");
+    const back = ticket({ id: "a", stage: "ended", outcome: "completed", openedAt: "2026-11-09T01:00:00Z", updatedAt: "2026-11-09T01:40:00Z" });
+    const front = ticket({ id: "b", stage: "working", openedAt: "2026-11-09T01:00:00Z", dependsOn: ["a"] });
+    const held = ticket({ id: "c", stage: "working", openedAt: "2026-11-09T01:00:00Z", held: "deps", dependsOn: ["a"] });
+    assert.equal(memberMinutes(back, [back, front], now), 40);
+    assert.equal(memberMinutes(front, [back, front], now), 80);
+    assert.equal(memberMinutes(held, [back, held], now), null);
+    assert.equal(memberMinutes(ticket({ id: "d", stage: "working" }), [], now), null);
+    assert.equal(memberMinutes(ticket({ id: "e", stage: "working", openedAt: "2026-11-09T02:59:50Z" }), [], now), 1);
+    const phrases = { minutes: "{n} 分钟", hours: "{h} 小时 {m} 分钟" };
+    assert.equal(durationLabel(40, phrases), "40 分钟");
+    assert.equal(durationLabel(80, phrases), "1 小时 20 分钟");
+  });
+
+  /** 卡片上的状态：做成、停下、没成带上最近一份报告；挂着的等前置或前置没完成；等人的分在问你、没成和要你处理；其余在做（带时长）或排队。 */
+  it("says what each member is doing for the main-chat card", () => {
+    const now = Date.parse("2026-11-09T03:00:00Z");
+    const back = ticket({ id: "a", stage: "ended", outcome: "completed", role: "后端" });
+    const failed = ticket({
+      id: "b",
+      stage: "ended",
+      outcome: "failed",
+      assignments: [{ id: "asg-1", state: "failed", lines: [{ state: "failed", summary: "装不上依赖\n细节在日志里", at: "2026-11-09T02:00:00Z" }] }],
+    });
+    const front = ticket({ id: "c", stage: "working", action: "queued", held: "deps", dependsOn: ["d"] });
+    const docs = ticket({ id: "d", stage: "working", action: "running", role: "文档", openedAt: "2026-11-09T02:57:00Z" });
+    const members = [back, failed, front, docs];
+    assert.deepEqual(memberStatus(back, members, now), { kind: "done" });
+    assert.deepEqual(memberStatus(ticket({ id: "e", stage: "ended", outcome: "stopped" }), members, now), { kind: "stopped" });
+    assert.deepEqual(memberStatus(failed, members, now), { kind: "failed", reason: "装不上依赖" });
+    assert.deepEqual(memberStatus(front, members, now), { kind: "waiting", on: ["文档"] });
+    assert.deepEqual(memberStatus({ ...front, held: "deps_failed" }, members, now), { kind: "depsFailed" });
+    assert.deepEqual(memberStatus(docs, members, now), { kind: "working", minutes: 3 });
+    assert.deepEqual(memberStatus(ticket({ id: "f", stage: "working", action: "queued" }), members, now), { kind: "queued" });
+    assert.deepEqual(memberStatus(ticket({ id: "g", stage: "person", person: true, action: "answer" }), members, now), { kind: "asks" });
+    assert.deepEqual(memberStatus(ticket({ id: "h", stage: "person", person: true, action: "blocked" }), members, now), { kind: "failed", reason: "" });
+    assert.deepEqual(memberStatus(ticket({ id: "i", stage: "person", person: true, action: "review" }), members, now), { kind: "needs" });
+  });
+
+  /** 在问人的成员按依赖顺序找第一个；结束了的、挂着的不算。 */
+  it("finds the first member asking the person", () => {
+    const later = ticket({ id: "b", stage: "person", person: true, action: "answer", dependsOn: ["a"] });
+    const first = ticket({ id: "a", stage: "person", person: true, action: "answer" });
+    assert.equal(askingMember([later, first])?.id, "a");
+    assert.equal(askingMember([ticket({ id: "c", stage: "ended", outcome: "completed", person: true, action: "answer" })]), undefined);
+    assert.equal(askingMember([ticket({ id: "d", stage: "working", action: "running" })]), undefined);
   });
 });

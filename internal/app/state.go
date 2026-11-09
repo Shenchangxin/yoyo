@@ -104,6 +104,8 @@ func RPCTopic(method string) (string, bool) {
 		return "remote", true
 	case strings.HasPrefix(method, "connections."), strings.HasPrefix(method, "connectors."), strings.HasPrefix(method, "mcp."):
 		return "config", true
+	case strings.HasPrefix(method, "buddy."):
+		return "buddy", true
 	default:
 		return "app", true
 	}

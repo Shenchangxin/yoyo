@@ -1,9 +1,10 @@
 /**
- * 拥有：给端到端测试拦截 /api，返回固定的会话、视频和皮肤数据。
+ * 拥有：给端到端测试拦截 /api，返回固定的会话、视频和皮肤数据。buddy.* 转给 buddy-mock.ts。
  * 不拥有：真实的 Go 服务。Playwright 的通配也会命中 Vite 模块，所以只拦截路径真是 /api 的请求。
  */
 
 import type { Page } from "@playwright/test";
+import { createBuddyMock } from "./buddy-mock";
 
 /** 一份最短的合法 PDF，让 Chromium 能在审查窗的 iframe 里打开。 */
 const MINI_PDF_B64 = "JVBERi0xLjEKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PmVuZG9iagoyIDAgb2JqCjw8L1R5cGUvUGFnZXMvS2lkc1szIDAgUl0vQ291bnQgMT4+ZW5kb2JqCjMgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzIDNdPj5lbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTIgMDAwMDAgbiAKMDAwMDAwMDEwMSAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNC9Sb290IDEgMCBSPj4Kc3RhcnR4cmVmCjE0NwolJUVPRg==";
@@ -13,12 +14,13 @@ function sid(s: any) {
   return String(s.id || s.ID);
 }
 
-/** mockApi 拦截页面上的 /api，按路径返回夹具。workspace 写入配置里的工作区。page 调用 route。extra 读取 sessions、studios、config、harness、overlayAdopt、trajectories 等，为空时不读，传给 mockTrace。 */
+/** mockApi 拦截页面上的 /api，按路径返回夹具。workspace 写入配置里的工作区。page 调用 route。extra 读取 sessions、studios、config、harness、overlayAdopt、trajectories 等，为空时不读，传给 mockTrace；buddies 是 Buddy 假后端的初始列表。 */
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; studios?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any; overlayAdopt?: boolean },
+  extra?: { sessions?: any[]; studios?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any; overlayAdopt?: boolean; buddies?: any[] },
 ) {
+  const buddies = createBuddyMock(extra?.buddies);
   let sessions = [...(extra?.sessions || [])];
   let mainId = "";
   /** 主循环只打开这一条。夹具里已有代理会话就用它，没有才新建。 */
@@ -77,6 +79,9 @@ export async function mockApi(
       const params = b.params || {};
       /** ok 调用 fulfill。result 写入字段 result。 */
       const ok = (result: any) => route.fulfill({ json: { jsonrpc: "2.0", id: b.id ?? 1, result } });
+      if (rpcMethod.startsWith("buddy.")) {
+        return ok(buddies.handle(rpcMethod, params));
+      }
       if (rpcMethod === "canvas.http") {
         const p = String(params.path || "").replace(/^\/api\/?/, "").replace(/^\//, "");
         const m = String(params.method || "GET").toUpperCase();

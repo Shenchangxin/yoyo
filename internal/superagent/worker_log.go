@@ -1,10 +1,11 @@
-// worker_log.go 把工人会话日志收成可落盘的 JSON，并在重启后续回代理。
-// 不跑回合。回合仍由 dsh.Agent 负责。
+// worker_log.go 把工人会话日志收成可落盘的 JSON，并在重启后续回工人。
+// 不跑回合。回合由 Worker 负责：dsh 代理或外部 agent 的归一化日志。
 
 package superagent
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -209,7 +210,7 @@ func applyRejectedAsk(e *Engine, ticketID string, body []byte) bool {
 }
 
 // TranscriptLine 是工单会话里给人看的一行。Role 取 user、assistant、tool_call、tool_result。
-// Source 是这条用户消息从哪来的。Error 为真表示工具结果失败。
+// Source 是这条用户消息从哪来的。交接行的 Name 是接手的那次派工。Error 为真表示工具结果失败。
 type TranscriptLine struct {
 	ID     string `json:"id"`
 	Role   string `json:"role"`
@@ -290,7 +291,11 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 			if text == "" || text == hostRestartNote {
 				continue
 			}
-			out = append(out, TranscriptLine{ID: lineID(i, "user"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)})
+			line := TranscriptLine{ID: lineID(i, "user"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)}
+			if msg.Source == "handover" {
+				line.Name = strings.TrimPrefix(msg.ID, handoverPrefix)
+			}
+			out = append(out, line)
 		case dsh.EventAssistant:
 			msg, ok := ev.Data.(dsh.Assistant)
 			if !ok {
@@ -382,7 +387,7 @@ func assignmentBody(text string) string {
 	var keep []string
 	for _, line := range strings.Split(text, "\n") {
 		s := strings.TrimSpace(line)
-		if s == "" || s == hostRestartNote || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || strings.HasPrefix(s, mandatePrefix) || s == "完成后调用 orchestrator_report。" {
+		if s == "" || s == hostRestartNote || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || strings.HasPrefix(s, groupLinePrefix) || strings.HasPrefix(s, mandatePrefix) || s == "完成后调用 orchestrator_report。" {
 			continue
 		}
 		keep = append(keep, s)
@@ -390,8 +395,54 @@ func assignmentBody(text string) string {
 	return strings.TrimSpace(strings.Join(keep, "\n"))
 }
 
-// watchLog 在这一轮还没结束时把会话写下来，任务页才能跟着长。stop 关上后退出。
-func (e *Executor) watchLog(agent *dsh.Agent, ticketID string, stop <-chan struct{}) {
+// wrotePatterns 认出工具结果里写成了的文件，和任务页的 taskFiles 用同一套写法。
+var wrotePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^wrote \d+ citations to (.+)$`),
+	regexp.MustCompile(`^replaced \d+ occurrence\(s\) in (.+)$`),
+	regexp.MustCompile(`^appended \d+ bytes to (.+?) \(file is now \d+ bytes\)$`),
+	regexp.MustCompile(`^moved .+ -> (.+)$`),
+	regexp.MustCompile(`^(?:wrote|edited|updated|downloaded) (.+)$`),
+}
+
+// shellTool 认出命令行工具。命令输出里的 wrote 不算写过文件。
+var shellTool = regexp.MustCompile(`(?i)shell|bash|command|terminal`)
+
+// TicketFiles 是工人在 lines 里写过的文件，最近写的在前，同一个只留一次。出错的结果和命令行输出不算。
+func TicketFiles(lines []TranscriptLine) []string {
+	var out []string
+	for _, line := range lines {
+		if line.Role != "tool_result" || line.Error || shellTool.MatchString(line.Name) {
+			continue
+		}
+		for _, row := range strings.Split(line.Text, "\n") {
+			path := writtenPath(strings.TrimSpace(row))
+			if path == "" {
+				continue
+			}
+			for i, seen := range out {
+				if seen == path {
+					out = append(out[:i], out[i+1:]...)
+					break
+				}
+			}
+			out = append([]string{path}, out...)
+		}
+	}
+	return out
+}
+
+// writtenPath 是 row 说写成了的文件。认不出时为空串。
+func writtenPath(row string) string {
+	for _, re := range wrotePatterns {
+		if hit := re.FindStringSubmatch(row); hit != nil {
+			return strings.TrimSpace(hit[1])
+		}
+	}
+	return ""
+}
+
+// watchLog 在这一轮还没结束时把 w 的会话写下来，任务页才能跟着长。stop 关上后退出。
+func (e *Executor) watchLog(w Worker, ticketID string, stop <-chan struct{}) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -399,48 +450,116 @@ func (e *Executor) watchLog(agent *dsh.Agent, ticketID string, stop <-chan struc
 		case <-stop:
 			return
 		case <-tick.C:
-			e.storeAgent(agent, ticketID)
+			e.storeAgent(w, ticketID)
 		}
 	}
 }
 
-// restoreAgent 把 ticketID 已存的日志灌进 agent，并把回合号接到上次的后面。灌进去时返回真。
-func (e *Executor) restoreAgent(agent *dsh.Agent, ticketID string) bool {
-	if e == nil || agent == nil || e.LogLoad == nil {
+// restoreAgent 把 ticketID 已存的日志灌进 w，并把回合号接到上次的后面。灌进去时返回真。
+// 日志里有交接时只灌最后一次交接之后的那段，更早的留作前缀，新工人读不到别的 agent 留下的工具调用。
+// marker 是这次派工的交接消息。日志里还没有它时，已有的全部留作前缀，w 从这条消息开始，返回假。
+func (e *Executor) restoreAgent(w Worker, ticketID string, marker *dsh.UserMessage) bool {
+	if e == nil || w == nil {
 		return false
 	}
-	body := e.LogLoad(ticketID)
-	events, turn := decodeLog(body)
-	events = scrubRestartNotes(events)
+	var events []dsh.Event
+	turn := 0
+	if e.LogLoad != nil {
+		events, turn = decodeLog(e.LogLoad(ticketID))
+		events = scrubRestartNotes(events)
+	}
+	fresh := marker != nil && !hasMessage(events, marker.ID)
+	cut := lastHandover(events)
+	if fresh {
+		cut = len(events)
+	}
+	var prefix []dsh.Event
+	if cut > 0 {
+		prefix, events = events[:cut], events[cut:]
+	}
+	e.setPrefix(ticketID, w.Session(), prefix)
+	if fresh {
+		w.Restore(nil, turn)
+		if s := w.Session(); s != nil {
+			s.Append(dsh.EventUser, turn, 0, *marker)
+		}
+		return false
+	}
 	if len(events) == 0 {
 		return false
 	}
-	agent.Session().Restore(events)
-	if turn > 0 {
-		agent.ResumeTurn(turn)
-	}
+	w.Restore(events, turn)
 	return true
 }
 
-// storeAgent 把 agent 当前日志交给 LogSave。没有日志时不写。
-func (e *Executor) storeAgent(agent *dsh.Agent, ticketID string) {
-	if e == nil || agent == nil || e.LogSave == nil || agent.Session() == nil {
+// storeAgent 把交接前缀和 w 当前日志一起交给 LogSave。没有日志时不写。
+// 交接之后旧工人再写不算数，它的日志已经是新工人的前缀。
+func (e *Executor) storeAgent(w Worker, ticketID string) {
+	if e == nil || w == nil || e.LogSave == nil || w.Session() == nil {
 		return
 	}
-	body, _ := encodeLog(agent.Session().Events())
+	prefix, ok := e.prefixFor(ticketID, w.Session())
+	if !ok {
+		return
+	}
+	body, _ := encodeLog(append(prefix, w.Session().Events()...))
 	if len(body) == 0 {
 		return
 	}
 	e.LogSave(ticketID, body)
 }
 
-// passingError 在失败是暂时的网络或服务端限流时为真。准备命令失败不算。
+// setPrefix 记下 ticketID 交接之前的日志，以及之后写日志的会话 owner。
+func (e *Executor) setPrefix(ticketID string, owner *dsh.Session, events []dsh.Event) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.prefix == nil {
+		e.prefix = map[string]logPrefix{}
+	}
+	e.prefix[ticketID] = logPrefix{owner: owner, events: events}
+}
+
+// prefixFor 返回 owner 写盘时要拼在前面的日志副本。前缀属于别的会话时 ok 为假，这次不写。
+func (e *Executor) prefixFor(ticketID string, owner *dsh.Session) ([]dsh.Event, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	p, has := e.prefix[ticketID]
+	if !has {
+		return nil, true
+	}
+	if p.owner != owner {
+		return nil, false
+	}
+	return append([]dsh.Event(nil), p.events...), true
+}
+
+// lastHandover 返回 events 里最后一条交接消息的下标。没有时为 -1。
+func lastHandover(events []dsh.Event) int {
+	for i := len(events) - 1; i >= 0; i-- {
+		if msg, ok := events[i].Data.(dsh.UserMessage); ok && events[i].Type == dsh.EventUser && msg.Source == "handover" {
+			return i
+		}
+	}
+	return -1
+}
+
+// hasMessage 在 events 里有编号为 id 的用户消息时为真。
+func hasMessage(events []dsh.Event, id string) bool {
+	for _, ev := range events {
+		if msg, ok := ev.Data.(dsh.UserMessage); ok && ev.Type == dsh.EventUser && msg.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// passingError 在失败是暂时的网络或服务端限流时为真。外部 agent 进程退出也算，重试时工人会重连并续接。准备命令失败不算。
 func passingError(err string) bool {
 	text := strings.ToLower(err)
 	if text == "" {
 		return false
 	}
-	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "connection closed", "broken pipe", "eof", "temporarily"} {
+	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "connection closed", "broken pipe", "eof", "temporarily", "agent exited", "process exited"} {
 		if strings.Contains(text, part) {
 			return true
 		}
@@ -448,12 +567,36 @@ func passingError(err string) bool {
 	return false
 }
 
-// lastTurnEnd 返回日志里最后一次回合结束。没有时两个都是空串。
-func lastTurnEnd(agent *dsh.Agent) (string, string) {
-	if agent == nil || agent.Session() == nil {
+// lastAssistantText 返回 w 最后一个回合里最后一段助手正文。那一回合没有正文时为空串。
+func lastAssistantText(w Worker) string {
+	if w == nil || w.Session() == nil {
+		return ""
+	}
+	events := w.Session().Events()
+	turn := -1
+	for i := len(events) - 1; i >= 0; i-- {
+		ev := events[i]
+		if turn < 0 {
+			turn = ev.Turn
+		}
+		if ev.Turn != turn {
+			break
+		}
+		if msg, ok := ev.Data.(dsh.Assistant); ok && ev.Type == dsh.EventAssistant {
+			if text := strings.TrimSpace(msg.Text); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+// lastTurnEnd 返回 w 日志里最后一次回合结束。没有时两个都是空串。
+func lastTurnEnd(w Worker) (string, string) {
+	if w == nil || w.Session() == nil {
 		return "", ""
 	}
-	events := agent.Session().Events()
+	events := w.Session().Events()
 	for i := len(events) - 1; i >= 0; i-- {
 		end, ok := events[i].Data.(dsh.TurnEnd)
 		if events[i].Type == dsh.EventTurnEnd && ok {

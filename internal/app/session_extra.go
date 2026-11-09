@@ -596,7 +596,7 @@ func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 	return note, nil
 }
 
-// Doctor 汇总版本、harness、工作区、保险库和隔离状态。日志块里的 worker_alive 在 YOYO_WORKER 为 1，或 YOYO_ISOLATE 不为 1 时为真。
+// Doctor 汇总版本、harness、工作区、保险库、隔离状态和 Buddy 摘要。日志块里的 worker_alive 在 YOYO_WORKER 为 1，或 YOYO_ISOLATE 不为 1 时为真。
 func (a *App) Doctor() map[string]any {
 	ws := a.Config.Workspace
 	out := map[string]any{
@@ -610,6 +610,7 @@ func (a *App) Doctor() map[string]any {
 		"mcp":             a.MCP.List(),
 		"isolation":       a.IsolationReport(),
 		"video":           a.VideoStatus(),
+		"buddy":           a.buddyDoctor(),
 	}
 	if a.Video != nil && a.Video.Conn != nil {
 		all, _ := a.Video.Conn.List("")

@@ -602,7 +602,8 @@ func chatTurnContext() (context.Context, context.CancelFunc) {
 	return context.WithCancel(context.Background())
 }
 
-// launchSend 占住运行槽后异步调用 sendLocked。不是续跑时先 commitUser，把用户行写入 JSONL。回合结束后 kickQueue 取下一条。
+// launchSend 占住运行槽后异步调用 sendLocked。不是续跑时先 commitUser，把用户行写入 JSONL。
+// 回合结束后先放掉槽，再 kickQueue 取下一条：槽还占着时取出来的那条只会又被塞回队尾，之后没人再取。
 func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment, resume bool) error {
 	ctx, cancel := chatTurnContext()
 	ctx, release, err := a.acquireRun(sessionID, ctx)
@@ -631,6 +632,7 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 		a.Threads.MarkTurnInFlight(sessionID, true, plan)
 	}
 	go func() {
+		defer a.kickQueue(sessionID)
 		defer cancel()
 		defer release()
 		defer func() {
@@ -646,8 +648,11 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 				})
 			}
 		}()
-		defer a.kickQueue(sessionID)
 		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts, resume, committed, turnID)
+		// sendLocked 在取不到模型这类早退里不会清掉进行中的标记，重启后会把这一轮当成没跑完再续一次。
+		if a.Threads != nil {
+			a.Threads.MarkTurnInFlight(sessionID, false, false)
+		}
 	}()
 	return nil
 }
@@ -668,6 +673,7 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 // Hub 非空时包装 onEvent，事件先 Publish 进 Hub，再交给原来的回调。
 // 非 resume 且用户行尚未落盘时，commitUser 先把用户事件写入 JSONL。交给 Run 的 UserCommitted 仅在该用户行已经写入且不是 resume 时为真，避免再发第二条用户事件。resume 不写新用户行，UserCommitted 为假。
 // Isolate 为真时先确保 Worktree 这份工作区副本，工具用 ToolRoot。PullSteer 指向 pullSteer：Steer 只在会话仍在跑时追加文本，Run 在下一次模型调用前把它一次收走，不取消回合。StopTurn 才取消运行槽的 context。
+// ctx 带着唤醒（launchWake）时按续跑走：不收这一轮的桌面消息，任务组摘要交给 Turn.Wake。
 func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume, alreadyCommitted bool, turnID string) (out string, runErr error) {
 	if turnID == "" {
 		turnID = diaglog.NewTurnID()
@@ -871,8 +877,18 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 
 	inject := ""
 	voice := runtime.OperatorVoice(message, hist)
+	wake, waking := wakeOf(ctx)
+	var wakeMeta map[string]any
+	if waking {
+		wakeMeta = map[string]any{"group": wake.Group, "state": wake.State}
+		if rt := a.orchestrator(); rt != nil {
+			if g, ok := rt.Group(wake.Group); ok && g.Title != "" {
+				wakeMeta["title"] = g.Title
+			}
+		}
+	}
 	routeNote := ""
-	if routing && !resume {
+	if routing && !resume && !waking {
 		routeNote = a.intakeDesk(sessionID, turnID, message)
 	}
 	if resume {
@@ -1005,6 +1021,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		PullSteer:        func() string { return a.pullSteer(sessionID) },
 		StopHooks:        stopHooks,
 		Checkpoint:       checkpoint,
+		Wake:             wake.Text,
+		WakeMeta:         wakeMeta,
 	})
 	a.markRunDone(sessionID)
 	if a.Threads != nil {

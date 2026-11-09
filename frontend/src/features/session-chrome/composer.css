@@ -684,10 +684,44 @@
   vertical-align: baseline;
 }
 
+.sc-mention[data-kind="agent"] {
+  padding-left: 4px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--lift));
+}
+
 .sc-mention[data-selected],
 .sc-mention.ProseMirror-selectednode {
   background: color-mix(in srgb, var(--accent) 22%, var(--lift));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.sc-mention-mark {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
+
+.sc-mention-letter {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sc-mention-letter::before {
+  content: attr(data-letter);
 }
 
 .sc-rail {
@@ -810,6 +844,11 @@
 .sc-popup-row.is-active,
 .sc-popup-row[data-active="true"] {
   background: color-mix(in srgb, var(--foreground) 12%, var(--popover, var(--input-bar)));
+}
+
+.sc-popup-row.is-disabled .sc-popup-icon,
+.sc-popup-row.is-disabled .sc-popup-name {
+  opacity: 0.5;
 }
 
 .sc-popup-icon {

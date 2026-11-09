@@ -116,6 +116,49 @@ func TestDeskReusesAgent(t *testing.T) {
 	}
 }
 
+// TestWakeTurnInjectsGroupReport 锁住唤醒的一轮：没有用户行，任务组回报落成一条来源为 wake 的注入并带上编号和状态，模型把它当这一轮的输入。
+func TestWakeTurnInjectsGroupReport(t *testing.T) {
+	store := trace.NewStore(t.TempDir())
+	client := &seeingClient{reply: "两份都做完了。"}
+	wake := "这是任务组 grp-1「两件事」的回报，不是人说的话。"
+	out, err := New().Run(context.Background(), Turn{
+		SessionID: "s", TurnID: "tid", Client: client, Trace: store,
+		Wake: wake, WakeMeta: map[string]any{"group": "grp-1", "state": "done"},
+	})
+	if err != nil || out != "两份都做完了。" {
+		t.Fatalf("out %q err %v", out, err)
+	}
+	seen := client.seen[0]
+	if last := seen[len(seen)-1]; last.Role != runtime.RoleUser || last.Content != wake {
+		t.Fatalf("model saw %+v", last)
+	}
+	saved, err := store.Read("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	injects := 0
+	for _, ev := range saved {
+		switch {
+		case ev.Type == trace.TypeUser:
+			t.Fatalf("a wake turn wrote a user line %+v", ev)
+		case ev.Type == trace.TypeInject && ev.Source == "wake":
+			injects++
+			if ev.Payload["text"] != wake || ev.Payload["name"] != "wake" || ev.Payload["group"] != "grp-1" || ev.Payload["state"] != "done" {
+				t.Fatalf("inject %+v", ev.Payload)
+			}
+		}
+	}
+	if injects != 1 {
+		t.Fatalf("wake injects %d", injects)
+	}
+	if got := composeUser(Turn{User: "看看", Inject: "材料", Wake: "回报"}); got != "看看\n\n材料\n\n回报" {
+		t.Fatalf("compose %q", got)
+	}
+	if got := composeUser(Turn{}); got != "Continue." {
+		t.Fatalf("empty compose %q", got)
+	}
+}
+
 // TestDeskWritesFile 确认启发式模型的 write_file 会落盘，并发出工具调用事件。
 func TestDeskWritesFile(t *testing.T) {
 	dir := t.TempDir()

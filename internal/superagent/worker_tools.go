@@ -1,4 +1,4 @@
-// worker_tools.go 拥有工人代理上的回复、交还和目录准备。
+// worker_tools.go 拥有工人代理上的回复、交还和目录准备，以及 yoyo 工人和外部工人的说明。
 // 不拥有工作区工具本身。那一套由 Mount 登记。
 
 package superagent
@@ -83,6 +83,37 @@ func workerPrompt(e *Executor, dir, ticketID string) string {
 	if dir != "" {
 		fmt.Fprintf(&b, "工作目录 %s\n", dir)
 	}
+	writePromptContext(&b, e, dir, ticketID)
+	return b.String()
+}
+
+// externalWorkerPrompt 是外部 agent 工人的说明。报告规则和 workerPrompt 一样，但不提 update_plan 和 load_skill；
+// orchestrator 工具经名为 yoyo 的 MCP 服务接入；写明工单号、可写目录和只读目录。env 里的值写出来，钥匙不写。
+func externalWorkerPrompt(e *Executor, spec WorkerSpec) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "你是 yoyo 工单 %s 的工人。\n", spec.TicketID)
+	if spec.Dir != "" {
+		fmt.Fprintf(&b, "工作目录 %s。默认只在这里读写。\n", spec.Dir)
+	}
+	if len(spec.Roots) > 0 {
+		fmt.Fprintf(&b, "也可以读写：%s\n", strings.Join(spec.Roots, "；"))
+	}
+	if len(spec.ReadRoots) > 0 {
+		fmt.Fprintf(&b, "只能读、不要改：%s\n", strings.Join(spec.ReadRoots, "；"))
+	}
+	b.WriteString("yoyo 的工具在名为 yoyo 的 MCP 服务里：orchestrator_report、orchestrator_reply、orchestrator_handback、orchestrator_follow、orchestrator_unrelated。\n")
+	b.WriteString("用 orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。progress 报完继续做。ready 只在完成标准达到时使用，summary 写做了什么、改了哪些文件、怎么验证的。\n")
+	b.WriteString("只有三种情况才停下来问：说明没授权的破坏性操作、必须改上面目录以外的文件、缺少密钥或登录。这时报 blocked，并在 question 里写清楚要人决定什么；question 不能和 ready 一起用。\n")
+	b.WriteString("不要为了确认下一步而提问，也不要在一个小进展之后把下一步交还给人。说明里已经写明的选择不要再问；没写到的细节按已有文件自己定，做完再核对。\n")
+	b.WriteString("后来补来的消息可能只是一个变化、一个答案或下一步，沿着已有的进展继续，不要要求把整张工单重写一遍。\n")
+	b.WriteString("回复原处用 orchestrator_reply。超出范围用 orchestrator_handback。只跟随上下文用 orchestrator_follow。无关线程用 orchestrator_unrelated。\n")
+	b.WriteString("和别的 agent 共用任务组的共享目录时，开工前先读那里的 NOTES.md；做完把你的产出、接口和约定追加进去，不改别人写的段落。\n")
+	writePromptContext(&b, e, spec.Dir, spec.TicketID)
+	return b.String()
+}
+
+// writePromptContext 写操作者画像和这张工单的 DSH_SUPERAGENT_* 变量。没有画像或变量时什么都不写。
+func writePromptContext(b *strings.Builder, e *Executor, dir, ticketID string) {
 	if e != nil && e.Profile != nil {
 		if pin := strings.TrimSpace(e.Profile()); pin != "" {
 			b.WriteString("操作者已经留下的偏好和说过的话。只读，用来定语言、称呼和写法；和任务说明冲突时以说明为准：\n")
@@ -91,18 +122,17 @@ func workerPrompt(e *Executor, dir, ticketID string) string {
 		}
 	}
 	if e != nil && e.Env != nil {
+		env := e.Env(dir, ticketID)
 		for _, key := range []string{
 			"DSH_SUPERAGENT_DIR", "DSH_SUPERAGENT_NAME", "DSH_SUPERAGENT_TICKET",
 			"DSH_SUPERAGENT_GITHUB_REPOSITORY", "DSH_SUPERAGENT_GITHUB_ACCOUNT",
 			"DSH_SUPERAGENT_FEISHU_BOT", "DSH_SUPERAGENT_FEISHU_CHAT",
 		} {
-			env := e.Env(dir, ticketID)
 			if env[key] != "" {
-				fmt.Fprintf(&b, "%s=%s\n", key, env[key])
+				fmt.Fprintf(b, "%s=%s\n", key, env[key])
 			}
 		}
 	}
-	return b.String()
 }
 
 // replyTool 把正文交回触发原来的渠道。

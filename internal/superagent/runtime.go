@@ -50,6 +50,13 @@ type Runtime struct {
 	report       func(ticketID, state, summary, question string)
 	notice       func(sessionID, text string)
 	profile      func() string
+	opener       Opener
+	agentLimit   func(agent string) int
+	agentName    func(agent string) string
+	roots        func(ticketID string) []string
+	onWake       func(session, group, state, digest string) error
+	// wakes 是每个会话最近一小时里唤醒路由的时刻，只在内存里。
+	wakes map[string][]time.Time
 }
 
 // Open 打开 path 上的快照并还原引擎。path 为空时只放在内存里。policy 在没有快照时作为初始策略。
@@ -133,9 +140,13 @@ func (rt *Runtime) attachExec() {
 	rt.exec.LogSave = rt.saveWorkerLog
 	rt.exec.OnReport = rt.queueReport
 	rt.exec.Profile = rt.profile
+	rt.exec.Opener = rt.opener
+	rt.exec.AgentLimit = rt.agentLimit
+	rt.exec.AgentName = rt.agentName
+	rt.exec.Roots = rt.roots
 }
 
-// wireEffects 登记六类先落盘再执行的副作用。调用时要已持有锁。
+// wireEffects 登记七类先落盘再执行的副作用。调用时要已持有锁。
 func (rt *Runtime) wireEffects() {
 	if rt == nil || rt.effects == nil {
 		return
@@ -146,6 +157,7 @@ func (rt *Runtime) wireEffects() {
 	rt.effects.Handle("reply", 1, rt.runReply)
 	rt.effects.HandleOrdered("relay", 1, rt.runRelay)
 	rt.effects.HandleOrdered("notice", 1, rt.runNotice)
+	rt.effects.HandleOrdered("wake", 1, rt.runWake)
 	if rt.eng == nil {
 		return
 	}
@@ -199,7 +211,7 @@ func (rt *Runtime) StagedProgress(ticketID string) string {
 	return rt.eng.StagedProgress(ticketID)
 }
 
-// TicketLabel 是工单给人看的短名。先用第一句输入，没有时用目录短名。
+// TicketLabel 是工单给人看的短名。任务组成员用路由写的短标题，其余先用第一句输入，没有时用目录短名。
 func (rt *Runtime) TicketLabel(id string) string {
 	if rt == nil || rt.eng == nil {
 		return ""
@@ -208,12 +220,55 @@ func (rt *Runtime) TicketLabel(id string) string {
 	if !ok {
 		return ""
 	}
+	if title := strings.TrimSpace(t.Title); title != "" {
+		return title
+	}
 	if len(t.Inputs) > 0 {
 		if line := oneLine(t.Inputs[0].Text); line != "" {
 			return line
 		}
 	}
 	return strings.TrimSpace(t.Name)
+}
+
+// TriggerAgents 返回人在 id 这条触发里 @ 过的 agent，按出现顺序。没有这条触发时为空。
+func (rt *Runtime) TriggerAgents(id string) []string {
+	if rt == nil || rt.eng == nil {
+		return nil
+	}
+	tr, ok := rt.eng.Trigger(id)
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), tr.Agents...)
+}
+
+// TicketAgent 返回做 id 这张工单的 agent，yoyo 自带工人为 yoyo。没有这张工单时 ok 为假。
+func (rt *Runtime) TicketAgent(id string) (string, bool) {
+	if rt == nil || rt.eng == nil {
+		return "", false
+	}
+	t, ok := rt.eng.Ticket(id)
+	if !ok {
+		return "", false
+	}
+	return agentKey(t.Agent), true
+}
+
+// TicketNeed 返回 id 最近一份报告要人先做的事，例如 login。最近那份没有写时为空串。
+func (rt *Runtime) TicketNeed(id string) string {
+	if rt == nil || rt.eng == nil {
+		return ""
+	}
+	t, ok := rt.eng.Ticket(id)
+	if !ok {
+		return ""
+	}
+	asg := latestAssignment(&t)
+	if asg == nil || len(asg.Reports) == 0 {
+		return ""
+	}
+	return asg.Reports[len(asg.Reports)-1].Need
 }
 
 // TicketTexts 返回这张工单交给工人的正文，不截断。
@@ -318,6 +373,69 @@ func (rt *Runtime) SetMount(fn func(reg *dsh.Registry, agent *dsh.Agent, dir, ti
 	}
 }
 
+// SetOpener 接上外部 agent 的工人。fn 为 nil 时所有工单都走 yoyo 自带工人。Bind 前后调用都可以。
+func (rt *Runtime) SetOpener(fn Opener) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.opener = fn
+	if rt.exec != nil {
+		rt.exec.Opener = fn
+	}
+}
+
+// SetAgentLimit 接上每个 agent 的并行上限。fn 返回小于 1 时这个 agent 只受全局槽限制。
+func (rt *Runtime) SetAgentLimit(fn func(agent string) int) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.agentLimit = fn
+	if rt.exec != nil {
+		rt.exec.AgentLimit = fn
+	}
+}
+
+// SetAgentName 接上 agent 给人看的名字。fn 返回空串时用编号。
+func (rt *Runtime) SetAgentName(fn func(agent string) string) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.agentName = fn
+	if rt.exec != nil {
+		rt.exec.AgentName = fn
+	}
+}
+
+// SetRoots 接上每张工单除工作目录外可读写的目录。外部工人的说明、文件读写和审批都用它。
+func (rt *Runtime) SetRoots(fn func(ticketID string) []string) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.roots = fn
+	if rt.exec != nil {
+		rt.exec.Roots = fn
+	}
+}
+
+// CloseWorkers 关掉所有外部工人。应用退出时调用。
+func (rt *Runtime) CloseWorkers() {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	exec := rt.exec
+	rt.mu.Unlock()
+	exec.CloseAll()
+}
+
 // SetProfile 接上操作者画像。fn 返回已经留下的偏好和本人说过的话，写进每个新工人的系统提示，只读。
 func (rt *Runtime) SetProfile(fn func() string) {
 	if rt == nil {
@@ -390,7 +508,8 @@ func (rt *Runtime) Start() {
 	}()
 }
 
-// Stop 停掉两秒轮次并关掉数据库。没有启动过时只关数据库。
+// Stop 停掉两秒轮次，把快照最后落一次盘，再关掉数据库。没有启动过时也先落盘再关。
+// 执行器直接写进引擎的报告和续接编号要等下一轮才落盘，不在这里补一次就会丢。之后工人被打断不再落盘，还在做的派工下次启动续接。
 func (rt *Runtime) Stop() {
 	if rt == nil {
 		return
@@ -398,6 +517,7 @@ func (rt *Runtime) Stop() {
 	rt.mu.Lock()
 	cancel := rt.cancel
 	rt.cancel = nil
+	rt.saveLocked()
 	db := rt.db
 	rt.db = nil
 	rt.mu.Unlock()
@@ -409,7 +529,8 @@ func (rt *Runtime) Stop() {
 	}
 }
 
-// Pass 先执行到期副作用和到期评估，再轮询来源，最后落盘。now 传给副作用和来源的时间比较。
+// Pass 先关掉已结束工单的外部工人，再执行到期副作用、到期评估和任务组的放行与唤醒，然后轮询来源，最后落盘。
+// now 传给副作用和来源的时间比较。
 func (rt *Runtime) Pass(now time.Time) {
 	if rt == nil {
 		return
@@ -417,7 +538,9 @@ func (rt *Runtime) Pass(now time.Time) {
 	rt.mu.Lock()
 	effects := rt.effects
 	eng := rt.eng
+	exec := rt.exec
 	rt.mu.Unlock()
+	exec.Sweep()
 	if effects != nil {
 		effects.Pump(now)
 	}
@@ -429,6 +552,7 @@ func (rt *Runtime) Pass(now time.Time) {
 			}
 		}
 	}
+	rt.watchGroups()
 	if effects != nil {
 		effects.Pump(time.Now())
 	}
@@ -467,11 +591,16 @@ func (rt *Runtime) Decide(triggerID, kind, reason string) error {
 
 // DecideBrief 接受 triggerID，并把 brief 写成工人看到的任务说明。人的原话不进工人正文。
 func (rt *Runtime) DecideBrief(triggerID, kind, reason, brief string, rules []string) error {
+	return rt.DecideBriefFor(triggerID, kind, reason, brief, rules, "", false)
+}
+
+// DecideBriefFor 和 DecideBrief 一样，接受时把工单交给 agent；pinned 表示人点名了它。
+func (rt *Runtime) DecideBriefFor(triggerID, kind, reason, brief string, rules []string, agent string, pinned bool) error {
 	if rt == nil || rt.eng == nil {
 		return errCode("empty")
 	}
 	rt.mu.Lock()
-	_, err := rt.eng.DecideBrief(triggerID, kind, reason, brief, rules)
+	_, err := rt.eng.DecideBriefFor(triggerID, kind, reason, brief, rules, agent, pinned)
 	if err != nil {
 		rt.mu.Unlock()
 		return err
@@ -481,6 +610,41 @@ func (rt *Runtime) DecideBrief(triggerID, kind, reason, brief string, rules []st
 	rt.mu.Unlock()
 	if effects != nil {
 		effects.Pump(time.Now())
+	}
+	return nil
+}
+
+// Reassign 把 ticketID 改派给 agent。agent 为空或 yoyo 时交回 yoyo 自带工人。
+// triggerID 是人这一句，可以为空；brief 是给新工人的说明；pinned 表示人点名了 agent。
+func (rt *Runtime) Reassign(ticketID, triggerID, agent, brief string, pinned bool) error {
+	if rt == nil || rt.eng == nil {
+		return errCode("empty")
+	}
+	rt.mu.Lock()
+	if err := rt.reassignLocked(ticketID, triggerID, agent, brief, pinned); err != nil {
+		rt.mu.Unlock()
+		return err
+	}
+	rt.saveLocked()
+	effects := rt.effects
+	rt.mu.Unlock()
+	if effects != nil {
+		effects.Pump(time.Now())
+	}
+	return nil
+}
+
+// reassignLocked 先改派再打断旧工人。反过来时，旧工人这一轮停下后还会被催着做下去。调用时要已持有 rt.mu。
+func (rt *Runtime) reassignLocked(ticketID, triggerID, agent, brief string, pinned bool) error {
+	name := agentKey(agent)
+	if rt.exec != nil {
+		name = rt.exec.agentName(agent)
+	}
+	if err := rt.eng.Reassign(ticketID, Handover{Agent: agent, Name: name, Trigger: triggerID, Brief: brief, Pinned: pinned}); err != nil {
+		return err
+	}
+	if rt.exec != nil {
+		rt.exec.Interrupt(ticketID)
 	}
 	return nil
 }
@@ -587,14 +751,18 @@ func (rt *Runtime) Deliver() int {
 	return n
 }
 
-// Act 执行编排台动作。kind 取 attach、assign、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、requestStatus、markUnrelated、follow 或 timeout。
-// ticketID、triggerID、text 和 reason 按动作使用。成功后立刻泵一次派工并落盘。
+// Act 执行编排台动作。kind 取 attach、assign、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、reassign、
+// pick、recommend、stopGroup、requestStatus、markUnrelated、follow 或 timeout。ticketID、triggerID、text 和 reason 按动作使用。
+// reassign 的 text 是新 agent，人在任务页选的，算点名。pick、recommend 和 stopGroup 的 text 是任务组，
+// pick 的 ticketID 是采用的那张，recommend 的是推荐的那张。pick 和 stopGroup 停下的成员会被打断，并像 stop 一样写回主会话。
+// 成功后立刻泵一次派工并落盘。
 func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	if rt == nil || rt.eng == nil {
 		return errCode("empty")
 	}
 	rt.mu.Lock()
 	var err error
+	var halted []string
 	relayStop := ""
 	switch kind {
 	case "attach":
@@ -634,6 +802,14 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		err = rt.eng.Accept(ticketID, reason)
 	case "retry":
 		err = rt.eng.Retry(ticketID)
+	case "reassign":
+		err = rt.reassignLocked(ticketID, "", text, "", true)
+	case "pick":
+		halted, err = rt.eng.Pick(strings.TrimSpace(text), ticketID, reason)
+	case "recommend":
+		err = rt.eng.Recommend(strings.TrimSpace(text), ticketID)
+	case "stopGroup":
+		halted, err = rt.eng.StopGroup(strings.TrimSpace(text), reason)
 	case "requestStatus":
 		_, err = rt.eng.RequestStatus(ticketID)
 	case "markUnrelated":
@@ -669,11 +845,26 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		rt.mu.Unlock()
 		return err
 	}
+	haltedWhy := ""
+	if len(halted) > 0 {
+		haltedWhy = firstText(reason, "整组停下了")
+		if kind == "pick" {
+			haltedWhy = firstText(reason, "采用了 "+ticketID)
+		}
+		for _, id := range halted {
+			if rt.exec != nil {
+				rt.exec.Interrupt(id)
+			}
+		}
+	}
 	rt.saveLocked()
 	effects := rt.effects
 	rt.mu.Unlock()
 	if relayStop != "" {
 		rt.queueReport(ticketID, "stopped", relayStop, "")
+	}
+	for _, id := range halted {
+		rt.queueReport(id, "stopped", haltedWhy, "")
 	}
 	if effects != nil {
 		effects.Pump(time.Now())
@@ -695,13 +886,15 @@ func (rt *Runtime) View() View {
 	}
 	workers := rt.workers
 	prepare := rt.prepareCmd
+	exec := rt.exec
 	rt.mu.Unlock()
 	snap, err := rt.eng.Export()
 	if err != nil {
-		return View{Health: err.Error(), Sources: sources, At: at, Tickets: []TicketRow{}, Threads: []ThreadRow{}, Queued: []TriggerRow{}, Evals: []EvalRow{}, Decisions: []DecisionRow{}, Executions: []ExecutionRow{}, Problems: []ProblemRow{}, Allowed: []string{}}
+		return View{Health: err.Error(), Sources: sources, At: at, Tickets: []TicketRow{}, Threads: []ThreadRow{}, Queued: []TriggerRow{}, Evals: []EvalRow{}, Decisions: []DecisionRow{}, Executions: []ExecutionRow{}, Problems: []ProblemRow{}, Allowed: []string{}, Agents: []AgentLoad{}, Groups: []GroupRow{}}
 	}
 	view := buildView(snap, sources, health, at, workers)
 	view.Prepare = prepare
+	view.Agents = agentLoads(view.Tickets, exec.AgentRunning())
 	if rt.effects != nil {
 		for _, row := range rt.effects.Failing() {
 			view.Problems = append(view.Problems, ProblemRow{

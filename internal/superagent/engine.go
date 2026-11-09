@@ -22,6 +22,7 @@ type Engine struct {
 	triggers  map[string]*Trigger
 	threads   map[string]*Thread
 	tickets   map[string]*Ticket
+	groups    map[string]*Group
 	decisions []Decision
 	outbox    []Outbound
 
@@ -53,6 +54,7 @@ func NewEngine(p Policy) *Engine {
 		triggers: map[string]*Trigger{},
 		threads:  map[string]*Thread{},
 		tickets:  map[string]*Ticket{},
+		groups:   map[string]*Group{},
 	}
 }
 
@@ -115,8 +117,21 @@ func (e *Engine) Confirm(triggerID, kind, reason string) (Decision, error) {
 // DecideBrief 和 Decide 一样。brief 非空时，工人看到的是这份说明，不是人的原话。
 // 原话仍留在触发上，任务列表的短标题不变。rules 是推断接受时还启用的规则编号。
 func (e *Engine) DecideBrief(triggerID, kind, reason, brief string, rules []string) (Decision, error) {
+	return e.DecideBriefFor(triggerID, kind, reason, brief, rules, "", false)
+}
+
+// DecideBriefFor 和 DecideBrief 一样，接受时把新工单交给 agent。agent 为空或 yoyo 时用 yoyo 自带工人。
+// pinned 为真表示人用 @ 点名了它，离线时不擅自换人。派工在写好 agent 之后才开始。
+func (e *Engine) DecideBriefFor(triggerID, kind, reason, brief string, rules []string, agent string, pinned bool) (Decision, error) {
 	e.mu.Lock()
+	before := e.n
 	d, launch, err := e.decide(triggerID, kind, reason, rules, false, strings.TrimSpace(brief))
+	if err == nil && d.Kind == "accept" && e.n > before {
+		if t := e.tickets[d.TicketID]; t != nil {
+			t.Agent = strings.TrimSpace(agent)
+			t.AgentPinned = pinned && t.Agent != ""
+		}
+	}
 	e.mu.Unlock()
 	if err == nil && launch != "" && e.OnLaunch != nil {
 		e.OnLaunch(launch)
@@ -140,7 +155,11 @@ func (e *Engine) decideOuter(triggerID, kind, reason string, rules []string, con
 func (e *Engine) Report(ticketID string, report Report) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	t := e.tickets[ticketID]
+	return e.reportLocked(e.tickets[ticketID], report)
+}
+
+// reportLocked 是 Report 在锁内的部分。调用时要已持有锁。
+func (e *Engine) reportLocked(t *Ticket, report Report) error {
 	if t == nil {
 		return errCode("unknownTicket")
 	}
@@ -250,6 +269,51 @@ func (e *Engine) SetDirectory(ticketID, dir, name string) {
 	}
 }
 
+// SetPointer 记下 ticketID 上 agent 的外部会话编号，下次打开同一个 agent 时续接。工单已经结束时不记。
+func (e *Engine) SetPointer(ticketID, agent, pointer string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || t.Ended != nil {
+		return
+	}
+	t.Pointer = strings.TrimSpace(pointer)
+	t.PointerOf = agentKey(agent)
+}
+
+// SetUsage 记下 ticketID 上外部 agent 最近一次报的用量。工单已经结束时不记。
+func (e *Engine) SetUsage(ticketID string, usage Usage) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || t.Ended != nil {
+		return
+	}
+	t.Usage = &usage
+}
+
+// approvalMark 是等批准那句的开头。SetApprovalWait 只改以它开头的 Attention。
+const approvalMark = "等批准："
+
+// SetApprovalWait 把等批准的一句写进 ticketID 的 Attention，text 为空时清掉。
+// Attention 里已经是工人报告的问题时不写也不清，问题要等人回答。
+func (e *Engine) SetApprovalWait(ticketID, text string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || t.Ended != nil {
+		return
+	}
+	if cur := strings.TrimSpace(t.Attention); cur != "" && !strings.HasPrefix(cur, approvalMark) {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text != "" && !strings.HasPrefix(text, approvalMark) {
+		text = approvalMark + text
+	}
+	t.Attention = text
+}
+
 // DeskAudiences 返回这份报告该写进的桌面会话。先用后来跟上的会话。没有时才用开工那一条。
 func (e *Engine) DeskAudiences(ticketID string) []string {
 	if e == nil {
@@ -294,16 +358,7 @@ func (e *Engine) deskSessionLocked(t *Ticket) string {
 	if t == nil {
 		return ""
 	}
-	tr := e.triggers[t.Origin]
-	if tr == nil {
-		return ""
-	}
-	for _, key := range tr.Threads {
-		if strings.HasPrefix(key, "desk:") {
-			return strings.TrimPrefix(key, "desk:")
-		}
-	}
-	return ""
+	return deskSessionOf(e.triggers[t.Origin])
 }
 
 // DeskSessionsFollowing 返回跟随 thread 的工单所在的桌面会话。
@@ -896,6 +951,7 @@ func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) 
 	cp := in
 	stamp(&cp, e.now())
 	cp.Threads = threads
+	cp.Agents = append([]string(nil), in.Agents...)
 	cp.Reached = nil
 	cp.Handbacks = nil
 	cp.DecisionID = ""
@@ -962,6 +1018,27 @@ func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirme
 		}
 		return Decision{}, "", errCode("settled")
 	}
+	if kind == "accept" {
+		strength, matched, observed, err := e.admitAccept(tr, rules, confirmed)
+		if err != nil {
+			return Decision{}, "", err
+		}
+		if observed {
+			d := e.putDecision(tr, "ignore", "observed", "")
+			e.unqueue(tr)
+			return d, "", nil
+		}
+		e.n++
+		ticketID := fmt.Sprintf("tkt-%d", e.n)
+		d := e.putDecision(tr, "accept", reason, ticketID)
+		e.openTicket(tr, strength, ticketID, reason, matched, brief, true)
+		e.unqueue(tr)
+		// 暂停只挡住推断出来的开工。人明确交代的仍然马上派工。
+		if e.policy.Paused && strength != "explicit" {
+			return d, "", nil
+		}
+		return d, ticketID, nil
+	}
 	if kind != "stop" && len(e.owners(tr)) > 0 {
 		return Decision{}, "", errCode("workerDecides")
 	}
@@ -973,30 +1050,6 @@ func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirme
 		return Decision{}, "", errCode(why)
 	}
 	switch kind {
-	case "accept":
-		if !confirmed && strength != "explicit" && e.policy.Mode != "auto" {
-			d := e.putDecision(tr, "ignore", "observed", "")
-			e.unqueue(tr)
-			return d, "", nil
-		}
-		matched := []string(nil)
-		if strength != "explicit" && !confirmed {
-			var ok bool
-			matched, ok = e.policy.MatchRules(rules)
-			if !ok {
-				return Decision{}, "", errCode("needs_rule")
-			}
-		}
-		e.n++
-		ticketID := fmt.Sprintf("tkt-%d", e.n)
-		d := e.putDecision(tr, "accept", reason, ticketID)
-		e.openTicket(tr, strength, ticketID, reason, matched, brief)
-		e.unqueue(tr)
-		// 暂停只挡住推断出来的开工。人明确交代的仍然马上派工。
-		if e.policy.Paused && strength != "explicit" {
-			return d, "", nil
-		}
-		return d, ticketID, nil
 	case "ignore", "unavailable":
 		d := e.putDecision(tr, kind, reason, "")
 		e.unqueue(tr)
@@ -1024,9 +1077,35 @@ func (e *Engine) decide(triggerID, kind, reason string, rules []string, confirme
 	}
 }
 
+// admitAccept 是接受 tr 之前的检查，顺序固定：已有工人在管、准入格、观察模式、规则。
+// observed 为真时只该记一条 ignore；matched 是推断接单时命中的规则。confirmed 表示人已经点头。
+func (e *Engine) admitAccept(tr *Trigger, rules []string, confirmed bool) (strength string, matched []string, observed bool, err error) {
+	if len(e.owners(tr)) > 0 {
+		return "", nil, false, errCode("workerDecides")
+	}
+	admitted, strength, why := e.policy.Gate(*tr)
+	if !admitted {
+		if why == "" {
+			why = "not_admitted"
+		}
+		return "", nil, false, errCode(why)
+	}
+	if !confirmed && strength != "explicit" && e.policy.Mode != "auto" {
+		return strength, nil, true, nil
+	}
+	if strength != "explicit" && !confirmed {
+		var ok bool
+		matched, ok = e.policy.MatchRules(rules)
+		if !ok {
+			return "", nil, false, errCode("needs_rule")
+		}
+	}
+	return strength, matched, false, nil
+}
+
 // openTicket 用 tr 和 strength 开出 ticketID。name 收成分支短名，空的就先不记。
-// brief 非空时，工人读到的是这份说明，不是 tr 的原话。
-func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules []string, brief string) {
+// brief 非空时，工人读到的是这份说明，不是 tr 的原话。ack 为真时给来源回一条已接单。
+func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules []string, brief string, ack bool) {
 	t := &Ticket{ID: ticketID, Origin: tr.ID, Name: branchName(name), Opened: e.now(), Mandate: Mandate{Version: e.policy.Version, Strength: strength, Sender: tr.Sender}}
 	switch {
 	case strength == "explicit":
@@ -1048,6 +1127,9 @@ func (e *Engine) openTicket(tr *Trigger, strength, ticketID, name string, rules 
 	e.addInput(t, tr)
 	if b := strings.TrimSpace(brief); b != "" && len(t.Inputs) > 0 {
 		t.Inputs[len(t.Inputs)-1].Text = clipRunes(b, 12000)
+	}
+	if !ack {
+		return
 	}
 	e.n++
 	e.outbox = append(e.outbox, Outbound{
@@ -1418,6 +1500,11 @@ func cloneTicket(t *Ticket) Ticket {
 		end := *t.Ended
 		out.Ended = &end
 	}
+	if t.Usage != nil {
+		usage := *t.Usage
+		out.Usage = &usage
+	}
+	out.DependsOn = append([]string(nil), t.DependsOn...)
 	return out
 }
 
@@ -1427,5 +1514,6 @@ func cloneTrigger(t *Trigger) Trigger {
 	out.Threads = append([]string(nil), t.Threads...)
 	out.Reached = append([]string(nil), t.Reached...)
 	out.Handbacks = append([]string(nil), t.Handbacks...)
+	out.Agents = append([]string(nil), t.Agents...)
 	return out
 }

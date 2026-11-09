@@ -303,6 +303,7 @@ Binary updates are a separate channel. `yoyo update apply` renames the running p
 | [Skill packs](docs/architecture/skill-packs.md) | How methodology and domain packs load |
 | [Context](docs/architecture/context.md) | What a turn injects, and what it trims |
 | [Persist](docs/architecture/persist.md) | Home, connections, and the vault |
+| [Buddy](docs/architecture/buddy.md) | External agents as workers, and multi-agent task groups |
 | [Threat model](docs/architecture/threat-model.md) | Trust boundaries |
 
 ## Commands

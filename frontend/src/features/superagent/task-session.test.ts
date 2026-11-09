@@ -216,3 +216,28 @@ describe("task session order", () => {
     assert.deepEqual(taskSessionItems(rows, lines).map((item) => item.text), ["先定方向"]);
   });
 });
+
+describe("task handover", () => {
+  /** 改派的那一行画成分隔线，不当成人说的话，也不吃掉后面的输入；接手的 agent 按这一行记下的派工找。 */
+  it("turns the handover marker into a divider for the new agent", () => {
+    const rows: Ticket = {
+      ...ticket([{ id: "in-1", text: "修登录页" }, { id: "in-2", text: "顺便补个测试" }]),
+      agent: "claude",
+      assignments: [{ id: "asg-1", state: "done", agent: "codex" }, { id: "asg-2", state: "running", agent: "claude" }],
+    };
+    const lines: TaskLine[] = [
+      { id: "a1", role: "user", source: "assignment", text: "修登录页" },
+      { id: "x1", role: "assistant", text: "在看。" },
+      { id: "h1", role: "user", source: "handover", name: "asg-2", text: "改由 Claude Code 接手" },
+      { id: "u1", role: "user", text: "顺便补个测试" },
+    ];
+    const items = taskSessionItems(rows, lines);
+    assert.deepEqual(items.map((item) => [item.source, item.text]), [
+      ["user", "修登录页"],
+      ["worker", "在看。"],
+      ["handover", "改由 Claude Code 接手"],
+      ["user", "顺便补个测试"],
+    ]);
+    assert.equal(items[2].payload?.agent, "claude");
+  });
+});

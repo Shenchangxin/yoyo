@@ -37,6 +37,10 @@ type Turn struct {
 	PullSteer        func() string
 	StopHooks        []runtime.FileHook
 	Checkpoint       string
+	// Wake 是唤醒路由时写给它的任务组回报，不是人说的话。非空时这一轮先落一条来源为 wake 的注入，回放历史时它是一条用户消息。
+	Wake string
+	// WakeMeta 是那条注入载荷里另外带的字段，例如任务组编号和状态。
+	WakeMeta map[string]any
 }
 
 // Host 按会话保存正在跑的代理，供 Steer 和 Interrupt 找到它。
@@ -191,6 +195,15 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 			Payload: map[string]any{"text": turn.Inject},
 		}, true)
 	}
+	if wake := strings.TrimSpace(turn.Wake); wake != "" {
+		payload := map[string]any{}
+		for k, v := range turn.WakeMeta {
+			payload[k] = v
+		}
+		payload["text"] = wake
+		payload["name"] = "wake"
+		turn.emit(trace.Event{Type: trace.TypeInject, Source: "wake", Payload: payload}, true)
+	}
 	agent.Followup(dsh.UserMessage{Text: composeUser(turn), Source: ""})
 	waitIdle(ctx, agent, box)
 	endPull()
@@ -280,20 +293,18 @@ func denyStop(rules []runtime.FileHook) (bool, string) {
 	return false, ""
 }
 
-// composeUser 拼出这一轮要跟进的用户文本。turn 的 User 和 Inject 都空时用 Continue.。
+// composeUser 拼出这一轮要跟进的用户文本：User、Inject 和 Wake 里不空的，按这个顺序隔一行。都空时用 Continue.。
 func composeUser(turn Turn) string {
-	text := strings.TrimSpace(turn.User)
-	inject := strings.TrimSpace(turn.Inject)
-	switch {
-	case text != "" && inject != "":
-		return text + "\n\n" + inject
-	case text != "":
-		return text
-	case inject != "":
-		return inject
-	default:
+	var parts []string
+	for _, text := range []string{turn.User, turn.Inject, turn.Wake} {
+		if text = strings.TrimSpace(text); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
 		return "Continue."
 	}
+	return strings.Join(parts, "\n\n")
 }
 
 // pullSteer 把 pull 取到的文本交给 agent。pull 为 nil 或文本为空时什么都不做。

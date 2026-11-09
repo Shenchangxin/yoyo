@@ -27,7 +27,9 @@ import { BriefOverlay } from "./features/superagent/BriefOverlay";
 import { runDeskFeed, setDeskSession } from "./features/superagent/desk-feed";
 import { briefPhrases, WorkPane } from "./features/superagent/WorkPane";
 import { TaskPage } from "./features/superagent/TaskPage";
+import { GroupPage } from "./features/superagent/GroupPage";
 import { refreshNeeds, useNeedCount, useNeeds } from "./features/superagent/needs";
+import { useBuddyFeed } from "./features/buddy/buddy-store";
 import { applyProactiveLevel, briefDeskOf, briefTimesOf, cacheBriefTimes, cachedBriefTimes, parseProactiveLevel } from "./lib/proactive";
 import { copy as liveCopy } from "./lib/i18n";
 import { TurnOutline } from "./features/TurnOutline";
@@ -82,6 +84,7 @@ const HarnessLab = lazy(() => import("./features/labs/HarnessLab").then((m) => (
 const HarnessWorkspace = lazy(() => import("./features/harness/HarnessWorkspace").then((m) => ({ default: m.HarnessWorkspace })));
 const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const SkillsWorkspace = lazy(() => import("./features/skills/SkillsWorkspace").then((m) => ({ default: m.SkillsWorkspace })));
+const BuddyWorkspace = lazy(() => import("./features/buddy/BuddyWorkspace").then((m) => ({ default: m.BuddyWorkspace })));
 const LearnWorkspace = lazy(() => import("./features/learn/LearnWorkspace").then((m) => ({ default: m.LearnWorkspace })));
 const VideoWorkshop = lazy(() => import("./features/video/VideoWorkshop").then((m) => ({ default: m.VideoWorkshop })));
 
@@ -116,6 +119,7 @@ function WorkstationApp() {
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
   const skills = !popout && ws.surface === "skills";
+  const buddying = !popout && ws.surface === "buddy";
   const paging = !popout && ws.surface === "pages";
   const idling = !popout && ws.surface === "idol";
   const videoing = !popout && ws.surface === "video";
@@ -188,9 +192,12 @@ function WorkstationApp() {
     const timer = window.setInterval(tick, 30_000);
     return () => window.clearInterval(timer);
   }, [ws.booted, popout]);
+  useBuddyFeed(ws.booted && !popout ? 2500 : -1);
   const [taskId, setTaskId] = useState("");
   const needCount = useNeedCount();
   const focusTicket = useNeeds((s) => (s.focusTask ? s.view?.tickets?.find((t) => t.id === s.focusTask) ?? null : null));
+  const focusGroup = useNeeds((s) => (s.focusGroup ? s.view?.groups?.find((g) => g.id === s.focusGroup) ?? null : null));
+  const deskTickets = useNeeds((s) => s.view?.tickets);
   useEffect(() => {
     if (!ws.booted || popout) return;
     void refreshNeeds();
@@ -199,7 +206,14 @@ function WorkstationApp() {
   }, [ws.booted, popout]);
   useEffect(() => {
     useNeeds.getState().setFocusTask("");
-  }, [ws.activeId, ws.surface]);
+    useNeeds.getState().setFocusGroup("");
+  }, [ws.activeId]);
+  useEffect(() => {
+    // Buddy 详情点开工单时先放工单、再回到对话，所以回到对话这一下不能清。
+    if (ws.surface === "agent") return;
+    useNeeds.getState().setFocusTask("");
+    useNeeds.getState().setFocusGroup("");
+  }, [ws.surface]);
   const deskCfg = ws.savedCfg.desk;
   const deskSynced = useRef(false);
   useEffect(() => {
@@ -494,7 +508,13 @@ function WorkstationApp() {
       onOpenTask={setTaskId}
       onFocusTask={(id) => {
         setTaskId("");
+        useNeeds.getState().setFocusGroup("");
         useNeeds.getState().setFocusTask(id);
+      }}
+      onFocusGroup={(id) => {
+        setTaskId("");
+        useNeeds.getState().setFocusTask("");
+        useNeeds.getState().setFocusGroup(id);
       }}
       onResolve={ws.onResolve}
       onOpenThread={(id) => {
@@ -796,6 +816,11 @@ function WorkstationApp() {
       workspace={ws.surface === "video" ? (ws.savedCfg.videoWorkspace || ws.health.videoWorkspace || ws.savedCfg.workspace) : ws.savedCfg.workspace}
       onLab={ws.setLab}
       onChats={() => { leaveRail(); ws.showConversation(); }}
+      onBuddy={() => {
+        leaveRail();
+        if (ws.surface === "buddy") ws.closeBuddy();
+        else ws.openBuddy();
+      }}
       onHarness={() => {
         leaveRail();
         if (ws.surface === "harness") ws.showConversation();
@@ -937,6 +962,8 @@ function WorkstationApp() {
     ? null
     : skills
       ? <span className="text-ui-body font-medium">{copy.skills.title}</span>
+    : buddying
+      ? <span className="text-ui-body font-medium">{copy.buddy.title}</span>
     : paging
       ? <span className="text-ui-body font-medium">{copy.rail.pages}</span>
     : idling
@@ -1076,6 +1103,12 @@ function WorkstationApp() {
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{skillsPane}</div>
     </Suspense>
+  ) : buddying ? (
+    <Suspense fallback={null}>
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="buddy-surface">
+        <BuddyWorkspace />
+      </div>
+    </Suspense>
   ) : paging ? (
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="pages-surface">
@@ -1131,6 +1164,10 @@ function WorkstationApp() {
       <TaskPage
         ticket={focusTicket}
         onBack={() => useNeeds.getState().setFocusTask("")}
+        onOpenGroup={(id) => {
+          useNeeds.getState().setFocusTask("");
+          useNeeds.getState().setFocusGroup(id);
+        }}
         onSent={() => { void refreshNeeds(); }}
         skills={ws.skills}
         files={ws.files}
@@ -1139,6 +1176,22 @@ function WorkstationApp() {
         onPickFiles={bindComposer.onPickFiles}
         onClipboard={bindComposer.onClipboard}
         onScreenshot={bindComposer.onScreenshot}
+      />
+    </section>
+  ) : agent && focusGroup ? (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-skin-pane>
+      <GroupPage
+        stage
+        group={focusGroup}
+        tickets={deskTickets ?? []}
+        onBack={() => useNeeds.getState().setFocusGroup("")}
+        onOpenTask={(id) => useNeeds.getState().setFocusTask(id)}
+        onOpenMain={(id) => {
+          useNeeds.getState().setFocusGroup("");
+          const t = ws.threads.find((x) => x.id === id);
+          if (t) ws.openThread(t);
+        }}
+        onSent={() => { void refreshNeeds(); }}
       />
     </section>
   ) : agentPane;

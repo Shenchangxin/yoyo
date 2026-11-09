@@ -1,0 +1,189 @@
+[
+  {
+    "id": "claude",
+    "registry": "claude-acp",
+    "name": "Claude Code",
+    "vendor": "Anthropic",
+    "order": 1,
+    "aliases": ["克劳德", "claude code", "anthropic"],
+    "acpBins": ["claude-agent-acp"],
+    "cliBins": ["claude"],
+    "strengths": {"zh": "长链路重构、读大仓库、补测试", "en": "long refactors, large codebases and tests"},
+    "secrets": [{"name": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "provider": "anthropic"}],
+    "system": {"npm": "@agentclientprotocol/claude-agent-acp"}
+  },
+  {
+    "id": "codex",
+    "registry": "codex-acp",
+    "name": "Codex",
+    "vendor": "OpenAI",
+    "order": 2,
+    "aliases": ["openai", "openai codex"],
+    "acpBins": ["codex-acp"],
+    "cliBins": ["codex"],
+    "strengths": {"zh": "改代码和跑命令，后端与脚本", "en": "code edits and shell work, backends and scripts"},
+    "secrets": [{"name": "OPENAI_API_KEY", "label": "OpenAI API key", "provider": "openai"}],
+    "login": [{"label": "codex login", "cmd": ["codex", "login"]}],
+    "system": {"npm": "@agentclientprotocol/codex-acp"}
+  },
+  {
+    "id": "gemini",
+    "registry": "gemini",
+    "name": "Gemini CLI",
+    "vendor": "Google",
+    "order": 3,
+    "aliases": ["双子座", "google gemini"],
+    "acpBins": ["gemini"],
+    "cliBins": ["gemini"],
+    "strengths": {"zh": "超长上下文，读文档和大文件", "en": "very long context, docs and large files"},
+    "secrets": [{"name": "GEMINI_API_KEY", "label": "Gemini API key", "provider": "gemini"}],
+    "system": {"npm": "@google/gemini-cli"}
+  },
+  {
+    "id": "qwen",
+    "registry": "qwen-code",
+    "name": "Qwen Code",
+    "vendor": "Alibaba",
+    "order": 4,
+    "aliases": ["千问", "通义", "通义千问"],
+    "acpBins": ["qwen"],
+    "cliBins": ["qwen"],
+    "strengths": {"zh": "中文需求和通用编码", "en": "Chinese-language tasks and general coding"},
+    "system": {"npm": "@qwen-code/qwen-code"}
+  },
+  {
+    "id": "kimi",
+    "registry": "kimi-code",
+    "name": "Kimi Code",
+    "vendor": "Moonshot AI",
+    "order": 5,
+    "aliases": ["月之暗面", "moonshot"],
+    "acpBins": ["kimi"],
+    "cliBins": ["kimi"],
+    "strengths": {"zh": "长文本理解，中文写作和编码", "en": "long-text reading, Chinese writing and coding"},
+    "system": {"npm": "@moonshot-ai/kimi-code"}
+  },
+  {
+    "id": "codebuddy",
+    "registry": "codebuddy-code",
+    "name": "CodeBuddy Code",
+    "vendor": "Tencent",
+    "order": 6,
+    "aliases": ["腾讯", "codebuddy code"],
+    "acpBins": ["codebuddy", "cbc"],
+    "cliBins": ["codebuddy"],
+    "strengths": {"zh": "通用编码", "en": "general coding"},
+    "system": {"npm": "@tencent-ai/codebuddy-code"}
+  },
+  {
+    "id": "copilot",
+    "registry": "github-copilot-cli",
+    "name": "GitHub Copilot",
+    "vendor": "GitHub",
+    "order": 7,
+    "aliases": ["github copilot"],
+    "acpBins": ["copilot"],
+    "cliBins": ["copilot"],
+    "strengths": {"zh": "GitHub 仓库、议题和 PR", "en": "GitHub repositories, issues and PRs"},
+    "system": {"npm": "@github/copilot"}
+  },
+  {
+    "id": "qoder",
+    "registry": "qoder",
+    "name": "Qoder CLI",
+    "vendor": "Qoder",
+    "order": 8,
+    "acpBins": ["qodercli", "qoder"],
+    "cliBins": ["qodercli"],
+    "strengths": {"zh": "读懂仓库后再规划", "en": "understanding a repository before planning"},
+    "system": {"npm": "@qoder-ai/qodercli"}
+  },
+  {
+    "id": "cline",
+    "registry": "cline",
+    "name": "Cline",
+    "vendor": "Cline",
+    "order": 9,
+    "acpBins": ["cline"],
+    "cliBins": ["cline"],
+    "strengths": {"zh": "先列计划再一步步做", "en": "planning first, then working step by step"},
+    "system": {"npm": "cline"}
+  },
+  {
+    "id": "grok",
+    "registry": "grok-build",
+    "name": "Grok Build",
+    "vendor": "xAI",
+    "order": 10,
+    "aliases": ["xai"],
+    "acpBins": ["grok"],
+    "cliBins": ["grok"],
+    "strengths": {"zh": "通用编码和推理", "en": "general coding and reasoning"},
+    "system": {"npm": "@xai-official/grok"}
+  },
+  {
+    "id": "cursor",
+    "registry": "cursor",
+    "name": "Cursor",
+    "vendor": "Cursor",
+    "order": 11,
+    "acpBins": ["cursor-agent"],
+    "cliBins": ["cursor-agent"],
+    "strengths": {"zh": "多文件编辑和前端", "en": "multi-file edits and frontends"},
+    "secrets": [{"name": "CURSOR_API_KEY", "label": "Cursor API key"}],
+    "login": [{"label": "cursor-agent login", "cmd": ["cursor-agent", "login"]}],
+    "system": {
+      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm 'https://cursor.com/install?win32=true' | iex\"",
+      "darwin": "curl https://cursor.com/install -fsS | bash",
+      "linux": "curl https://cursor.com/install -fsS | bash"
+    }
+  },
+  {
+    "id": "opencode",
+    "registry": "opencode",
+    "name": "OpenCode",
+    "vendor": "OpenCode",
+    "order": 12,
+    "acpBins": ["opencode"],
+    "cliBins": ["opencode"],
+    "strengths": {"zh": "可接多家模型的通用编码", "en": "general coding across many model providers"},
+    "login": [{"label": "opencode auth login", "cmd": ["opencode", "auth", "login"]}],
+    "system": {
+      "npm": "opencode-ai",
+      "darwin": "curl -fsSL https://opencode.ai/install | bash",
+      "linux": "curl -fsSL https://opencode.ai/install | bash"
+    }
+  },
+  {
+    "id": "goose",
+    "registry": "goose",
+    "name": "goose",
+    "vendor": "Block",
+    "order": 13,
+    "acpBins": ["goose"],
+    "cliBins": ["goose"],
+    "strengths": {"zh": "自动化和工具调用", "en": "automation and tool use"},
+    "login": [{"label": "goose configure", "cmd": ["goose", "configure"]}],
+    "system": {
+      "darwin": "curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | bash",
+      "linux": "curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | bash"
+    }
+  },
+  {
+    "id": "kiro",
+    "registry": "kiro",
+    "name": "Kiro CLI",
+    "vendor": "AWS",
+    "order": 14,
+    "aliases": ["亚马逊"],
+    "acpBins": ["kiro-cli"],
+    "cliBins": ["kiro-cli"],
+    "strengths": {"zh": "按规格开发", "en": "spec-driven development"},
+    "login": [{"label": "kiro-cli login", "cmd": ["kiro-cli", "login"]}],
+    "system": {
+      "darwin": "curl -fsSL https://cli.kiro.dev/install | bash",
+      "linux": "curl -fsSL https://cli.kiro.dev/install | bash"
+    },
+    "unsupported": ["windows"]
+  }
+]

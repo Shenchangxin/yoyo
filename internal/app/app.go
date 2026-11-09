@@ -14,8 +14,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Shenchangxin/yoyo/internal/acp"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/browser"
+	"github.com/Shenchangxin/yoyo/internal/buddy"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/computeruse"
 	"github.com/Shenchangxin/yoyo/internal/connector"
@@ -31,6 +33,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/learn"
+	"github.com/Shenchangxin/yoyo/internal/mcpserve"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/modelcatalog"
 	"github.com/Shenchangxin/yoyo/internal/observe"
@@ -115,6 +118,7 @@ type Config struct {
 	Log                  LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
 	Paused               bool                `yaml:"paused" json:"paused"`
 	Desk                 DeskConfig          `yaml:"desk,omitempty" json:"desk,omitempty"`
+	Buddies              BuddiesConfig       `yaml:"buddies,omitempty" json:"buddies,omitempty"`
 }
 
 // SkillsConfig 是技能自动调用的可选设置。AutoInvoke 取 off、hint 或 on，默认 on。
@@ -161,6 +165,8 @@ type App struct {
 	deskMu sync.Mutex
 	desk   *dshdesk.Host
 	orch   *superagent.Runtime
+	// orchShut 在 Close 停掉编排之后为真。关闭途中还会有工人回调进来，不能让它们把数据库重新打开。
+	orchShut bool
 
 	briefMu     sync.Mutex
 	briefSig    string
@@ -229,6 +235,16 @@ type App struct {
 
 	agentWatch sync.Map
 	agentSess  sync.Map
+
+	// buddies 管外部 agent 的目录、安装、探测和登录；buddyMu 护着 Config.Buddies 的读写。
+	buddies *buddy.Manager
+	buddyMu sync.Mutex
+	// control 是外部工人调 orchestrator_* 的控制面，第一次登记时才监听本机回环地址。
+	control *mcpserve.Server
+	// buddyDial 换掉连 agent 的方式，探测、健康检查和外部工人都用它；nil 时启动真进程。测试换成同进程的假 agent。
+	buddyDial func(ctx context.Context, opts acp.Options) (*acp.Client, error)
+	// buddyLog 记着每项最后写进诊断日志的状态。
+	buddyLog buddyStates
 }
 
 // Open 打开数据根目录并装配应用对象。
@@ -436,6 +452,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		return nil, err
 	}
 	a.configurePwsh()
+	a.configureBuddies()
 	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {
 			off := c.Events().On(runtimeHookPreTool(), func(payload any) (any, error) {
@@ -691,8 +708,10 @@ func (a *App) SaveConfig() error {
 }
 
 // Close 停掉调度和更新循环，关闭视频、MCP、WASM 和日志，再卸下内核。
+// 外部 agent 进程在编排落盘关掉之后再停，停下时的中断不会写成工单结果，下次启动续接。
 func (a *App) Close() error {
 	a.stopOrchestrator()
+	a.closeBuddyWorkers()
 	a.stopDeskLoop()
 	if a.schedStop != nil {
 		select {
@@ -711,6 +730,7 @@ func (a *App) Close() error {
 	if a.IM != nil {
 		a.IM.Close()
 	}
+	a.closeBuddies()
 	diaglog.Info("app close", "component", "boot")
 	if a.Video != nil {
 		_ = a.Video.Close()
