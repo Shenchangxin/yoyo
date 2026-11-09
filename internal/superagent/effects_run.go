@@ -73,6 +73,7 @@ func (rt *Runtime) launchWaiting(id string) bool {
 }
 
 // runDelivery 把还没送到工人的输入送进去。工人进程已经不在时，结束停住的派工并再开一轮。
+// 工单已经结束、外部工人也已关掉时，这条投递作废，不再空等。
 func (rt *Runtime) runDelivery(payload any) error {
 	id, _ := payload.(string)
 	if rt == nil || rt.exec == nil {
@@ -83,6 +84,11 @@ func (rt *Runtime) runDelivery(payload any) error {
 	}
 	if rt.eng != nil && rt.eng.ReopenForInput(id) {
 		return nil
+	}
+	if rt.eng != nil {
+		if t, ok := rt.eng.Ticket(id); ok && t.Ended != nil {
+			return nil
+		}
 	}
 	return fmt.Errorf("%w", ErrLater)
 }

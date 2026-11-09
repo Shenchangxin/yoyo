@@ -1,5 +1,5 @@
-// executor.go 用 dsh.Agent 执行派工。它不决定接单。
-// 每个工单一个代理。前台命令超过预算后转入后台，完成时 Steer 回同一代理。
+// executor.go 用 Worker 执行派工：yoyo 自带的 dsh 代理，或经 Opener 打开的外部 agent。它不决定接单。
+// 每个工单一个工人。前台命令超过预算后转入后台，完成时 Steer 回同一代理。
 
 package superagent
 
@@ -126,14 +126,25 @@ type Executor struct {
 	// Profile 返回操作者已经留下的偏好和说过的话。空串表示没有。它进工人的系统提示，只读。
 	Profile    func() string
 	Foreground time.Duration
+	// Opener 打开外部 agent 的工人。为 nil 时所有工单都走 yoyo 自带的 dsh 代理。
+	Opener Opener
+	// AgentLimit 返回 agent 同时最多跑几张工单。为 nil 或返回小于 1 时只受 Slots 限制。
+	AgentLimit func(agent string) int
 
-	mu     sync.Mutex
-	agents map[string]*dsh.Agent
-	live   map[string]bool
-	held   map[string]bool
-	bgMu   sync.Mutex
-	bg     map[string]int
-	bgNote map[string]chan struct{}
+	mu sync.Mutex
+	// agents 是 yoyo 自带工人的代理，workers 是外部工人。同一张工单只在其中一张表里。
+	agents  map[string]*dsh.Agent
+	workers map[string]Worker
+	// workerOf 记外部工人属于哪个 agent。
+	workerOf map[string]string
+	// agentRun 是每个 agent 正在跑的工单数，liveAgent 记每张正在跑的工单算在谁名下。
+	agentRun  map[string]int
+	liveAgent map[string]string
+	live      map[string]bool
+	held      map[string]bool
+	bgMu      sync.Mutex
+	bg        map[string]int
+	bgNote    map[string]chan struct{}
 }
 
 // NewExecutor 返回执行器。slots 为 nil 时用 3 个槽，与原型 maxWorkers 的默认值相同。
@@ -151,18 +162,178 @@ func NewExecutor(engine *Engine, slots *Slots, model dsh.Completer) *Executor {
 	}
 }
 
+// workerLocked 返回 ticketID 的工人。外部工人优先；只有 dsh 代理时包一层。没有时为 nil。调用时要已持有 mu。
+func (e *Executor) workerLocked(ticketID string) Worker {
+	if w := e.workers[ticketID]; w != nil {
+		return w
+	}
+	if agent := e.agents[ticketID]; agent != nil {
+		return &dshWorker{agent: agent}
+	}
+	return nil
+}
+
+// agentOfLocked 返回 ticketID 当前工人所属的 agent。dsh 代理记成 yoyo。调用时要已持有 mu。
+func (e *Executor) agentOfLocked(ticketID string) string {
+	if e.workers[ticketID] != nil {
+		return agentKey(e.workerOf[ticketID])
+	}
+	return YoyoAgent
+}
+
+// swapWorkerLocked 把 ticketID 的工人换成 w，agent 是它所属的 agent。返回被换下的外部工人，由调用方在锁外关掉。调用时要已持有 mu。
+func (e *Executor) swapWorkerLocked(ticketID, agent string, w Worker) Worker {
+	if e.agents == nil {
+		e.agents = map[string]*dsh.Agent{}
+	}
+	if e.workers == nil {
+		e.workers = map[string]Worker{}
+	}
+	if e.workerOf == nil {
+		e.workerOf = map[string]string{}
+	}
+	old := e.workers[ticketID]
+	if d, ok := w.(*dshWorker); ok {
+		e.agents[ticketID] = d.agent
+		delete(e.workers, ticketID)
+		delete(e.workerOf, ticketID)
+	} else {
+		delete(e.agents, ticketID)
+		e.workers[ticketID] = w
+		e.workerOf[ticketID] = agentKey(agent)
+	}
+	if old == w {
+		return nil
+	}
+	return old
+}
+
+// holdAgent 把 ticketID 记到 agent 名下，算它正在跑的一张。limit 大于 0 且已满时不记，返回假。已经记过时返回真。
+func (e *Executor) holdAgent(ticketID, agent string, limit int) bool {
+	agent = agentKey(agent)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, ok := e.liveAgent[ticketID]; ok {
+		return true
+	}
+	if limit > 0 && e.agentRun[agent] >= limit {
+		return false
+	}
+	if e.agentRun == nil {
+		e.agentRun = map[string]int{}
+	}
+	if e.liveAgent == nil {
+		e.liveAgent = map[string]string{}
+	}
+	e.agentRun[agent]++
+	e.liveAgent[ticketID] = agent
+	return true
+}
+
+// dropAgent 去掉 ticketID 在 agent 名下的那一张。没记过时什么都不做。
+func (e *Executor) dropAgent(ticketID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	agent, ok := e.liveAgent[ticketID]
+	if !ok {
+		return
+	}
+	delete(e.liveAgent, ticketID)
+	if e.agentRun[agent] > 1 {
+		e.agentRun[agent]--
+	} else {
+		delete(e.agentRun, agent)
+	}
+}
+
+// AgentRunning 返回每个 agent 正在跑的工单数。yoyo 自带工人记在 yoyo 名下。
+func (e *Executor) AgentRunning() map[string]int {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make(map[string]int, len(e.agentRun))
+	for agent, n := range e.agentRun {
+		out[agent] = n
+	}
+	return out
+}
+
+// limitFor 返回 agent 的并行上限。没接 AgentLimit 时为 0，表示不另外限制。
+func (e *Executor) limitFor(agent string) int {
+	if e == nil || e.AgentLimit == nil {
+		return 0
+	}
+	return e.AgentLimit(agentKey(agent))
+}
+
+// closeIfEnded 在 ticketID 已经结束且这一轮不在跑时关掉它的外部工人，并从表里拿掉。dsh 代理留在表里，行为不变。
+func (e *Executor) closeIfEnded(ticketID string) {
+	if e == nil || e.Engine == nil {
+		return
+	}
+	if ticket, ok := e.Engine.Ticket(ticketID); ok && ticket.Ended == nil {
+		return
+	}
+	e.mu.Lock()
+	w := e.workers[ticketID]
+	if w == nil || e.live[ticketID] {
+		e.mu.Unlock()
+		return
+	}
+	delete(e.workers, ticketID)
+	delete(e.workerOf, ticketID)
+	e.mu.Unlock()
+	_ = w.Close()
+}
+
+// Sweep 关掉所有已经结束、又不在跑的工单的外部工人。两秒轮次调用它，兜住人在空闲时结束工单的情况。
+func (e *Executor) Sweep() {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	ids := make([]string, 0, len(e.workers))
+	for id := range e.workers {
+		ids = append(ids, id)
+	}
+	e.mu.Unlock()
+	for _, id := range ids {
+		e.closeIfEnded(id)
+	}
+}
+
+// CloseAll 关掉所有外部工人。应用退出时调用；dsh 代理不受影响。
+func (e *Executor) CloseAll() {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	all := make([]Worker, 0, len(e.workers))
+	for id, w := range e.workers {
+		all = append(all, w)
+		delete(e.workers, id)
+		delete(e.workerOf, id)
+	}
+	e.mu.Unlock()
+	for _, w := range all {
+		_ = w.Close()
+	}
+}
+
 // Interrupt 打断 ticketID 正在跑的这一轮。工单和目录都留着，人还可以继续说。
 func (e *Executor) Interrupt(ticketID string) {
 	if e == nil {
 		return
 	}
 	e.mu.Lock()
-	agent := e.agents[ticketID]
+	w := e.workerLocked(ticketID)
 	e.mu.Unlock()
-	if agent == nil {
+	if w == nil {
 		return
 	}
-	agent.Cancel(dsh.CancelCause{Kind: "steer", Reason: "interrupted"}, true)
+	w.Cancel(dsh.CancelCause{Kind: "steer", Reason: "interrupted"}, true)
 }
 
 // pausedSummary 是人让工人先停下之后，这张工单最后的那一句。
@@ -175,8 +346,8 @@ func (e *Executor) Pause(ticketID string) bool {
 		return false
 	}
 	e.mu.Lock()
-	agent := e.agents[ticketID]
-	running := agent != nil && e.live[ticketID]
+	w := e.workerLocked(ticketID)
+	running := w != nil && e.live[ticketID]
 	if running {
 		if e.held == nil {
 			e.held = map[string]bool{}
@@ -187,7 +358,7 @@ func (e *Executor) Pause(ticketID string) bool {
 	if !running {
 		return false
 	}
-	agent.Cancel(dsh.CancelCause{Kind: "steer", Reason: "paused"}, true)
+	w.Cancel(dsh.CancelCause{Kind: "steer", Reason: "paused"}, true)
 	return true
 }
 
@@ -200,7 +371,8 @@ func (e *Executor) takeHeld(ticketID string) bool {
 	return held
 }
 
-// Launch 启动 ticketID 上待运行的派工。没有空槽时返回 ErrBusy。派工不是 pending 时释放刚占的槽并返回 not_pending。
+// Launch 启动 ticketID 上待运行的派工。没有空槽，或派工的 agent 已经跑满 AgentLimit 时返回 ErrBusy。
+// 派工不是 pending 时释放刚占的槽并返回 not_pending。
 func (e *Executor) Launch(ticketID string) error {
 	fresh, err := e.Slots.Reserve(ticketID, "launch")
 	if err != nil {
@@ -223,18 +395,77 @@ func (e *Executor) Launch(ticketID string) error {
 		return errCode("not_pending")
 	}
 	asgID := ticket.Assignments[len(ticket.Assignments)-1].ID
+	agent := assignmentAgent(ticket, asgID)
+	if !e.holdAgent(ticketID, agent, e.limitFor(agent)) {
+		return ErrBusy
+	}
 	release = false
 	go e.runAssignment(ticketID, asgID, ticket)
 	return nil
 }
 
-// runAssignment 准备目录，再跑这一轮。准备失败就结束工单，不自动重试。
+// assignmentAgent 返回 asgID 这次派工的 agent。派工没写时用工单的 Agent，都没有时为空，即 yoyo。
+func assignmentAgent(ticket Ticket, asgID string) string {
+	for i := len(ticket.Assignments) - 1; i >= 0; i-- {
+		if ticket.Assignments[i].ID == asgID {
+			if agent := strings.TrimSpace(ticket.Assignments[i].Agent); agent != "" {
+				return agent
+			}
+			break
+		}
+	}
+	return strings.TrimSpace(ticket.Agent)
+}
+
+// openWorker 为这次派工选工人。agent 是外部 agent 且接了 Opener 时打开外部工人，否则建 yoyo 自带代理。
+// 外部工人没有 jobs 和 wait；它的后台命令由 agent 自己管。
+func (e *Executor) openWorker(ticketID, asgID, agent string, ticket Ticket, dir string) (Worker, func() int, func(time.Duration), error) {
+	if externalAgent(agent) && e.Opener != nil {
+		spec := WorkerSpec{
+			TicketID:     ticketID,
+			AssignmentID: asgID,
+			Agent:        agent,
+			Pinned:       ticket.AgentPinned,
+			Dir:          dir,
+			System:       workerPrompt(e, dir, ticketID),
+			Tools:        e.orchestratorTools(ticketID, false),
+		}
+		w, err := e.Opener(context.Background(), spec)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if w == nil {
+			return nil, nil, nil, ErrAgentOffline
+		}
+		return w, nil, nil, nil
+	}
+	w, jobs, wait := newDshWorker(e, ticketID, dir)
+	return w, jobs, wait, nil
+}
+
+// failOpen 在外部工人打不开时把这次派工记成 failed，并写回主会话。工单留着，人可以重试或换人。
+func (e *Executor) failOpen(ticketID string, err error) {
+	summary := clip(strings.TrimSpace(err.Error()), 200)
+	if summary == "" {
+		summary = ErrAgentOffline.Error()
+	}
+	if e.Engine.Report(ticketID, Report{State: "failed", Summary: summary}) != nil {
+		return
+	}
+	if e.OnReport != nil {
+		e.OnReport(ticketID, "failed", summary, "")
+	}
+}
+
+// runAssignment 准备目录、选工人，再跑这一轮。准备失败就结束工单，不自动重试。
 func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	defer e.Slots.Free(ticketID)
+	defer e.dropAgent(ticketID)
 	defer func() {
 		e.mu.Lock()
 		delete(e.live, ticketID)
 		e.mu.Unlock()
+		e.closeIfEnded(ticketID)
 	}()
 	dir, err := e.ensureWorkDir(ticketID)
 	if err != nil {
@@ -247,59 +478,52 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	if err := e.Engine.AssignmentStarted(ticketID, asgID); err != nil {
 		return
 	}
-	reg := dsh.NewRegistry()
-	agent := dsh.New("ticket-"+ticketID, e.Model, reg, dsh.Options{
-		Prompt: workerPrompt(e, dir, ticketID),
-		Model:  "yoyo-dsh",
-	})
-	reg.Add(e.reportTool(ticketID))
-	reg.Add(e.replyTool(ticketID))
-	reg.Add(e.handbackTool(ticketID))
-	reg.Add(e.followTool(ticketID))
-	reg.Add(e.unrelatedTool(ticketID))
-	var jobs func() int
-	var wait func(time.Duration)
-	if e.Mount != nil && dir != "" {
-		jobs, wait = e.Mount(reg, agent, dir, ticketID)
-	} else {
-		reg.Add(e.shellTool(agent, ticketID))
+	agent := assignmentAgent(ticket, asgID)
+	w, jobs, wait, err := e.openWorker(ticketID, asgID, agent, ticket, dir)
+	if err != nil {
+		e.failOpen(ticketID, err)
+		return
 	}
 	e.Slots.Running(ticketID)
 	e.mu.Lock()
-	e.agents[ticketID] = agent
+	old := e.swapWorkerLocked(ticketID, agent, w)
 	e.live[ticketID] = true
 	delete(e.held, ticketID)
 	e.mu.Unlock()
-	restored := e.restoreAgent(agent, ticketID)
+	if old != nil {
+		_ = old.Close()
+	}
+	restored := e.restoreAgent(w, ticketID)
 	resumed := e.Engine.TakeResume(ticketID) && restored
 	if resumed {
 		// 日志里已经有的输入不再重发。重启前还没送到的话跟在「继续」后面，送到了才标成已投递。
 		texts, ids := e.Engine.PendingInputs(ticketID)
-		agent.Followup(dsh.UserMessage{Text: "继续。", Source: "retry"})
+		w.Followup(dsh.UserMessage{Text: "继续。", Source: "retry"})
 		for _, text := range texts {
-			agent.Followup(dsh.UserMessage{Text: text, Source: "human"})
+			w.Followup(dsh.UserMessage{Text: text, Source: "human"})
 		}
 		e.Engine.AckInputs(ticketID, ids)
 	} else {
 		e.ackSnapshot(ticketID, ticket)
-		agent.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir, e.mandateLine(ticket)), Source: "assignment"})
+		w.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir, e.mandateLine(ticket)), Source: "assignment"})
 	}
 	stopSave := make(chan struct{})
 	defer close(stopSave)
-	go e.watchLog(agent, ticketID, stopSave)
+	go e.watchLog(w, ticketID, stopSave)
+	caps := w.Caps()
 	var deadline time.Time
 	tries := 0
 	nudges := 0
 	for {
 		if !deadline.IsZero() && !time.Now().Before(deadline) {
-			agent.Cancel(dsh.CancelCause{Kind: "limit", Reason: "background"}, false)
+			w.Cancel(dsh.CancelCause{Kind: "limit", Reason: "background"}, false)
 			_ = e.Engine.Report(ticketID, Report{State: "waiting", Summary: "后台命令超过三十分钟，已停掉"})
-			e.storeAgent(agent, ticketID)
+			e.storeAgent(w, ticketID)
 			return
 		}
-		agent.WhenIdle()
-		e.storeAgent(agent, ticketID)
-		if stop, again := e.afterTurn(agent, ticketID, &tries); stop {
+		w.WhenIdle()
+		e.storeAgent(w, ticketID)
+		if stop, again := e.afterTurn(w, ticketID, &tries); stop {
 			return
 		} else if again {
 			continue
@@ -309,9 +533,9 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 				e.park(ticketID, pausedSummary)
 				return
 			}
-			if nudges < maxWorkerNudges && e.openWork(ticketID) {
+			if nudges < caps.Nudges && e.openWork(ticketID) {
 				nudges++
-				agent.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
+				w.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
 				continue
 			}
 			e.settle(ticketID)
@@ -322,9 +546,9 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 		}
 		remain := time.Until(deadline)
 		if remain <= 0 {
-			agent.Cancel(dsh.CancelCause{Kind: "limit", Reason: "background"}, false)
+			w.Cancel(dsh.CancelCause{Kind: "limit", Reason: "background"}, false)
 			_ = e.Engine.Report(ticketID, Report{State: "waiting", Summary: "后台命令超过三十分钟，已停掉"})
-			e.storeAgent(agent, ticketID)
+			e.storeAgent(w, ticketID)
 			return
 		}
 		if wait != nil {
@@ -465,15 +689,15 @@ func (e *Executor) ackSnapshot(ticketID string, ticket Ticket) {
 	e.Engine.AckInputs(ticketID, ids)
 }
 
-// afterTurn 看上一回合。暂时失败时再开一次并返回 again。其他失败记下 failed 并返回 stop。
-func (e *Executor) afterTurn(agent *dsh.Agent, ticketID string, tries *int) (stop, again bool) {
-	kind, reason := lastTurnEnd(agent)
+// afterTurn 看 w 的上一回合。暂时失败时再开一次并返回 again。其他失败记下 failed 并返回 stop。
+func (e *Executor) afterTurn(w Worker, ticketID string, tries *int) (stop, again bool) {
+	kind, reason := lastTurnEnd(w)
 	if kind != "error" {
 		return false, false
 	}
 	if tries != nil && *tries < 3 && passingError(reason) {
 		*tries++
-		agent.Followup(dsh.UserMessage{
+		w.Followup(dsh.UserMessage{
 			Text:   "上一回合因为暂时的原因中断了：" + clip(reason, 200) + "。从停下的地方继续，不要重复已经做成的外部动作。",
 			Source: "retry",
 		})
@@ -514,14 +738,14 @@ func terminalReport(state, question string) bool {
 	}
 }
 
-// HasAgent 在 ticketID 的代理已经创建时为真。
+// HasAgent 在 ticketID 的工人已经创建、还没关掉时为真。
 func (e *Executor) HasAgent(ticketID string) bool {
 	if e == nil {
 		return false
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.agents[ticketID] != nil
+	return e.agents[ticketID] != nil || e.workers[ticketID] != nil
 }
 
 // DeliverPending 把还没投递的输入送进 ticketID 的代理。代理还没创建时返回 ErrLater。
@@ -547,18 +771,20 @@ func (e *Executor) DeliverPending(ticketID string) error {
 	return nil
 }
 
-// Deliver 把 text 交给 ticketID 的代理，作为人的下一步消息。代理还在跑时直接送入。
-// 这一轮已经结束时，先占人的额外槽，再开一轮。代理还没启动、正文为空或槽满时返回假，这句没有送出。
+// Deliver 把 text 交给 ticketID 的工人，作为人的下一步消息。工人还在跑时先插话，不支持插话就排在这一轮后面。
+// 这一轮已经结束时，先占人的额外槽，再开一轮。工人还没启动、正文为空或槽满时返回假，这句没有送出。
 func (e *Executor) Deliver(ticketID, text string) bool {
 	e.mu.Lock()
-	agent := e.agents[ticketID]
+	w := e.workerLocked(ticketID)
 	running := e.live[ticketID]
+	agent := e.agentOfLocked(ticketID)
 	e.mu.Unlock()
-	if agent == nil || text == "" {
+	if w == nil || text == "" {
 		return false
 	}
+	msg := dsh.UserMessage{Text: text, Source: "human"}
 	if running {
-		agent.Steer(dsh.UserMessage{Text: text, Source: "human"})
+		steerOrFollow(w, msg)
 		return true
 	}
 	fresh, err := e.Slots.Reserve(ticketID, "person")
@@ -566,15 +792,16 @@ func (e *Executor) Deliver(ticketID, text string) bool {
 		return false
 	}
 	if !fresh {
-		agent.Steer(dsh.UserMessage{Text: text, Source: "human"})
+		steerOrFollow(w, msg)
 		return true
 	}
-	go e.wake(ticketID, agent, text)
+	e.holdAgent(ticketID, agent, 0)
+	go e.wake(ticketID, w, text)
 	return true
 }
 
-// wake 在已经占好的人的额外槽里，把 text 送进停过一轮的代理，跑到这一轮停下。
-func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
+// wake 在已经占好的人的额外槽里，把 text 送进停过一轮的工人 w，跑到这一轮停下。
+func (e *Executor) wake(ticketID string, w Worker, text string) {
 	e.mu.Lock()
 	e.live[ticketID] = true
 	delete(e.held, ticketID)
@@ -582,19 +809,22 @@ func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
 	e.Slots.Running(ticketID)
 	stopSave := make(chan struct{})
 	defer close(stopSave)
-	go e.watchLog(agent, ticketID, stopSave)
+	go e.watchLog(w, ticketID, stopSave)
 	defer e.Slots.Free(ticketID)
+	defer e.dropAgent(ticketID)
 	defer func() {
 		e.mu.Lock()
 		delete(e.live, ticketID)
 		e.mu.Unlock()
+		e.closeIfEnded(ticketID)
 	}()
-	agent.Steer(dsh.UserMessage{Text: text, Source: "human"})
+	steerOrFollow(w, dsh.UserMessage{Text: text, Source: "human"})
+	caps := w.Caps()
 	var errors, nudges int
 	for {
-		agent.WhenIdle()
-		e.storeAgent(agent, ticketID)
-		if stop, again := e.afterTurn(agent, ticketID, &errors); stop {
+		w.WhenIdle()
+		e.storeAgent(w, ticketID)
+		if stop, again := e.afterTurn(w, ticketID, &errors); stop {
 			return
 		} else if again {
 			continue
@@ -603,9 +833,9 @@ func (e *Executor) wake(ticketID string, agent *dsh.Agent, text string) {
 			e.park(ticketID, pausedSummary)
 			return
 		}
-		if nudges < maxWorkerNudges && e.openWork(ticketID) {
+		if nudges < caps.Nudges && e.openWork(ticketID) {
 			nudges++
-			agent.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
+			w.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
 			continue
 		}
 		break
@@ -634,8 +864,14 @@ func (e *Executor) planStillOpen(ticketID string) bool {
 	return false
 }
 
-// reportTool 返回 ticketID 使用的 orchestrator_report。progress 不结束回合，其余成功的报告会结束回合。
+// reportTool 返回 yoyo 自带工人用的 orchestrator_report，ready 前检查计划文件。
 func (e *Executor) reportTool(ticketID string) dsh.Tool {
+	return e.reportToolWith(ticketID, true)
+}
+
+// reportToolWith 返回 ticketID 使用的 orchestrator_report。progress 不结束回合，其余成功的报告会结束回合。
+// planGate 为假时 ready 不检查计划文件；外部工人没有 update_plan，用它。
+func (e *Executor) reportToolWith(ticketID string, planGate bool) dsh.Tool {
 	return dsh.Tool{
 		Name:        "orchestrator_report",
 		Description: "向工单报告状态。state 取 progress、waiting、ready、blocked、failed 或 dropped。summary 是给人看的一句，也会留在这条会话末尾。progress 不结束这一轮。ready 只在任务说明里的完成标准达到、并且计划步骤都已 complete 时使用；计划里还有 pending 或 in_progress 会被拒绝。有 question 时不要用 ready。question 只在被硬性挡住时填写：没授权的破坏、说明和工单目录以外的必改路径、缺少密钥。不要为了确认下一步而提问。",
@@ -650,7 +886,7 @@ func (e *Executor) reportTool(ticketID string) dsh.Tool {
 				return dsh.Result{Text: err.Error(), IsError: true}, nil
 			}
 			body.State = askReport(body.State, body.Question)
-			if body.State == "ready" && e.planStillOpen(ticketID) {
+			if planGate && body.State == "ready" && e.planStillOpen(ticketID) {
 				return dsh.Result{Text: "计划里还有没完成的步骤。先做完，用 update_plan 标成 complete，然后再 ready。", IsError: true}, nil
 			}
 			err := e.Engine.Report(ticketID, Report{State: body.State, Summary: body.Summary, Question: body.Question})

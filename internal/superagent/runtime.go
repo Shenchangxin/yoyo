@@ -50,6 +50,8 @@ type Runtime struct {
 	report       func(ticketID, state, summary, question string)
 	notice       func(sessionID, text string)
 	profile      func() string
+	opener       Opener
+	agentLimit   func(agent string) int
 }
 
 // Open 打开 path 上的快照并还原引擎。path 为空时只放在内存里。policy 在没有快照时作为初始策略。
@@ -133,6 +135,8 @@ func (rt *Runtime) attachExec() {
 	rt.exec.LogSave = rt.saveWorkerLog
 	rt.exec.OnReport = rt.queueReport
 	rt.exec.Profile = rt.profile
+	rt.exec.Opener = rt.opener
+	rt.exec.AgentLimit = rt.agentLimit
 }
 
 // wireEffects 登记六类先落盘再执行的副作用。调用时要已持有锁。
@@ -318,6 +322,43 @@ func (rt *Runtime) SetMount(fn func(reg *dsh.Registry, agent *dsh.Agent, dir, ti
 	}
 }
 
+// SetOpener 接上外部 agent 的工人。fn 为 nil 时所有工单都走 yoyo 自带工人。Bind 前后调用都可以。
+func (rt *Runtime) SetOpener(fn Opener) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.opener = fn
+	if rt.exec != nil {
+		rt.exec.Opener = fn
+	}
+}
+
+// SetAgentLimit 接上每个 agent 的并行上限。fn 返回小于 1 时这个 agent 只受全局槽限制。
+func (rt *Runtime) SetAgentLimit(fn func(agent string) int) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.agentLimit = fn
+	if rt.exec != nil {
+		rt.exec.AgentLimit = fn
+	}
+}
+
+// CloseWorkers 关掉所有外部工人。应用退出时调用。
+func (rt *Runtime) CloseWorkers() {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	exec := rt.exec
+	rt.mu.Unlock()
+	exec.CloseAll()
+}
+
 // SetProfile 接上操作者画像。fn 返回已经留下的偏好和本人说过的话，写进每个新工人的系统提示，只读。
 func (rt *Runtime) SetProfile(fn func() string) {
 	if rt == nil {
@@ -409,7 +450,7 @@ func (rt *Runtime) Stop() {
 	}
 }
 
-// Pass 先执行到期副作用和到期评估，再轮询来源，最后落盘。now 传给副作用和来源的时间比较。
+// Pass 先关掉已结束工单的外部工人，再执行到期副作用和到期评估，然后轮询来源，最后落盘。now 传给副作用和来源的时间比较。
 func (rt *Runtime) Pass(now time.Time) {
 	if rt == nil {
 		return
@@ -417,7 +458,9 @@ func (rt *Runtime) Pass(now time.Time) {
 	rt.mu.Lock()
 	effects := rt.effects
 	eng := rt.eng
+	exec := rt.exec
 	rt.mu.Unlock()
+	exec.Sweep()
 	if effects != nil {
 		effects.Pump(now)
 	}

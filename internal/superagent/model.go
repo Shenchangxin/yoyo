@@ -78,6 +78,16 @@ type Assignment struct {
 	ID      string
 	State   string
 	Reports []Report
+	// Agent 是这次派工交给的 agent。空串表示沿用工单的 Agent。
+	Agent string `json:"Agent,omitempty"`
+}
+
+// Usage 是外部 agent 报的上下文用量和花费。Used 和 Size 是 token 数，Cost 按 Currency 计。
+type Usage struct {
+	Used     int     `json:"Used,omitempty"`
+	Size     int     `json:"Size,omitempty"`
+	Cost     float64 `json:"Cost,omitempty"`
+	Currency string  `json:"Currency,omitempty"`
 }
 
 // Input 是投递给工单的上下文。Human 为真表示人写的。
@@ -131,6 +141,10 @@ type Ticket struct {
 	Resume bool
 	// Opened 是接单的时刻。旧快照没有这一项时为零，快照里用起点触发的到达时刻补上。
 	Opened time.Time `json:"Opened,omitempty"`
+	// Agent 是做这张工单的 agent。空串和 yoyo 都是 yoyo 自带工人。
+	Agent string `json:"Agent,omitempty"`
+	// AgentPinned 为真表示人用 @ 点名了 Agent，离线时不擅自换人。
+	AgentPinned bool `json:"AgentPinned,omitempty"`
 }
 
 // Decision 是一次评估结果。Kind 为 accept、stop、ignore、unavailable。

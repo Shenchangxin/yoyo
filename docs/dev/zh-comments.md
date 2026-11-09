@@ -1455,3 +1455,10 @@
 - [x] `site-src/src/space-still.tsx`
 - [x] `site-src/src/stage-canvas.tsx`
 - [x] `site-src/src/vite-env.d.ts`
+
+## Buddy 与多 agent
+
+这些文件随 Buddy 和多 agent 协作加入，按标准写了中文注释，等复核后再勾选。
+
+- [ ] `internal/superagent/worker.go`
+- [ ] `internal/superagent/worker_test.go`

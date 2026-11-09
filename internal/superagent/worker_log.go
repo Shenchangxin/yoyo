@@ -1,5 +1,5 @@
-// worker_log.go 把工人会话日志收成可落盘的 JSON，并在重启后续回代理。
-// 不跑回合。回合仍由 dsh.Agent 负责。
+// worker_log.go 把工人会话日志收成可落盘的 JSON，并在重启后续回工人。
+// 不跑回合。回合由 Worker 负责：dsh 代理或外部 agent 的归一化日志。
 
 package superagent
 
@@ -390,8 +390,8 @@ func assignmentBody(text string) string {
 	return strings.TrimSpace(strings.Join(keep, "\n"))
 }
 
-// watchLog 在这一轮还没结束时把会话写下来，任务页才能跟着长。stop 关上后退出。
-func (e *Executor) watchLog(agent *dsh.Agent, ticketID string, stop <-chan struct{}) {
+// watchLog 在这一轮还没结束时把 w 的会话写下来，任务页才能跟着长。stop 关上后退出。
+func (e *Executor) watchLog(w Worker, ticketID string, stop <-chan struct{}) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -399,14 +399,14 @@ func (e *Executor) watchLog(agent *dsh.Agent, ticketID string, stop <-chan struc
 		case <-stop:
 			return
 		case <-tick.C:
-			e.storeAgent(agent, ticketID)
+			e.storeAgent(w, ticketID)
 		}
 	}
 }
 
-// restoreAgent 把 ticketID 已存的日志灌进 agent，并把回合号接到上次的后面。灌进去时返回真。
-func (e *Executor) restoreAgent(agent *dsh.Agent, ticketID string) bool {
-	if e == nil || agent == nil || e.LogLoad == nil {
+// restoreAgent 把 ticketID 已存的日志灌进 w，并把回合号接到上次的后面。灌进去时返回真。
+func (e *Executor) restoreAgent(w Worker, ticketID string) bool {
+	if e == nil || w == nil || e.LogLoad == nil {
 		return false
 	}
 	body := e.LogLoad(ticketID)
@@ -415,19 +415,16 @@ func (e *Executor) restoreAgent(agent *dsh.Agent, ticketID string) bool {
 	if len(events) == 0 {
 		return false
 	}
-	agent.Session().Restore(events)
-	if turn > 0 {
-		agent.ResumeTurn(turn)
-	}
+	w.Restore(events, turn)
 	return true
 }
 
-// storeAgent 把 agent 当前日志交给 LogSave。没有日志时不写。
-func (e *Executor) storeAgent(agent *dsh.Agent, ticketID string) {
-	if e == nil || agent == nil || e.LogSave == nil || agent.Session() == nil {
+// storeAgent 把 w 当前日志交给 LogSave。没有日志时不写。
+func (e *Executor) storeAgent(w Worker, ticketID string) {
+	if e == nil || w == nil || e.LogSave == nil || w.Session() == nil {
 		return
 	}
-	body, _ := encodeLog(agent.Session().Events())
+	body, _ := encodeLog(w.Session().Events())
 	if len(body) == 0 {
 		return
 	}
@@ -448,12 +445,12 @@ func passingError(err string) bool {
 	return false
 }
 
-// lastTurnEnd 返回日志里最后一次回合结束。没有时两个都是空串。
-func lastTurnEnd(agent *dsh.Agent) (string, string) {
-	if agent == nil || agent.Session() == nil {
+// lastTurnEnd 返回 w 日志里最后一次回合结束。没有时两个都是空串。
+func lastTurnEnd(w Worker) (string, string) {
+	if w == nil || w.Session() == nil {
 		return "", ""
 	}
-	events := agent.Session().Events()
+	events := w.Session().Events()
 	for i := len(events) - 1; i >= 0; i-- {
 		end, ok := events[i].Data.(dsh.TurnEnd)
 		if events[i].Type == dsh.EventTurnEnd && ok {
