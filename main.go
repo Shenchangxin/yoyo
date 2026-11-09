@@ -23,6 +23,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/home"
 	"github.com/Shenchangxin/yoyo/internal/idol"
+	"github.com/Shenchangxin/yoyo/internal/mcpserve"
 	"github.com/Shenchangxin/yoyo/internal/remote"
 	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/update"
@@ -62,6 +63,16 @@ func attachRemoteUI(node *remote.Node) {
 	node.UseStatic(http.FileServer(http.FS(sub)))
 }
 
+// runMCPBridge 把 stdin 和 stdout 接到 YOYO_MCP_URL 上的控制面，token 取 YOYO_MCP_TOKEN，返回进程退出码。
+// 外部 agent 只会启动 stdio MCP 服务器时，把 yoyo 自己当服务器启动，走这里。stdout 是协议，错误只写 stderr。
+func runMCPBridge() int {
+	if err := mcpserve.RunBridge(os.Stdin, os.Stdout, os.Getenv("YOYO_MCP_URL"), os.Getenv("YOYO_MCP_TOKEN")); err != nil {
+		fmt.Fprintln(os.Stderr, "yoyo mcp bridge:", err)
+		return 1
+	}
+	return 0
+}
+
 // executablePath 返回 os.Executable 的路径。取失败时返回 "."。
 func executablePath() string {
 	exe, err := os.Executable()
@@ -71,12 +82,16 @@ func executablePath() string {
 	return exe
 }
 
-// main 先让 update.HandleNSISHelper 处理安装器辅助进程，接管则直接返回。然后设置 YOYO_DESKTOP=1。
+// main 先让 update.HandleNSISHelper 处理安装器辅助进程，接管则直接返回。
+// YOYO_MCP_BRIDGE=1 时只跑 runMCPBridge 然后退出：不创建窗口，不抢单实例锁，也不设 YOYO_DESKTOP。其余情况先设置 YOYO_DESKTOP=1。
 // YOYO_WORKER=1 时不创建窗口：打开 App，remote.Bind 成功就用 attachRemoteUI 挂上静态页，再把 stdin 和 stdout 交给 api.ServeRPC。stdout 是协议。
 // 否则 openDesktop 打开桌面服务，创建名为 Yoyo 的 Wails 应用和主窗口。单实例 ID 是 com.yoyo.workstation，第二实例启动时 desktop.Raise 已有窗口。
 func main() {
 	if update.HandleNSISHelper() {
 		return
+	}
+	if os.Getenv("YOYO_MCP_BRIDGE") == "1" {
+		os.Exit(runMCPBridge())
 	}
 	_ = os.Setenv("YOYO_DESKTOP", "1")
 	evals := resolveEvals()
