@@ -107,7 +107,9 @@ func (w *fakeWorker) Restore(events []dsh.Event, turn int) {
 }
 
 // Caps 是外部工人的能力：只催一次，不查计划。
-func (w *fakeWorker) Caps() WorkerCaps { return WorkerCaps{Nudges: 1, External: true, TurnMinutes: w.minutes} }
+func (w *fakeWorker) Caps() WorkerCaps {
+	return WorkerCaps{Nudges: 1, External: true, TurnMinutes: w.minutes}
+}
 
 // Close 记下已经关掉。
 func (w *fakeWorker) Close() error {

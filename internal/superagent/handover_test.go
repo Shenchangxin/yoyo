@@ -304,7 +304,9 @@ func TestOfflineUnpinnedFallsBack(t *testing.T) {
 	if ticket.Agent != "" || len(ticket.Assignments) != 1 || asg.Agent != YoyoAgent || asg.From != "codex" || lastSummary(eng, id) != "yoyo 做完了" {
 		t.Fatalf("ticket %+v", ticket)
 	}
-	if lines := logs.lines(id); len(lines) == 0 || lines[0] != "user handover "+asg.ID+" Codex 离线，改由 yoyo 做" {
+	var lines []string
+	waitFor(t, "log saved", func() bool { lines = logs.lines(id); return len(lines) > 0 })
+	if lines[0] != "user handover "+asg.ID+" Codex 离线，改由 yoyo 做" {
 		t.Fatalf("lines %q", lines)
 	}
 	mu.Lock()

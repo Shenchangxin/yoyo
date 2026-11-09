@@ -5,6 +5,7 @@ package superagent
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -205,6 +206,25 @@ func (q *Queue) finish(row *Effect, payload any, err error, now time.Time) {
 		delay = 60 * time.Second
 	}
 	row.Due = now.Add(delay)
+}
+
+// Hurry 让 kind 里键以 prefix 开头、还没成功也没在跑的行马上到期。返回改了几行。
+func (q *Queue) Hurry(kind, prefix string) int {
+	if q == nil {
+		return 0
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	now := time.Now()
+	n := 0
+	for _, row := range q.rows {
+		if row == nil || row.done || row.running || row.Kind != kind || !strings.HasPrefix(row.Key, prefix) {
+			continue
+		}
+		row.Due = now
+		n++
+	}
+	return n
 }
 
 // Has 在 kind 已经登记了处理函数时为真。

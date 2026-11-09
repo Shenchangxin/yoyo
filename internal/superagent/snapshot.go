@@ -15,6 +15,8 @@ type Snapshot struct {
 	Outbox    []Outbound
 	Seq       int
 	N         int
+	// Groups 是任务组。旧快照没有这一项。
+	Groups []Group `json:"Groups,omitempty"`
 }
 
 // Export 返回一份深拷贝。编码失败时返回错误。
@@ -77,6 +79,14 @@ func (e *Engine) Import(snap Snapshot) {
 		}
 		e.tickets[cp.ID] = &cp
 	}
+	e.groups = map[string]*Group{}
+	for i := range snap.Groups {
+		cp := snap.Groups[i]
+		if cp.ID == "" {
+			continue
+		}
+		e.groups[cp.ID] = &cp
+	}
 }
 
 // snapshotLocked 收集当前记录。调用时要已持有锁。切片与活数据共享，调用方要在解锁前把它编码走。
@@ -96,6 +106,9 @@ func (e *Engine) snapshotLocked() Snapshot {
 		if ticket != nil {
 			snap.Tickets = append(snap.Tickets, *ticket)
 		}
+	}
+	for _, id := range e.groupIDsLocked() {
+		snap.Groups = append(snap.Groups, *e.groups[id])
 	}
 	return snap
 }

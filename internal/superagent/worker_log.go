@@ -5,6 +5,7 @@ package superagent
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -386,12 +387,58 @@ func assignmentBody(text string) string {
 	var keep []string
 	for _, line := range strings.Split(text, "\n") {
 		s := strings.TrimSpace(line)
-		if s == "" || s == hostRestartNote || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || strings.HasPrefix(s, mandatePrefix) || s == "完成后调用 orchestrator_report。" {
+		if s == "" || s == hostRestartNote || strings.HasPrefix(s, "工单 ") || strings.HasPrefix(s, "工作目录 ") || strings.HasPrefix(s, groupLinePrefix) || strings.HasPrefix(s, mandatePrefix) || s == "完成后调用 orchestrator_report。" {
 			continue
 		}
 		keep = append(keep, s)
 	}
 	return strings.TrimSpace(strings.Join(keep, "\n"))
+}
+
+// wrotePatterns 认出工具结果里写成了的文件，和任务页的 taskFiles 用同一套写法。
+var wrotePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^wrote \d+ citations to (.+)$`),
+	regexp.MustCompile(`^replaced \d+ occurrence\(s\) in (.+)$`),
+	regexp.MustCompile(`^appended \d+ bytes to (.+?) \(file is now \d+ bytes\)$`),
+	regexp.MustCompile(`^moved .+ -> (.+)$`),
+	regexp.MustCompile(`^(?:wrote|edited|updated|downloaded) (.+)$`),
+}
+
+// shellTool 认出命令行工具。命令输出里的 wrote 不算写过文件。
+var shellTool = regexp.MustCompile(`(?i)shell|bash|command|terminal`)
+
+// TicketFiles 是工人在 lines 里写过的文件，最近写的在前，同一个只留一次。出错的结果和命令行输出不算。
+func TicketFiles(lines []TranscriptLine) []string {
+	var out []string
+	for _, line := range lines {
+		if line.Role != "tool_result" || line.Error || shellTool.MatchString(line.Name) {
+			continue
+		}
+		for _, row := range strings.Split(line.Text, "\n") {
+			path := writtenPath(strings.TrimSpace(row))
+			if path == "" {
+				continue
+			}
+			for i, seen := range out {
+				if seen == path {
+					out = append(out[:i], out[i+1:]...)
+					break
+				}
+			}
+			out = append([]string{path}, out...)
+		}
+	}
+	return out
+}
+
+// writtenPath 是 row 说写成了的文件。认不出时为空串。
+func writtenPath(row string) string {
+	for _, re := range wrotePatterns {
+		if hit := re.FindStringSubmatch(row); hit != nil {
+			return strings.TrimSpace(hit[1])
+		}
+	}
+	return ""
 }
 
 // watchLog 在这一轮还没结束时把 w 的会话写下来，任务页才能跟着长。stop 关上后退出。

@@ -454,6 +454,7 @@ func (e *Executor) openWorker(ticketID, asgID, agent string, ticket Ticket, dir 
 		if e.Roots != nil {
 			spec.Roots = e.Roots(ticketID)
 		}
+		_, spec.ReadRoots = e.Engine.MemberDirs(ticketID)
 		spec.System = externalWorkerPrompt(e, spec)
 		w, err := e.Opener(context.Background(), spec)
 		if err != nil {
@@ -585,7 +586,7 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 		e.Engine.AckInputs(ticketID, ids)
 	} else {
 		e.ackSnapshot(ticketID, ticket)
-		w.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir, e.mandateLine(ticket)), Source: "assignment"})
+		w.Followup(dsh.UserMessage{Text: assignmentText(ticket, dir, e.mandateLine(ticket), e.groupLine(ticket)), Source: "assignment"})
 	}
 	stopSave := make(chan struct{})
 	defer close(stopSave)
@@ -1102,12 +1103,16 @@ func (e *Executor) ticketDir(ticketID string) (string, error) {
 	return dir, nil
 }
 
-// assignmentText 把 ticket 的编号、目录、授权说明和输入拼成派工正文。dir 为空时不写目录，mandate 为空时不写授权。
-func assignmentText(ticket Ticket, dir, mandate string) string {
+// assignmentText 把 ticket 的编号、目录、任务组、授权说明和输入拼成派工正文。dir、group 或 mandate 为空时不写那一行。
+func assignmentText(ticket Ticket, dir, mandate, group string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "工单 %s\n", ticket.ID)
 	if dir != "" {
 		fmt.Fprintf(&b, "工作目录 %s\n", dir)
+	}
+	if group = strings.TrimSpace(group); group != "" {
+		b.WriteString(group)
+		b.WriteByte('\n')
 	}
 	if mandate = strings.TrimSpace(mandate); mandate != "" {
 		b.WriteString(mandate)
@@ -1138,3 +1143,26 @@ func (e *Executor) mandateLine(ticket Ticket) string {
 
 // mandatePrefix 是派工正文里授权那一行的开头。任务页按它把这一行从对话里拿掉。
 const mandatePrefix = "这张工单是按规则主动接下的："
+
+// groupLinePrefix 是派工正文里任务组那一行的开头，后面紧跟任务组编号。任务页按它把这一行从对话里拿掉。
+const groupLinePrefix = "任务组 grp-"
+
+// groupLine 是任务组成员派工正文里的一行：「任务组 grp-7「做 todo 应用」（分工）· 你负责：后端」。不是成员时为空。
+func (e *Executor) groupLine(ticket Ticket) string {
+	if e == nil || e.Engine == nil || ticket.Group == "" {
+		return ""
+	}
+	g, ok := e.Engine.Group(ticket.Group)
+	if !ok {
+		return ""
+	}
+	line := "任务组 " + g.ID + "「" + g.Title + "」"
+	if g.Mode == GroupCompare {
+		return line + "（对比）"
+	}
+	line += "（分工）"
+	if role := firstText(ticket.Role, ticket.Title); role != "" {
+		line += " · 你负责：" + role
+	}
+	return line
+}

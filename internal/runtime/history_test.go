@@ -179,6 +179,21 @@ func TestMessagesFromEventsKeepsRepeatReminder(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsKeepsWake 确认唤醒路由的任务组回报回放成一条用户消息，路由那一轮的回复不会没有来由。
+func TestMessagesFromEventsKeepsWake(t *testing.T) {
+	wake := "这是任务组 grp-1「两件事」的回报，不是人说的话。"
+	evs := []trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{"text": "做两件事"}},
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "拆成两份了。"}},
+		{Type: trace.TypeInject, Source: "wake", Payload: map[string]any{"text": wake, "name": "wake", "group": "grp-1", "state": "done"}},
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "两份都做完了。"}},
+	}
+	msgs := MessagesFromEvents(evs)
+	if len(msgs) != 4 || msgs[2].Role != RoleUser || msgs[2].Content != wake || msgs[3].Content != "两份都做完了。" {
+		t.Fatalf("%+v", msgs)
+	}
+}
+
 // TestMessagesFromEventsKeepsImageParts 确认用户事件上的图片 parts 留在重建出的消息里。
 func TestMessagesFromEventsKeepsImageParts(t *testing.T) {
 	evs := []trace.Event{

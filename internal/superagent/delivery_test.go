@@ -138,7 +138,7 @@ func TestInferredAssignmentNamesItsRules(t *testing.T) {
 	if !strings.Contains(line, "文案小改可以直接做") || !strings.Contains(line, "dropped") {
 		t.Fatalf("mandate = %q", line)
 	}
-	body := assignmentText(ticket, "", line)
+	body := assignmentText(ticket, "", line, "")
 	if !strings.Contains(body, line) {
 		t.Fatalf("body = %q", body)
 	}

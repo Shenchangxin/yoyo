@@ -38,6 +38,26 @@ type View struct {
 	Load LoadView `json:"load"`
 	// Agents 是每个 agent 正在跑和排队的工单数，按编号排序。两样都为零的不列。
 	Agents []AgentLoad `json:"agents"`
+	// Groups 是任务组，新的在前。
+	Groups []GroupRow `json:"groups"`
+}
+
+// GroupRow 是任务组一行。State 取 running、attention、done、failed、stopped。Done 是做完的成员数，Total 是成员数。
+// Tickets 按拆分时的顺序。OpenedAt 和 UpdatedAt 是 RFC3339，UpdatedAt 是成员最近一次变化或任务组结束的时刻。
+type GroupRow struct {
+	ID        string   `json:"id"`
+	Mode      string   `json:"mode"`
+	Title     string   `json:"title"`
+	Session   string   `json:"session,omitempty"`
+	Tickets   []string `json:"tickets"`
+	State     string   `json:"state"`
+	Done      int      `json:"done"`
+	Total     int      `json:"total"`
+	Winner    string   `json:"winner,omitempty"`
+	Verdict   string   `json:"verdict,omitempty"`
+	SharedDir string   `json:"sharedDir,omitempty"`
+	OpenedAt  string   `json:"openedAt,omitempty"`
+	UpdatedAt string   `json:"updatedAt,omitempty"`
 }
 
 // AgentLoad 是一个 agent 的负载。yoyo 自带工人记在 yoyo 名下。
@@ -118,6 +138,11 @@ type TicketRow struct {
 	AgentPinned bool   `json:"agentPinned,omitempty"`
 	// Usage 是外部 agent 最近一次报的用量。没报过时为空。
 	Usage *UsageRow `json:"usage,omitempty"`
+	// Group 是所在的任务组，Role 是分工，DependsOn 是要先做完的同组工单。Held 为 deps 时在等它们，为 deps_failed 时它们有没做成的。
+	Group     string   `json:"group,omitempty"`
+	Role      string   `json:"role,omitempty"`
+	DependsOn []string `json:"dependsOn,omitempty"`
+	Held      string   `json:"held,omitempty"`
 }
 
 // InputRow 是工单上的一条输入。Delivered 为假表示执行器还没领走。
@@ -252,6 +277,7 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 		Executions:  []ExecutionRow{},
 		Problems:    []ProblemRow{},
 		Agents:      []AgentLoad{},
+		Groups:      []GroupRow{},
 		Allowed:     allowedNames(snap.Policy.Allowed),
 		Workers:     workers,
 		Load:        LoadView{MaxWorkers: workers},
@@ -295,6 +321,20 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 		case row.Stage == "idle":
 			view.Load.Idle++
 		}
+	}
+	if len(snap.Groups) > 0 {
+		tickets := map[string]*Ticket{}
+		for i := range snap.Tickets {
+			tickets[snap.Tickets[i].ID] = &snap.Tickets[i]
+		}
+		updated := map[string]string{}
+		for _, row := range view.Tickets {
+			updated[row.ID] = row.UpdatedAt
+		}
+		for i := range snap.Groups {
+			view.Groups = append(view.Groups, groupRow(&snap.Groups[i], tickets, updated))
+		}
+		sort.Slice(view.Groups, func(i, j int) bool { return groupOrder(view.Groups[i].ID) > groupOrder(view.Groups[j].ID) })
 	}
 	now := time.Now().UTC()
 	since := now.Add(-24 * time.Hour)
@@ -416,6 +456,7 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 		DeliveryError: ticket.DeliveryErr, Directory: ticket.Directory,
 		Inputs: []InputRow{}, Follows: []FollowRow{}, Assignments: []AssignmentRow{},
 		Agent: agentKey(ticket.Agent), AgentPinned: ticket.AgentPinned,
+		Group: ticket.Group, Role: ticket.Role, DependsOn: append([]string(nil), ticket.DependsOn...), Held: ticket.Held,
 	}
 	if u := ticket.Usage; u != nil {
 		row.Usage = &UsageRow{Used: u.Used, Size: u.Size, Cost: u.Cost, Currency: u.Currency}
@@ -455,6 +496,9 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 	}
 	if !updated.IsZero() {
 		row.UpdatedAt = updated.UTC().Format(time.RFC3339)
+	}
+	if title := oneLine(ticket.Title); title != "" {
+		row.Title = title
 	}
 	if row.Title == "" && len(ticket.Inputs) > 0 {
 		row.Title = oneLine(ticket.Inputs[0].Text)
@@ -497,6 +541,41 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 		row.Assignments = append(row.Assignments, item)
 	}
 	return row
+}
+
+// groupRow 把 g 收成界面一行。tickets 按编号取成员，updated 是成员行的 UpdatedAt。
+func groupRow(g *Group, tickets map[string]*Ticket, updated map[string]string) GroupRow {
+	row := GroupRow{
+		ID: g.ID, Mode: g.Mode, Title: g.Title, Session: g.Session, Tickets: append([]string{}, g.Tickets...),
+		State: groupState(g, func(id string) *Ticket { return tickets[id] }), Total: len(g.Tickets),
+		Winner: g.Winner, Verdict: g.Verdict, SharedDir: g.SharedDir,
+	}
+	if !g.Opened.IsZero() {
+		row.OpenedAt = g.Opened.UTC().Format(time.RFC3339)
+	}
+	row.UpdatedAt = row.OpenedAt
+	for _, id := range g.Tickets {
+		if completedEnd(endOf(tickets[id])) {
+			row.Done++
+		}
+		if at := updated[id]; at > row.UpdatedAt {
+			row.UpdatedAt = at
+		}
+	}
+	if g.Ended != nil && !g.Ended.At.IsZero() {
+		if at := g.Ended.At.UTC().Format(time.RFC3339); at > row.UpdatedAt {
+			row.UpdatedAt = at
+		}
+	}
+	return row
+}
+
+// endOf 是 t 的结束记录。t 为空或还没结束时为 nil。
+func endOf(t *Ticket) *End {
+	if t == nil {
+		return nil
+	}
+	return t.Ended
 }
 
 // agentLoads 把执行器记的 running 和还在排队的工单收成每个 agent 一行，按编号排序。

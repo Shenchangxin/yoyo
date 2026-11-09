@@ -36,13 +36,13 @@ func TestLaunchWithArgsKeepsViaCmd(t *testing.T) {
 // TestQuoteWindowsArg 锁住空串、空格、引号和结尾反斜杠的转义。
 func TestQuoteWindowsArg(t *testing.T) {
 	cases := map[string]string{
-		"":            `""`,
-		"plain":       "plain",
-		"a b":         `"a b"`,
-		`say "hi"`:    `"say \"hi\""`,
-		`C:\dir\`:     `C:\dir\`,
-		`C:\my dir\`:  `"C:\my dir\\"`,
-		`a\"b`:        `"a\\\"b"`,
+		"":           `""`,
+		"plain":      "plain",
+		"a b":        `"a b"`,
+		`say "hi"`:   `"say \"hi\""`,
+		`C:\dir\`:    `C:\dir\`,
+		`C:\my dir\`: `"C:\my dir\\"`,
+		`a\"b`:       `"a\\\"b"`,
 	}
 	for in, want := range cases {
 		if got := acp.QuoteWindowsArg(in); got != want {

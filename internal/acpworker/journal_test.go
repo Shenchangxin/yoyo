@@ -168,7 +168,9 @@ func TestJournalSynthesizesWritesResultsDoNotShow(t *testing.T) {
 	listed := filepath.Join(dir, "listed.txt")
 	failed := filepath.Join(dir, "failed.txt")
 	refused := filepath.Join(dir, "refused.txt")
-	diff := func(p string) []map[string]any { return []map[string]any{{"type": "diff", "path": p, "newText": "a\n"}} }
+	diff := func(p string) []map[string]any {
+		return []map[string]any{{"type": "diff", "path": p, "newText": "a\n"}}
+	}
 	lowered := strings.ToLower(shown[:1]) + shown[1:]
 	j.begin(1)
 	j.update(wire(t, map[string]any{"sessionUpdate": acp.UpdateToolCall, "toolCallId": "w", "title": "Write", "kind": "edit", "status": "in_progress", "content": diff(lowered)}), false)

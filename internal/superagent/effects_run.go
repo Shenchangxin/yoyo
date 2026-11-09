@@ -1,4 +1,4 @@
-// effects_run.go 执行已经落盘的六类副作用。
+// effects_run.go 执行已经落盘的副作用：启动、投递、评估、回复、写回报告和通知。唤醒路由在 group_runtime.go。
 // 不决定接不接。那一步仍在引擎里。
 
 package superagent
@@ -26,10 +26,16 @@ type noticeBody struct {
 }
 
 // runLaunch 启动一张工单。暂时的网络失败会再试。其他失败结束工单，不再自动启动。
+// 还挂着等前置的任务组成员不启动，由 watchGroups 放行时再排。
 func (rt *Runtime) runLaunch(payload any) error {
 	id, _ := payload.(string)
 	if strings.TrimSpace(id) == "" || rt == nil {
 		return nil
+	}
+	if rt.eng != nil {
+		if t, ok := rt.eng.Ticket(id); ok && t.Held != "" {
+			return nil
+		}
 	}
 	if rt.ready != nil {
 		if err := rt.ready(); err != nil {
@@ -193,7 +199,7 @@ func (rt *Runtime) recoverRejectedAsks() {
 	}
 }
 
-// queueReport 把一份需要人看的报告放进有序队列。
+// queueReport 把一份需要人看的报告放进有序队列，再看一遍任务组：这份报告可能放行后面的成员，或者该唤醒路由。
 func (rt *Runtime) queueReport(ticketID, state, summary, question string) {
 	if rt == nil || rt.effects == nil {
 		return
@@ -202,6 +208,7 @@ func (rt *Runtime) queueReport(ticketID, state, summary, question string) {
 	sum := sha256.Sum256([]byte(summary + "\n" + question))
 	key := ticketID + "\n" + state + "\n" + hex.EncodeToString(sum[:8])
 	rt.effects.Enqueue("relay", key, string(raw))
+	rt.watchGroups()
 	rt.effects.Pump(time.Now())
 }
 

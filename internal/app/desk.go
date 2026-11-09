@@ -69,6 +69,7 @@ func (a *App) orchestrator() *superagent.Runtime {
 	rt.SetProfile(a.workerProfile)
 	rt.SetOnReport(a.relayReport)
 	rt.SetOnNotice(a.relayNotice)
+	rt.SetOnWake(a.wakeRouter)
 	rt.SetPrepareRunner(orchestratorPrepare(work))
 	rt.SetIntake(a.connectorTriggers)
 	a.orch = rt

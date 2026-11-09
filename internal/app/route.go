@@ -1,4 +1,4 @@
-// route.go 把主会话收成路由。它只接单、看状态、记备注、停止和读记忆。
+// route.go 把主会话收成路由。它只接单、开任务组、看状态、记备注、停止和读记忆；任务组的几件工具在 route_group.go。
 // 不拥有工人的工作区。工人在工单目录里用自己的工具。视频、学习和短片会话不走这里。
 
 package app
@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	goruntime "runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,13 +30,16 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-const routePrompt = `你是主会话的路由。你只有 task_route、task_status、task_note、task_stop、memory_read、memory_write 和 memory_forget，不能改文件，也不能跑命令。
+const routePrompt = `你是主会话的路由。你只有 task_route、task_split、task_pick、task_read、task_status、task_note、task_stop、memory_read、memory_write 和 memory_forget，不能改文件，也不能跑命令。
 
 人明确让你记住一件事，或者说出关于自己的长期事实和偏好（称呼、语言、写法、代码风格、在做的项目），用 memory_write 记一条，用人的原意写成一句。不记推断出来的事，不记一次性的细节，不记密钥。人改口时，replaces 填旧的那一条的编号；memory_write 返回相近的旧记忆时，看清新的一句是不是推翻了它。带日子的安排照原话写，「明天」「下周三」会换成日期，过了日子就不再当成现在的事。记下之后在回复里用一句话说记下了什么。人要你忘掉时，先用 memory_read 找到编号，再用 memory_forget。
 
 明确的请求立刻路由。先看材料里列出的工单：和某一张是同一件事，或者明显相关，就用 continue 指到那张工单，沿用它的目录和会话，不要 accept 新开。有多张相关时，继续最贴近的一张。都不相关才 accept。
 
 工单可以交给不同的 agent，见每轮材料里的说明。材料里没提 agent 时 agent 留空，交给 yoyo 自己。
+
+一件事要几个 agent 一起做时用 task_split，开出一个任务组。mode 填 split：按分工拆成 2 到 6 份，每份的 brief 要能独立读懂，写清交付物和放在哪；几份会改同一个目录时划开互不重叠的区域，做不到就用 depends_on 让后面的等前面的做完。mode 填 compare：人要几个 agent 分别做同一件事再比较时用，agents 填 2 到 4 个不同的 agent，brief 写同一份完整说明；要在已有项目上改时，brief 里写先复制或用 git worktree 放到工单目录再改。拆完对人只说一两句怎么分的。
+任务组有了结果、或有成员要人处理时，会再叫你一次。那条消息是任务组的回报，不是人说的话，照它末尾写的做；要细节时用 task_read 读那张工单。对比的结果，人同意采用哪一份之后才用 task_pick 记下。人要停掉整组时，task_stop 填 group。
 
 工人看不到这段对话。人的原话一般不会转给工人，只有工人在等回答时，原话会和你的 brief 一起送去。不要把人的短句原样贴进 brief。brief 按工人现在的状态写，不要每次都重写整张工单。
 
@@ -157,15 +161,19 @@ func ruleParam(raw any) []string {
 	}
 }
 
-// routerExtras 是不属于哪条会话时的七件路由工具。记下的记忆都算路由的推断。
+// routerExtras 是不属于哪条会话时的十件路由工具。记下的记忆都算路由的推断，开出的任务组唤醒触发所在的桌面会话。
 func (a *App) routerExtras() map[string]runtime.ExtraTool {
 	return a.routerExtrasFor("")
 }
 
-// routerExtrasFor 是主会话仅有的七件工具。写记忆时拿 sessionID 这条会话里当事人最近写的话核对出处。
+// routerExtrasFor 是主会话仅有的十件工具。写记忆时拿 sessionID 这条会话里当事人最近写的话核对出处；
+// 在这里开出的任务组有了结果时唤醒 sessionID。
 func (a *App) routerExtrasFor(sessionID string) map[string]runtime.ExtraTool {
 	return map[string]runtime.ExtraTool{
 		"task_route":    a.routeTool(),
+		"task_split":    a.splitTool(sessionID),
+		"task_pick":     a.pickTool(),
+		"task_read":     a.readTool(),
 		"task_status":   a.statusTool(),
 		"task_note":     a.noteTool(),
 		"task_stop":     a.stopTool(),
@@ -361,12 +369,17 @@ func (a *App) statusTool() runtime.ExtraTool {
 	})
 }
 
-// taskRoster 把最近八张工单收成路由能对照的几行。新的在前。交给外部 agent 的写明是谁。
+// taskRoster 把最近八张工单收成路由能对照的几行。新的在前。交给外部 agent 的写明是谁，任务组成员写明在哪一组、负责什么。
 func (a *App) taskRoster(rt *superagent.Runtime) string {
 	if rt == nil {
 		return ""
 	}
-	rows := append([]superagent.TicketRow(nil), rt.View().Tickets...)
+	view := rt.View()
+	groups := map[string]superagent.GroupRow{}
+	for _, g := range view.Groups {
+		groups[g.ID] = g
+	}
+	rows := append([]superagent.TicketRow(nil), view.Tickets...)
 	sort.Slice(rows, func(i, j int) bool {
 		return ticketNum(rows[i].ID) > ticketNum(rows[j].ID)
 	})
@@ -383,6 +396,9 @@ func (a *App) taskRoster(rt *superagent.Runtime) string {
 		if ticket.Agent != "" && ticket.Agent != superagent.YoyoAgent {
 			fmt.Fprintf(&b, "  agent %s（%s）\n", ticket.Agent, firstNonEmpty(a.buddyName(ticket.Agent), ticket.Agent))
 		}
+		if g, ok := groups[ticket.Group]; ok {
+			b.WriteString(groupRosterLine(g, ticket))
+		}
 		if dir := strings.TrimSpace(ticket.Directory); dir != "" {
 			fmt.Fprintf(&b, "  目录 %s\n", dir)
 		}
@@ -394,6 +410,22 @@ func (a *App) taskRoster(rt *superagent.Runtime) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// groupRosterLine 是名单里任务组成员的那一行「任务组 grp-7（分工，1/3 做完） · 后端」，挂着的成员再加一行在等什么。
+func groupRosterLine(g superagent.GroupRow, ticket superagent.TicketRow) string {
+	line := fmt.Sprintf("  任务组 %s（%s，%d/%d 做完）", g.ID, groupModeWord(g.Mode), g.Done, g.Total)
+	if role := strings.TrimSpace(ticket.Role); role != "" {
+		line += " · " + role
+	}
+	line += "\n"
+	switch ticket.Held {
+	case superagent.HeldDeps:
+		line += "  等 " + strings.Join(ticket.DependsOn, "、") + " 做完才开工\n"
+	case superagent.HeldDepsFailed:
+		line += "  前置没做成，挂着\n"
+	}
+	return line
 }
 
 // ticketSituation 用阶段告诉路由该写多长的交代。
@@ -474,16 +506,23 @@ func (a *App) noteTool() runtime.ExtraTool {
 	})
 }
 
-// stopTool 停下或收掉一张工单。mode 为 pause 时只停正在跑的这一轮；done 时人验收通过；其余结束工单。
+// stopTool 停下或收掉一张工单，或者停掉整个任务组。mode 为 pause 时只停正在跑的这一轮；done 时人验收通过；其余结束工单。
 func (a *App) stopTool() runtime.ExtraTool {
-	return routeExtra("task_stop", "停下或收掉 ticket。mode 取 pause：只停正在跑的这一轮，工单留着，人再说一句就接着做；done：工单在等验收，人说通过，记成做完了；stop 或不填：结束这张工单，记成已打断。reason 写给人看的原因。", map[string]any{
+	return routeExtra("task_stop", "停下或收掉 ticket。mode 取 pause：只停正在跑的这一轮，工单留着，人再说一句就接着做；done：工单在等验收，人说通过，记成做完了；stop 或不填：结束这张工单，记成已打断。人要停掉整个任务组时填 group、不填 ticket：没结束的成员都停下。reason 写给人看的原因。", map[string]any{
 		"ticket": map[string]any{"type": "string"},
+		"group":  map[string]any{"type": "string", "description": "要停掉的任务组编号。填了就停整组，ticket 和 mode 不看。"},
 		"mode":   map[string]any{"type": "string", "enum": []string{"stop", "pause", "done"}},
 		"reason": map[string]any{"type": "string"},
 	}, false, func(args map[string]any) (string, error) {
 		rt := a.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
+		}
+		if group := strParam(args, "group"); group != "" {
+			if err := rt.Act("stopGroup", "", "", group, strParam(args, "reason")); err != nil {
+				return "", groupActError(err, group, "")
+			}
+			return "stopped group " + group, nil
 		}
 		ticket := strParam(args, "ticket")
 		switch strParam(args, "mode") {
@@ -674,6 +713,7 @@ func (a *App) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID str
 }
 
 // namedWorkRoots 从这张工单已经交给工人的说明里取出可写目录。家目录和过浅的路径不放进来。
+// 任务组成员另加共享目录：它在执行根下，说明里写了也会被当成家目录里的路径挡掉。
 func (a *App) namedWorkRoots(ticketID, home string) []string {
 	if a == nil {
 		return nil
@@ -687,7 +727,11 @@ func (a *App) namedWorkRoots(ticketID, home string) []string {
 		b.WriteString(text)
 		b.WriteByte('\n')
 	}
-	return runtime.NamedRoots(b.String(), home)
+	roots := runtime.NamedRoots(b.String(), home)
+	if shared, _ := rt.MemberDirs(ticketID); shared != "" && !slices.Contains(roots, shared) {
+		roots = append(roots, shared)
+	}
+	return roots
 }
 
 // relayNotice 把一条通知写进指定的桌面会话。它不开始新的路由回合。
@@ -716,7 +760,7 @@ func (a *App) relayNotice(sessionID, text string) {
 // relayReport 把需要人看的报告写进正在看这张工单的桌面会话。
 // 做完、失败、放下和打断会带上已经报过的阶段性进展，并写进记忆。会话写不进去时，记忆仍然留下。
 // 同一段正文只写一次。后来跟上的会话优先，没有时才回到开工那一条。
-// 外部 agent 做的工单在载荷里写上 agent 和名字；要先登录时加上 need。
+// 外部 agent 做的工单在载荷里写上 agent 和名字；要先登录时加上 need；任务组成员写上 group 和 role。
 func (a *App) relayReport(ticketID, state, summary, question string) {
 	if a == nil {
 		return
@@ -775,6 +819,12 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 	}
 	if need := rt.TicketNeed(ticketID); need != "" {
 		extra["need"] = need
+	}
+	if group, role := rt.TicketGroup(ticketID); group != "" {
+		extra["group"] = group
+		if role != "" {
+			extra["role"] = role
+		}
 	}
 	for _, sid := range sids {
 		if sid == "" || a.traceHasID(sid, id) {

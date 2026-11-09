@@ -1,5 +1,5 @@
 // route_agents.go 拥有路由这一侧的 agent 选择：人 @ 过的 agent 怎样核对、记进触发、写进这一轮的说明，
-// task_route 的 agent 怎样补缺省、校验和改派，以及给路由看的可派名单。
+// task_route 和 task_split 每一份的 agent 怎样补缺省、校验和改派，以及给路由看的可派名单。
 // 不拥有工人的打开和审批（buddy_worker.go），也不拥有 agent 的检测、安装和登录（internal/buddy）。
 
 package app
@@ -46,20 +46,47 @@ func (a *App) agentIntake(text string) ([]string, string) {
 	case len(known) == 1:
 		lines = append([]string{"人指定 " + known[0] + " 来做。accept 时 agent 填 " + known[0] + "。"}, lines...)
 	case len(known) > 1:
-		lines = append([]string{"人点了 " + strings.Join(known, "、") + "。一张工单只交给其中一个，accept 时 agent 从这几个里选。"}, lines...)
+		lines = append([]string{multiAgentNote(known, text)}, lines...)
 	case s.AutoPick:
 		lines = append(lines, "人没有点名 agent。打开了自动挑选：可以按名单里的「擅长」选一个能派的 agent，也可以交给 yoyo。")
 	case strings.TrimSpace(s.DefaultAgent) != "":
 		lines = append(lines, "人没有点名 agent。agent 留空时交给默认的 "+strings.TrimSpace(s.DefaultAgent)+"。")
 	}
-	if roster := a.agentRoster(len(known) > 0, s); roster != "" {
+	if roster := a.agentRoster(len(known) > 0 || a.groupsRunning(), s); roster != "" {
 		lines = append(lines, "可派的 agent：\n"+roster)
 	}
 	return known, strings.Join(lines, "\n")
 }
 
+// multiAgentNote 是人点了几个 agent 时写给路由的说明：一件事交给其中一个，或者用 task_split 分工、对比。
+// 人的话里有要比较的意思时点明一句。
+func multiAgentNote(known []string, text string) string {
+	note := "人点了 " + strings.Join(known, "、") + "。只交给其中一个时用 task_route，agent 从这几个里选。要几个一起做时用 task_split：分工用 split，每个被点名的至少分到一份，有先后的写 depends_on；人要它们分别做同一件事再比较，用 compare，agents 填这几个，brief 写同一份完整说明。"
+	if compareWords.MatchString(text) {
+		note += "人似乎要对比，多半用 compare。"
+	}
+	return note
+}
+
+// groupsRunning 在有任务组还在做或在等人时为真。这时人可能要改派其中一份，路由要看到可派名单。
+// 编排还没打开时为假，不为这个去打开它。
+func (a *App) groupsRunning() bool {
+	a.deskMu.Lock()
+	rt := a.orch
+	a.deskMu.Unlock()
+	if rt == nil {
+		return false
+	}
+	for _, g := range rt.View().Groups {
+		if g.State == superagent.GroupRunning || g.State == superagent.GroupAttention {
+			return true
+		}
+	}
+	return false
+}
+
 // agentRoster 是给路由看的可派名单，最多 rosterMax 行，每行「编号 名字，在线或在做 N，擅长 …」。
-// 人 @ 过 agent、打开了自动挑选或设了默认 agent 时才给；能派的只有 yoyo 时不给。
+// mentioned 为真（人 @ 过 agent，或有任务组还在做）、打开了自动挑选或设了默认 agent 时才给；能派的只有 yoyo 时不给。
 func (a *App) agentRoster(mentioned bool, s buddy.Settings) string {
 	m := a.Buddies()
 	if m == nil || (!mentioned && !s.AutoPick && strings.TrimSpace(s.DefaultAgent) == "") {

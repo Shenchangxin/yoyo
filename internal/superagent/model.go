@@ -156,6 +156,13 @@ type Ticket struct {
 	PointerOf string `json:"PointerOf,omitempty"`
 	// Usage 是外部 agent 最近一次报的用量。
 	Usage *Usage `json:"Usage,omitempty"`
+	// Group 是这张工单所在的任务组，Role 是它在组里的分工，Title 是路由给这一份写的短标题。单张工单都为空。
+	Group string `json:"Group,omitempty"`
+	Role  string `json:"Role,omitempty"`
+	Title string `json:"Title,omitempty"`
+	// DependsOn 是要先做完的同组工单。Held 为 deps 时在等它们，为 deps_failed 时它们有没做成的，两种都不开工。
+	DependsOn []string `json:"DependsOn,omitempty"`
+	Held      string   `json:"Held,omitempty"`
 }
 
 // Decision 是一次评估结果。Kind 为 accept、stop、ignore、unavailable。
@@ -168,6 +175,27 @@ type Decision struct {
 	TicketID  string
 	Dismissed bool
 	At        time.Time
+	// Group 是这次接受开出的任务组。TicketID 是组里的第一张工单。
+	Group string `json:"Group,omitempty"`
+}
+
+// Group 是一次拆给多个 agent 的工作。Mode 为 split（分工，可带依赖）或 compare（同一份说明各做一遍）。
+// Session 是发起它的桌面会话，唤醒路由时回到那里。Tickets 按拆分时的顺序。
+// Ended 非空表示人停掉了整组或采用了一份结果。Winner 是对比里采用的工单，Verdict 是路由最后的汇总。
+// Woke 是已经发过的唤醒标记，同一个标记只唤醒一次。
+type Group struct {
+	ID        string
+	Mode      string
+	Title     string
+	Trigger   string
+	Session   string
+	Tickets   []string
+	SharedDir string `json:"SharedDir,omitempty"`
+	Opened    time.Time
+	Ended     *End     `json:"Ended,omitempty"`
+	Winner    string   `json:"Winner,omitempty"`
+	Verdict   string   `json:"Verdict,omitempty"`
+	Woke      []string `json:"Woke,omitempty"`
 }
 
 // Outbound 是准备发回渠道的一条消息。
