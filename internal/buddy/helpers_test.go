@@ -37,16 +37,25 @@ func (m *memSettings) save(fn func(*Settings)) error {
 	return nil
 }
 
-// memVault 是内存里的 vault。
+// memVault 是内存里的 vault。n 数读了几次。
 type memVault struct {
 	mu sync.Mutex
 	m  map[string]string
+	n  int
+}
+
+// reads 返回 GetStored 被调了几次。
+func (v *memVault) reads() int {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.n
 }
 
 // GetStored 取值，没有时报错。
 func (v *memVault) GetStored(name string) (string, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	v.n++
 	if s := v.m[name]; s != "" {
 		return s, nil
 	}

@@ -3269,14 +3269,14 @@ export type BuddyLoginResult = { started: boolean; terminal?: boolean; copy?: st
 
 /** buddy 把 Buddy 栏目的读写转到 videoCall，不在这里管界面状态。 */
 export const buddy = {
-  /** list 走 videoCall("buddy.list")。第一次调用会让后台开始检测。 */
-  list: (): Promise<{ buddies: BuddyView[]; prefs: BuddyPrefs }> => videoCall("buddy.list"),
+  /** list 走 videoCall("buddy.list")。第一次调用会让后台开始检测；detecting 为真表示第一次检测还没做完。 */
+  list: (): Promise<{ buddies: BuddyView[]; prefs: BuddyPrefs; detecting?: boolean }> => videoCall("buddy.list"),
   /** get 走 videoCall("buddy.get")。id 写入字段 id。 */
   get: (id: string): Promise<BuddyView> => videoCall("buddy.get", { id }),
   /** logTail 走 videoCall("buddy.log.tail")。id 写入字段 id。lines 写入字段 lines。 */
   logTail: (id: string, lines = 200): Promise<{ text: string }> => videoCall("buddy.log.tail", { id, lines }),
   /** refresh 走 videoCall("buddy.refresh")。force 为真时同时刷新 ACP 注册表。 */
-  refresh: (force = false): Promise<{ buddies: BuddyView[]; prefs: BuddyPrefs }> => videoCall("buddy.refresh", { force }),
+  refresh: (force = false): Promise<{ buddies: BuddyView[]; prefs: BuddyPrefs; detecting?: boolean }> => videoCall("buddy.refresh", { force }),
   /** probe 走 videoCall("buddy.probe")。id 写入字段 id。 */
   probe: (id: string): Promise<BuddyView> => videoCall("buddy.probe", { id }),
   /** install 走 videoCall("buddy.install")。id 写入字段 id。mode 写入字段 mode。 */

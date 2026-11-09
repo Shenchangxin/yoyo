@@ -114,6 +114,44 @@ func TestNeedsConfigSkipsLaunch(t *testing.T) {
 	}
 }
 
+// TestConfigureShowsProbing 锁住保存配置后立刻返回的视图已经是检查中（全探还卡在半路），界面靠它等到全探的结果再提示。
+func TestConfigureShowsProbing(t *testing.T) {
+	hold := make(chan struct{})
+	f := newFixture(t, func(o *Options) {
+		dial := pipeDial(acptest.Script{})
+		o.Dial = func(ctx context.Context, opts acp.Options) (*acp.Client, error) {
+			select {
+			case <-hold:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return dial(ctx, opts)
+		}
+	})
+	id := f.withCustom(t, "fake")
+	f.m.update(id, func(r *record) {
+		r.State = StateError
+		r.Detail = "boom"
+	})
+	v, err := f.m.Configure(id, ConfigPatch{Strengths: ptr("refactors Go code")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State != StateProbing {
+		t.Fatalf("configure returned %s", v.State)
+	}
+	close(hold)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if got, _ := f.m.Get(id); got.State == StateOnline {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	got, _ := f.m.Get(id)
+	t.Fatalf("after probe: %s %q", got.State, got.Detail)
+}
+
 // TestRecentlyLostTiming 锁住在线的项轻探失败后进入「刚断开」，5 分钟内不落成离线，满 5 分钟后落成离线；
 // 正在服务工单的项不被轻探，并且视为在线。
 func TestRecentlyLostTiming(t *testing.T) {

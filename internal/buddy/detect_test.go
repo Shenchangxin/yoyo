@@ -1,4 +1,5 @@
-// detect_test.go 锁住检测规则：PATH 上找到 ACP 命令算系统安装、只有 CLI 时标出缺适配器、托管安装优先，以及 npm 垫片的解析和查找器的扩展名规则。
+// detect_test.go 锁住检测规则：PATH 上找到 ACP 命令算系统安装、只有 CLI 时标出缺适配器、托管安装优先、第一次检测做完前报告检测中，
+// 以及 npm 垫片的解析和查找器的扩展名规则。
 
 package buddy
 
@@ -8,7 +9,34 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
+
+// TestDetectingUntilFirstScan 锁住第一次检测做完之前 Detecting 为真，第一次列出之后很快变成假，并且已经认出系统安装。
+func TestDetectingUntilFirstScan(t *testing.T) {
+	f := newFixture(t, func(o *Options) {
+		o.LookPath = func(name string) (string, error) {
+			if name == "codex-acp" {
+				return "/usr/bin/codex-acp", nil
+			}
+			return "", errNotFound
+		}
+	})
+	if !f.m.Detecting() {
+		t.Fatal("not detecting before the first list")
+	}
+	_, _ = f.m.List()
+	deadline := time.Now().Add(5 * time.Second)
+	for f.m.Detecting() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if f.m.Detecting() {
+		t.Fatal("still detecting after the first scan")
+	}
+	if v, _ := f.m.Get("codex"); v.Install.Kind != "system" {
+		t.Fatalf("codex after scan: %+v", v.Install)
+	}
+}
 
 // TestDetectSystemAndCLIOnly 锁住注入的 LookPath 决定系统安装，只有 CLI 时视图标 cliOnly 且仍是未安装。
 func TestDetectSystemAndCLIOnly(t *testing.T) {

@@ -66,6 +66,12 @@ type UIState = {
   closePages: () => void;
   openIdol: () => void;
   closeIdol: () => void;
+  /** 打开 Buddy 栏目。给了 id 时直接落到那一项的详情。 */
+  openBuddy: (id?: string) => void;
+  closeBuddy: () => void;
+  /** Buddy 栏目选中的 agent。空表示总览。 */
+  buddyFocus: string;
+  setBuddyFocus: (id: string) => void;
   skillsTab: SkillsTab;
   setSkillsTab: (t: SkillsTab) => void;
   openVideo: () => void;
@@ -365,6 +371,13 @@ export const useUI = create<UIState>((set, get) => ({
   openIdol: () => set({ surface: "idol" }),
   /** 关掉 idol 表面，回到对话。 */
   closeIdol: () => get().showConversation(),
+  /** 打开 Buddy 表面。id 不是 undefined 时同时改选中项，空串回到总览。 */
+  openBuddy: (id) => set((s) => ({ surface: "buddy", buddyFocus: id === undefined ? s.buddyFocus : id })),
+  /** 关掉 Buddy 表面，回到对话。 */
+  closeBuddy: () => get().showConversation(),
+  buddyFocus: "",
+  /** 改 Buddy 选中的 agent。buddyFocus 写入字段 buddyFocus。 */
+  setBuddyFocus: (buddyFocus) => set({ buddyFocus }),
   skillsTab: "market",
   /** 切换技能页签。skillsTab 写入字段 skillsTab。 */
   setSkillsTab: (skillsTab) => set({ skillsTab }),

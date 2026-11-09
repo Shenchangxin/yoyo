@@ -245,6 +245,8 @@ export function useWorkstation() {
   const closePages = useUI((s) => s.closePages);
   const openIdol = useUI((s) => s.openIdol);
   const closeIdol = useUI((s) => s.closeIdol);
+  const openBuddy = useUI((s) => s.openBuddy);
+  const closeBuddy = useUI((s) => s.closeBuddy);
   const openVideo = useUI((s) => s.openVideo);
   const closeVideo = useUI((s) => s.closeVideo);
   const showConversation = useUI((s) => s.showConversation);
@@ -2271,7 +2273,7 @@ export function useWorkstation() {
           }
           return;
         }
-        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol") {
+        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "buddy" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol") {
           showConversation();
           return;
         }
@@ -2508,6 +2510,7 @@ export function useWorkstation() {
     else if (c === "harness") openHarness("overview");
     else if (c === "video") openVideo();
     else if (c === "idol") openIdol();
+    else if (c === "buddy") openBuddy();
     else if (c === "run-eval") void runHarbor("suite");
     else if (c === "run-evolve") void runEvolve();
     else if (c === "palette") setPalette(true);
@@ -2530,7 +2533,7 @@ export function useWorkstation() {
   handlers.current.route = (payload) => { applyVideoRoute(payload); };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openIdol, closeIdol, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openIdol, closeIdol, openBuddy, closeBuddy, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,

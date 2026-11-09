@@ -102,6 +102,8 @@ type Manager struct {
 	// probing 是每项正在跑的探测数，removing 是正在卸载的项。卸载等探测停下再删目录，卸载中不再起新的探测。
 	probing  map[string]int
 	removing map[string]bool
+	// detected 表示第一次全量检测（只看文件和 PATH）已经做完。
+	detected bool
 
 	installSem chan struct{}
 	probeSem   chan struct{}
@@ -109,6 +111,11 @@ type Manager struct {
 	uvMu       sync.Mutex
 	saveMu     sync.Mutex
 	logMu      sync.Mutex
+
+	// keyMu 管 keyCache（每把密钥有没有保存）和 yoyoKeys（yoyo 有没有某提供商的钥匙）。可以在持有 mu 时拿。
+	keyMu    sync.Mutex
+	keyCache map[string]bool
+	yoyoKeys map[string]yoyoKeyHit
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -156,6 +163,7 @@ func New(opts Options) *Manager {
 		recs: map[string]*record{}, det: map[string]detection{}, jobs: map[string]*job{}, icons: map[string]string{},
 		lastPub: map[string]time.Time{}, pending: map[string]bool{}, probing: map[string]int{}, removing: map[string]bool{},
 		installSem: make(chan struct{}, 2), probeSem: make(chan struct{}, 2),
+		keyCache: map[string]bool{}, yoyoKeys: map[string]yoyoKeyHit{},
 	}
 	m.paths = newPathFinder(plat.GOOS, opts.Now)
 	if m.opts.LookPath == nil {
@@ -587,10 +595,8 @@ func (m *Manager) Configure(id string, p ConfigPatch) (View, error) {
 			return View{}, fmt.Errorf("%s: %s", m.say("密钥名不合法", "invalid key name"), name)
 		}
 	}
-	if m.opts.Vault != nil {
-		for name, value := range p.Secrets {
-			m.opts.Vault.Set(secretKey(id, name), strings.TrimSpace(value))
-		}
+	for name, value := range p.Secrets {
+		m.setSecret(id, name, value)
 	}
 	if m.opts.SaveSettings != nil {
 		err := m.opts.SaveSettings(func(s *Settings) {
@@ -612,6 +618,7 @@ func (m *Manager) Configure(id string, p ConfigPatch) (View, error) {
 			return View{}, err
 		}
 	}
+	m.markProbing(id)
 	m.publish(id)
 	m.goSafe(func() { _ = m.probe(m.ctx, id, true) })
 	return m.view(id), nil
@@ -782,6 +789,7 @@ func (m *Manager) Add(c CustomAgent) (View, error) {
 	e, _ := m.entryLocked(id)
 	m.mu.Unlock()
 	m.detectOne(m.ctx, e)
+	m.markProbing(id)
 	m.publish(id)
 	m.goSafe(func() { _ = m.probe(m.ctx, id, true) })
 	return m.view(id), nil

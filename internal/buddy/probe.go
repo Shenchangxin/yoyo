@@ -34,6 +34,28 @@ func (m *Manager) Probe(ctx context.Context, id string) (View, error) {
 	return m.view(id), err
 }
 
+// startsProbing 判断全探开始时这个状态要不要先显示成检查中：还没在线、也不是在等登录的都要。
+func startsProbing(s State) bool {
+	return s == "" || s == StateNotInstalled || s == StateError || s == StateOffline || s == StateNeedsConfig
+}
+
+// markProbing 在后台全探开始之前就把已装、还没在线的项记成检查中，让紧接着返回的视图已经是 probing，界面能等到全探的真实结果。
+func (m *Manager) markProbing(id string) {
+	m.mu.Lock()
+	e, ok := m.entryLocked(id)
+	changed := false
+	if ok && !e.Builtin && m.jobs[id] == nil && m.installedLocked(e) {
+		if r := m.recordLocked(id); startsProbing(r.State) {
+			r.State = StateProbing
+			changed = true
+		}
+	}
+	m.mu.Unlock()
+	if changed {
+		m.saveRecords()
+	}
+}
+
 // probe 探测一项并更新记录。没装时什么都不做。
 func (m *Manager) probe(ctx context.Context, id string, full bool) error {
 	settings := m.opts.Settings()
@@ -59,6 +81,7 @@ func (m *Manager) probe(ctx context.Context, id string, full bool) error {
 	if !ok || e.Builtin || (d.Managed == nil && d.SystemPath == "") {
 		return nil
 	}
+	m.refreshSecrets(e, item)
 	if missing := m.missingRequired(e, item); len(missing) > 0 {
 		m.update(id, func(r *record) {
 			r.State = StateNeedsConfig
@@ -80,7 +103,7 @@ func (m *Manager) probe(ctx context.Context, id string, full bool) error {
 	defer func() { <-m.probeSem }()
 	if full {
 		m.update(id, func(r *record) {
-			if r.State == "" || r.State == StateNotInstalled || r.State == StateError || r.State == StateOffline || r.State == StateNeedsConfig {
+			if startsProbing(r.State) {
 				r.State = StateProbing
 			}
 		})

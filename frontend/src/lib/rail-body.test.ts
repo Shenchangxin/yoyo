@@ -22,4 +22,9 @@ describe("railBody", () => {
     assert.equal(railBody("harness"), "harness");
     assert.equal(railBody("idol"), "idol");
   });
+
+  /** Buddy 栏目用自己的 agent 列表，不回落到会话列表。 */
+  it("gives buddy its agent list", () => {
+    assert.equal(railBody("buddy"), "buddy");
+  });
 });

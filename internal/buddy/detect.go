@@ -69,9 +69,17 @@ func (m *Manager) detectAll(ctx context.Context) {
 		}
 		m.det[id] = d
 	}
+	m.detected = true
 	m.mu.Unlock()
 	m.publishAll()
 	m.fillVersions(ctx, entries)
+}
+
+// Detecting 表示第一次检测还没做完。这时列表里的「未安装」还不可信，界面先显示骨架。
+func (m *Manager) Detecting() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return !m.detected
 }
 
 // detectOne 重新检测一项，装完、卸完或加了自定义 agent 之后用。

@@ -1882,6 +1882,28 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   box-shadow: 0 0 0 2px var(--sidebar);
 }
 
+/* Buddy 里有 agent 正在干活：右下角一个慢慢呼吸的点，右上角留给「要处理」的数字。 */
+.rail-glass .glass-icon.has-live::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--status-live);
+  box-shadow: 0 0 0 2px var(--sidebar);
+  animation: rail-live 1.8s ease-in-out infinite;
+}
+@keyframes rail-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-glass .glass-icon.has-live::after { animation: none; }
+}
+
 /* 「需要你」的数字。和状态色同一个琥珀。 */
 .glass-icon-badge {
   position: absolute;

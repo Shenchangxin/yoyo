@@ -66,6 +66,41 @@ func TestSecretsOnlyForTheirBuddy(t *testing.T) {
 	}
 }
 
+// TestKeyPresenceIsCached 锁住视图和必填检查只在第一次去 vault 和 yoyo 查钥匙在不在，之后读缓存；
+// 保存后立刻算已填；探测前的 refreshSecrets 能发现 vault 里被删掉的钥匙。
+func TestKeyPresenceIsCached(t *testing.T) {
+	var yoyoAsks int
+	f := newFixture(t, func(o *Options) {
+		o.YoyoKey = func(provider string) (string, bool) {
+			yoyoAsks++
+			return "sk-yoyo-openai-key", provider == "openai"
+		}
+	})
+	e := Entry{ID: "alpha", Secrets: []SecretSpec{{Name: "ALPHA_API_KEY", Required: true}, {Name: "OPENAI_API_KEY", Provider: "openai"}}}
+	item := ItemConfig{}
+	_ = f.m.secretViews(e, item)
+	if got := f.m.missingRequired(e, item); len(got) != 1 || got[0] != "ALPHA_API_KEY" {
+		t.Fatalf("missing %v", got)
+	}
+	reads, asks := f.vault.reads(), yoyoAsks
+	for range 5 {
+		_ = f.m.secretViews(e, item)
+		_ = f.m.missingRequired(e, item)
+	}
+	if f.vault.reads() != reads || yoyoAsks != asks {
+		t.Fatalf("vault reads %d→%d, yoyo asks %d→%d", reads, f.vault.reads(), asks, yoyoAsks)
+	}
+	f.m.setSecret(e.ID, "ALPHA_API_KEY", "sk-alpha-123456")
+	if got := f.m.missingRequired(e, item); len(got) != 0 || !f.m.secretViews(e, item)[0].HasKey || f.vault.reads() != reads {
+		t.Fatalf("after save: missing %v, reads %d", got, f.vault.reads())
+	}
+	f.vault.Set(secretKey(e.ID, "ALPHA_API_KEY"), "")
+	f.m.refreshSecrets(e, item)
+	if got := f.m.missingRequired(e, item); len(got) != 1 {
+		t.Fatalf("after outside delete: missing %v", got)
+	}
+}
+
 // TestConfigureNeverEchoesSecrets 锁住保存密钥后视图、列表和 JSON 里只有 hasKey；空值删除；像密钥的普通变量被拒。
 func TestConfigureNeverEchoesSecrets(t *testing.T) {
 	f := newFixture(t, nil)

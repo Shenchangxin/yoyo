@@ -150,14 +150,14 @@ func (a *App) buddyManager() (*buddy.Manager, error) {
 	return a.buddies, nil
 }
 
-// BuddyList 返回 {buddies, prefs}。第一次调用时开始后台检测。
+// BuddyList 返回 {buddies, prefs, detecting}。第一次调用时开始后台检测；detecting 为真表示第一次检测还没做完。
 func (a *App) BuddyList() (map[string]any, error) {
 	m, err := a.buddyManager()
 	if err != nil {
 		return nil, err
 	}
 	views, prefs := m.List()
-	return map[string]any{"buddies": views, "prefs": prefs}, nil
+	return map[string]any{"buddies": views, "prefs": prefs, "detecting": m.Detecting()}, nil
 }
 
 // BuddyGet 返回一项。

@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import {
+  Bot,
   Clapperboard,
   FileText,
   GitCompare,
@@ -100,6 +101,10 @@ export function CommandPalette(props: {
                 </Command.Item>
                 <Command.Item value={`${copy.palette.openSkills} skills market catalog`} onSelect={() => { useUI.getState().openSkills(); props.onClose(); }}>
                   {copy.palette.openSkills}
+                </Command.Item>
+                <Command.Item value={`${copy.palette.openBuddy} buddy agent codex claude gemini 智能体`} onSelect={() => { useUI.getState().openBuddy(); props.onClose(); }}>
+                  <Bot className="size-4 text-muted" />
+                  {copy.palette.openBuddy}
                 </Command.Item>
                 <Command.Item value={`${copy.palette.openPages} pages library notes`} onSelect={() => { useUI.getState().openPages(); props.onClose(); }}>
                   <FileText className="size-4 text-muted" />
