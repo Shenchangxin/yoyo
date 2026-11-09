@@ -592,6 +592,26 @@ func (e *Engine) Pick(gid, ticketID, reason string) ([]string, error) {
 	return stopped, nil
 }
 
+// Recommend 记下路由在对比任务组 gid 里推荐 ticketID。只是标出来给人看，不停任何成员，也不结束任务组；采用要等人同意后 Pick。
+// 错误码和 Pick 相同。
+func (e *Engine) Recommend(gid, ticketID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	g := e.groups[gid]
+	switch {
+	case g == nil:
+		return errCode("unknownGroup")
+	case g.Mode != GroupCompare:
+		return errCode("notCompare")
+	case g.Ended != nil:
+		return errCode("groupEnded")
+	case !contains(g.Tickets, ticketID):
+		return errCode("notMember")
+	}
+	g.Recommended = ticketID
+	return nil
+}
+
 // stopMembersLocked 把 g 里除了 keep 之外没结束的成员记成人停下。返回停下的成员。
 func (e *Engine) stopMembersLocked(g *Group, keep, reason string) []string {
 	var stopped []string

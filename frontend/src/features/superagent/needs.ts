@@ -57,6 +57,20 @@ export function openDesk(target: DeskTarget): boolean {
   return handled;
 }
 
+/** showGroup 打开任务组：今天栏在场时翻到它，不在场时放到中间看。 */
+export function showGroup(id: string): void {
+  const state = useNeeds.getState();
+  if (state.paneMounted) openDesk({ tab: "tasks", group: id });
+  else state.setFocusGroup(id);
+}
+
+/** showTask 打开一张工单：今天栏在场时翻到它，不在场时放到中间看。 */
+export function showTask(id: string): void {
+  const state = useNeeds.getState();
+  if (state.paneMounted) openDesk({ tab: "tasks", ticket: id });
+  else state.setFocusTask(id);
+}
+
 /** onOpenDesk 订阅 openDesk。返回退订函数。 */
 export function onOpenDesk(fn: (target: DeskTarget) => void): () => void {
   const handler = (event: Event) => {

@@ -14,6 +14,8 @@ import { askBrief } from "./superagent/BriefOverlay";
 import { focusBrief } from "./superagent/needs";
 import { EventCard } from "../components/ui/event-card";
 import { TaskEventHead, TurnReceipts } from "./transcript/TurnReceipts";
+import { GroupCard } from "./transcript/GroupCard";
+import { WakeReceipt } from "./transcript/WakeReceipt";
 import { BuddyMark } from "./buddy/BuddyMark";
 import { useBuddy } from "./buddy/buddy-store";
 import { FirstRun } from "./transcript/FirstRun";
@@ -40,7 +42,7 @@ import type { Approval, Item } from "../lib/protocol";
 import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
 import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
 import { classifyItem, errorCopy } from "../lib/error";
-import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, foldAsks, hasConversation, hydrateLayout, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, foldAsks, hasConversation, hydrateLayout, isGroupCard, isGroupCardRow, isWakeReceipt, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig } from "../lib/stream-live";
 import { coerceCollapseTiming, coerceTranscriptView, presentationPolicyFor } from "../lib/presentation-policy";
 import { ScrollFollow, scrollMetrics } from "../lib/scroll-follow";
@@ -104,10 +106,10 @@ function lastErrorKey(items: Item[]): string {
   return "";
 }
 
-/** 最后一行 agent 的 key。没有就返回空字符串。rows 读取 length，按下标读取。 */
+/** 最后一行 agent 的 key。任务组卡片那一行接在路由的回复后面，不算。没有就返回空字符串。rows 读取 length，按下标读取。 */
 function lastAgentKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i].kind === "agent") return rows[i].key;
+    if (rows[i].kind === "agent" && !isGroupCardRow(rows[i])) return rows[i].key;
   }
   return "";
 }
@@ -122,7 +124,10 @@ function isUserRow(row: LayoutRow): boolean {
   return row.kind === "user";
 }
 
-/** 第一行不加顶距。紧凑时用户行 pt-4、其余 pt-2。普通时用户行 pt-10，用户后面的 agent 行 pt-4，连续 agent 行 pt-5。rows 按下标读取。i 减去 1，用作下标。compact 为真时才继续。 */
+/**
+ * 第一行不加顶距。紧凑时用户行 pt-4、其余 pt-2。普通时用户行 pt-10，用户后面的 agent 行 pt-4，连续 agent 行 pt-5；
+ * 任务组卡片紧跟在 agent 行后面时 pt-2。rows 按下标读取。i 减去 1，用作下标。compact 为真时才继续。
+ */
 function rowSpace(rows: LayoutRow[], i: number, compact?: boolean): string {
   const row = rows[i];
   const prev = rows[i - 1];
@@ -132,6 +137,7 @@ function rowSpace(rows: LayoutRow[], i: number, compact?: boolean): string {
     return "pt-2";
   }
   if (isUserRow(row)) return "pt-10";
+  if (isGroupCardRow(row) && prev.kind === "agent") return "pt-2";
   if (row.kind === "agent" && prev.kind === "user") return "pt-4";
   if (row.kind === "agent") return "pt-5";
   return "pt-4";
@@ -250,7 +256,11 @@ export function Transcript(props: {
           estimate: agentEstimate(row.copyText),
           render: () => (
             <article className={cn("assistant-letter group/turn flex min-w-0 gap-2.5", props.compact && "gap-2")} data-testid="agent-turn">
-              <PresenceStamp size={props.compact ? 32 : 36} live={liveHere || (props.running && last)} className="mt-0.5 shrink-0" />
+              {isGroupCardRow(row) ? (
+                <span className={cn("shrink-0", props.compact ? "w-8" : "w-9")} aria-hidden />
+              ) : (
+                <PresenceStamp size={props.compact ? 32 : 36} live={liveHere || (props.running && last)} className="mt-0.5 shrink-0" />
+              )}
               <div className="min-w-0 flex-1">
               {row.parts.map((part, pi) => (
                 <div
@@ -1463,6 +1473,7 @@ const ItemRow = memo(function ItemRow({
       </div>
     );
   }
+  if (isGroupCard(shown)) return <GroupCard item={shown} />;
   if (shown.type === "assistant" && (shown.payload?.kind === "status" || shown.payload?.kind === "handoff")) {
     const handoff = shown.payload?.kind === "handoff";
     const body = !streaming && fileActions.linkFiles ? hidePaths(shown.text) : shown.text;
@@ -1475,6 +1486,8 @@ const ItemRow = memo(function ItemRow({
           agent={String(shown.payload?.agent || "")}
           agentName={String(shown.payload?.agentName || "")}
           need={String(shown.payload?.need || "")}
+          role={String(shown.payload?.role || "")}
+          group={String(shown.payload?.group || "")}
         />
         <div className="mt-1.5">
           <Markdown text={body} streaming={streaming} rich={!!rich && !streaming} />
@@ -1522,6 +1535,7 @@ const ItemRow = memo(function ItemRow({
   if (shown.type === "error") {
     return <ErrorCard item={shown} onRetry={onRetry} />;
   }
+  if (isWakeReceipt(shown)) return <WakeReceipt item={shown} />;
   if (shown.type === "compaction") {
     const kind = String(shown.payload?.kind || "");
     if (kind === "checkpoint_start") return null;

@@ -1,7 +1,9 @@
 /**
- * 拥有：多 agent 任务栏的端到端用例：任务组一行的展开收起和依赖提示、分工页的车道和动态、成员工单上回到任务组的面包屑、
- * 停止全部要点两次、对比页的采用，以及任务组放到中间。
- * 不拥有：任务组怎么拆、怎么放行（Go 的 group_test.go）。假后端在 mock.ts 和 buddy-mock.ts，编排台快照由这里的 mockDesk 给出。每条 test 的标题就是它断言什么。
+ * 拥有：多 agent 的端到端用例。任务栏：任务组一行的展开收起和依赖提示、分工页的车道和动态、成员工单上回到任务组的面包屑、
+ * 停止全部要点两次、对比页的采用，以及任务组放到中间。主会话：点两个 agent 发出去后，路由的回复下面跟着任务组卡片，
+ * 成员状态折进卡片，成员提问带身份和面包屑，唤醒回执，结束后卡片收成一行；对比收起后写路由推荐，采用后写已采用。
+ * 不拥有：任务组怎么拆、怎么放行（Go 的 group_test.go）。假后端在 mock.ts 和 buddy-mock.ts，编排台快照由这里的 mockDesk 给出，
+ * 会话的实时尾部由 mockLive 给出。每条 test 的标题就是它断言什么。
  */
 
 import { expect, test, type Page } from "@playwright/test";
@@ -265,6 +267,176 @@ test("a comparison lines the attempts up side by side, and picking one marks it 
   await expect(pane.getByTestId("group-verdict")).toContainText("Codex's fix is smaller");
   await columns.nth(1).getByTestId("group-view").click();
   await expect(page.getByTestId("task-read").getByTestId("task-group-crumb")).toHaveText("Task group: Fix the login bug");
+});
+
+/** mockLive 接管会话 s1 的实时尾部。events 按下标编 seq；事件流每次只报最新的 seq，200 毫秒后重连，客户端看到新序号就回拉。 */
+async function mockLive(page: Page, events: Record<string, any>[]) {
+  const numbered = () => events.map((ev, i) => ({ ...ev, seq: i + 1, session_id: "s1" }));
+  await page.route((url) => url.pathname === "/api/sessions/s1/live/sync", async (route) => {
+    const after = Number(new URL(route.request().url()).searchParams.get("after") || 0);
+    return route.fulfill({ json: { events: numbered().filter((ev) => ev.seq > after), head: events.length, gap: false, more: false } });
+  });
+  await page.route((url) => url.pathname === "/api/sessions/s1/events", async (route) => {
+    const notice = events.length ? `data: ${JSON.stringify({ seq: events.length, session_id: "s1" })}\n\n` : "";
+    return route.fulfill({ status: 200, contentType: "text/event-stream", body: `retry: 200\n\n${notice}` });
+  });
+}
+
+let clock = Date.now() - 3_600_000;
+
+/** event 是一条追踪事件，时间依次往后。 */
+function event(type: string, source: string, payload: Record<string, any>): Record<string, any> {
+  clock += 1000;
+  return { type, source, session_id: "s1", ts: new Date(clock).toISOString(), payload };
+}
+
+/** groupDesk 是「Build the todo app」这组分工的快照：后端交给 Codex，前端交给 yoyo 并等后端。back 和 front 改写两个成员。 */
+function groupDesk(state: string, back: Record<string, any>, front: Record<string, any>): Record<string, any> {
+  const tickets = [
+    ticket({ id: "tkt-1", title: "Write the API", role: "Backend", agent: "codex", group: "grp-1", ...back }),
+    ticket({ id: "tkt-2", title: "Build the page", role: "Frontend", agent: "yoyo", group: "grp-1", dependsOn: ["tkt-1"], ...front }),
+  ];
+  const done = tickets.filter((row) => row.stage === "ended" && row.outcome === "completed").length;
+  return deskView(tickets, [{ id: "grp-1", mode: "split", title: "Build the todo app", session: "s1", tickets: ["tkt-1", "tkt-2"], state, done, total: 2, openedAt: minutesAgo(30), updatedAt: minutesAgo(1) }]);
+}
+
+/** before 在 a 出现在 b 前面时为真。两个都按测试标记和文字找第一个。 */
+async function before(page: Page, a: { testId: string; text?: string }, b: { testId: string; text?: string }): Promise<boolean> {
+  return page.evaluate(([x, y]) => {
+    const find = (q: { testId: string; text?: string }) => [...document.querySelectorAll(`[data-testid="${q.testId}"]`)].find((el) => !q.text || el.textContent?.includes(q.text));
+    const first = find(x);
+    const second = find(y);
+    return !!first && !!second && !!(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }, [a, b] as const);
+}
+
+const COMPLETED = { stage: "ended", action: "", outcome: "completed", updatedAt: minutesAgo(3) };
+
+test("two agents in one message bring a group card under the router's reply that folds member status in and collapses when done", async ({ page }) => {
+  const desk: Desk = { view: deskView([], []), acts: [], transcripts: {} };
+  const live: Record<string, any>[] = [];
+  await mockApi(page, "C:/tmp/ws", { sessions: SESSIONS, buddies: BUDDIES });
+  await mockDesk(page, desk);
+  await mockLive(page, live);
+  await page.goto("/");
+  const box = page.getByTestId("composer-input");
+  await expect(box).toHaveAttribute("contenteditable", "true", { timeout: 15_000 });
+  await box.click();
+  const list = page.getByRole("listbox", { name: "Mention suggestions" });
+  for (const typed of ["@cod", "@yoy"]) {
+    await box.pressSequentially(typed);
+    await expect(list.getByText("Agents", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press("Enter");
+  }
+  await expect(page.getByTestId("mention-chip")).toHaveCount(2);
+  await box.pressSequentially("build a todo app");
+  const sent = page.waitForRequest((r) => r.method() === "POST" && /\/api\/sessions\/[^/]+\/messages$/.test(new URL(r.url()).pathname));
+  await page.keyboard.press("Enter");
+  const text = String((await sent).postDataJSON()?.text || "");
+  expect(text).toContain("@agent:codex");
+  expect(text).toContain("@agent:yoyo");
+
+  desk.view = groupDesk("running", { openedAt: minutesAgo(5) }, { action: "queued", held: "deps" });
+  live.push(
+    event("tool_call", "agent", { id: "call-1", name: "task_split", arguments: "{\"mode\":\"split\"}" }),
+    event("assistant", "worker", {
+      id: "group:grp-1",
+      kind: "group",
+      group: "grp-1",
+      title: "Build the todo app",
+      mode: "split",
+      members: [
+        { ticket: "tkt-1", agent: "codex", agentName: "Codex", role: "Backend", title: "Write the API" },
+        { ticket: "tkt-2", agent: "yoyo", role: "Frontend", title: "Build the page", dependsOn: ["tkt-1"] },
+      ],
+      text: "Task group “Build the todo app” · split in 2",
+    }),
+    event("tool_result", "agent", { id: "call-1", name: "task_split", content: "Opened task group grp-1." }),
+    event("assistant", "agent", { id: "reply-1", text: "I split it in two: Codex writes the API, then yoyo builds the page." }),
+    event("turn_end", "runtime", { id: "end-1" }),
+  );
+  const card = page.getByTestId("group-card");
+  await expect(card).toHaveCount(1, { timeout: 15_000 });
+  await expect(card.getByTestId("group-card-title")).toHaveText("Build the todo app");
+  await expect(card).toContainText("Task group · Split");
+  await expect(card.getByTestId("group-card-progress")).toHaveText("0/2", { timeout: 10_000 });
+  await expect(card.locator(".progress-hairline .is-indeterminate")).toHaveCount(1);
+  const members = card.getByTestId("group-card-member");
+  await expect(members).toHaveCount(2);
+  await expect(members.nth(0)).toContainText("Codex · Backend");
+  await expect(members.nth(0).getByTestId("group-card-status")).toHaveText("Working · 5 min");
+  await expect(members.nth(1)).toContainText("yoyo · Frontend");
+  await expect(members.nth(1).getByTestId("group-card-status")).toHaveText("Waiting on Backend");
+  expect(await before(page, { testId: "agent-turn", text: "I split it in two" }, { testId: "group-card" })).toBe(true);
+
+  desk.view = groupDesk("attention", COMPLETED, { stage: "person", action: "answer", person: true, attention: "Should the page use dark mode?", openedAt: minutesAgo(2) });
+  live.push(
+    event("assistant", "worker", { id: "handoff:tkt-1:a", kind: "status", ticket: "tkt-1", state: "ready", agent: "codex", agentName: "Codex", group: "grp-1", role: "Backend", text: "The API is ready on port 8080." }),
+    event("assistant", "worker", { id: "handoff:tkt-2:b", kind: "handoff", ticket: "tkt-2", state: "question", group: "grp-1", role: "Frontend", text: "Should the page use dark mode?" }),
+  );
+  const ask = page.getByTestId("task-handoff");
+  await expect(ask).toBeVisible({ timeout: 15_000 });
+  await expect(ask.getByTestId("task-event-agent")).toContainText("yoyo · Frontend asks", { timeout: 10_000 });
+  await expect(ask.getByTestId("task-event-crumb")).toHaveText("Task group: Build the todo app");
+  await expect(page.getByTestId("task-status")).toHaveCount(0);
+  await expect(page.getByText("The API is ready on port 8080.")).toHaveCount(0);
+  await expect(card.getByTestId("group-card-progress")).toHaveText("1/2", { timeout: 10_000 });
+  await expect(members.nth(0).getByTestId("group-card-status")).toHaveText("Done");
+  await expect(members.nth(1).getByTestId("group-card-status")).toHaveText("Asking you");
+  await expect(card.getByTestId("group-card-ask")).toContainText("yoyo · Frontend asks: Should the page use dark mode?");
+  await card.getByTestId("group-card-answer").click();
+  await expect(page.getByTestId("task-read")).toContainText("Build the page");
+  await ask.getByTestId("task-event-crumb").click();
+  await expect(page.getByTestId("group-page").getByTestId("group-title")).toHaveText("Build the todo app");
+
+  desk.view = groupDesk("done", COMPLETED, { ...COMPLETED, updatedAt: minutesAgo(1) });
+  live.push(
+    event("context_injection", "wake", { id: "s1:context_injection:9", name: "wake", group: "grp-1", state: "done", title: "Build the todo app", text: "This is the report of task group grp-1, not something the person said." }),
+    event("assistant", "agent", { id: "reply-2", text: "Both parts are done: the API and the page are in the shared folder." }),
+    event("turn_end", "runtime", { id: "end-2" }),
+  );
+  const receipt = page.getByTestId("wake-receipt");
+  await expect(receipt).toHaveText("Task group “Build the todo app” is done", { timeout: 15_000 });
+  await expect(page.getByText("This is the report of task group grp-1")).toHaveCount(0);
+  await expect(card).toHaveAttribute("data-collapsed", "", { timeout: 10_000 });
+  await expect(card.getByTestId("group-card-summary")).toHaveText("Task group done · 2/2");
+  await expect(card.getByTestId("group-card-member")).toHaveCount(0);
+  expect(await before(page, { testId: "group-card" }, { testId: "wake-receipt" })).toBe(true);
+  expect(await before(page, { testId: "wake-receipt" }, { testId: "agent-turn", text: "Both parts are done" })).toBe(true);
+});
+
+test("a finished comparison collapses to the router's pick, and to the one the person picked once picked", async ({ page }) => {
+  const desk = compareDesk();
+  desk.view.groups[0].recommended = "tkt-4";
+  const history = [
+    event("user", "user", { id: "u1", text: "@agent:codex @agent:yoyo fix the login bug, each of you" }),
+    event("assistant", "worker", {
+      id: "group:grp-2",
+      kind: "group",
+      group: "grp-2",
+      title: "Fix the login bug",
+      mode: "compare",
+      members: [{ ticket: "tkt-4", agent: "codex", agentName: "Codex" }, { ticket: "tkt-5", agent: "yoyo" }],
+      text: "Task group “Fix the login bug” · compare 2",
+    }),
+    event("assistant", "agent", { id: "reply-1", text: "Codex and yoyo will each fix it, then I'll compare." }),
+  ].map((ev, i) => ({ ...ev, seq: i + 1 }));
+  await mockApi(page, "C:/tmp/ws", { sessions: SESSIONS, buddies: BUDDIES, events: history });
+  await mockDesk(page, desk, (body) => {
+    if (body.kind === "pick") Object.assign(desk.view.groups[0], { winner: body.ticketId });
+  });
+  await page.goto("/");
+  const card = page.getByTestId("group-card");
+  await expect(card.getByTestId("group-card-summary")).toHaveText("Task group done · 2/2 · Router recommends Codex", { timeout: 15_000 });
+  await card.click();
+  const columns = page.getByTestId("group-page").getByTestId("group-column");
+  await expect(columns).toHaveCount(2);
+  await expect(columns.nth(0).getByTestId("group-recommended")).toHaveText("Router's pick");
+  await expect(columns.nth(1).getByTestId("group-recommended")).toHaveCount(0);
+  await columns.nth(0).getByTestId("group-pick").click();
+  await expect(columns.nth(0).getByTestId("group-picked")).toHaveText("Picked");
+  await expect(columns.getByTestId("group-recommended")).toHaveCount(0);
+  await expect(card.getByTestId("group-card-summary")).toHaveText("Task group done · 2/2 · Picked Codex", { timeout: 10_000 });
 });
 
 test("a group opens in the middle, and a member opened there comes back to the group", async ({ page }) => {

@@ -1,5 +1,5 @@
 /**
- * 拥有：任务组页。分工时是按依赖排好的成员车道、最近的动态和共享目录；对比时是路由的比较和并排的成员列，可以采用其中一份。
+ * 拥有：任务组页。分工时是按依赖排好的成员车道、最近的动态和共享目录；对比时是路由的比较和并排的成员列，标出路由推荐的那一份，可以采用其中一份。
  * 头部有停止全部、重试没成的和去主会话。在侧栏里打开，也能放到中间。
  * 不拥有：成员怎么排、动态怎么取、时长怎么算（work-model.ts），也不拥有单张工单的会话（TaskPage.tsx）。
  */
@@ -319,6 +319,7 @@ function Column(props: {
   const v = list.find((row) => row.id === agent);
   const picked = props.group.winner === ticket.id;
   const faded = !!props.group.winner && !picked;
+  const recommended = !props.group.winner && props.group.recommended === ticket.id;
   const line = ticketLine(ticket);
   const dir = ticket.directory || "";
   const shown = (props.files ?? []).slice(0, COLUMN_FILES);
@@ -336,6 +337,11 @@ function Column(props: {
           <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-ui-caption font-medium text-accent" data-testid="group-picked">
             <Check className="size-3" aria-hidden />
             {t.picked}
+          </span>
+        ) : recommended ? (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full bg-lift px-2 py-0.5 text-ui-caption font-medium text-foreground/85" data-testid="group-recommended">
+            <StatusDot tone={memberTone(ticket)} />
+            {t.recommended}
           </span>
         ) : (
           <StatusDot tone={memberTone(ticket)} className="ml-auto" />

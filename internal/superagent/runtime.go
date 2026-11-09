@@ -752,9 +752,10 @@ func (rt *Runtime) Deliver() int {
 }
 
 // Act 执行编排台动作。kind 取 attach、assign、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、reassign、
-// pick、stopGroup、requestStatus、markUnrelated、follow 或 timeout。ticketID、triggerID、text 和 reason 按动作使用。
-// reassign 的 text 是新 agent，人在任务页选的，算点名。pick 和 stopGroup 的 text 是任务组，pick 的 ticketID 是采用的那张；
-// 因此停下的成员会被打断，并像 stop 一样写回主会话。成功后立刻泵一次派工并落盘。
+// pick、recommend、stopGroup、requestStatus、markUnrelated、follow 或 timeout。ticketID、triggerID、text 和 reason 按动作使用。
+// reassign 的 text 是新 agent，人在任务页选的，算点名。pick、recommend 和 stopGroup 的 text 是任务组，
+// pick 的 ticketID 是采用的那张，recommend 的是推荐的那张。pick 和 stopGroup 停下的成员会被打断，并像 stop 一样写回主会话。
+// 成功后立刻泵一次派工并落盘。
 func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	if rt == nil || rt.eng == nil {
 		return errCode("empty")
@@ -805,6 +806,8 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		err = rt.reassignLocked(ticketID, "", text, "", true)
 	case "pick":
 		halted, err = rt.eng.Pick(strings.TrimSpace(text), ticketID, reason)
+	case "recommend":
+		err = rt.eng.Recommend(strings.TrimSpace(text), ticketID)
 	case "stopGroup":
 		halted, err = rt.eng.StopGroup(strings.TrimSpace(text), reason)
 	case "requestStatus":

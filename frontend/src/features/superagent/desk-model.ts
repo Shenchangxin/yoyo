@@ -28,11 +28,12 @@ export type Ticket = {
 export type AgentLoad = { agent: string; running: number; queued: number };
 /**
  * Group 是交给几个 agent 一起做的一件事。mode 为 split（分工）或 compare（对比）；state 取 running、attention、done、failed、stopped。
- * tickets 按拆分时的顺序。done 是做完的成员数，winner 是对比里采用的工单，verdict 是路由最后的汇总。session 是发起它的主会话。
+ * tickets 按拆分时的顺序。done 是做完的成员数，winner 是对比里采用的工单，recommended 是路由比较后推荐的工单，
+ * verdict 是路由最后的汇总。session 是发起它的主会话。
  */
 export type Group = {
   id: string; mode: string; title: string; session?: string; tickets: string[];
-  state: string; done: number; total: number; winner?: string; verdict?: string; sharedDir?: string;
+  state: string; done: number; total: number; winner?: string; recommended?: string; verdict?: string; sharedDir?: string;
   openedAt?: string; updatedAt?: string;
 };
 export type Trigger = {

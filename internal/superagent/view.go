@@ -43,21 +43,23 @@ type View struct {
 }
 
 // GroupRow 是任务组一行。State 取 running、attention、done、failed、stopped。Done 是做完的成员数，Total 是成员数。
-// Tickets 按拆分时的顺序。OpenedAt 和 UpdatedAt 是 RFC3339，UpdatedAt 是成员最近一次变化或任务组结束的时刻。
+// Tickets 按拆分时的顺序。Recommended 是路由在对比里推荐的工单。OpenedAt 和 UpdatedAt 是 RFC3339，
+// UpdatedAt 是成员最近一次变化或任务组结束的时刻。
 type GroupRow struct {
-	ID        string   `json:"id"`
-	Mode      string   `json:"mode"`
-	Title     string   `json:"title"`
-	Session   string   `json:"session,omitempty"`
-	Tickets   []string `json:"tickets"`
-	State     string   `json:"state"`
-	Done      int      `json:"done"`
-	Total     int      `json:"total"`
-	Winner    string   `json:"winner,omitempty"`
-	Verdict   string   `json:"verdict,omitempty"`
-	SharedDir string   `json:"sharedDir,omitempty"`
-	OpenedAt  string   `json:"openedAt,omitempty"`
-	UpdatedAt string   `json:"updatedAt,omitempty"`
+	ID          string   `json:"id"`
+	Mode        string   `json:"mode"`
+	Title       string   `json:"title"`
+	Session     string   `json:"session,omitempty"`
+	Tickets     []string `json:"tickets"`
+	State       string   `json:"state"`
+	Done        int      `json:"done"`
+	Total       int      `json:"total"`
+	Winner      string   `json:"winner,omitempty"`
+	Recommended string   `json:"recommended,omitempty"`
+	Verdict     string   `json:"verdict,omitempty"`
+	SharedDir   string   `json:"sharedDir,omitempty"`
+	OpenedAt    string   `json:"openedAt,omitempty"`
+	UpdatedAt   string   `json:"updatedAt,omitempty"`
 }
 
 // AgentLoad 是一个 agent 的负载。yoyo 自带工人记在 yoyo 名下。
@@ -548,7 +550,7 @@ func groupRow(g *Group, tickets map[string]*Ticket, updated map[string]string) G
 	row := GroupRow{
 		ID: g.ID, Mode: g.Mode, Title: g.Title, Session: g.Session, Tickets: append([]string{}, g.Tickets...),
 		State: groupState(g, func(id string) *Ticket { return tickets[id] }), Total: len(g.Tickets),
-		Winner: g.Winner, Verdict: g.Verdict, SharedDir: g.SharedDir,
+		Winner: g.Winner, Recommended: g.Recommended, Verdict: g.Verdict, SharedDir: g.SharedDir,
 	}
 	if !g.Opened.IsZero() {
 		row.OpenedAt = g.Opened.UTC().Format(time.RFC3339)

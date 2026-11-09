@@ -30,7 +30,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-const routePrompt = `你是主会话的路由。你只有 task_route、task_split、task_pick、task_read、task_status、task_note、task_stop、memory_read、memory_write 和 memory_forget，不能改文件，也不能跑命令。
+const routePrompt = `你是主会话的路由。你只有 task_route、task_split、task_recommend、task_pick、task_read、task_status、task_note、task_stop、memory_read、memory_write 和 memory_forget，不能改文件，也不能跑命令。
 
 人明确让你记住一件事，或者说出关于自己的长期事实和偏好（称呼、语言、写法、代码风格、在做的项目），用 memory_write 记一条，用人的原意写成一句。不记推断出来的事，不记一次性的细节，不记密钥。人改口时，replaces 填旧的那一条的编号；memory_write 返回相近的旧记忆时，看清新的一句是不是推翻了它。带日子的安排照原话写，「明天」「下周三」会换成日期，过了日子就不再当成现在的事。记下之后在回复里用一句话说记下了什么。人要你忘掉时，先用 memory_read 找到编号，再用 memory_forget。
 
@@ -39,7 +39,7 @@ const routePrompt = `你是主会话的路由。你只有 task_route、task_spli
 工单可以交给不同的 agent，见每轮材料里的说明。材料里没提 agent 时 agent 留空，交给 yoyo 自己。
 
 一件事要几个 agent 一起做时用 task_split，开出一个任务组。mode 填 split：按分工拆成 2 到 6 份，每份的 brief 要能独立读懂，写清交付物和放在哪；几份会改同一个目录时划开互不重叠的区域，做不到就用 depends_on 让后面的等前面的做完。mode 填 compare：人要几个 agent 分别做同一件事再比较时用，agents 填 2 到 4 个不同的 agent，brief 写同一份完整说明；要在已有项目上改时，brief 里写先复制或用 git worktree 放到工单目录再改。拆完对人只说一两句怎么分的。
-任务组有了结果、或有成员要人处理时，会再叫你一次。那条消息是任务组的回报，不是人说的话，照它末尾写的做；要细节时用 task_read 读那张工单。对比的结果，人同意采用哪一份之后才用 task_pick 记下。人要停掉整组时，task_stop 填 group。
+任务组有了结果、或有成员要人处理时，会再叫你一次。那条消息是任务组的回报，不是人说的话，照它末尾写的做；要细节时用 task_read 读那张工单。对比的结果比较完后，用 task_recommend 记下你推荐哪一份；人同意采用哪一份之后才用 task_pick 记下。人要停掉整组时，task_stop 填 group。
 
 工人看不到这段对话。人的原话一般不会转给工人，只有工人在等回答时，原话会和你的 brief 一起送去。不要把人的短句原样贴进 brief。brief 按工人现在的状态写，不要每次都重写整张工单。
 
@@ -161,25 +161,26 @@ func ruleParam(raw any) []string {
 	}
 }
 
-// routerExtras 是不属于哪条会话时的十件路由工具。记下的记忆都算路由的推断，开出的任务组唤醒触发所在的桌面会话。
+// routerExtras 是不属于哪条会话时的十一件路由工具。记下的记忆都算路由的推断，开出的任务组唤醒触发所在的桌面会话。
 func (a *App) routerExtras() map[string]runtime.ExtraTool {
 	return a.routerExtrasFor("")
 }
 
-// routerExtrasFor 是主会话仅有的十件工具。写记忆时拿 sessionID 这条会话里当事人最近写的话核对出处；
+// routerExtrasFor 是主会话仅有的十一件工具。写记忆时拿 sessionID 这条会话里当事人最近写的话核对出处；
 // 在这里开出的任务组有了结果时唤醒 sessionID。
 func (a *App) routerExtrasFor(sessionID string) map[string]runtime.ExtraTool {
 	return map[string]runtime.ExtraTool{
-		"task_route":    a.routeTool(),
-		"task_split":    a.splitTool(sessionID),
-		"task_pick":     a.pickTool(),
-		"task_read":     a.readTool(),
-		"task_status":   a.statusTool(),
-		"task_note":     a.noteTool(),
-		"task_stop":     a.stopTool(),
-		"memory_read":   a.memoryTool(),
-		"memory_write":  a.memoryWriteTool(sessionID),
-		"memory_forget": a.memoryForgetTool(),
+		"task_route":     a.routeTool(),
+		"task_split":     a.splitTool(sessionID),
+		"task_recommend": a.recommendTool(),
+		"task_pick":      a.pickTool(),
+		"task_read":      a.readTool(),
+		"task_status":    a.statusTool(),
+		"task_note":      a.noteTool(),
+		"task_stop":      a.stopTool(),
+		"memory_read":    a.memoryTool(),
+		"memory_write":   a.memoryWriteTool(sessionID),
+		"memory_forget":  a.memoryForgetTool(),
 	}
 }
 

@@ -357,7 +357,7 @@ func (rt *Runtime) memberDigest(t Ticket, names map[string]string, now time.Time
 func wakeRules(mode, state string, members []Ticket) string {
 	switch {
 	case state == GroupDone && mode == GroupCompare:
-		return "对比做完了。按完成度、正确性、改动大小、耗时和花费比较各份结果，要细节用 task_read 读那张工单。给出推荐，问人要不要采用；人同意后用 task_pick 记下采用哪一份，要把结果合回项目时对采用的工单用 task_route continue。"
+		return "对比做完了。按完成度、正确性、改动大小、耗时和花费比较各份结果，要细节用 task_read 读那张工单。给出推荐，用 task_recommend 记下推荐的那一份，再问人要不要采用；人同意后用 task_pick 记下采用哪一份，要把结果合回项目时对采用的工单用 task_route continue。"
 	case state == GroupDone:
 		return "分工都做完了。用两三句话告诉人做成了什么、东西在哪、下一步可以做什么。不要再派工，除非人之前要求过。"
 	}

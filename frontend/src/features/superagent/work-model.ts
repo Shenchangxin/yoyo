@@ -305,6 +305,39 @@ export function durationLabel(minutes: number, phrases: { minutes: string; hours
   return fill(phrases.hours, { h: String(Math.floor(minutes / 60)), m: String(minutes % 60) });
 }
 
+/** MemberStatus 是主会话任务组卡片上成员那句状态要说的事。waiting 的 on 是还在等的前置，failed 的 reason 是最近一份报告。 */
+export type MemberStatus =
+  | { kind: "asks" | "needs" | "queued" | "done" | "stopped" | "depsFailed" }
+  | { kind: "working"; minutes: number | null }
+  | { kind: "waiting"; on: string[] }
+  | { kind: "failed"; reason: string };
+
+/**
+ * memberStatus 说清成员现在怎样。结束的分做成、停下和没成；挂着的分等前置和前置没完成；
+ * 等人的分在问你、没成（报了失败或卡住）和别的要你处理；其余是在做或排队。
+ */
+export function memberStatus(ticket: Ticket, members: Ticket[], now = Date.now()): MemberStatus {
+  if (ticket.stage === "ended") {
+    if (memberDone(ticket)) return { kind: "done" };
+    if (ticket.outcome === "stopped") return { kind: "stopped" };
+    return { kind: "failed", reason: ticketLine(ticket) };
+  }
+  if (ticket.held === "deps_failed") return { kind: "depsFailed" };
+  if (ticket.held) return { kind: "waiting", on: waitingOn(ticket, members) };
+  if (ticket.person) {
+    if (ticket.action === "answer") return { kind: "asks" };
+    if (ticket.action === "failed" || ticket.action === "blocked") return { kind: "failed", reason: ticketLine(ticket) };
+    return { kind: "needs" };
+  }
+  if (ticket.stage === "working" && ticket.action !== "queued") return { kind: "working", minutes: memberMinutes(ticket, members, now) };
+  return { kind: "queued" };
+}
+
+/** askingMember 是任务组里在等人回答的第一个成员，按依赖顺序找。没有时为空。 */
+export function askingMember(members: Ticket[]): Ticket | undefined {
+  return topoOrder(members).map((row) => row.ticket).find((ticket) => ticket.stage !== "ended" && !ticket.held && ticket.person && ticket.action === "answer");
+}
+
 /** manuscriptNames 从正文里认出可打开的文件名。不读文件。 */
 export function manuscriptNames(text: string): string[] {
   const found = text.match(/[^\s"'<>|]+?\.(?:csv|xlsx|xls|docx|doc|pdf|md|txt|pptx|png|jpe?g)/gi) ?? [];

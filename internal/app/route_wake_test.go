@@ -1,14 +1,16 @@
-// route_wake_test.go 锁住唤醒路由的一轮：没有用户行，任务组回报落成一条 wake 注入、回放时是一条用户消息；
+// route_wake_test.go 锁住唤醒路由的一轮：没有用户行，任务组回报落成一条带任务组标题的 wake 注入、回放时是一条用户消息；
 // 会话在跑、槽没放、有排队或应用暂停时稍后再试，不动人排着的话；没有了的会话回到主会话；
 // 做完了的任务组记下路由的最后一段话，别的状态不记。
 
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
 
+	"github.com/Shenchangxin/yoyo/internal/acp/acptest"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -65,6 +67,38 @@ func TestWakeTurnHasNoUserLine(t *testing.T) {
 	if len(msgs) < 2 || msgs[len(msgs)-2].Role != runtime.RoleUser || msgs[len(msgs)-2].Content != digest {
 		t.Fatalf("replay %+v", msgs)
 	}
+}
+
+// TestWakeCarriesGroupTitle 锁住 wake 注入带上任务组标题：主会话的唤醒回执直接写出是哪个任务组，任务组从快照里没了也一样。
+func TestWakeCarriesGroupTitle(t *testing.T) {
+	a, _ := openAgentsApp(t, acptest.Script{Caps: fakeCaps, OnPrompt: quietTurn}, "fake")
+	sess, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.intakeDesk(sess.ID, "t1", "@agent:fake 做个 todo 应用")
+	raw, _ := json.Marshal(todoSplit("desk:"+sess.ID+":t1", "todo"))
+	if res := a.routerExtrasFor(sess.ID)["task_split"].Call(string(raw)); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	g := a.orchestrator().View().Groups[0]
+	if err := a.launchWake(sess.ID, g.ID, superagent.GroupAttention, "回报", reply("要你决定。")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "wake turn", func() bool { return !a.runSlotHeld(sess.ID) })
+	evs, err := a.Traces.Read(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		if ev.Type == trace.TypeInject && ev.Source == "wake" {
+			if ev.Payload["title"] != "todo" || ev.Payload["group"] != g.ID || ev.Payload["state"] != superagent.GroupAttention {
+				t.Fatalf("wake %+v", ev.Payload)
+			}
+			return
+		}
+	}
+	t.Fatal("no wake injection")
 }
 
 // TestWakeWaitsForBusySession 锁住会话在跑、跑完槽还没放、有排队的回合或应用暂停时唤醒稍后再试，排着的回合原样留着；

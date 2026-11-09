@@ -181,21 +181,22 @@ type Decision struct {
 
 // Group 是一次拆给多个 agent 的工作。Mode 为 split（分工，可带依赖）或 compare（同一份说明各做一遍）。
 // Session 是发起它的桌面会话，唤醒路由时回到那里。Tickets 按拆分时的顺序。
-// Ended 非空表示人停掉了整组或采用了一份结果。Winner 是对比里采用的工单，Verdict 是路由最后的汇总。
-// Woke 是已经发过的唤醒标记，同一个标记只唤醒一次。
+// Ended 非空表示人停掉了整组或采用了一份结果。Winner 是对比里采用的工单，Recommended 是路由比较后推荐的工单，
+// Verdict 是路由最后的汇总。Woke 是已经发过的唤醒标记，同一个标记只唤醒一次。
 type Group struct {
-	ID        string
-	Mode      string
-	Title     string
-	Trigger   string
-	Session   string
-	Tickets   []string
-	SharedDir string `json:"SharedDir,omitempty"`
-	Opened    time.Time
-	Ended     *End     `json:"Ended,omitempty"`
-	Winner    string   `json:"Winner,omitempty"`
-	Verdict   string   `json:"Verdict,omitempty"`
-	Woke      []string `json:"Woke,omitempty"`
+	ID          string
+	Mode        string
+	Title       string
+	Trigger     string
+	Session     string
+	Tickets     []string
+	SharedDir   string `json:"SharedDir,omitempty"`
+	Opened      time.Time
+	Ended       *End     `json:"Ended,omitempty"`
+	Winner      string   `json:"Winner,omitempty"`
+	Recommended string   `json:"Recommended,omitempty"`
+	Verdict     string   `json:"Verdict,omitempty"`
+	Woke        []string `json:"Woke,omitempty"`
 }
 
 // Outbound 是准备发回渠道的一条消息。

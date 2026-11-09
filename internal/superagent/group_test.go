@@ -1,5 +1,5 @@
 // group_test.go 锁住任务组：拆分开出成员、共享目录和成员说明，坏的拆法什么都不改；有前置的成员挂着，前置做完带上结果放行，
-// 前置没做成就挂起、重试做成后再放行；整组的状态、同一个状态只唤醒一次和唤醒上限；停掉整组、对比采用一份；
+// 前置没做成就挂起、重试做成后再放行；整组的状态、同一个状态只唤醒一次和唤醒上限；停掉整组、对比采用一份、路由推荐只做标记；
 // 快照来回、旧快照照常能读；挂着的成员不会被启动；两份 yoyo 前后接着做完、只唤醒一次的验收；以及写给路由的摘要和 task_read 的详情。
 
 package superagent
@@ -621,6 +621,55 @@ func TestPickStopsOthers(t *testing.T) {
 	}
 	split, _ := receiveSplit(t, eng, deskAsk("m2", "分工"), twoParts())
 	if _, err := eng.Pick(split.ID, split.Tickets[0], ""); err == nil || err.Error() != "notCompare" {
+		t.Fatal(err)
+	}
+}
+
+// TestRecommendMarksOnly 锁住路由推荐只是标记：不停成员、不结束任务组，视图带出推荐的工单，之后照常能采用另一份；错误码和采用相同。
+func TestRecommendMarksOnly(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	req := SplitRequest{Mode: GroupCompare, Title: "登录页", Brief: "做一个登录页", Parts: []SplitPart{{Agent: "codex"}, {Agent: "claude"}}}
+	g, _ := receiveSplit(t, eng, deskAsk("m1", "比一比", "codex", "claude"), req)
+	if err := eng.Recommend("grp-404", g.Tickets[0]); err == nil || err.Error() != "unknownGroup" {
+		t.Fatal(err)
+	}
+	if err := eng.Recommend(g.ID, "tkt-404"); err == nil || err.Error() != "notMember" {
+		t.Fatal(err)
+	}
+	if err := eng.Recommend(g.ID, g.Tickets[1]); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := eng.Group(g.ID)
+	if got.Recommended != g.Tickets[1] || got.Ended != nil || got.Winner != "" {
+		t.Fatalf("group %+v", got)
+	}
+	for _, id := range g.Tickets {
+		if ticket, _ := eng.Ticket(id); ticket.Ended != nil {
+			t.Fatalf("%s ended %+v", id, ticket.Ended)
+		}
+	}
+	snap, _ := eng.Export()
+	if rows := buildView(snap, nil, "", "", 1).Groups; len(rows) != 1 || rows[0].Recommended != g.Tickets[1] {
+		t.Fatalf("view %+v", rows)
+	}
+	raw, _ := json.Marshal(snap)
+	var back Snapshot
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	restored := NewEngine(autoPolicy())
+	restored.Import(back)
+	if again, _ := restored.Group(g.ID); again.Recommended != g.Tickets[1] {
+		t.Fatalf("restored %+v", again)
+	}
+	if _, err := eng.Pick(g.ID, g.Tickets[0], ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Recommend(g.ID, g.Tickets[0]); err == nil || err.Error() != "groupEnded" {
+		t.Fatal(err)
+	}
+	split, _ := receiveSplit(t, eng, deskAsk("m2", "分工"), twoParts())
+	if err := eng.Recommend(split.ID, split.Tickets[0]); err == nil || err.Error() != "notCompare" {
 		t.Fatal(err)
 	}
 }

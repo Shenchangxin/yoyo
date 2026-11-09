@@ -876,6 +876,11 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	var wakeMeta map[string]any
 	if waking {
 		wakeMeta = map[string]any{"group": wake.Group, "state": wake.State}
+		if rt := a.orchestrator(); rt != nil {
+			if g, ok := rt.Group(wake.Group); ok && g.Title != "" {
+				wakeMeta["title"] = g.Title
+			}
+		}
 	}
 	routeNote := ""
 	if routing && !resume && !waking {

@@ -1,5 +1,5 @@
-// route_group.go 拥有路由这一侧的任务组工具：task_split 把一条触发开成任务组，task_pick 记下对比采用哪一份，
-// task_read 读一张工单的详情；以及 task_split 之后写进主会话的任务组卡片。
+// route_group.go 拥有路由这一侧的任务组工具：task_split 把一条触发开成任务组，task_recommend 记下对比推荐哪一份，
+// task_pick 记下对比采用哪一份，task_read 读一张工单的详情；以及 task_split 之后写进主会话的任务组卡片。
 // 不拥有任务组的状态、放行和唤醒（superagent 的 group.go 和 group_runtime.go），也不拥有唤醒那一轮（route_wake.go）。
 
 package app
@@ -297,6 +297,24 @@ func (a *App) pickTool() runtime.ExtraTool {
 			return "", groupActError(err, group, ticket)
 		}
 		return "采用了 " + ticket + "，任务组 " + group + " 里其他还在做的成员停下了。要把结果合回项目时，对 " + ticket + " 用 task_route continue。", nil
+	})
+}
+
+// recommendTool 在对比的任务组里记下路由推荐哪一份。界面在任务组卡片和对比页上标出来，不停任何成员。
+func (a *App) recommendTool() runtime.ExtraTool {
+	return routeExtra("task_recommend", "对比做完、比较之后，记下你推荐采用哪一份；界面会在任务组卡片和对比页上标出来。这不是采用：问过人、人同意后再用 task_pick。group 是任务组编号，ticket 是推荐的那张工单。", map[string]any{
+		"group":  map[string]any{"type": "string"},
+		"ticket": map[string]any{"type": "string"},
+	}, false, func(args map[string]any) (string, error) {
+		rt := a.orchestrator()
+		if rt == nil {
+			return "", fmt.Errorf("orchestrator unavailable")
+		}
+		group, ticket := strParam(args, "group"), strParam(args, "ticket")
+		if err := rt.Act("recommend", ticket, "", group, ""); err != nil {
+			return "", groupActError(err, group, ticket)
+		}
+		return "记下了：任务组 " + group + " 推荐 " + ticket + "。接着问人要不要采用。", nil
 	})
 }
 

@@ -1,6 +1,6 @@
 // route_group_test.go 锁住路由这一侧的任务组：task_split 校验每一份交给谁，坏的拆法给出能照着改的说明且什么都不开；
 // 合规时开出任务组和共享目录、回执写明每一份的状态并提醒没分到的 agent、写一次任务组卡片，成员的回报带上任务组和分工；
-// task_read 读到工人最后一段话；名单里写明任务组和在等谁；人点了几个 agent 时说明里提到 task_split，像要对比时点明 compare。
+// task_read 读到工人最后一段话；task_recommend 记下对比推荐哪一份；名单里写明任务组和在等谁；人点了几个 agent 时说明里提到 task_split，像要对比时点明 compare。
 
 package app
 
@@ -208,6 +208,30 @@ func TestTaskReadTool(t *testing.T) {
 	}
 	if res = read.Call(`{"ticket":"tkt-404"}`); res.Err == nil || res.Content != "没有工单 tkt-404" {
 		t.Fatalf("unknown ticket %+v", res)
+	}
+}
+
+// TestTaskRecommendTool 锁住 task_recommend 记下对比推荐的那一份而不结束任务组，视图带出推荐；不在组里的工单给出能照着改的说明。
+func TestTaskRecommendTool(t *testing.T) {
+	a, _ := openAgentsApp(t, acptest.Script{Caps: fakeCaps, OnPrompt: quietTurn}, "fake")
+	rt := a.orchestrator()
+	a.intakeDesk("s1", "t1", "@agent:fake 写个登录页，和 yoyo 比一比")
+	if _, err := split(a, map[string]any{"trigger": "desk:s1:t1", "mode": "compare", "title": "登录页", "brief": "在工单目录写 login.html。", "agents": []any{"fake", "yoyo"}}); err != nil {
+		t.Fatal(err)
+	}
+	g := rt.View().Groups[0]
+	recommend := a.routerExtras()["task_recommend"]
+	if recommend.ReadOnly {
+		t.Fatal("task_recommend writes to the group")
+	}
+	if res := recommend.Call(`{"group":"` + g.ID + `","ticket":"tkt-404"}`); res.Err == nil || res.Content != "tkt-404 不在任务组 "+g.ID+" 里" {
+		t.Fatalf("not a member %+v", res)
+	}
+	if res := recommend.Call(`{"group":"` + g.ID + `","ticket":"` + g.Tickets[1] + `"}`); res.Err != nil || !strings.Contains(res.Content, "推荐 "+g.Tickets[1]) {
+		t.Fatalf("recommend %+v", res)
+	}
+	if row := rt.View().Groups[0]; row.Recommended != g.Tickets[1] || row.Winner != "" || row.State == "stopped" {
+		t.Fatalf("row %+v", row)
 	}
 }
 

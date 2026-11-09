@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Item, ItemType } from "./protocol.ts";
-import { clipPreview, hasConversation, hydrateLayout, layoutRows, type AgentPart, type LayoutRow } from "./transcript-layout.ts";
+import {
+  clipPreview,
+  foldGroupStatus,
+  hasConversation,
+  hydrateLayout,
+  isGroupCardRow,
+  isMentionInject,
+  isWakeReceipt,
+  layoutRows,
+  type AgentPart,
+  type LayoutRow,
+} from "./transcript-layout.ts";
 import { presentationPolicyFor } from "./presentation-policy.ts";
 
 /**
- * 拥有：一个操作者回合如何收成一行、过程轨、产出和折叠的约定。
+ * 拥有：一个操作者回合如何收成一行、过程轨、产出和折叠的约定，以及主会话里任务组卡片、成员状态和唤醒回执排在哪里。
  * 不拥有：排版函数的实现，以及这些行的渲染。
  */
 
@@ -362,6 +373,94 @@ describe("layoutRows: desk notices stay their own row", () => {
     assert.equal(hasConversation([system]), false);
     assert.equal(hasConversation([brief, system]), true);
     assert.equal(hasConversation([user, brief]), true);
+  });
+});
+
+/** 一行里所有条目的 key，过程轨和工作块里的也算。 */
+function rowKeys(row: LayoutRow): string[] {
+  if (row.kind !== "agent") return [row.item.key];
+  const out: string[] = [];
+  const walk = (parts: AgentPart[]) => {
+    for (const part of parts) {
+      if (part.kind === "item" || part.kind === "stream") out.push(part.item.key);
+      else if (part.kind === "work") walk(part.parts);
+      else out.push(...part.items.map((it) => it.key));
+    }
+  };
+  walk(row.parts);
+  return out;
+}
+
+describe("layoutRows: task groups in the main chat", () => {
+  /** task_split 时写进主会话的任务组卡片。 */
+  const card = (group: string) => item({
+    key: `card:${group}`,
+    type: "assistant",
+    source: "worker",
+    text: "任务组「todo」· 分工 2 份",
+    payload: { id: `group:${group}`, kind: "group", group, title: "todo", mode: "split", members: [] },
+  });
+  /** 成员写回的进行中或做完。 */
+  const status = (key: string, group: string) => item({
+    key, type: "assistant", source: "worker", text: "接口写好了。", payload: { kind: "status", ticket: "tkt-1", state: "ready", group },
+  });
+  const split = [
+    item({ key: "split:call", type: "tool_call", name: "task_split", payload: { id: "split", name: "task_split", arguments: "{}" } }),
+    item({ key: "split:result", type: "tool_result", name: "task_split", text: "开了任务组 grp-1", payload: { id: "split", name: "task_split" } }),
+  ];
+  const wake = item({
+    key: "wake",
+    type: "context_injection",
+    source: "wake",
+    name: "wake",
+    text: "这是任务组 grp-1「todo」的回报，不是人说的话。",
+    payload: { name: "wake", group: "grp-1", state: "done", title: "todo" },
+  });
+
+  /** 卡片在 task_split 这次调用里写下，排在路由这一轮的回复后面；这一轮还在跑时也一样，路由那一行仍是最后一轮的内容。 */
+  it("puts the card after the router's reply", () => {
+    for (const running of [false, true]) {
+      const rows = layoutRows([user, split[0], card("grp-1"), split[1], assistant("a1", "拆成了两份。")], { running });
+      assert.deepEqual(rows.map((row) => row.kind), ["user", "agent", "agent"], `running ${running}`);
+      assert.deepEqual(rowKeys(rows[1]), ["split:call", "split:result", "a1"], `running ${running}`);
+      assert.equal(isGroupCardRow(rows[1]), false);
+      assert.equal(isGroupCardRow(rows[2]), true);
+      assert.ok(rows[2].kind === "agent" && rows[2].copyText === "", "a card row has nothing to copy");
+    }
+  });
+
+  /** 前面没有路由的条目时卡片直接成行；后面来了别的单独行时，卡片先落在路由那一行后面。 */
+  it("places the card before a later notice", () => {
+    assert.deepEqual(layoutRows([user, card("grp-1")]).map(isGroupCardRow), [false, true]);
+    const ask = item({ key: "ask", type: "assistant", source: "worker", text: "用哪个数据库？", payload: { kind: "handoff", ticket: "tkt-2", group: "grp-1" } });
+    const rows = layoutRows([user, split[0], card("grp-1"), split[1], ask]);
+    assert.deepEqual(rows.map(rowKeys), [["u1"], ["split:call", "split:result"], ["card:grp-1"], ["ask"]]);
+  });
+
+  /** 有卡片的任务组，成员的进行中和做完不再单独成行；没有卡片的任务组和单张工单照旧。 */
+  it("folds member status into the card", () => {
+    const items = [user, card("grp-1"), status("s1", "grp-1"), status("s2", "grp-9"), item({ ...status("s3", ""), payload: { kind: "status", ticket: "tkt-7", state: "ready" } })];
+    assert.deepEqual(foldGroupStatus(items).map((it) => it.key), ["u1", "card:grp-1", "s2", "s3"]);
+    assert.deepEqual(layoutRows(items).map(rowKeys), [["u1"], ["card:grp-1"], ["s2"], ["s3"]]);
+    const plain = [user, status("s2", "grp-9")];
+    assert.equal(foldGroupStatus(plain), plain);
+  });
+
+  /** 同一成员前一次提问被新的提问盖过后变成状态，也一起折进卡片；最新的提问照常成行。 */
+  it("folds an older member question once a newer one arrives", () => {
+    const ask = (key: string) => item({ key, type: "assistant", source: "worker", text: key, payload: { kind: "handoff", ticket: "tkt-2", group: "grp-1" } });
+    assert.deepEqual(layoutRows([card("grp-1"), ask("q1"), ask("q2")]).map(rowKeys), [["card:grp-1"], ["q2"]]);
+  });
+
+  /** 唤醒回执单独成行，不折进用户气泡，也不进路由那一轮；路由的回复跟在后面。 */
+  it("gives the wake receipt its own row before the router's reply", () => {
+    assert.equal(isWakeReceipt(wake), true);
+    assert.equal(isMentionInject(wake), false);
+    const mention = item({ key: "m", type: "context_injection", source: "mention", text: "@a.ts" });
+    assert.equal(isMentionInject(mention), true);
+    const rows = layoutRows([user, assistant("a1", "拆成了两份。"), wake, assistant("a2", "两份都做完了。")]);
+    assert.deepEqual(rows.map((row) => row.kind), ["user", "agent", "solo", "agent"]);
+    assert.deepEqual(rows.map(rowKeys), [["u1"], ["a1"], ["wake"], ["a2"]]);
   });
 });
 

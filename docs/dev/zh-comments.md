@@ -1585,3 +1585,5 @@
 - [ ] `frontend/src/features/superagent/GroupRow.tsx`
 - [ ] `frontend/src/features/superagent/GroupPage.tsx`
 - [ ] `frontend/e2e/multi-agent.spec.ts`
+- [ ] `frontend/src/features/transcript/GroupCard.tsx`
+- [ ] `frontend/src/features/transcript/WakeReceipt.tsx`

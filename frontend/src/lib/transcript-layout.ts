@@ -57,9 +57,14 @@ export function isSteer(it: Item): boolean {
   return it.type === "user" && it.source === "steer";
 }
 
-/** isMentionInject 提及注入折进用户气泡，不单独成一轮。技能注入除外。it 读取 type、source。 */
+/** isMentionInject 提及注入折进用户气泡，不单独成一轮。技能注入和任务组的唤醒回执除外。it 读取 type、source。 */
 export function isMentionInject(it: Item): boolean {
-  return it.type === "context_injection" && it.source !== "skill";
+  return it.type === "context_injection" && it.source !== "skill" && it.source !== "wake";
+}
+
+/** isWakeReceipt 是任务组唤醒路由时落下的回报。它单独成一行画成回执，不进用户气泡，也不进路由那一轮的过程轨。 */
+export function isWakeReceipt(it: Item): boolean {
+  return it.type === "context_injection" && it.source === "wake";
 }
 
 /** liveAutoSkills 这一段里自动载入的技能名。同名只留一次。items 读取 length，为空时不读，用来遍历。 */
@@ -140,7 +145,7 @@ export function classifyToolPairs(pairs: ToolPair[]): Map<string, "artifact" | "
 
 /** isProcessItem 进过程轨的条目：推理、上下文注入，以及非产出的工具。提及注入和子代理不算。it 的 type 为 subagent 时返回假，其余分支还看别的条件；传给 isMentionInject，传给 isToolish，传给 isOutcomeTool。 */
 export function isProcessItem(it: Item): boolean {
-  if (isMentionInject(it)) return false;
+  if (isMentionInject(it) || isWakeReceipt(it)) return false;
   if (it.type === "reasoning" || it.type === "context_injection") return true;
   if (it.type === "subagent") return false;
   return isToolish(it) && !isOutcomeTool(it);
@@ -222,6 +227,31 @@ export function isTaskStatus(it: Item): boolean {
   return it.payload?.kind === "status";
 }
 
+/** isGroupCard 是 task_split 之后写进主会话的任务组卡片。它自己成一行，规则同 isDeskNotice。 */
+export function isGroupCard(it: Item): boolean {
+  if (it.type !== "assistant") return false;
+  return it.payload?.kind === "group";
+}
+
+/** isGroupCardRow 是只放一张任务组卡片的那一行。它接在路由的回复后面，不算最后一轮，也不另画头像。 */
+export function isGroupCardRow(row: LayoutRow): boolean {
+  if (row.kind !== "agent" || row.parts.length !== 1) return false;
+  const part = row.parts[0];
+  return part.kind === "item" && isGroupCard(part.item);
+}
+
+/** foldGroupStatus 去掉已经有任务组卡片的成员写回的进行中和做完，它们的状态在卡片里看。等人接手的报告照常单独成行。 */
+export function foldGroupStatus(items: Item[]): Item[] {
+  const carded = new Set<string>();
+  for (const it of items) {
+    const group = isGroupCard(it) ? String(it.payload?.group || "") : "";
+    if (group) carded.add(group);
+  }
+  if (!carded.size) return items;
+  const out = items.filter((it) => !isTaskStatus(it) || !carded.has(String(it.payload?.group || "")));
+  return out.length === items.length ? items : out;
+}
+
 /** hasConversation 主循环里已经有用户能看见的记录。看不见的系统噪声不算，免得启动后把问候拆掉。 */
 export function hasConversation(items: Item[]): boolean {
   for (const it of items) {
@@ -240,9 +270,9 @@ export function hasConversation(items: Item[]): boolean {
   return false;
 }
 
-/** isAgentItem 属于智能体回合的条目。提及注入不算。it 读取 type，传给 isMentionInject，传给 isToolish，传给 isSteer。 */
+/** isAgentItem 属于智能体回合的条目。提及注入和唤醒回执不算。it 读取 type，传给 isMentionInject，传给 isToolish，传给 isSteer。 */
 export function isAgentItem(it: Item): boolean {
-  if (isMentionInject(it)) return false;
+  if (isMentionInject(it) || isWakeReceipt(it)) return false;
   return (
     it.type === "assistant" ||
     it.type === "reasoning" ||
@@ -659,24 +689,35 @@ export function hydrateLayout(rows: LayoutRow[], items: Item[]): LayoutRow[] {
   });
 }
 
-/** layoutRows 一个操作者回合一行。用户之间的助手正文和工具留在同一行。items 用来遍历。opts 读取 showThinking、policy、running，为空时不读。 */
+/**
+ * layoutRows 一个操作者回合一行。用户之间的助手正文和工具留在同一行。items 用来遍历。opts 读取 showThinking、policy、running，为空时不读。
+ * 任务组卡片在 task_split 这次调用里就写下了，那时路由还没说完；它等这一轮收起后再成行，排在路由的回复后面。
+ */
 export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
-  items = foldAsks(items);
+  items = foldGroupStatus(foldAsks(items));
   const rows: LayoutRow[] = [];
   let agent: Item[] = [];
+  let cards: Item[] = [];
   let turnKey = "";
-  /** 把积下的智能体条目收成一行。live 表示这行仍在进行，nextUser 表示后面已经有下一条用户消息。 */
+  /** 把一条条目单独收成一行智能体回合。 */
+  const pushAlone = (it: Item, copyText: string) => {
+    rows.push({ key: `turn:${it.key}`, kind: "agent", parts: [{ key: it.key, kind: "item", item: it }], copyText, turnKey });
+  };
+  /** 把积下的智能体条目收成一行，再放下等着的任务组卡片。live 表示这行仍在进行，nextUser 表示后面已经有下一条用户消息。 */
   const flushAgent = (live: boolean, nextUser: boolean) => {
-    if (!agent.length) return;
-    const partOpts: LayoutOpts = { running: live, showThinking: opts?.showThinking, policy: opts?.policy, nextUser };
-    rows.push({
-      key: `turn:${agent[0].key}`,
-      kind: "agent",
-      parts: wrapTurnWork(layoutAgentParts(agent, partOpts), partOpts),
-      copyText: agentCopyText(agent),
-      turnKey,
-    });
-    agent = [];
+    if (agent.length) {
+      const partOpts: LayoutOpts = { running: live, showThinking: opts?.showThinking, policy: opts?.policy, nextUser };
+      rows.push({
+        key: `turn:${agent[0].key}`,
+        kind: "agent",
+        parts: wrapTurnWork(layoutAgentParts(agent, partOpts), partOpts),
+        copyText: agentCopyText(agent),
+        turnKey,
+      });
+      agent = [];
+    }
+    for (const card of cards) pushAlone(card, "");
+    cards = [];
   };
   for (const it of items) {
     if (it.type === "user" && (it.source === "job" || it.name === "job")) continue;
@@ -698,15 +739,14 @@ export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
       agent.push(it);
       continue;
     }
+    if (isGroupCard(it)) {
+      if (agent.length) cards.push(it);
+      else pushAlone(it, "");
+      continue;
+    }
     if (isDeskNotice(it) || isHandoff(it) || isTaskStatus(it)) {
       flushAgent(false, false);
-      rows.push({
-        key: `turn:${it.key}`,
-        kind: "agent",
-        parts: [{ key: it.key, kind: "item", item: it }],
-        copyText: it.text.trim(),
-        turnKey,
-      });
+      pushAlone(it, it.text.trim());
       continue;
     }
     if (isAgentItem(it)) {
