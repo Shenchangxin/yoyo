@@ -446,8 +446,31 @@ func (c *Client) Logout(ctx context.Context) error {
 	return err
 }
 
+// SetModel 用 session/set_model 换模型。对方不认这个方法时返回 -32601 的 RPCError。
+func (c *Client) SetModel(ctx context.Context, sessionID, modelID string) error {
+	return c.call(ctx, "session/set_model", struct {
+		SessionID string `json:"sessionId"`
+		ModelID   string `json:"modelId"`
+	}{sessionID, modelID}, nil)
+}
+
+// SetConfigOption 用 session/set_config_option 改一项会话设置，例如 category 为 model 的那一项。
+func (c *Client) SetConfigOption(ctx context.Context, sessionID, configID, value string) error {
+	return c.call(ctx, "session/set_config_option", struct {
+		SessionID string `json:"sessionId"`
+		ConfigID  string `json:"configId"`
+		Value     string `json:"value"`
+	}{sessionID, configID, value}, nil)
+}
+
 // Close 能关会话就先发 session/close，再关 stdin，两秒后杀整棵进程树。重复调用只做一次。
-func (c *Client) Close() error {
+func (c *Client) Close() error { return c.shutdown(true) }
+
+// Suspend 和 Close 一样停掉进程，但不发 session/close，会话留给下次 resume 或 load。空闲回收和应用退出用它。
+func (c *Client) Suspend() error { return c.shutdown(false) }
+
+// shutdown 是 Close 和 Suspend 的实现。closeSessions 为真且对方声明了 close 时先逐个关会话。
+func (c *Client) shutdown(closeSessions bool) error {
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -459,7 +482,7 @@ func (c *Client) Close() error {
 		open = append(open, id)
 	}
 	c.mu.Unlock()
-	if c.init.AgentCapabilities.SessionCapabilities.Close {
+	if closeSessions && bool(c.init.AgentCapabilities.SessionCapabilities.Close) {
 		for _, id := range open {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			_ = c.conn.Call(ctx, "session/close", SessionIDParams{SessionID: id}, nil)

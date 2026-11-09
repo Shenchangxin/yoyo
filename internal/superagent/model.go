@@ -145,6 +145,11 @@ type Ticket struct {
 	Agent string `json:"Agent,omitempty"`
 	// AgentPinned 为真表示人用 @ 点名了 Agent，离线时不擅自换人。
 	AgentPinned bool `json:"AgentPinned,omitempty"`
+	// Pointer 是外部 agent 的会话编号，重启或重连后用它续接。PointerOf 记它属于哪个 agent，换了人就不再用。
+	Pointer   string `json:"Pointer,omitempty"`
+	PointerOf string `json:"PointerOf,omitempty"`
+	// Usage 是外部 agent 最近一次报的用量。
+	Usage *Usage `json:"Usage,omitempty"`
 }
 
 // Decision 是一次评估结果。Kind 为 accept、stop、ignore、unavailable。

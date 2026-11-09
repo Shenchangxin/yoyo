@@ -158,10 +158,13 @@ func TestPrefsValidation(t *testing.T) {
 	}
 }
 
-// TestRedactText 锁住已知密钥值、Bearer、key=value 形式和 *_KEY= 赋值都会被打码。
+// TestRedactText 锁住已知密钥值、Bearer、key=value 形式和 *_KEY= 赋值都会被打码，导出的 Redact 结果相同。
 func TestRedactText(t *testing.T) {
 	in := "boom sk-alpha-123456 Authorization: Bearer abc.def.ghi token=t0p api_key=zzz OPENAI_API_KEY=sk-proj-xyz done"
 	out := redactText(in, "sk-alpha-123456")
+	if Redact(in, "sk-alpha-123456") != out {
+		t.Fatal("Redact differs from redactText")
+	}
 	for _, leak := range []string{"sk-alpha-123456", "abc.def.ghi", "t0p", "zzz", "sk-proj-xyz"} {
 		if strings.Contains(out, leak) {
 			t.Errorf("leaked %s in %s", leak, out)

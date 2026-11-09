@@ -130,6 +130,10 @@ type Executor struct {
 	Opener Opener
 	// AgentLimit 返回 agent 同时最多跑几张工单。为 nil 或返回小于 1 时只受 Slots 限制。
 	AgentLimit func(agent string) int
+	// AgentName 返回 agent 给人看的名字。为 nil 或返回空串时用编号。
+	AgentName func(agent string) string
+	// Roots 返回这张工单除工作目录外可读写的目录，例如任务说明里点名的目录。外部工人的说明和目录限制都用它。
+	Roots func(ticketID string) []string
 
 	mu sync.Mutex
 	// agents 是 yoyo 自带工人的代理，workers 是外部工人。同一张工单只在其中一张表里。
@@ -421,15 +425,27 @@ func assignmentAgent(ticket Ticket, asgID string) string {
 // 外部工人没有 jobs 和 wait；它的后台命令由 agent 自己管。
 func (e *Executor) openWorker(ticketID, asgID, agent string, ticket Ticket, dir string) (Worker, func() int, func(time.Duration), error) {
 	if externalAgent(agent) && e.Opener != nil {
+		if cur, ok := e.Engine.Ticket(ticketID); ok {
+			ticket = cur
+		}
 		spec := WorkerSpec{
 			TicketID:     ticketID,
 			AssignmentID: asgID,
 			Agent:        agent,
 			Pinned:       ticket.AgentPinned,
 			Dir:          dir,
-			System:       workerPrompt(e, dir, ticketID),
 			Tools:        e.orchestratorTools(ticketID, false),
+			OnPointer:    func(pointer string) { e.Engine.SetPointer(ticketID, agent, pointer) },
+			OnUsage:      func(usage Usage) { e.Engine.SetUsage(ticketID, usage) },
+			OnAttention:  func(text string) { e.Engine.SetApprovalWait(ticketID, text) },
 		}
+		if ticket.PointerOf == agentKey(agent) {
+			spec.Pointer = ticket.Pointer
+		}
+		if e.Roots != nil {
+			spec.Roots = e.Roots(ticketID)
+		}
+		spec.System = externalWorkerPrompt(e, spec)
 		w, err := e.Opener(context.Background(), spec)
 		if err != nil {
 			return nil, nil, nil, err
@@ -538,7 +554,7 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 				w.Followup(dsh.UserMessage{Text: workerContinueNudge, Source: "retry"})
 				continue
 			}
-			e.settle(ticketID)
+			e.settle(ticketID, w)
 			return
 		}
 		if deadline.IsZero() {
@@ -596,8 +612,15 @@ func (e *Executor) openWork(ticketID string) bool {
 }
 
 // settle 在一轮做完且没有后台命令时，补一条 waiting。上一份完成报告之后又有新输入时，也要记下这一轮已经停下。
-func (e *Executor) settle(ticketID string) {
-	e.park(ticketID, "这一轮做完了，在等下一条消息")
+// 外部工人常常不写报告，这时摘要用它最后一段正文。
+func (e *Executor) settle(ticketID string, w Worker) {
+	summary := "这一轮做完了，在等下一条消息"
+	if w != nil && w.Caps().External {
+		if text := lastAssistantText(w); text != "" {
+			summary = clipRunes(text, 200)
+		}
+	}
+	e.park(ticketID, summary)
 }
 
 // park 用 summary 补一条 waiting，把这一轮记成停下。工单已经结束，或上一份停下的报告之后没有新输入时不补。
@@ -690,10 +713,24 @@ func (e *Executor) ackSnapshot(ticketID string, ticket Ticket) {
 }
 
 // afterTurn 看 w 的上一回合。暂时失败时再开一次并返回 again。其他失败记下 failed 并返回 stop。
+// 外部工人一轮超时记 waiting，要登录记 blocked，都返回 stop。
 func (e *Executor) afterTurn(w Worker, ticketID string, tries *int) (stop, again bool) {
 	kind, reason := lastTurnEnd(w)
+	if kind == "aborted" && reason == ReasonTurnTimeout {
+		summary := "单轮超时，已停下"
+		if n := w.Caps().TurnMinutes; n > 0 {
+			summary = fmt.Sprintf("单轮超过 %d 分钟，已停下", n)
+		}
+		e.stopWith(ticketID, Report{State: "waiting", Summary: summary})
+		return true, false
+	}
 	if kind != "error" {
 		return false, false
+	}
+	if strings.HasPrefix(reason, ReasonAuthRequired) {
+		name := e.agentName(e.agentOf(ticketID))
+		e.stopWith(ticketID, Report{State: "blocked", Summary: name + " 需要登录", Question: name + " 需要登录。去 Buddy 登录后回复继续。"})
+		return true, false
 	}
 	if tries != nil && *tries < 3 && passingError(reason) {
 		*tries++
@@ -715,6 +752,34 @@ func (e *Executor) afterTurn(w Worker, ticketID string, tries *int) (stop, again
 		}
 	}
 	return true, false
+}
+
+// stopWith 记下 report。它该回到主会话时再交给 OnReport。
+func (e *Executor) stopWith(ticketID string, report Report) {
+	if e.Engine == nil || e.Engine.Report(ticketID, report) != nil {
+		return
+	}
+	if e.OnReport != nil && terminalReport(report.State, report.Question) {
+		e.OnReport(ticketID, report.State, report.Summary, report.Question)
+	}
+}
+
+// agentOf 返回 ticketID 当前工人所属的 agent，dsh 代理和还没有工人时为 yoyo。
+func (e *Executor) agentOf(ticketID string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.agentOfLocked(ticketID)
+}
+
+// agentName 返回 agent 给人看的名字。没有 AgentName 或它返回空串时用编号。
+func (e *Executor) agentName(agent string) string {
+	agent = agentKey(agent)
+	if e.AgentName != nil {
+		if name := strings.TrimSpace(e.AgentName(agent)); name != "" {
+			return name
+		}
+	}
+	return agent
 }
 
 // askReport 把「做完了，但还有问题」收成等人。ready 会结束工单，问题就不能写回主会话。
@@ -840,7 +905,7 @@ func (e *Executor) wake(ticketID string, w Worker, text string) {
 		}
 		break
 	}
-	e.settle(ticketID)
+	e.settle(ticketID, w)
 }
 
 // planStillOpen 在这张工单的计划文件里还有未完成步骤时为真。没有计划文件时为假。

@@ -431,18 +431,42 @@ func (e *Executor) storeAgent(w Worker, ticketID string) {
 	e.LogSave(ticketID, body)
 }
 
-// passingError 在失败是暂时的网络或服务端限流时为真。准备命令失败不算。
+// passingError 在失败是暂时的网络或服务端限流时为真。外部 agent 进程退出也算，重试时工人会重连并续接。准备命令失败不算。
 func passingError(err string) bool {
 	text := strings.ToLower(err)
 	if text == "" {
 		return false
 	}
-	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "connection closed", "broken pipe", "eof", "temporarily"} {
+	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "connection closed", "broken pipe", "eof", "temporarily", "agent exited", "process exited"} {
 		if strings.Contains(text, part) {
 			return true
 		}
 	}
 	return false
+}
+
+// lastAssistantText 返回 w 最后一个回合里最后一段助手正文。那一回合没有正文时为空串。
+func lastAssistantText(w Worker) string {
+	if w == nil || w.Session() == nil {
+		return ""
+	}
+	events := w.Session().Events()
+	turn := -1
+	for i := len(events) - 1; i >= 0; i-- {
+		ev := events[i]
+		if turn < 0 {
+			turn = ev.Turn
+		}
+		if ev.Turn != turn {
+			break
+		}
+		if msg, ok := ev.Data.(dsh.Assistant); ok && ev.Type == dsh.EventAssistant {
+			if text := strings.TrimSpace(msg.Text); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
 }
 
 // lastTurnEnd 返回 w 日志里最后一次回合结束。没有时两个都是空串。

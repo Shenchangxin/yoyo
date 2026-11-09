@@ -1,4 +1,5 @@
-// worker_test.go 锁住 Worker 缝：外部工人经 Opener 打开、用 orchestrator 工具报告、只催一次、插话退回排队、按 agent 限并行、工单结束后关掉。
+// worker_test.go 锁住 Worker 缝：外部工人经 Opener 打开、用 orchestrator 工具报告、只催一次、插话退回排队、按 agent 限并行、工单结束后关掉，
+// 以及外部工人的单轮超时、要求登录、进程退出重试、停下摘要、续接编号和回调。
 
 package superagent
 
@@ -6,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,6 +28,9 @@ type fakeWorker struct {
 	steers  int
 	closed  atomic.Bool
 	onTurn  func(w *fakeWorker, msg dsh.UserMessage)
+	// end 不为 nil 时，这一轮按它结束，用过就清掉。minutes 是 Caps 报的单轮上限。
+	end     *dsh.TurnEnd
+	minutes int
 }
 
 // newFakeWorker 用 spec 里的工具建一个假工人。onTurn 为 nil 时这一轮什么都不做。
@@ -47,7 +53,29 @@ func (w *fakeWorker) Followup(msg dsh.UserMessage) {
 	if w.onTurn != nil {
 		w.onTurn(w, msg)
 	}
-	w.session.Append(dsh.EventTurnEnd, turn, 0, dsh.TurnEnd{Kind: "completed"})
+	end := dsh.TurnEnd{Kind: "completed"}
+	w.mu.Lock()
+	if w.end != nil {
+		end = *w.end
+		w.end = nil
+	}
+	w.mu.Unlock()
+	w.session.Append(dsh.EventTurnEnd, turn, 0, end)
+}
+
+// endWith 让这一轮按 kind 和 reason 结束。
+func (w *fakeWorker) endWith(kind, reason string) {
+	w.mu.Lock()
+	w.end = &dsh.TurnEnd{Kind: kind, Reason: reason}
+	w.mu.Unlock()
+}
+
+// say 在这一轮写一段助手正文。
+func (w *fakeWorker) say(text string) {
+	w.mu.Lock()
+	turn := w.turn
+	w.mu.Unlock()
+	w.session.Append(dsh.EventAssistant, turn, 1, dsh.Assistant{Text: text})
 }
 
 // Steer 记一次插话并返回假，像 ACP 一样不支持。
@@ -79,7 +107,7 @@ func (w *fakeWorker) Restore(events []dsh.Event, turn int) {
 }
 
 // Caps 是外部工人的能力：只催一次，不查计划。
-func (w *fakeWorker) Caps() WorkerCaps { return WorkerCaps{Nudges: 1, External: true} }
+func (w *fakeWorker) Caps() WorkerCaps { return WorkerCaps{Nudges: 1, External: true, TurnMinutes: w.minutes} }
 
 // Close 记下已经关掉。
 func (w *fakeWorker) Close() error {
@@ -326,5 +354,217 @@ func TestClosedWhenTicketEnds(t *testing.T) {
 	ex.Sweep()
 	if !parked.closed.Load() || ex.HasAgent(idle) {
 		t.Fatal("the sweep should close a stopped ticket's worker")
+	}
+}
+
+// notLive 在 ticketID 这一轮已经停下时为真。
+func notLive(ex *Executor, ticketID string) bool {
+	ex.mu.Lock()
+	defer ex.mu.Unlock()
+	return !ex.live[ticketID]
+}
+
+// TestTurnTimeoutParks 锁住外部工人一轮超时后记成 waiting，摘要带上分钟数，不催也不当失败。
+func TestTurnTimeoutParks(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	ex := NewExecutor(eng, NewSlots(1), nil)
+	opened := make(chan *fakeWorker, 1)
+	ex.Opener = func(_ context.Context, spec WorkerSpec) (Worker, error) {
+		w := newFakeWorker(spec, func(w *fakeWorker, _ dsh.UserMessage) { w.endWith("aborted", ReasonTurnTimeout) })
+		w.minutes = 45
+		opened <- w
+		return w, nil
+	}
+	id := accept(t, eng, "m1")
+	setAgent(eng, id, "codex")
+	if err := ex.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	w := <-opened
+	waitFor(t, "parked", func() bool { return notLive(ex, id) && lastSummary(eng, id) == "单轮超过 45 分钟，已停下" })
+	if got := w.messages(); len(got) != 1 {
+		t.Fatalf("a timed-out turn is not nudged: %+v", got)
+	}
+	if ticket, _ := eng.Ticket(id); ticket.Ended != nil {
+		t.Fatalf("ticket ended: %+v", ticket.Ended)
+	}
+}
+
+// TestAuthRequiredAsksLogin 锁住 agent 要求登录时报 blocked，问题带上 agent 的名字并交给 OnReport，不重试。
+func TestAuthRequiredAsksLogin(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	ex := NewExecutor(eng, NewSlots(1), nil)
+	ex.AgentName = func(agent string) string {
+		if agent == "codex" {
+			return "Codex"
+		}
+		return ""
+	}
+	var mu sync.Mutex
+	var relayed []string
+	ex.OnReport = func(_, state, _, question string) {
+		mu.Lock()
+		relayed = append(relayed, state+"|"+question)
+		mu.Unlock()
+	}
+	opened := make(chan *fakeWorker, 1)
+	ex.Opener = openWith(opened, func(w *fakeWorker, _ dsh.UserMessage) {
+		w.endWith("error", ReasonAuthRequired+": Authentication required")
+	})
+	id := accept(t, eng, "m1")
+	setAgent(eng, id, "codex")
+	if err := ex.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	w := <-opened
+	want := "Codex 需要登录。去 Buddy 登录后回复继续。"
+	waitFor(t, "relay", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(relayed) == 1
+	})
+	waitFor(t, "stopped", func() bool { return notLive(ex, id) })
+	mu.Lock()
+	got := relayed[0]
+	mu.Unlock()
+	ticket, _ := eng.Ticket(id)
+	if got != "blocked|"+want || ticket.Attention != want || ticket.Ended != nil || len(w.messages()) != 1 {
+		t.Fatalf("relayed %q attention %q messages %d", got, ticket.Attention, len(w.messages()))
+	}
+}
+
+// TestAgentExitRetries 锁住外部 agent 进程退出算暂时失败：同一个工人再开一轮，做完照常结束工单。
+func TestAgentExitRetries(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	ex := NewExecutor(eng, NewSlots(1), nil)
+	opened := make(chan *fakeWorker, 1)
+	ex.Opener = openWith(opened, func(w *fakeWorker, msg dsh.UserMessage) {
+		switch msg.Source {
+		case "assignment":
+			w.endWith("error", "agent exited: 1 panic: boom")
+		case "retry":
+			w.report("ready", "重连后做完了")
+		}
+	})
+	id := accept(t, eng, "m1")
+	setAgent(eng, id, "codex")
+	if err := ex.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	w := <-opened
+	waitOutcome(t, eng, id, "completed")
+	got := w.messages()
+	if len(got) != 2 || got[1].Source != "retry" || !strings.Contains(got[1].Text, "agent exited") {
+		t.Fatalf("messages = %+v", got)
+	}
+}
+
+// TestPassingErrorCoversAgentExit 锁住进程退出算暂时失败，要登录和拒答不算。
+func TestPassingErrorCoversAgentExit(t *testing.T) {
+	for text, want := range map[string]bool{
+		"agent exited: 1 boom":         true,
+		"process exited unexpectedly":  true,
+		"read tcp: connection reset":   true,
+		ReasonAuthRequired + ": login": false,
+		"refusal":                      false,
+	} {
+		if passingError(text) != want {
+			t.Errorf("passingError(%q) != %v", text, want)
+		}
+	}
+}
+
+// TestExternalSettleUsesLastText 锁住外部工人没写报告时，停下的摘要用最后一回合的最后一段正文，按字截到 200。
+func TestExternalSettleUsesLastText(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	ex := NewExecutor(eng, NewSlots(1), nil)
+	long := strings.Repeat("改", 250)
+	ex.Opener = openWith(nil, func(w *fakeWorker, msg dsh.UserMessage) {
+		if msg.Source == "retry" {
+			w.say(long)
+			return
+		}
+		w.say("先看一下目录")
+	})
+	id := accept(t, eng, "m1")
+	setAgent(eng, id, "codex")
+	if err := ex.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("改", 200)
+	waitFor(t, "settle", func() bool { return notLive(ex, id) && lastSummary(eng, id) == want })
+}
+
+// TestExternalSpecCarriesPointerAndCallbacks 锁住打开外部工人时：同一个 agent 的会话编号带上，换了 agent 不带；
+// 说明写明工单号、目录和可写目录，不提 update_plan 和 load_skill；会话编号、用量和等批准经回调写回工单，等批准不盖掉工人的问题。
+func TestExternalSpecCarriesPointerAndCallbacks(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	ex := NewExecutor(eng, NewSlots(1), nil)
+	named := filepath.Join(t.TempDir(), "proj")
+	ex.Roots = func(string) []string { return []string{named} }
+	var spec WorkerSpec
+	ex.Opener = func(_ context.Context, s WorkerSpec) (Worker, error) {
+		spec = s
+		return newFakeWorker(s, nil), nil
+	}
+	id := accept(t, eng, "m1")
+	eng.SetPointer(id, "codex", "sess-9")
+	ticket, _ := eng.Ticket(id)
+	dir := t.TempDir()
+	if _, _, _, err := ex.openWorker(id, "a1", "codex", ticket, dir); err != nil {
+		t.Fatal(err)
+	}
+	if spec.Pointer != "sess-9" || len(spec.Roots) != 1 || spec.Roots[0] != named {
+		t.Fatalf("spec %+v", spec)
+	}
+	for _, want := range []string{id, dir, named, "orchestrator_report", "NOTES.md"} {
+		if !strings.Contains(spec.System, want) {
+			t.Fatalf("system lacks %q:\n%s", want, spec.System)
+		}
+	}
+	for _, banned := range []string{"update_plan", "load_skill"} {
+		if strings.Contains(spec.System, banned) {
+			t.Fatalf("system mentions %s", banned)
+		}
+	}
+	if _, _, _, err := ex.openWorker(id, "a1", "claude", ticket, dir); err != nil || spec.Pointer != "" {
+		t.Fatalf("another agent must not reuse the pointer: %q %v", spec.Pointer, err)
+	}
+	spec.OnPointer("sess-10")
+	spec.OnUsage(Usage{Used: 53000, Size: 200000, Cost: 0.05, Currency: "USD"})
+	spec.OnAttention("等批准：rm -rf build")
+	got, _ := eng.Ticket(id)
+	if got.Pointer != "sess-10" || got.PointerOf != "claude" || got.Usage == nil || got.Usage.Used != 53000 || got.Attention != "等批准：rm -rf build" {
+		t.Fatalf("ticket %+v", got)
+	}
+	spec.OnAttention("")
+	if got, _ := eng.Ticket(id); got.Attention != "" {
+		t.Fatalf("attention %q", got.Attention)
+	}
+	if err := eng.Report(id, Report{State: "blocked", Summary: "要密钥", Question: "给我一把 key"}); err != nil {
+		t.Fatal(err)
+	}
+	spec.OnAttention("等批准：curl")
+	spec.OnAttention("")
+	if got, _ := eng.Ticket(id); got.Attention != "给我一把 key" {
+		t.Fatalf("a worker question was overwritten: %q", got.Attention)
+	}
+}
+
+// TestSnapshotKeepsPointerAndUsage 锁住外部会话编号和用量随快照导出、导入。
+func TestSnapshotKeepsPointerAndUsage(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	id := accept(t, eng, "m1")
+	eng.SetPointer(id, "codex", "sess-3")
+	eng.SetUsage(id, Usage{Used: 1, Size: 2})
+	snap, err := eng.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := NewEngine(autoPolicy())
+	other.Import(snap)
+	got, _ := other.Ticket(id)
+	if got.Pointer != "sess-3" || got.PointerOf != "codex" || got.Usage == nil || got.Usage.Size != 2 {
+		t.Fatalf("ticket %+v", got)
 	}
 }

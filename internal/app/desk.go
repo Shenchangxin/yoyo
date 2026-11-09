@@ -60,6 +60,10 @@ func (a *App) orchestrator() *superagent.Runtime {
 		return err
 	}, liveModel{app: a}, orchestratorShell(work))
 	rt.SetMount(a.mountWorker)
+	rt.SetOpener(a.openBuddyWorker)
+	rt.SetAgentLimit(a.buddyLimit)
+	rt.SetAgentName(a.buddyName)
+	rt.SetRoots(func(ticketID string) []string { return a.namedWorkRoots(ticketID, dir) })
 	rt.SetProfile(a.workerProfile)
 	rt.SetOnReport(a.relayReport)
 	rt.SetOnNotice(a.relayNotice)

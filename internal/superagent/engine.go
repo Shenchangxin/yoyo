@@ -115,8 +115,21 @@ func (e *Engine) Confirm(triggerID, kind, reason string) (Decision, error) {
 // DecideBrief 和 Decide 一样。brief 非空时，工人看到的是这份说明，不是人的原话。
 // 原话仍留在触发上，任务列表的短标题不变。rules 是推断接受时还启用的规则编号。
 func (e *Engine) DecideBrief(triggerID, kind, reason, brief string, rules []string) (Decision, error) {
+	return e.DecideBriefFor(triggerID, kind, reason, brief, rules, "", false)
+}
+
+// DecideBriefFor 和 DecideBrief 一样，接受时把新工单交给 agent。agent 为空或 yoyo 时用 yoyo 自带工人。
+// pinned 为真表示人用 @ 点名了它，离线时不擅自换人。派工在写好 agent 之后才开始。
+func (e *Engine) DecideBriefFor(triggerID, kind, reason, brief string, rules []string, agent string, pinned bool) (Decision, error) {
 	e.mu.Lock()
+	before := e.n
 	d, launch, err := e.decide(triggerID, kind, reason, rules, false, strings.TrimSpace(brief))
+	if err == nil && d.Kind == "accept" && e.n > before {
+		if t := e.tickets[d.TicketID]; t != nil {
+			t.Agent = strings.TrimSpace(agent)
+			t.AgentPinned = pinned && t.Agent != ""
+		}
+	}
 	e.mu.Unlock()
 	if err == nil && launch != "" && e.OnLaunch != nil {
 		e.OnLaunch(launch)
@@ -248,6 +261,51 @@ func (e *Engine) SetDirectory(ticketID, dir, name string) {
 	if t.Name == "" && name != "" {
 		t.Name = name
 	}
+}
+
+// SetPointer 记下 ticketID 上 agent 的外部会话编号，下次打开同一个 agent 时续接。工单已经结束时不记。
+func (e *Engine) SetPointer(ticketID, agent, pointer string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || t.Ended != nil {
+		return
+	}
+	t.Pointer = strings.TrimSpace(pointer)
+	t.PointerOf = agentKey(agent)
+}
+
+// SetUsage 记下 ticketID 上外部 agent 最近一次报的用量。工单已经结束时不记。
+func (e *Engine) SetUsage(ticketID string, usage Usage) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || t.Ended != nil {
+		return
+	}
+	t.Usage = &usage
+}
+
+// approvalMark 是等批准那句的开头。SetApprovalWait 只改以它开头的 Attention。
+const approvalMark = "等批准："
+
+// SetApprovalWait 把等批准的一句写进 ticketID 的 Attention，text 为空时清掉。
+// Attention 里已经是工人报告的问题时不写也不清，问题要等人回答。
+func (e *Engine) SetApprovalWait(ticketID, text string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || t.Ended != nil {
+		return
+	}
+	if cur := strings.TrimSpace(t.Attention); cur != "" && !strings.HasPrefix(cur, approvalMark) {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text != "" && !strings.HasPrefix(text, approvalMark) {
+		text = approvalMark + text
+	}
+	t.Attention = text
 }
 
 // DeskAudiences 返回这份报告该写进的桌面会话。先用后来跟上的会话。没有时才用开工那一条。
@@ -1417,6 +1475,10 @@ func cloneTicket(t *Ticket) Ticket {
 	if t.Ended != nil {
 		end := *t.Ended
 		out.Ended = &end
+	}
+	if t.Usage != nil {
+		usage := *t.Usage
+		out.Usage = &usage
 	}
 	return out
 }

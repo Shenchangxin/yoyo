@@ -38,7 +38,7 @@ type Worker interface {
 	Close() error
 }
 
-// WorkerCaps 是执行器按工人区分的规则。dsh 为 {4, true, true, false}；外部工人 Nudges 为 1，PlanGate 为假。
+// WorkerCaps 是执行器按工人区分的规则。dsh 为 {4, true, true, false, 0}；外部工人 Nudges 为 1，PlanGate 为假。
 type WorkerCaps struct {
 	// Nudges 是没写完成报告时最多催几次。
 	Nudges int
@@ -48,6 +48,8 @@ type WorkerCaps struct {
 	Steer bool
 	// External 为真表示背后是外部进程。工单结束后执行器关掉它。
 	External bool
+	// TurnMinutes 是一轮最长几分钟，超时的一轮以 turn_timeout 结束。0 表示不限。
+	TurnMinutes int
 }
 
 // WorkerSpec 是打开一个外部工人需要的全部输入。
@@ -80,6 +82,14 @@ type Opener func(ctx context.Context, spec WorkerSpec) (Worker, error)
 
 // ErrAgentOffline 表示指定的 agent 现在不能接单。
 var ErrAgentOffline = errors.New("agent offline")
+
+// 外部工人一轮结束的两个特殊原因。执行器按它们改报 waiting 或 blocked，不当成失败重试。
+const (
+	// ReasonTurnTimeout 是一轮超过 TurnMinutes 被停下，TurnEnd.Kind 为 aborted。
+	ReasonTurnTimeout = "turn_timeout"
+	// ReasonAuthRequired 是 agent 要先登录，TurnEnd.Kind 为 error，原因以它开头。
+	ReasonAuthRequired = "auth_required"
+)
 
 // externalAgent 在 agent 不是 yoyo 自带工人时为真。
 func externalAgent(agent string) bool {

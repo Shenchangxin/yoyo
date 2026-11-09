@@ -94,6 +94,27 @@ func (m *Manager) detectOne(ctx context.Context, e Entry) {
 	m.fillVersions(ctx, []Entry{e})
 }
 
+// Prepare 让 id 在第一次列出之前也能判断在线和启动：还没检测过时只按文件和 PATH 检测这一项，不跑命令。
+// 工人续接和派活前调用；已经检测过的不重做。
+func (m *Manager) Prepare(id string) {
+	if id == "" || id == YoyoID {
+		return
+	}
+	m.mu.Lock()
+	e, ok := m.entryLocked(id)
+	_, seen := m.det[id]
+	m.mu.Unlock()
+	if !ok || seen {
+		return
+	}
+	d := m.detectFast(e)
+	m.mu.Lock()
+	if _, seen := m.det[id]; !seen {
+		m.det[id] = d
+	}
+	m.mu.Unlock()
+}
+
 // detectFast 只看文件和 PATH，不跑任何命令。
 func (m *Manager) detectFast(e Entry) detection {
 	var d detection

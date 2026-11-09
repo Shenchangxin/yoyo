@@ -1,4 +1,5 @@
-// client_test.go 锁住 ACP 客户端的协议规则：版本协商、流式回复、取消时答复挂起的权限、未知方法、换行转义、要求登录、续接退化顺序、加载回放标记，以及进程崩溃时带上 stderr 尾部。
+// client_test.go 锁住 ACP 客户端的协议规则：版本协商、流式回复、取消时答复挂起的权限、未知方法、换行转义、要求登录、续接退化顺序、
+// 挂起不关会话、换模型的方法名、加载回放标记，以及进程崩溃时带上 stderr 尾部。
 
 package acp_test
 
@@ -246,6 +247,51 @@ func TestReopenFallsBack(t *testing.T) {
 		if (how == "new") == (id == old.SessionID) {
 			t.Fatalf("%s returned session %s", how, id)
 		}
+	}
+}
+
+// TestSuspendKeepsSessions 锁住 Suspend 不发 session/close，会话留给下次续接；Close 才关会话。
+func TestSuspendKeepsSessions(t *testing.T) {
+	caps := map[string]any{"loadSession": true, "sessionCapabilities": map[string]any{"close": map[string]any{}}}
+	for _, suspend := range []bool{true, false} {
+		c, agent, err := pipeClient(t, acptest.Script{Caps: caps}, acp.Handler{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.NewSession(context.Background(), acp.NewSessionRequest{Cwd: t.TempDir()}); err != nil {
+			t.Fatal(err)
+		}
+		if suspend {
+			_ = c.Suspend()
+		} else {
+			_ = c.Close()
+		}
+		closed := false
+		for _, m := range agent.Calls() {
+			closed = closed || m == "session/close"
+		}
+		if closed == suspend {
+			t.Fatalf("suspend=%v sent session/close=%v: %v", suspend, closed, agent.Calls())
+		}
+	}
+}
+
+// TestSetModelMethods 锁住换模型用的两个方法名。对方不认时回 -32601，调用方可以忽略。
+func TestSetModelMethods(t *testing.T) {
+	c, agent, err := pipeClient(t, acptest.Script{}, acp.Handler{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	errModel := c.SetModel(ctx, "sess-1", "m2")
+	errOption := c.SetConfigOption(ctx, "sess-1", "model", "m2")
+	var rpcErr *acp.RPCError
+	if !errors.As(errModel, &rpcErr) || rpcErr.Code != acp.CodeMethodNotFound || errOption == nil {
+		t.Fatalf("errors %v %v", errModel, errOption)
+	}
+	calls := strings.Join(agent.Calls(), ",")
+	if !strings.Contains(calls, "session/set_model") || !strings.Contains(calls, "session/set_config_option") {
+		t.Fatalf("calls %s", calls)
 	}
 }
 

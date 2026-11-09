@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Shenchangxin/yoyo/internal/acp"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/browser"
 	"github.com/Shenchangxin/yoyo/internal/buddy"
@@ -32,6 +33,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/learn"
+	"github.com/Shenchangxin/yoyo/internal/mcpserve"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/modelcatalog"
 	"github.com/Shenchangxin/yoyo/internal/observe"
@@ -235,6 +237,10 @@ type App struct {
 	// buddies 管外部 agent 的目录、安装、探测和登录；buddyMu 护着 Config.Buddies 的读写。
 	buddies *buddy.Manager
 	buddyMu sync.Mutex
+	// control 是外部工人调 orchestrator_* 的控制面，第一次登记时才监听本机回环地址。
+	control *mcpserve.Server
+	// buddyDial 换掉连 agent 的方式，探测、健康检查和外部工人都用它；nil 时启动真进程。测试换成同进程的假 agent。
+	buddyDial func(ctx context.Context, opts acp.Options) (*acp.Client, error)
 }
 
 // Open 打开数据根目录并装配应用对象。
@@ -698,8 +704,10 @@ func (a *App) SaveConfig() error {
 }
 
 // Close 停掉调度和更新循环，关闭视频、MCP、WASM 和日志，再卸下内核。
+// 外部 agent 进程在编排落盘关掉之后再停，停下时的中断不会写成工单结果，下次启动续接。
 func (a *App) Close() error {
 	a.stopOrchestrator()
+	a.closeBuddyWorkers()
 	a.stopDeskLoop()
 	if a.schedStop != nil {
 		select {

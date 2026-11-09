@@ -38,6 +38,38 @@ func TestDetectingUntilFirstScan(t *testing.T) {
 	}
 }
 
+// TestPrepareDetectsOneBeforeFirstList 锁住第一次列出之前 Prepare 只检测这一项：之后 Ready 按记下的状态判断、Launch 用找到的命令，
+// 全量检测仍算没做。
+func TestPrepareDetectsOneBeforeFirstList(t *testing.T) {
+	f := newFixture(t, func(o *Options) {
+		o.LookPath = func(name string) (string, error) {
+			if name == "codex-acp" {
+				return "/usr/bin/codex-acp", nil
+			}
+			return "", errNotFound
+		}
+	})
+	f.m.mu.Lock()
+	f.m.recs["codex"] = &record{State: StateOnline, CheckedAt: f.clock.Now()}
+	f.m.mu.Unlock()
+	if f.m.Ready("codex") {
+		t.Fatal("ready before any detection")
+	}
+	f.m.Prepare("codex")
+	if !f.m.Ready("codex") {
+		v, _ := f.m.Get("codex")
+		t.Fatalf("not ready after Prepare: %s %q %+v", v.State, v.Detail, v.Install)
+	}
+	if l, err := f.m.Launch("codex"); err != nil || l.Command != "/usr/bin/codex-acp" {
+		t.Fatalf("launch %+v %v", l, err)
+	}
+	if !f.m.Detecting() {
+		t.Fatal("Prepare counted as the first full scan")
+	}
+	f.m.Prepare("missing")
+	f.m.Prepare(YoyoID)
+}
+
 // TestDetectSystemAndCLIOnly 锁住注入的 LookPath 决定系统安装，只有 CLI 时视图标 cliOnly 且仍是未安装。
 func TestDetectSystemAndCLIOnly(t *testing.T) {
 	f := newFixture(t, func(o *Options) {

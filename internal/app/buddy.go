@@ -52,7 +52,9 @@ func (a *App) configureBuddies() {
 		SaveSettings: a.saveBuddySettings,
 		Publish:      a.publishBuddy,
 		YoyoKey:      a.yoyoKey,
+		Dial:         a.dialBuddy,
 	})
+	a.configureBuddyWorkers()
 }
 
 // Buddies 返回 Buddy 管理器，没有主目录时为 nil。工人和路由从这里查名单和启动方式。

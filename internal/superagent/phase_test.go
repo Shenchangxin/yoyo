@@ -566,6 +566,40 @@ func TestCursorSurvivesOpen(t *testing.T) {
 	}
 }
 
+// TestStopSavesWhatExecutorWrote 锁住执行器直接写进引擎的报告和续接编号，在下一轮落盘之前停下也不会丢。
+func TestStopSavesWhatExecutorWrote(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "superagent.sqlite")
+	rt, err := Open(path, autoPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := rt.Receive(human("m1", "fix")); status != "stored" {
+		t.Fatal(status)
+	}
+	if err := rt.DecideBriefFor("m1", "accept", "fix", "", nil, "codex", false); err != nil {
+		t.Fatal(err)
+	}
+	id := rt.View().Tickets[0].ID
+	rt.eng.SetPointer(id, "codex", "sess-7")
+	if err := rt.eng.Report(id, Report{State: "ready", Summary: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	rt.Stop()
+	again, err := Open(path, autoPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Stop()
+	ticket, ok := again.eng.Ticket(id)
+	if !ok || ticket.Pointer != "sess-7" || ticket.Agent != "codex" {
+		t.Fatalf("ticket after reopen %+v", ticket)
+	}
+	asg := ticket.Assignments[len(ticket.Assignments)-1]
+	if len(asg.Reports) == 0 || asg.Reports[len(asg.Reports)-1].State != "ready" {
+		t.Fatalf("report lost: %+v", asg.Reports)
+	}
+}
+
 // TestFeishuBadItemStaysOnTopic 锁住一条读不懂的飞书消息只记在自己的话题上，同页的文字仍然收下。连续三次之后来源才报这个话题。
 func TestFeishuBadItemStaysOnTopic(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

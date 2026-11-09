@@ -1,5 +1,5 @@
 // redact.go 拥有 Buddy 日志和 stderr 的打码：在 diaglog.Redact 之外再抹掉已知的密钥值、Bearer 令牌、token= 和 key= 这类赋值。
-// 安装日志、探测日志、日志尾巴和错误详情在落盘或返回前都经过这里。
+// 安装日志、探测日志、日志尾巴和错误详情在落盘或返回前都经过这里；外部工人的错误原因经导出的 Redact 走同一套规则。
 
 package buddy
 
@@ -18,6 +18,9 @@ var (
 	// reEnvSecret 匹配 FOO_API_KEY=xxx、GH_TOKEN=xxx 这类环境变量赋值。
 	reEnvSecret = regexp.MustCompile(`\b([A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|PASSWORD))=([^\s"']+)`)
 )
+
+// Redact 是给包外用的打码，规则和 Buddy 自己的日志一样。工人的错误原因和登录详情用它。
+func Redact(s string, secrets ...string) string { return redactText(s, secrets...) }
 
 // redactText 打码 s。secrets 是已知的密钥值，至少 6 个字符的才替换，免得误伤普通词。
 func redactText(s string, secrets ...string) string {

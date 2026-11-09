@@ -52,6 +52,8 @@ type Runtime struct {
 	profile      func() string
 	opener       Opener
 	agentLimit   func(agent string) int
+	agentName    func(agent string) string
+	roots        func(ticketID string) []string
 }
 
 // Open 打开 path 上的快照并还原引擎。path 为空时只放在内存里。policy 在没有快照时作为初始策略。
@@ -137,6 +139,8 @@ func (rt *Runtime) attachExec() {
 	rt.exec.Profile = rt.profile
 	rt.exec.Opener = rt.opener
 	rt.exec.AgentLimit = rt.agentLimit
+	rt.exec.AgentName = rt.agentName
+	rt.exec.Roots = rt.roots
 }
 
 // wireEffects 登记六类先落盘再执行的副作用。调用时要已持有锁。
@@ -348,6 +352,32 @@ func (rt *Runtime) SetAgentLimit(fn func(agent string) int) {
 	}
 }
 
+// SetAgentName 接上 agent 给人看的名字。fn 返回空串时用编号。
+func (rt *Runtime) SetAgentName(fn func(agent string) string) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.agentName = fn
+	if rt.exec != nil {
+		rt.exec.AgentName = fn
+	}
+}
+
+// SetRoots 接上每张工单除工作目录外可读写的目录。外部工人的说明、文件读写和审批都用它。
+func (rt *Runtime) SetRoots(fn func(ticketID string) []string) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.roots = fn
+	if rt.exec != nil {
+		rt.exec.Roots = fn
+	}
+}
+
 // CloseWorkers 关掉所有外部工人。应用退出时调用。
 func (rt *Runtime) CloseWorkers() {
 	if rt == nil {
@@ -431,7 +461,8 @@ func (rt *Runtime) Start() {
 	}()
 }
 
-// Stop 停掉两秒轮次并关掉数据库。没有启动过时只关数据库。
+// Stop 停掉两秒轮次，把快照最后落一次盘，再关掉数据库。没有启动过时也先落盘再关。
+// 执行器直接写进引擎的报告和续接编号要等下一轮才落盘，不在这里补一次就会丢。之后工人被打断不再落盘，还在做的派工下次启动续接。
 func (rt *Runtime) Stop() {
 	if rt == nil {
 		return
@@ -439,6 +470,7 @@ func (rt *Runtime) Stop() {
 	rt.mu.Lock()
 	cancel := rt.cancel
 	rt.cancel = nil
+	rt.saveLocked()
 	db := rt.db
 	rt.db = nil
 	rt.mu.Unlock()
@@ -510,11 +542,16 @@ func (rt *Runtime) Decide(triggerID, kind, reason string) error {
 
 // DecideBrief 接受 triggerID，并把 brief 写成工人看到的任务说明。人的原话不进工人正文。
 func (rt *Runtime) DecideBrief(triggerID, kind, reason, brief string, rules []string) error {
+	return rt.DecideBriefFor(triggerID, kind, reason, brief, rules, "", false)
+}
+
+// DecideBriefFor 和 DecideBrief 一样，接受时把工单交给 agent；pinned 表示人点名了它。
+func (rt *Runtime) DecideBriefFor(triggerID, kind, reason, brief string, rules []string, agent string, pinned bool) error {
 	if rt == nil || rt.eng == nil {
 		return errCode("empty")
 	}
 	rt.mu.Lock()
-	_, err := rt.eng.DecideBrief(triggerID, kind, reason, brief, rules)
+	_, err := rt.eng.DecideBriefFor(triggerID, kind, reason, brief, rules, agent, pinned)
 	if err != nil {
 		rt.mu.Unlock()
 		return err
