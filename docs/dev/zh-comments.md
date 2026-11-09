@@ -1581,3 +1581,7 @@
 - [ ] `internal/app/route_group_test.go`
 - [ ] `internal/app/route_wake.go`
 - [ ] `internal/app/route_wake_test.go`
+- [ ] `frontend/src/features/superagent/TaskRow.tsx`
+- [ ] `frontend/src/features/superagent/GroupRow.tsx`
+- [ ] `frontend/src/features/superagent/GroupPage.tsx`
+- [ ] `frontend/e2e/multi-agent.spec.ts`

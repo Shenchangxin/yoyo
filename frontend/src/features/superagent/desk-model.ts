@@ -12,16 +12,29 @@ export type ReportLine = { state: string; summary?: string; question?: string; a
 export type Assignment = { id: string; state: string; report?: string; summary?: string; lines?: ReportLine[]; agent?: string };
 /** Usage 是外部 agent 最近报的用量。used 和 size 是 token 数，cost 按 currency 计。 */
 export type Usage = { used?: number; size?: number; cost?: number; currency?: string };
-/** Ticket 是一张工单。agent 是做它的 agent，agentPinned 表示人点名了它。 */
+/**
+ * Ticket 是一张工单。agent 是做它的 agent，agentPinned 表示人点名了它。
+ * group 是所在的任务组，role 是分工，dependsOn 是要先做完的同组工单。held 为 deps 时在等它们，为 deps_failed 时它们有没做成的。
+ */
 export type Ticket = {
   id: string; stage: string; action: string; person: boolean; origin: string; outcome?: string;
   strength?: string; sender?: string; attention?: string; deliveryError?: string; originUrl?: string;
   title: string; directory?: string; openedAt?: string; updatedAt?: string;
   inputs?: Input[]; follows?: Follow[]; assignments?: Assignment[];
   agent?: string; agentPinned?: boolean; usage?: Usage;
+  group?: string; role?: string; dependsOn?: string[]; held?: string;
 };
 /** AgentLoad 是一个 agent 正在跑和排队的工单数。 */
 export type AgentLoad = { agent: string; running: number; queued: number };
+/**
+ * Group 是交给几个 agent 一起做的一件事。mode 为 split（分工）或 compare（对比）；state 取 running、attention、done、failed、stopped。
+ * tickets 按拆分时的顺序。done 是做完的成员数，winner 是对比里采用的工单，verdict 是路由最后的汇总。session 是发起它的主会话。
+ */
+export type Group = {
+  id: string; mode: string; title: string; session?: string; tickets: string[];
+  state: string; done: number; total: number; winner?: string; verdict?: string; sharedDir?: string;
+  openedAt?: string; updatedAt?: string;
+};
 export type Trigger = {
   id: string; source: string; sender: string; text: string; addressed: boolean;
   thread?: string; at?: string; due?: string; filtered?: string; queued?: boolean;
@@ -57,6 +70,7 @@ export type DeskView = {
   flow?: Flow;
   load?: Load;
   agents?: AgentLoad[];
+  groups?: Group[];
 };
 
 export type Rule = { id: string; text: string; enabled: boolean };

@@ -27,6 +27,7 @@ import { BriefOverlay } from "./features/superagent/BriefOverlay";
 import { runDeskFeed, setDeskSession } from "./features/superagent/desk-feed";
 import { briefPhrases, WorkPane } from "./features/superagent/WorkPane";
 import { TaskPage } from "./features/superagent/TaskPage";
+import { GroupPage } from "./features/superagent/GroupPage";
 import { refreshNeeds, useNeedCount, useNeeds } from "./features/superagent/needs";
 import { useBuddyFeed } from "./features/buddy/buddy-store";
 import { applyProactiveLevel, briefDeskOf, briefTimesOf, cacheBriefTimes, cachedBriefTimes, parseProactiveLevel } from "./lib/proactive";
@@ -195,6 +196,8 @@ function WorkstationApp() {
   const [taskId, setTaskId] = useState("");
   const needCount = useNeedCount();
   const focusTicket = useNeeds((s) => (s.focusTask ? s.view?.tickets?.find((t) => t.id === s.focusTask) ?? null : null));
+  const focusGroup = useNeeds((s) => (s.focusGroup ? s.view?.groups?.find((g) => g.id === s.focusGroup) ?? null : null));
+  const deskTickets = useNeeds((s) => s.view?.tickets);
   useEffect(() => {
     if (!ws.booted || popout) return;
     void refreshNeeds();
@@ -203,10 +206,13 @@ function WorkstationApp() {
   }, [ws.booted, popout]);
   useEffect(() => {
     useNeeds.getState().setFocusTask("");
+    useNeeds.getState().setFocusGroup("");
   }, [ws.activeId]);
   useEffect(() => {
     // Buddy 详情点开工单时先放工单、再回到对话，所以回到对话这一下不能清。
-    if (ws.surface !== "agent") useNeeds.getState().setFocusTask("");
+    if (ws.surface === "agent") return;
+    useNeeds.getState().setFocusTask("");
+    useNeeds.getState().setFocusGroup("");
   }, [ws.surface]);
   const deskCfg = ws.savedCfg.desk;
   const deskSynced = useRef(false);
@@ -502,7 +508,13 @@ function WorkstationApp() {
       onOpenTask={setTaskId}
       onFocusTask={(id) => {
         setTaskId("");
+        useNeeds.getState().setFocusGroup("");
         useNeeds.getState().setFocusTask(id);
+      }}
+      onFocusGroup={(id) => {
+        setTaskId("");
+        useNeeds.getState().setFocusTask("");
+        useNeeds.getState().setFocusGroup(id);
       }}
       onResolve={ws.onResolve}
       onOpenThread={(id) => {
@@ -1152,6 +1164,10 @@ function WorkstationApp() {
       <TaskPage
         ticket={focusTicket}
         onBack={() => useNeeds.getState().setFocusTask("")}
+        onOpenGroup={(id) => {
+          useNeeds.getState().setFocusTask("");
+          useNeeds.getState().setFocusGroup(id);
+        }}
         onSent={() => { void refreshNeeds(); }}
         skills={ws.skills}
         files={ws.files}
@@ -1160,6 +1176,22 @@ function WorkstationApp() {
         onPickFiles={bindComposer.onPickFiles}
         onClipboard={bindComposer.onClipboard}
         onScreenshot={bindComposer.onScreenshot}
+      />
+    </section>
+  ) : agent && focusGroup ? (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-skin-pane>
+      <GroupPage
+        stage
+        group={focusGroup}
+        tickets={deskTickets ?? []}
+        onBack={() => useNeeds.getState().setFocusGroup("")}
+        onOpenTask={(id) => useNeeds.getState().setFocusTask(id)}
+        onOpenMain={(id) => {
+          useNeeds.getState().setFocusGroup("");
+          const t = ws.threads.find((x) => x.id === id);
+          if (t) ws.openThread(t);
+        }}
+        onSent={() => { void refreshNeeds(); }}
       />
     </section>
   ) : agentPane;

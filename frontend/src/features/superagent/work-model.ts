@@ -1,9 +1,9 @@
 /**
- * 拥有：工作栏怎么从工单里分出「现在」和「任务」，以及晨间简报怎么从资产里审计出来。
- * 不拥有：拉取快照和画页面。那一段在 WorkPane。简报不写进对话。
+ * 拥有：工作栏怎么从工单里分出「现在」和「任务」，任务组在列表和任务组页上怎么排、怎么说，以及晨间简报怎么从资产里审计出来。
+ * 不拥有：拉取快照和画页面。那一段在 WorkPane、GroupRow 和 GroupPage。简报不写进对话。
  */
 
-import type { Decision, Rule, Ticket, Trigger } from "./desk-model";
+import type { Decision, Group, Rule, Ticket, Trigger } from "./desk-model";
 
 export type StageKey =
   | "queued"
@@ -84,17 +84,225 @@ export function wouldAccept(rows: Decision[]): Decision[] {
 
 export type TaskListFilter = "all" | "open" | "ended" | "scheduled";
 
-/** filterTickets 按筛选和搜索留下工单。定时这一档不列工单。 */
-export function filterTickets(tickets: Ticket[], filter: TaskListFilter, query = ""): Ticket[] {
+/** TicketNames 把编号换成搜索时也要对上的名字。agent 收 agent 编号，group 收任务组编号。 */
+export type TicketNames = { agent?: (id: string) => string; group?: (id: string) => string };
+
+/** filterTickets 按筛选和搜索留下工单。搜索也对 agent 名、分工和任务组标题。定时这一档不列工单。 */
+export function filterTickets(tickets: Ticket[], filter: TaskListFilter, query = "", names: TicketNames = {}): Ticket[] {
   const q = query.trim().toLowerCase();
   return tickets.filter((ticket) => {
     if (filter === "scheduled") return false;
     if (filter === "open" && ticket.stage === "ended") return false;
     if (filter === "ended" && ticket.stage !== "ended") return false;
     if (!q) return true;
-    const blob = `${ticket.title} ${ticket.origin} ${ticket.sender ?? ""} ${ticket.attention ?? ""}`.toLowerCase();
+    const agent = ticket.agent ? `${ticket.agent} ${names.agent?.(ticket.agent) ?? ""}` : "";
+    const group = ticket.group ? names.group?.(ticket.group) ?? "" : "";
+    const blob = `${ticket.title} ${ticket.origin} ${ticket.sender ?? ""} ${ticket.attention ?? ""} ${ticket.role ?? ""} ${agent} ${group}`.toLowerCase();
     return blob.includes(q);
   });
+}
+
+/** TaskItem 是任务列表里的一项：一张工单，或者一个任务组连同它的成员。成员按拆分时的顺序。 */
+export type TaskItem = { kind: "ticket"; ticket: Ticket } | { kind: "group"; group: Group; members: Ticket[] };
+
+/** groupRows 把工单收成任务列表的项。任务组的成员收进任务组，不再单独成项；其余工单一张一项。成员一张都不在 tickets 里的任务组不列。 */
+export function groupRows(tickets: Ticket[], groups: Group[] = []): TaskItem[] {
+  const byId = new Map(tickets.map((ticket) => [ticket.id, ticket]));
+  const taken = new Set<string>();
+  const out: TaskItem[] = [];
+  for (const group of groups) {
+    const members = (group.tickets ?? []).map((id) => byId.get(id)).filter((ticket): ticket is Ticket => !!ticket);
+    if (members.length === 0) continue;
+    for (const member of members) taken.add(member.id);
+    out.push({ kind: "group", group, members });
+  }
+  for (const ticket of tickets) {
+    if (!taken.has(ticket.id)) out.push({ kind: "ticket", ticket });
+  }
+  return out;
+}
+
+const sectionRank: TaskSection[] = ["person", "working", "idle", "ended"];
+
+/** groupSection 是任务组在列表里的分区：成员里最急的那个。有成员等人就在 person；成员全部结束才算 ended。 */
+export function groupSection(members: Pick<Ticket, "stage" | "person">[]): TaskSection {
+  let best = sectionRank.length - 1;
+  for (const member of members) best = Math.min(best, sectionRank.indexOf(taskSection(member)));
+  return sectionRank[best];
+}
+
+/** itemSections 把列表项分进四组，每组按最近变化排，新的在前。任务组按它和成员里最近的那次变化算。结束的只留八项。 */
+export function itemSections(items: TaskItem[]): Record<TaskSection, TaskItem[]> {
+  const out: Record<TaskSection, TaskItem[]> = { person: [], working: [], idle: [], ended: [] };
+  const sorted = [...items].sort((a, b) => itemTime(b) - itemTime(a) || itemNumber(b) - itemNumber(a));
+  for (const item of sorted) out[item.kind === "group" ? groupSection(item.members) : taskSection(item.ticket)].push(item);
+  out.ended = out.ended.slice(0, 8);
+  return out;
+}
+
+/** filterItems 按搜索留下列表项。任务组有一个成员对上，或标题对上，就整组留下。agentName 把 agent 编号换成名字。 */
+export function filterItems(items: TaskItem[], query: string, agentName?: (id: string) => string): TaskItem[] {
+  if (!query.trim()) return items;
+  const titles = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind === "group") titles.set(item.group.id, item.group.title);
+  }
+  const names: TicketNames = { agent: agentName, group: (id) => titles.get(id) ?? "" };
+  return items.filter((item) => filterTickets(item.kind === "group" ? item.members : [item.ticket], "all", query, names).length > 0);
+}
+
+function itemTime(item: TaskItem): number {
+  if (item.kind === "ticket") return Date.parse(item.ticket.updatedAt || "") || 0;
+  let at = Date.parse(item.group.updatedAt || "") || 0;
+  for (const member of item.members) at = Math.max(at, Date.parse(member.updatedAt || "") || 0);
+  return at;
+}
+
+function itemNumber(item: TaskItem): number {
+  if (item.kind === "ticket") return ticketNumber(item.ticket.id);
+  return Math.max(0, ...item.members.map((member) => ticketNumber(member.id)));
+}
+
+/** memberDone 在成员已经结束并且做成时为真。merged 也算做成，和 Go 的 completedEnd 一致。 */
+export function memberDone(ticket: Pick<Ticket, "stage" | "outcome">): boolean {
+  return ticket.stage === "ended" && (ticket.outcome === "completed" || ticket.outcome === "merged");
+}
+
+/** groupProgress 是任务组做成了几份、一共几份。 */
+export function groupProgress(members: Pick<Ticket, "stage" | "outcome">[]): { done: number; total: number } {
+  return { done: members.filter(memberDone).length, total: members.length };
+}
+
+/** groupActive 在任务组还在做或在等人决定时为真。列表里这样的任务组默认展开。 */
+export function groupActive(state: string): boolean {
+  return state === "running" || state === "attention";
+}
+
+/** groupTone 是任务组状态点的颜色：要人决定 needs，在做 live，完成 done，有没成的 failed，停下 idle。 */
+export function groupTone(state: string): "needs" | "live" | "done" | "failed" | "idle" {
+  switch (state) {
+    case "attention":
+      return "needs";
+    case "running":
+      return "live";
+    case "done":
+      return "done";
+    case "failed":
+      return "failed";
+    default:
+      return "idle";
+  }
+}
+
+/** memberTone 是成员的状态点：做成 done，没做成或前置没做成 failed，人停下或在等前置 idle，等人 needs，在做 live。 */
+export function memberTone(ticket: Ticket): "needs" | "live" | "done" | "failed" | "idle" {
+  const section = taskSection(ticket);
+  if (section === "ended") {
+    if (memberDone(ticket)) return "done";
+    return ticket.outcome === "stopped" ? "idle" : "failed";
+  }
+  if (ticket.held) return ticket.held === "deps_failed" ? "failed" : "idle";
+  if (section === "person") return "needs";
+  return section === "working" ? "live" : "idle";
+}
+
+/** canPick 为真时对比列上给出「采用这个」：对比还没采用过、没被整组停掉，这一份也没有失败或被停下。还在做的也能采用，其余的会停下。 */
+export function canPick(group: Pick<Group, "mode" | "winner" | "state">, ticket: Ticket): boolean {
+  if (group.mode !== "compare" || group.winner || group.state === "stopped") return false;
+  return ticket.stage !== "ended" || memberDone(ticket);
+}
+
+/** topoOrder 把成员按依赖排：前置在前，同一层按拆分时的顺序。depth 是前置链的长度，没有前置的为 0。指向组外的依赖不算，成环的按没有前置算。 */
+export function topoOrder(members: Ticket[]): { ticket: Ticket; depth: number }[] {
+  const inGroup = new Set(members.map((member) => member.id));
+  const depth = new Map<string, number>();
+  const out: { ticket: Ticket; depth: number }[] = [];
+  const left = [...members];
+  while (left.length > 0) {
+    const at = left.findIndex((member) => (member.dependsOn ?? []).every((id) => !inGroup.has(id) || depth.has(id)));
+    if (at < 0) {
+      for (const member of left) out.push({ ticket: member, depth: 0 });
+      break;
+    }
+    const [member] = left.splice(at, 1);
+    const deps = (member.dependsOn ?? []).filter((id) => depth.has(id)).map((id) => depth.get(id) ?? 0);
+    const level = deps.length ? Math.max(...deps) + 1 : 0;
+    depth.set(member.id, level);
+    out.push({ ticket: member, depth: level });
+  }
+  return out;
+}
+
+/** memberLabel 是成员给人看的短名：分工，没有时用标题，再没有用编号。 */
+export function memberLabel(ticket: Pick<Ticket, "id" | "role" | "title">): string {
+  return ticket.role?.trim() || ticket.title?.trim() || ticket.id;
+}
+
+/** waitingOn 是 ticket 还在等的同组前置，按 dependsOn 的顺序写成 memberLabel。已经做成的前置不算，组里找不到的写编号。 */
+export function waitingOn(ticket: Pick<Ticket, "dependsOn">, members: Ticket[]): string[] {
+  const byId = new Map(members.map((member) => [member.id, member]));
+  const out: string[] = [];
+  for (const id of ticket.dependsOn ?? []) {
+    const dep = byId.get(id);
+    if (dep && memberDone(dep)) continue;
+    out.push(dep ? memberLabel(dep) : id);
+  }
+  return out;
+}
+
+/** retryableMembers 是「重试没成的」要重试的成员：还开着、最后报了 failed 或 blocked、不是挂着等前置的。挂着的成员在前置重做成后会自己放行。 */
+export function retryableMembers(members: Ticket[]): Ticket[] {
+  return members.filter((member) => member.stage !== "ended" && !member.held && (member.action === "failed" || member.action === "blocked"));
+}
+
+/** GroupEvent 是任务组动态里的一条：哪个成员在什么时候报了什么。ask 为真时这一条是它还在等人回答的问题。 */
+export type GroupEvent = { ticket: Ticket; at: string; state: string; text: string; ask: boolean };
+
+/** groupActivity 把成员的报告按时间合成一条，新的在前，最多 limit 条。没有时间的旧报告和 pending、running 这类占位不收。 */
+export function groupActivity(members: Ticket[], limit = 20): GroupEvent[] {
+  const out: GroupEvent[] = [];
+  for (const ticket of members) {
+    const waiting = ticket.stage !== "ended" && ticket.action === "answer";
+    let lastAsk = -1;
+    const rows: GroupEvent[] = [];
+    for (const step of ticket.assignments ?? []) {
+      for (const line of step.lines ?? []) {
+        const question = line.question?.trim() || "";
+        const text = question || line.summary?.trim() || "";
+        if (!line.at || !text || text === "pending" || text === "running") continue;
+        if (question) lastAsk = rows.length;
+        rows.push({ ticket, at: line.at, state: line.state, text, ask: false });
+      }
+    }
+    if (waiting && lastAsk >= 0) rows[lastAsk].ask = true;
+    out.push(...rows);
+  }
+  out.sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0));
+  return out.slice(0, limit);
+}
+
+/**
+ * memberMinutes 是成员做了几分钟，至少记一分钟。从开工算到结束，还没结束时算到 now。
+ * 有前置的成员从最后一个前置结束时算起，不算等前置的时间；还挂着的、或时间认不出时为空。
+ */
+export function memberMinutes(ticket: Ticket, members: Ticket[], now = Date.now()): number | null {
+  if (ticket.held) return null;
+  let start = Date.parse(ticket.openedAt || "");
+  if (!Number.isFinite(start)) return null;
+  for (const id of ticket.dependsOn ?? []) {
+    const dep = members.find((member) => member.id === id);
+    const ended = dep?.stage === "ended" ? Date.parse(dep.updatedAt || "") : NaN;
+    if (Number.isFinite(ended) && ended > start) start = ended;
+  }
+  const end = ticket.stage === "ended" ? Date.parse(ticket.updatedAt || "") : now;
+  if (!Number.isFinite(end) || end < start) return null;
+  return Math.max(1, Math.round((end - start) / 60000));
+}
+
+/** durationLabel 把分钟数写成一句。不到一小时用 minutes（带 {n}），否则用 hours（带 {h} 和 {m}）。 */
+export function durationLabel(minutes: number, phrases: { minutes: string; hours: string }): string {
+  if (minutes < 60) return fill(phrases.minutes, { n: String(minutes) });
+  return fill(phrases.hours, { h: String(Math.floor(minutes / 60)), m: String(minutes % 60) });
 }
 
 /** manuscriptNames 从正文里认出可打开的文件名。不读文件。 */

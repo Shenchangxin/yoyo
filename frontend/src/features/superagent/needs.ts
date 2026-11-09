@@ -15,6 +15,8 @@ type NeedsState = {
   queue: ReviewQueue;
   /** focusTask 是放到中间去聊的那张工单。空表示中间是主对话。 */
   focusTask: string;
+  /** focusGroup 是放到中间去看的任务组。focusTask 也有值时先看那张工单，返回后回到任务组。 */
+  focusGroup: string;
   /** paneMounted 为真时今天栏在场，对话里的「去看」才有地方落。 */
   paneMounted: boolean;
   /** pendingDesk 是今天栏不在场时要翻到的地方，等它挂上时接走。 */
@@ -22,6 +24,7 @@ type NeedsState = {
   setView: (view: DeskView | null) => void;
   setQueue: (queue: ReviewQueue) => void;
   setFocusTask: (id: string) => void;
+  setFocusGroup: (id: string) => void;
   setPaneMounted: (on: boolean) => void;
   setPendingDesk: (target: DeskTarget | null) => void;
 };
@@ -31,21 +34,23 @@ export const useNeeds = create<NeedsState>((set) => ({
   view: null,
   queue: EMPTY_QUEUE,
   focusTask: "",
+  focusGroup: "",
   paneMounted: false,
   pendingDesk: null,
   setView: (view) => set({ view }),
   setQueue: (queue) => set({ queue }),
   setFocusTask: (focusTask) => set({ focusTask }),
+  setFocusGroup: (focusGroup) => set({ focusGroup }),
   setPaneMounted: (paneMounted) => set({ paneMounted }),
   setPendingDesk: (pendingDesk) => set({ pendingDesk }),
 }));
 
 const OPEN_DESK_EVENT = "yoyo-open-desk";
 
-/** DeskTarget 是对话里点「去看」时今天栏要翻到的地方。 */
-export type DeskTarget = { tab: "tasks"; ticket: string } | { tab: "memory" };
+/** DeskTarget 是对话里点「去看」时今天栏要翻到的地方：一张工单、一个任务组，或记忆。 */
+export type DeskTarget = { tab: "tasks"; ticket: string } | { tab: "tasks"; group: string } | { tab: "memory" };
 
-/** openDesk 让今天栏翻到一张工单或记忆。今天栏不在场时记下来，等它挂上再翻，并返回假。 */
+/** openDesk 让今天栏翻到一张工单、一个任务组或记忆。今天栏不在场时记下来，等它挂上再翻，并返回假。 */
 export function openDesk(target: DeskTarget): boolean {
   const handled = !window.dispatchEvent(new CustomEvent(OPEN_DESK_EVENT, { detail: target, cancelable: true }));
   if (!handled) useNeeds.getState().setPendingDesk(target);

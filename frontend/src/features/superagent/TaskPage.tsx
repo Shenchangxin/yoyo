@@ -21,15 +21,17 @@ import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
 import { external, ticketAgent, ticketNeed } from "./agent-model";
 import type { Ticket } from "./desk-model";
+import { useNeeds } from "./needs";
 import { TaskAgentRow, TaskApprovals } from "./TaskAgent";
 import { taskFiles, taskSessionItems, type TaskLine } from "./task-session";
 import { stageKey, ticketLine } from "./work-model";
 
-/** TaskRead 把工单读在侧栏里，stage 时铺在中间。底下是这条会话的输入，不带身份设置。 */
+/** TaskRead 把工单读在侧栏里，stage 时铺在中间。底下是这条会话的输入，不带身份设置。任务组成员的标题上方有回到任务组的面包屑。 */
 export function TaskRead(props: {
   ticket: Ticket | null;
   onBack: () => void;
   onFocus?: (id: string) => void;
+  onOpenGroup?: (id: string) => void;
   stage?: boolean;
   onSent?: () => void;
   skills?: SkillInfo[];
@@ -42,6 +44,7 @@ export function TaskRead(props: {
 }) {
   const copy = useCopy();
   const ticket = props.ticket;
+  const group = useNeeds((s) => (ticket?.group ? s.view?.groups?.find((row) => row.id === ticket.group) ?? null : null));
   const [lines, setLines] = useState<TaskLine[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [moved, setMoved] = useState(0);
@@ -99,6 +102,7 @@ export function TaskRead(props: {
   const quiet = running && since > 0 ? Math.floor((now - since) / 60000) : 0;
   const status = [taskStatus(ticket, copy.work), quiet >= 2 ? copy.work.taskStale.replace("{n}", String(quiet)) : ""].filter(Boolean).join(" · ");
   const ask = taskAsk(ticket, copy.work);
+  const crumb = group ? [copy.tasks.groupCrumb.replace("{title}", group.title || group.id), ticket.role || ""].filter(Boolean).join(" · ") : "";
   async function act(kind: "stop" | "retry" | "pause") {
     try {
       await orchestratorAct(kind, ticket!.id, "", "", "");
@@ -116,6 +120,13 @@ export function TaskRead(props: {
           <ChevronLeft className="size-4" />
         </button>
         <div className="min-w-0 flex-1">
+          {crumb && group && props.onOpenGroup ? (
+            <button type="button" data-testid="task-group-crumb" className="block max-w-full truncate text-left text-ui-caption text-muted hover:text-foreground" onClick={() => props.onOpenGroup?.(group.id)}>
+              {crumb}
+            </button>
+          ) : crumb ? (
+            <p data-testid="task-group-crumb" className="truncate text-ui-caption text-muted">{crumb}</p>
+          ) : null}
           <h1 className="truncate text-[16px] font-semibold">{ticket.title || copy.work.taskEmpty}</h1>
           <p className={cn("truncate text-[12px]", ticket.person && open ? "text-warning" : "text-muted")} data-testid="task-status">{status}</p>
           <TaskAgentRow ticket={ticket} onSent={props.onSent} />
@@ -237,6 +248,7 @@ export function TaskRead(props: {
 export function TaskPage(props: {
   ticket: Ticket | null;
   onBack: () => void;
+  onOpenGroup?: (id: string) => void;
   onSent?: () => void;
   skills?: SkillInfo[];
   files?: FileHit[];
