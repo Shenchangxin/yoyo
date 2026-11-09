@@ -209,7 +209,7 @@ func applyRejectedAsk(e *Engine, ticketID string, body []byte) bool {
 }
 
 // TranscriptLine 是工单会话里给人看的一行。Role 取 user、assistant、tool_call、tool_result。
-// Source 是这条用户消息从哪来的。Error 为真表示工具结果失败。
+// Source 是这条用户消息从哪来的。交接行的 Name 是接手的那次派工。Error 为真表示工具结果失败。
 type TranscriptLine struct {
 	ID     string `json:"id"`
 	Role   string `json:"role"`
@@ -290,7 +290,11 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 			if text == "" || text == hostRestartNote {
 				continue
 			}
-			out = append(out, TranscriptLine{ID: lineID(i, "user"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)})
+			line := TranscriptLine{ID: lineID(i, "user"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)}
+			if msg.Source == "handover" {
+				line.Name = strings.TrimPrefix(msg.ID, handoverPrefix)
+			}
+			out = append(out, line)
 		case dsh.EventAssistant:
 			msg, ok := ev.Data.(dsh.Assistant)
 			if !ok {
@@ -405,13 +409,35 @@ func (e *Executor) watchLog(w Worker, ticketID string, stop <-chan struct{}) {
 }
 
 // restoreAgent 把 ticketID 已存的日志灌进 w，并把回合号接到上次的后面。灌进去时返回真。
-func (e *Executor) restoreAgent(w Worker, ticketID string) bool {
-	if e == nil || w == nil || e.LogLoad == nil {
+// 日志里有交接时只灌最后一次交接之后的那段，更早的留作前缀，新工人读不到别的 agent 留下的工具调用。
+// marker 是这次派工的交接消息。日志里还没有它时，已有的全部留作前缀，w 从这条消息开始，返回假。
+func (e *Executor) restoreAgent(w Worker, ticketID string, marker *dsh.UserMessage) bool {
+	if e == nil || w == nil {
 		return false
 	}
-	body := e.LogLoad(ticketID)
-	events, turn := decodeLog(body)
-	events = scrubRestartNotes(events)
+	var events []dsh.Event
+	turn := 0
+	if e.LogLoad != nil {
+		events, turn = decodeLog(e.LogLoad(ticketID))
+		events = scrubRestartNotes(events)
+	}
+	fresh := marker != nil && !hasMessage(events, marker.ID)
+	cut := lastHandover(events)
+	if fresh {
+		cut = len(events)
+	}
+	var prefix []dsh.Event
+	if cut > 0 {
+		prefix, events = events[:cut], events[cut:]
+	}
+	e.setPrefix(ticketID, w.Session(), prefix)
+	if fresh {
+		w.Restore(nil, turn)
+		if s := w.Session(); s != nil {
+			s.Append(dsh.EventUser, turn, 0, *marker)
+		}
+		return false
+	}
 	if len(events) == 0 {
 		return false
 	}
@@ -419,16 +445,65 @@ func (e *Executor) restoreAgent(w Worker, ticketID string) bool {
 	return true
 }
 
-// storeAgent 把 w 当前日志交给 LogSave。没有日志时不写。
+// storeAgent 把交接前缀和 w 当前日志一起交给 LogSave。没有日志时不写。
+// 交接之后旧工人再写不算数，它的日志已经是新工人的前缀。
 func (e *Executor) storeAgent(w Worker, ticketID string) {
 	if e == nil || w == nil || e.LogSave == nil || w.Session() == nil {
 		return
 	}
-	body, _ := encodeLog(w.Session().Events())
+	prefix, ok := e.prefixFor(ticketID, w.Session())
+	if !ok {
+		return
+	}
+	body, _ := encodeLog(append(prefix, w.Session().Events()...))
 	if len(body) == 0 {
 		return
 	}
 	e.LogSave(ticketID, body)
+}
+
+// setPrefix 记下 ticketID 交接之前的日志，以及之后写日志的会话 owner。
+func (e *Executor) setPrefix(ticketID string, owner *dsh.Session, events []dsh.Event) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.prefix == nil {
+		e.prefix = map[string]logPrefix{}
+	}
+	e.prefix[ticketID] = logPrefix{owner: owner, events: events}
+}
+
+// prefixFor 返回 owner 写盘时要拼在前面的日志副本。前缀属于别的会话时 ok 为假，这次不写。
+func (e *Executor) prefixFor(ticketID string, owner *dsh.Session) ([]dsh.Event, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	p, has := e.prefix[ticketID]
+	if !has {
+		return nil, true
+	}
+	if p.owner != owner {
+		return nil, false
+	}
+	return append([]dsh.Event(nil), p.events...), true
+}
+
+// lastHandover 返回 events 里最后一条交接消息的下标。没有时为 -1。
+func lastHandover(events []dsh.Event) int {
+	for i := len(events) - 1; i >= 0; i-- {
+		if msg, ok := events[i].Data.(dsh.UserMessage); ok && events[i].Type == dsh.EventUser && msg.Source == "handover" {
+			return i
+		}
+	}
+	return -1
+}
+
+// hasMessage 在 events 里有编号为 id 的用户消息时为真。
+func hasMessage(events []dsh.Event, id string) bool {
+	for _, ev := range events {
+		if msg, ok := ev.Data.(dsh.UserMessage); ok && ev.Type == dsh.EventUser && msg.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // passingError 在失败是暂时的网络或服务端限流时为真。外部 agent 进程退出也算，重试时工人会重连并续接。准备命令失败不算。

@@ -45,10 +45,13 @@ import {
   pinFromToken,
   settleBareAtPaths,
   suggestSkills,
+  withoutMentions,
   type MentionKind,
   type MentionPin,
   type MentionSessionRef,
 } from "../lib/mentions";
+import { agentStateText, blockedHint, fill, mentionAgents, routable } from "./buddy/buddy-model";
+import { useBuddy } from "./buddy/buddy-store";
 import "./session-chrome/composer.css";
 import { QueueDock } from "./session-chrome/QueueDock";
 import { TodoPanel } from "./session-chrome/TodoPanel";
@@ -70,6 +73,9 @@ import { WorkspacePicker } from "./session-chrome/WorkspacePicker";
 import { TurnStatusBar } from "./transcript/TurnStatusBar";
 import type { SessionStats } from "../lib/session-stats";
 import { PresencePerch } from "./presence";
+
+/** closedAgentHints 是关掉过多 agent 提示的草稿。关掉后这段会话不再出现，重开窗口才会再见到。 */
+const closedAgentHints = new Set<string>();
 
 /** submitMode 在正在跑且有内容时决定这一下是排队还是插话。accelerated 为真时用偏好的反面。 */
 function submitMode(preferred: BusyEnter, accelerated: boolean): BusyEnter {
@@ -186,6 +192,10 @@ export function Composer(props: {
   const copilotDesk = studioDesk;
   // 主循环不选目录。工具根用默认工作区，输入框不因为路径还没到就锁住，也不在空会话上露出工作区芯片。
   const mainLoop = surface === "agent";
+  // 只有主会话的输入框交给路由，@agent 只在这里有意义；任务会话是 plain，下一句直接给工人。
+  const agentMentions = mainLoop && !props.plain;
+  const buddies = useBuddy((s) => s.list);
+  const [, setHintClosed] = useState(0);
   const needWorkspace = !mainLoop && !copilotDesk && !talkDesk && !!props.onBrowseWorkspace && !pathReady(props.workspace);
   const disabled = props.disabled || needWorkspace;
   const workspaceTrigger = needWorkspace && !props.disabled;
@@ -242,6 +252,18 @@ export function Composer(props: {
     const token = mentionHit?.token || "";
     const parsed = mentionQueryOf(token);
     if (parsed.kind === "harness") return [];
+    const agentRows: OverlayItem[] = agentMentions && !parsed.quoted && (parsed.kind === "agent" || parsed.kind === "any")
+      ? mentionAgents(buddies, parsed.query).map((v) => ({
+        token: `@agent:${v.id}`,
+        label: v.name,
+        hint: agentStateText(v, copy.buddy),
+        kind: "agent" as MentionKind,
+        section: copy.composer.sectionAgents,
+        mark: { name: v.name, icon: v.icon },
+        disabled: !routable(v),
+      }))
+      : [];
+    if (parsed.kind === "agent") return agentRows;
     if (parsed.kind === "skill") {
       return mentionableSkills(props.skills || [], parsed.query).map((s) => ({
         token: `@skill:${s.name}`,
@@ -294,8 +316,8 @@ export function Composer(props: {
       .sort((a, b) => Number(a.section === copy.composer.sectionSessions) - Number(b.section === copy.composer.sectionSessions))
       .slice(0, 8);
     if (parsed.kind === "session") return sessionRows;
-    return [...fileRows, ...sessionRows];
-  }, [mentionHit?.token, drilled, props.files, props.sessions, props.sessionId, props.workspace, copy, props.skills]);
+    return [...agentRows, ...fileRows, ...sessionRows];
+  }, [mentionHit?.token, drilled, props.files, props.sessions, props.sessionId, props.workspace, copy, props.skills, agentMentions, buddies]);
 
   const skillRows: OverlayItem[] = mentionableSkills(props.skills || [], "").map((s) => ({
     token: `@skill:${s.name}`,
@@ -351,7 +373,7 @@ export function Composer(props: {
   }, [chips, value]);
   const suggestedSkills = useMemo(() => {
     if (overlayKind || disabled) return [];
-    const prose = value.replace(/@(?:file|folder|skill|session):\S+|@harness\b/g, " ").trim();
+    const prose = withoutMentions(value).trim();
     if (prose.length < 2) return [];
     return suggestSkills(props.skills || [], prose).filter((s) => !pinnedSkillNames.has(s.name) && !dismissedSuggest.includes(s.name));
   }, [overlayKind, disabled, props.skills, value, pinnedSkillNames, dismissedSuggest]);
@@ -359,6 +381,18 @@ export function Composer(props: {
     () => (props.autoSkills || []).filter((s) => s.name && !dismissedAuto.includes(s.name) && !pinnedSkillNames.has(s.name)),
     [props.autoSkills, dismissedAuto, pinnedSkillNames],
   );
+  const agentNames = useMemo(() => {
+    if (!agentMentions) return [];
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const pin of [...chips, ...peelCompletedMentions(value).chips]) {
+      if (pin.kind !== "agent" || seen.has(pin.detail)) continue;
+      seen.add(pin.detail);
+      names.push(buddies.find((v) => v.id === pin.detail)?.name || pin.label);
+    }
+    return names;
+  }, [agentMentions, chips, value, buddies]);
+  const agentsHint = agentNames.length >= 2 && !closedAgentHints.has(props.draftKey);
   const showPopup = overlayKind === "mention" || (!!overlayKind && popup.length > 0);
   const toolApproval = (props.approvals || []).find((a) => a.action !== "ask_user" && (!props.sessionId || !a.sessionId || a.sessionId === props.sessionId));
   const takeover = (props.ask && props.onResolveAsk) || (toolApproval && props.onResolveAsk);
@@ -525,6 +559,10 @@ export function Composer(props: {
       void grabScreenshot();
       return;
     }
+    if (item.kind === "agent") {
+      pickAgent(item);
+      return;
+    }
     if (item.token.startsWith("@")) {
       if (overlayKind === "slash") editorRef.current?.replaceSlash();
       insertMention(item.token, item.label);
@@ -535,6 +573,23 @@ export function Composer(props: {
       return;
     }
     applySlash(item.token);
+  }
+
+  /** 选了一个 agent。派不了的不插芯片，去掉触发词，打开 Buddy 选中它并说清先做什么；已经 @ 过的也只去掉触发词，同一个 agent 只留一枚。 */
+  function pickAgent(item: OverlayItem) {
+    const v = buddies.find((x) => `@agent:${x.id}` === item.token);
+    const dup = (editorRef.current?.snapshot().chips || []).some((c) => c.token === item.token);
+    if (item.disabled || dup) editorRef.current?.replaceTrigger("");
+    else editorRef.current?.replaceMention({ ...pinFromToken(item.token, item.label), icon: v?.icon });
+    setHint(null);
+    setHiToken("");
+    setDrilled(false);
+    if (item.disabled && v) {
+      toast(blockedHint(v, copy.composer));
+      useUI.getState().openBuddy(v.id);
+      return;
+    }
+    editorRef.current?.focus();
   }
 
   /** 禁用时不打开。再点一次关掉加号浮层。 */
@@ -917,6 +972,22 @@ export function Composer(props: {
               ) : null}
               {props.leading ? <div className="sc-accessory">{props.leading}</div> : null}
               {attaching ? <p className="sc-notice" role="status">{copy.composer.attachingClip}</p> : null}
+              {agentsHint ? (
+                <div className="sc-notice flex items-start gap-2" role="status" data-testid="agents-hint">
+                  <span className="min-w-0 flex-1">{fill(copy.composer.agentsHint, { names: agentNames.join(copy.composer.agentsJoin) })}</span>
+                  <button
+                    type="button"
+                    className="grid size-[18px] shrink-0 place-items-center rounded-sm text-muted hover:text-foreground"
+                    aria-label={copy.composer.agentsHintClose}
+                    onClick={() => {
+                      closedAgentHints.add(props.draftKey);
+                      setHintClosed((n) => n + 1);
+                    }}
+                  >
+                    <X className="size-3" aria-hidden />
+                  </button>
+                </div>
+              ) : null}
               <AttachmentRail items={atts} onRemove={(i) => setAtts((prev) => prev.filter((_, j) => j !== i))} />
               <DraftEditor
                 ref={editorRef}

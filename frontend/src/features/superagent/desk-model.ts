@@ -6,14 +6,22 @@
 export type Source = { name: string; state: string; detail: string; repo?: string; chat?: string; app?: string; api?: string; account?: string; hasSecret?: boolean };
 export type Input = { id: string; text: string; human: boolean; delivered: boolean };
 export type Follow = { thread: string; own: boolean; closed?: string };
-export type ReportLine = { state: string; summary?: string; question?: string };
-export type Assignment = { id: string; state: string; report?: string; summary?: string; lines?: ReportLine[] };
+/** ReportLine 是派工上的一条报告。at 是 RFC3339，旧报告没有。need 为 login 时人要先去 Buddy 登录。 */
+export type ReportLine = { state: string; summary?: string; question?: string; at?: string; need?: string };
+/** Assignment 是一次派工。agent 是这次交给的 agent，yoyo 自己做时是 yoyo。 */
+export type Assignment = { id: string; state: string; report?: string; summary?: string; lines?: ReportLine[]; agent?: string };
+/** Usage 是外部 agent 最近报的用量。used 和 size 是 token 数，cost 按 currency 计。 */
+export type Usage = { used?: number; size?: number; cost?: number; currency?: string };
+/** Ticket 是一张工单。agent 是做它的 agent，agentPinned 表示人点名了它。 */
 export type Ticket = {
   id: string; stage: string; action: string; person: boolean; origin: string; outcome?: string;
   strength?: string; sender?: string; attention?: string; deliveryError?: string; originUrl?: string;
   title: string; directory?: string; openedAt?: string; updatedAt?: string;
   inputs?: Input[]; follows?: Follow[]; assignments?: Assignment[];
+  agent?: string; agentPinned?: boolean; usage?: Usage;
 };
+/** AgentLoad 是一个 agent 正在跑和排队的工单数。 */
+export type AgentLoad = { agent: string; running: number; queued: number };
 export type Trigger = {
   id: string; source: string; sender: string; text: string; addressed: boolean;
   thread?: string; at?: string; due?: string; filtered?: string; queued?: boolean;
@@ -48,6 +56,7 @@ export type DeskView = {
   rules?: Rule[];
   flow?: Flow;
   load?: Load;
+  agents?: AgentLoad[];
 };
 
 export type Rule = { id: string; text: string; enabled: boolean };

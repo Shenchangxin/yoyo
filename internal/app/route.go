@@ -35,6 +35,8 @@ const routePrompt = `你是主会话的路由。你只有 task_route、task_stat
 
 明确的请求立刻路由。先看材料里列出的工单：和某一张是同一件事，或者明显相关，就用 continue 指到那张工单，沿用它的目录和会话，不要 accept 新开。有多张相关时，继续最贴近的一张。都不相关才 accept。
 
+工单可以交给不同的 agent，见每轮材料里的说明。材料里没提 agent 时 agent 留空，交给 yoyo 自己。
+
 工人看不到这段对话。人的原话一般不会转给工人，只有工人在等回答时，原话会和你的 brief 一起送去。不要把人的短句原样贴进 brief。brief 按工人现在的状态写，不要每次都重写整张工单。
 
 accept 是新开一张工单，工人还没有上下文。这时 brief 要能独立做完，写清背景、目标产物、可写目录的绝对路径、硬性约束、怎样算做完。只用已经出现过的目录、文件和决定，不要编路径，也不要留 A/B/C 让工人挑。title 只在 accept 时写一个短名。
@@ -86,7 +88,7 @@ func routeFragment() artifact.PromptFragment {
 }
 
 // intakeDesk 把这一轮桌面消息记成明确触发。已经落到同一条具体线程上的，告诉路由只能停止。
-// 主会话上的新请求先列出最近工单，由路由判断是继续原目录，还是新开。
+// 主会话上的新请求先列出最近工单，由路由判断是继续原目录，还是新开。人 @ 过的 agent 核对后记在触发上，并写进说明。
 func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	text = strings.TrimSpace(text)
 	if a == nil || text == "" || strings.TrimSpace(turnID) == "" {
@@ -98,19 +100,23 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 		return ""
 	}
 	id := "desk:" + sessionID + ":" + turnID
+	agents, agentNote := a.agentIntake(text)
 	_, reached := rt.Receive(superagent.Trigger{
 		ID: id, Source: "desk", Threads: []string{"desk:" + sessionID}, Primary: "desk:" + sessionID,
-		Human: true, Addressed: true, Sender: "operator", Text: text, Channel: "desk",
+		Human: true, Addressed: true, Sender: "operator", Text: text, Channel: "desk", Agents: agents,
 	})
 	if len(reached) > 0 {
 		return "这条消息已经交给工单 " + strings.Join(reached, ", ") + "。不要再接受。只有人明确要求停止时才用 task_stop。"
 	}
 	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单和它现在的阶段。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 要写完整 brief。continue 的 brief 看阶段：正在做就只写变化，在等回答就只写答案，停着就写下一步，上下文断了才写完整说明。人的原话不要原样送去，brief 留空会被拒绝。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
-	if roster := taskRoster(rt); roster != "" {
+	if roster := a.taskRoster(rt); roster != "" {
 		line += "\n最近工单：\n" + roster
 	}
 	if rules := enabledRuleLine(rt); rules != "" {
 		line += " 推断接受时 rules 只能从这些编号里选：" + rules
+	}
+	if agentNote != "" {
+		line += "\n" + agentNote
 	}
 	return line
 }
@@ -207,7 +213,7 @@ func (a *App) heardIn(sessionID string) []string {
 
 // routeTool 接受、忽略、停止或挂接触发。一次可以有多项。
 func (a *App) routeTool() runtime.ExtraTool {
-	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 不能空，人的原话不会另送。accept 要写完整说明。continue 按工单阶段写：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。", map[string]any{
+	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules、agent。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 不能空，人的原话不会另送。accept 要写完整说明。continue 按工单阶段写：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。agent 是交给谁：accept 时用它开单，continue 时和工单现在的不同就改派。", map[string]any{
 		"items": map[string]any{
 			"type": "array",
 			"items": map[string]any{
@@ -220,6 +226,7 @@ func (a *App) routeTool() runtime.ExtraTool {
 					"brief":   map[string]any{"type": "string", "description": "交给工人的交代。accept 写完整说明。continue 按阶段伸缩：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。不要把人的原话原样放进来。留空会被拒绝。"},
 					"reason":  map[string]any{"type": "string"},
 					"rules":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"agent":   map[string]any{"type": "string", "description": "交给哪个 agent 的编号。只能填人在这条消息里 @ 过的，或 yoyo；材料里说了默认 agent 或自动挑选时按材料来。留空按材料里的缺省。"},
 				},
 				"required": []string{"trigger", "action"},
 			},
@@ -259,20 +266,31 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 		reason = title
 	}
 	brief := strings.TrimSpace(strParam(item, "brief"))
+	agent := strParam(item, "agent")
 	switch action {
 	case "accept":
 		if brief == "" {
 			return "", errNeedsBrief
 		}
 		if ticket != "" {
+			if line, err := a.switchAgent(rt, ticket, trigger, agent, brief); line != "" || err != nil {
+				return line, err
+			}
 			if err := rt.Act("assign", ticket, trigger, brief, ""); err != nil {
 				return "", err
 			}
 			return "attached " + trigger + " to " + ticket, nil
 		}
-		rules := ruleParam(item["rules"])
-		if err := rt.DecideBrief(trigger, "accept", title, brief, rules); err != nil {
+		pick, pinned, err := a.routeAgent(rt, trigger, agent)
+		if err != nil {
 			return "", err
+		}
+		rules := ruleParam(item["rules"])
+		if err := rt.DecideBriefFor(trigger, "accept", title, brief, rules, pick, pinned); err != nil {
+			return "", err
+		}
+		if pick != "" {
+			return "accepted " + trigger + " for " + pick, nil
 		}
 		return "accepted " + trigger, nil
 	case "continue", "attach":
@@ -281,6 +299,9 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 		}
 		if brief == "" {
 			return "", errNeedsHandoff
+		}
+		if line, err := a.switchAgent(rt, ticket, trigger, agent, brief); line != "" || err != nil {
+			return line, err
 		}
 		// 工人在等一个答案时，人的原话就是答案，路径和数值转述会走样。原话和交代一起送过去。
 		kind := "assign"
@@ -332,7 +353,7 @@ func (a *App) statusTool() runtime.ExtraTool {
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
-		text := taskRoster(rt)
+		text := a.taskRoster(rt)
 		if text == "" {
 			return "没有工单", nil
 		}
@@ -340,8 +361,8 @@ func (a *App) statusTool() runtime.ExtraTool {
 	})
 }
 
-// taskRoster 把最近八张工单收成路由能对照的几行。新的在前。
-func taskRoster(rt *superagent.Runtime) string {
+// taskRoster 把最近八张工单收成路由能对照的几行。新的在前。交给外部 agent 的写明是谁。
+func (a *App) taskRoster(rt *superagent.Runtime) string {
 	if rt == nil {
 		return ""
 	}
@@ -359,6 +380,9 @@ func taskRoster(rt *superagent.Runtime) string {
 			title = "未命名"
 		}
 		fmt.Fprintf(&b, "%s %s %s\n", ticket.ID, ticketSituation(ticket), title)
+		if ticket.Agent != "" && ticket.Agent != superagent.YoyoAgent {
+			fmt.Fprintf(&b, "  agent %s（%s）\n", ticket.Agent, firstNonEmpty(a.buddyName(ticket.Agent), ticket.Agent))
+		}
 		if dir := strings.TrimSpace(ticket.Directory); dir != "" {
 			fmt.Fprintf(&b, "  目录 %s\n", dir)
 		}
@@ -692,6 +716,7 @@ func (a *App) relayNotice(sessionID, text string) {
 // relayReport 把需要人看的报告写进正在看这张工单的桌面会话。
 // 做完、失败、放下和打断会带上已经报过的阶段性进展，并写进记忆。会话写不进去时，记忆仍然留下。
 // 同一段正文只写一次。后来跟上的会话优先，没有时才回到开工那一条。
+// 外部 agent 做的工单在载荷里写上 agent 和名字；要先登录时加上 need。
 func (a *App) relayReport(ticketID, state, summary, question string) {
 	if a == nil {
 		return
@@ -743,17 +768,29 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 	if strings.TrimSpace(question) == "" && (state == "ready" || state == "waiting" || state == "stopped") {
 		kind = "status"
 	}
+	extra := map[string]any{}
+	if agent, ok := rt.TicketAgent(ticketID); ok && agent != superagent.YoyoAgent {
+		extra["agent"] = agent
+		extra["agentName"] = firstNonEmpty(a.buddyName(agent), agent)
+	}
+	if need := rt.TicketNeed(ticketID); need != "" {
+		extra["need"] = need
+	}
 	for _, sid := range sids {
 		if sid == "" || a.traceHasID(sid, id) {
 			continue
+		}
+		payload := map[string]any{
+			"text": text, "id": id, "kind": kind, "ticket": ticketID, "state": state,
+		}
+		for k, v := range extra {
+			payload[k] = v
 		}
 		ev := trace.Event{
 			Type:      trace.TypeAssistant,
 			Source:    "worker",
 			SessionID: sid,
-			Payload: map[string]any{
-				"text": text, "id": id, "kind": kind, "ticket": ticketID, "state": state,
-			},
+			Payload:   payload,
 		}
 		if err := a.Traces.AppendDurable(ev); err != nil {
 			continue

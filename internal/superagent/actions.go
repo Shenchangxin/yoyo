@@ -86,6 +86,192 @@ func (e *Engine) attach(ticketID, triggerID, note string, fold bool) (bool, bool
 	return true, false, nil
 }
 
+// Handover 是一次改派。Agent 为空或 yoyo 时交回 yoyo 自带工人，Name 是它给人看的名字。
+// Trigger 非空时把这条触发挂到工单上；Brief 非空时它是给新工人的说明，人的原话不进工人正文。
+// Pinned 为真表示人点名了 Agent，离线时不擅自换人。
+type Handover struct {
+	Agent, Name, Trigger, Brief string
+	Pinned                      bool
+}
+
+// Reassign 把 ticketID 改派给 h.Agent：当前派工结束，新开一次交给它的 pending 派工，续接编号和用量清掉，
+// 再写一条交接说明，写明谁接手、之前的进展和目录。已经结束的工单重新打开。改派总是人要的，暂停不挡。
+// 新旧 agent 相同时返回 sameAgent。旧工人还在跑时由调用方打断，执行器看到派工换了就关掉它。
+func (e *Engine) Reassign(ticketID string, h Handover) error {
+	e.mu.Lock()
+	err := e.reassign(ticketID, h)
+	e.mu.Unlock()
+	if err == nil && e.OnLaunch != nil {
+		e.OnLaunch(ticketID)
+	}
+	return err
+}
+
+// reassign 在锁内改派。规则不满足时返回错误短码，工单不动。
+func (e *Engine) reassign(ticketID string, h Handover) error {
+	t := e.tickets[ticketID]
+	if t == nil {
+		return errCode("unknownTicket")
+	}
+	if !e.policy.Revalidate(t.Mandate) {
+		return errCode("mandate")
+	}
+	agent := strings.TrimSpace(h.Agent)
+	if !externalAgent(agent) {
+		agent = ""
+	}
+	if agentKey(agent) == agentKey(t.Agent) {
+		return errCode("sameAgent")
+	}
+	var tr *Trigger
+	if h.Trigger != "" {
+		if tr = e.triggers[h.Trigger]; tr == nil {
+			return errCode("unknownTrigger")
+		}
+		if contains(tr.Handbacks, ticketID) {
+			return errCode("handedBackHere")
+		}
+	}
+	from := stampAgents(t)
+	if asg := latestAssignment(t); asg != nil && asg.State != "ended" {
+		asg.State = "ended"
+	}
+	summary := progressSummary(t)
+	t.Ended = nil
+	t.Agent = agent
+	t.AgentPinned = h.Pinned && agent != ""
+	t.Pointer, t.PointerOf = "", ""
+	t.Usage = nil
+	t.Attention = ""
+	t.Resume = false
+	brief := strings.TrimSpace(h.Brief)
+	if tr != nil {
+		e.unqueue(tr)
+		if !reachedTrigger(t, tr.ID) {
+			e.addInput(t, tr)
+			if brief != "" {
+				e.hideTriggerText(t, tr.ID)
+			}
+			if !contains(tr.Reached, ticketID) {
+				tr.Reached = append(tr.Reached, ticketID)
+			}
+		}
+		for _, key := range tr.Threads {
+			e.subscribe(ticketID, key)
+			e.follow(t, key, false)
+		}
+	}
+	name := strings.TrimSpace(h.Name)
+	if name == "" {
+		name = agentKey(agent)
+	}
+	e.addNote(t, handoverNote(name, summary, t.Directory), false)
+	if brief != "" {
+		e.addNote(t, clipRunes(brief, 12000), false)
+	}
+	e.addAssignment(t)
+	asg := latestAssignment(t)
+	asg.Agent = agentKey(agent)
+	asg.From = from
+	return nil
+}
+
+// FallBack 在 asgID 交给的 agent 离线、人又没点名它时，把这次派工改给 yoyo 自带工人，续接编号清掉。
+// 返回原来的 agent。工单已经结束、点名了 agent、或者 asgID 已经不是最新派工时不改，返回空串。
+func (e *Engine) FallBack(ticketID, asgID string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil || t.Ended != nil || t.AgentPinned {
+		return ""
+	}
+	asg := latestAssignment(t)
+	if asg == nil || asg.ID != asgID || asg.State == "ended" {
+		return ""
+	}
+	from := strings.TrimSpace(asg.Agent)
+	if from == "" {
+		from = t.Agent
+	}
+	if !externalAgent(from) {
+		return ""
+	}
+	stampAgents(t)
+	asg.Agent = YoyoAgent
+	asg.From = from
+	t.Agent = ""
+	t.Pointer, t.PointerOf = "", ""
+	t.Usage = nil
+	return from
+}
+
+// LatestAssignment 返回 ticketID 最新一次派工的编号。没有时为空串。
+func (e *Engine) LatestAssignment(ticketID string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if asg := latestAssignment(e.tickets[ticketID]); asg != nil {
+		return asg.ID
+	}
+	return ""
+}
+
+// HandedOff 在 ticketID 上 asgID 之后已经有一次交接派工时为真。这时旧工人的报告和回复不再算数。
+func (e *Engine) HandedOff(ticketID, asgID string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tickets[ticketID]
+	if t == nil {
+		return false
+	}
+	seen := false
+	for _, asg := range t.Assignments {
+		if seen && asg.From != "" {
+			return true
+		}
+		if asg.ID == asgID {
+			seen = true
+		}
+	}
+	return false
+}
+
+// stampAgents 把还没写 agent 的派工记成工单现在的 agent，换人之后旧派工仍然记得是谁做的。返回这个 agent。
+func stampAgents(t *Ticket) string {
+	from := agentKey(t.Agent)
+	for i := range t.Assignments {
+		if strings.TrimSpace(t.Assignments[i].Agent) == "" {
+			t.Assignments[i].Agent = from
+		}
+	}
+	return from
+}
+
+// progressSummary 是 t 最近一份有正文的报告。没有时为空串。
+func progressSummary(t *Ticket) string {
+	for i := len(t.Assignments) - 1; i >= 0; i-- {
+		reports := t.Assignments[i].Reports
+		for j := len(reports) - 1; j >= 0; j-- {
+			if s := strings.TrimSpace(reports[j].Summary); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// handoverNote 是改派时给新工人的一句：谁接手、之前的进展和目录。没有进展或目录时略去那一段。
+func handoverNote(name, summary, dir string) string {
+	var b strings.Builder
+	b.WriteString("改由 " + name + " 接手。")
+	if summary = strings.TrimRight(strings.TrimSpace(summary), "。.!！ "); summary != "" {
+		b.WriteString("之前的进展：" + clipRunes(summary, 600) + "。")
+	}
+	if dir = strings.TrimSpace(dir); dir != "" {
+		b.WriteString("目录 " + dir + "。")
+	}
+	return b.String()
+}
+
 // Reply 按 purpose 把 text 放进发件箱。purpose 取 acknowledgement、answer、result 或 attention。
 // ticketID 是工单，triggerID 是相关触发。相同键的第二次调用不新增。
 func (e *Engine) Reply(ticketID, purpose, triggerID, text string) (Outbound, error) {

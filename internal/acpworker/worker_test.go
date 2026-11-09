@@ -354,6 +354,21 @@ func TestWorkerResumesThenLoadsThenStartsNew(t *testing.T) {
 	}
 }
 
+// TestHandoverStartsWithoutContinuationNote 锁住改派后新工人的第一条消息不说「会话接不上」：交接那一行不算之前的记录。
+func TestHandoverStartsWithoutContinuationNote(t *testing.T) {
+	var texts record[string]
+	d := scripted(acptest.Script{OnPrompt: echoTurns(&texts, "好")})
+	w := newWorker(t, d, nil)
+	w.Restore(nil, 3)
+	w.Session().Append(dsh.EventUser, 3, 0, dsh.UserMessage{ID: "handover-asg-2", Source: "handover", Text: "改由 Codex 接手"})
+	if end := run(w, "派工正文"); end.Kind != "completed" {
+		t.Fatalf("turn end = %+v", end)
+	}
+	if text := texts.list()[0]; strings.Contains(text, "原来的会话接不上了") || !strings.Contains(text, "派工正文") {
+		t.Fatalf("first prompt:\n%s", text)
+	}
+}
+
 func TestWorkerCancelDropsQueuedInput(t *testing.T) {
 	started := make(chan struct{}, 4)
 	d := scripted(acptest.Script{OnPrompt: slowTurn(started)})

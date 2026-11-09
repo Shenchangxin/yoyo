@@ -37,6 +37,10 @@ export function taskSessionItems(ticket: Ticket, lines: TaskLine[]): Item[] {
     out.push(userItem(ticket.id, row.id, text));
   };
   for (const line of lines) {
+    if (line.role === "user" && line.source === "handover") {
+      out.push(handoverItem(ticket, line));
+      continue;
+    }
     if (line.role === "user" && line.source === "assignment") {
       const body = (line.text || "").trim();
       const delta = assignmentDelta(prev, body);
@@ -150,6 +154,22 @@ function peel(delta: string, inputs: { text: string }[], cursor: number, emit: (
     break;
   }
   return cursor;
+}
+
+/** handoverItem 是改派时的分隔线。line.name 是接手的那次派工，从它找出接手的 agent，好画字形。 */
+function handoverItem(ticket: Ticket, line: TaskLine): Item {
+  const agent = (ticket.assignments ?? []).find((a) => a.id === line.name)?.agent || "";
+  return {
+    key: line.id,
+    type: "user",
+    sessionId: ticket.id,
+    source: "handover",
+    ts: "",
+    text: (line.text || "").trim(),
+    name: line.name || "",
+    delta: false,
+    payload: { id: line.id, agent },
+  };
 }
 
 function userItem(sessionId: string, id: string, text: string): Item {

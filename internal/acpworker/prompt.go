@@ -63,9 +63,15 @@ func instructionsBlock(text string) string {
 }
 
 // continuationNote 是续接不上、只能新开会话时放在第一条消息前的说明：上次的摘要加最后三行记录。events 只含这一轮之前的事件，没有可说的时返回空串。
+// 交接那一行不算记录：刚接手的工人没有做过什么，交接说明已经在派工正文里。
 func continuationNote(events []dsh.Event) string {
 	summary := lastReportSummary(events)
-	lines := superagent.TranscriptLines(events)
+	var lines []superagent.TranscriptLine
+	for _, line := range superagent.TranscriptLines(events) {
+		if line.Source != "handover" {
+			lines = append(lines, line)
+		}
+	}
 	if len(lines) > 3 {
 		lines = lines[len(lines)-3:]
 	}

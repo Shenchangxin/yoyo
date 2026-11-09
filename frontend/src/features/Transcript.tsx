@@ -14,6 +14,8 @@ import { askBrief } from "./superagent/BriefOverlay";
 import { focusBrief } from "./superagent/needs";
 import { EventCard } from "../components/ui/event-card";
 import { TaskEventHead, TurnReceipts } from "./transcript/TurnReceipts";
+import { BuddyMark } from "./buddy/BuddyMark";
+import { useBuddy } from "./buddy/buddy-store";
 import { FirstRun } from "./transcript/FirstRun";
 import { SpeakFeedback } from "./superagent/SpeakFeedback";
 import { speakPhrases, speakSentence } from "./superagent/work-model";
@@ -1307,6 +1309,34 @@ function CompactRow({ item }: { item: Item }) {
   );
 }
 
+/** HandoverRow 是任务会话里的改派分隔线：居中一条细线，中间是接手 agent 的字形和后端写下的那句话。 */
+function HandoverRow({ item }: { item: Item }) {
+  const id = String(item.payload?.agent || "");
+  const v = useBuddy((s) => (id ? s.list.find((x) => x.id === id) : undefined));
+  return (
+    <div className="flex items-center gap-3 py-1 text-ui-caption text-muted" data-testid="task-handover">
+      <span className="h-px flex-1 bg-border/70" aria-hidden />
+      <span className="flex min-w-0 items-center gap-1.5">
+        {id ? <BuddyMark v={v ?? { name: id }} className="size-3 text-ui-badge" /> : null}
+        <span className="truncate">{item.text}</span>
+      </span>
+      <span className="h-px flex-1 bg-border/70" aria-hidden />
+    </div>
+  );
+}
+
+/** AgentMention 是用户消息里 agent 芯片的字形和名字。名字取 Buddy 列表，列表里没有时用芯片上的。 */
+function AgentMention({ pin }: { pin: MentionPin }) {
+  const v = useBuddy((s) => s.list.find((x) => x.id === pin.detail));
+  const name = v?.name || pin.label;
+  return (
+    <>
+      <BuddyMark v={v ?? { name }} className="size-3 text-ui-badge opacity-80" />
+      <span className="truncate">{name}</span>
+    </>
+  );
+}
+
 /** 文件夹、技能、harness、会话各用自己的图标，其余用文件图标。kind 与 folder、skill、harness、session 比较是否相等。 */
 function MentionGlyph({ kind }: { kind: MentionKind }) {
   const cls = "size-3 shrink-0 opacity-80";
@@ -1354,8 +1384,12 @@ function UserPrompt({
               className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-background/55 px-1.5 py-0.5 text-ui-caption"
               title={c.detail || c.token}
             >
-              <MentionGlyph kind={c.kind} />
-              <span className="truncate">{c.label}</span>
+              {c.kind === "agent" ? <AgentMention pin={c} /> : (
+                <>
+                  <MentionGlyph kind={c.kind} />
+                  <span className="truncate">{c.label}</span>
+                </>
+              )}
             </span>
           ))}
         </div>
@@ -1409,6 +1443,7 @@ const ItemRow = memo(function ItemRow({
         </div>
       );
     }
+    if (shown.source === "handover") return <HandoverRow item={shown} />;
     const clock = formatMessageClock(Date.parse(shown.ts), { md: copy.transcript.clockMd, ymd: copy.transcript.clockYmd });
     return (
       <div className="flex justify-end">
@@ -1433,7 +1468,14 @@ const ItemRow = memo(function ItemRow({
     const body = !streaming && fileActions.linkFiles ? hidePaths(shown.text) : shown.text;
     return (
       <div className={cn("assistant-prose w-full min-w-0", handoff && "max-w-[40rem] rounded-lg border border-border border-l-2 border-l-status-needs bg-card px-3.5 py-3 shadow-[var(--shadow-card)]")} data-testid={handoff ? "task-handoff" : "task-status"}>
-        <TaskEventHead ticket={String(shown.payload?.ticket || "")} state={String(shown.payload?.state || "")} handoff={handoff} />
+        <TaskEventHead
+          ticket={String(shown.payload?.ticket || "")}
+          state={String(shown.payload?.state || "")}
+          handoff={handoff}
+          agent={String(shown.payload?.agent || "")}
+          agentName={String(shown.payload?.agentName || "")}
+          need={String(shown.payload?.need || "")}
+        />
         <div className="mt-1.5">
           <Markdown text={body} streaming={streaming} rich={!!rich && !streaming} />
           {streaming ? null : <FilePathList text={shown.text} />}

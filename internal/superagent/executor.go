@@ -6,6 +6,7 @@ package superagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -146,9 +147,17 @@ type Executor struct {
 	liveAgent map[string]string
 	live      map[string]bool
 	held      map[string]bool
-	bgMu      sync.Mutex
-	bg        map[string]int
-	bgNote    map[string]chan struct{}
+	// prefix 是最后一次交接之前的日志，只有 owner 那个会话写盘时拼在前面。新工人读不到它，任务页仍然完整。
+	prefix map[string]logPrefix
+	bgMu   sync.Mutex
+	bg     map[string]int
+	bgNote map[string]chan struct{}
+}
+
+// logPrefix 是一张工单交接之前的日志，以及接手之后在写日志的那个会话。
+type logPrefix struct {
+	owner  *dsh.Session
+	events []dsh.Event
 }
 
 // NewExecutor 返回执行器。slots 为 nil 时用 3 个槽，与原型 maxWorkers 的默认值相同。
@@ -434,7 +443,7 @@ func (e *Executor) openWorker(ticketID, asgID, agent string, ticket Ticket, dir 
 			Agent:        agent,
 			Pinned:       ticket.AgentPinned,
 			Dir:          dir,
-			Tools:        e.orchestratorTools(ticketID, false),
+			Tools:        e.assignmentTools(ticketID, asgID, false),
 			OnPointer:    func(pointer string) { e.Engine.SetPointer(ticketID, agent, pointer) },
 			OnUsage:      func(usage Usage) { e.Engine.SetUsage(ticketID, usage) },
 			OnAttention:  func(text string) { e.Engine.SetApprovalWait(ticketID, text) },
@@ -455,22 +464,67 @@ func (e *Executor) openWorker(ticketID, asgID, agent string, ticket Ticket, dir 
 		}
 		return w, nil, nil, nil
 	}
-	w, jobs, wait := newDshWorker(e, ticketID, dir)
+	w, jobs, wait := newDshWorker(e, ticketID, asgID, dir)
 	return w, jobs, wait, nil
 }
 
-// failOpen 在外部工人打不开时把这次派工记成 failed，并写回主会话。工单留着，人可以重试或换人。
-func (e *Executor) failOpen(ticketID string, err error) {
-	summary := clip(strings.TrimSpace(err.Error()), 200)
-	if summary == "" {
-		summary = ErrAgentOffline.Error()
+// failOpen 在外部工人打不开时写一份报告，并写回主会话。工单留着，人可以重试或换人。
+// agent 要先登录时报 blocked，等人去 Buddy 登录；离线时报 blocked，问人改用 yoyo 还是等它上线；其他原因记成 failed。
+func (e *Executor) failOpen(ticketID, agent string, err error) {
+	name := e.agentName(agent)
+	switch {
+	case needsLogin(err):
+		e.stopWith(ticketID, Report{State: "blocked", Summary: name + " 需要登录", Question: name + " 需要登录。去 Buddy 登录后回复继续。", Need: "login"})
+	case errors.Is(err, ErrAgentOffline):
+		e.stopWith(ticketID, Report{State: "blocked", Summary: name + " 离线", Question: name + " 离线。改用 yoyo，还是等它上线？"})
+	default:
+		summary := clip(strings.TrimSpace(err.Error()), 200)
+		if summary == "" {
+			summary = ErrAgentOffline.Error()
+		}
+		e.stopWith(ticketID, Report{State: "failed", Summary: summary})
 	}
-	if e.Engine.Report(ticketID, Report{State: "failed", Summary: summary}) != nil {
-		return
+}
+
+// needsLogin 在 err 说明 agent 要先登录时为真。Opener 和单轮结束都用 ReasonAuthRequired 标明。
+func needsLogin(err error) bool {
+	return err != nil && strings.Contains(err.Error(), ReasonAuthRequired)
+}
+
+// handoverPrefix 加上派工编号，是交接消息的编号。
+const handoverPrefix = "handover-"
+
+// handoverID 是 asgID 这次交接写进日志的那条消息的编号。重启后看到它就不再写第二条。
+func handoverID(asgID string) string {
+	return handoverPrefix + asgID
+}
+
+// handoverMarker 是 asgID 这次交接写进日志的那条消息。asgID 不是交接派工时为 nil。
+func (e *Executor) handoverMarker(ticket Ticket, asgID string) *dsh.UserMessage {
+	for _, asg := range ticket.Assignments {
+		if asg.ID != asgID {
+			continue
+		}
+		if strings.TrimSpace(asg.From) == "" {
+			return nil
+		}
+		return &dsh.UserMessage{ID: handoverID(asgID), Source: "handover", Text: "改由 " + e.agentName(assignmentAgent(ticket, asgID)) + " 接手"}
 	}
-	if e.OnReport != nil {
-		e.OnReport(ticketID, "failed", summary, "")
+	return nil
+}
+
+// retire 在 ticketID 已经改派之后关掉旧工人 w，并把它从表里拿掉。它的日志已经写过。
+func (e *Executor) retire(ticketID string, w Worker) {
+	e.mu.Lock()
+	if cur, ok := e.workers[ticketID]; ok && cur == w {
+		delete(e.workers, ticketID)
+		delete(e.workerOf, ticketID)
 	}
+	if d, ok := w.(*dshWorker); ok && e.agents[ticketID] == d.agent {
+		delete(e.agents, ticketID)
+	}
+	e.mu.Unlock()
+	_ = w.Close()
 }
 
 // runAssignment 准备目录、选工人，再跑这一轮。准备失败就结束工单，不自动重试。
@@ -495,9 +549,19 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 		return
 	}
 	agent := assignmentAgent(ticket, asgID)
+	marker := e.handoverMarker(ticket, asgID)
 	w, jobs, wait, err := e.openWorker(ticketID, asgID, agent, ticket, dir)
+	if errors.Is(err, ErrAgentOffline) && !needsLogin(err) {
+		if from := e.Engine.FallBack(ticketID, asgID); from != "" {
+			marker = &dsh.UserMessage{ID: handoverID(asgID), Source: "handover", Text: e.agentName(from) + " 离线，改由 yoyo 做"}
+			agent = YoyoAgent
+			e.dropAgent(ticketID)
+			e.holdAgent(ticketID, agent, 0)
+			w, jobs, wait, err = e.openWorker(ticketID, asgID, agent, ticket, dir)
+		}
+	}
 	if err != nil {
-		e.failOpen(ticketID, err)
+		e.failOpen(ticketID, agent, err)
 		return
 	}
 	e.Slots.Running(ticketID)
@@ -509,7 +573,7 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	if old != nil {
 		_ = old.Close()
 	}
-	restored := e.restoreAgent(w, ticketID)
+	restored := e.restoreAgent(w, ticketID, marker)
 	resumed := e.Engine.TakeResume(ticketID) && restored
 	if resumed {
 		// 日志里已经有的输入不再重发。重启前还没送到的话跟在「继续」后面，送到了才标成已投递。
@@ -539,6 +603,10 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 		}
 		w.WhenIdle()
 		e.storeAgent(w, ticketID)
+		if e.Engine.LatestAssignment(ticketID) != asgID {
+			e.retire(ticketID, w)
+			return
+		}
 		if stop, again := e.afterTurn(w, ticketID, &tries); stop {
 			return
 		} else if again {
@@ -729,7 +797,7 @@ func (e *Executor) afterTurn(w Worker, ticketID string, tries *int) (stop, again
 	}
 	if strings.HasPrefix(reason, ReasonAuthRequired) {
 		name := e.agentName(e.agentOf(ticketID))
-		e.stopWith(ticketID, Report{State: "blocked", Summary: name + " 需要登录", Question: name + " 需要登录。去 Buddy 登录后回复继续。"})
+		e.stopWith(ticketID, Report{State: "blocked", Summary: name + " 需要登录", Question: name + " 需要登录。去 Buddy 登录后回复继续。", Need: "login"})
 		return true, false
 	}
 	if tries != nil && *tries < 3 && passingError(reason) {
@@ -866,7 +934,9 @@ func (e *Executor) Deliver(ticketID, text string) bool {
 }
 
 // wake 在已经占好的人的额外槽里，把 text 送进停过一轮的工人 w，跑到这一轮停下。
+// 中途改派时关掉 w，不再催它。
 func (e *Executor) wake(ticketID string, w Worker, text string) {
+	asgID := e.Engine.LatestAssignment(ticketID)
 	e.mu.Lock()
 	e.live[ticketID] = true
 	delete(e.held, ticketID)
@@ -885,11 +955,15 @@ func (e *Executor) wake(ticketID string, w Worker, text string) {
 	}()
 	steerOrFollow(w, dsh.UserMessage{Text: text, Source: "human"})
 	caps := w.Caps()
-	var errors, nudges int
+	var tries, nudges int
 	for {
 		w.WhenIdle()
 		e.storeAgent(w, ticketID)
-		if stop, again := e.afterTurn(w, ticketID, &errors); stop {
+		if e.Engine.LatestAssignment(ticketID) != asgID {
+			e.retire(ticketID, w)
+			return
+		}
+		if stop, again := e.afterTurn(w, ticketID, &tries); stop {
 			return
 		} else if again {
 			continue

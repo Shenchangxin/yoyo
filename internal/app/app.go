@@ -165,6 +165,8 @@ type App struct {
 	deskMu sync.Mutex
 	desk   *dshdesk.Host
 	orch   *superagent.Runtime
+	// orchShut 在 Close 停掉编排之后为真。关闭途中还会有工人回调进来，不能让它们把数据库重新打开。
+	orchShut bool
 
 	briefMu     sync.Mutex
 	briefSig    string

@@ -147,15 +147,15 @@ func (w *dshWorker) Caps() WorkerCaps {
 // Close 什么都不做。dsh 代理没有外部进程。
 func (w *dshWorker) Close() error { return nil }
 
-// newDshWorker 为 ticketID 建 yoyo 自带的代理，登记五个 orchestrator 工具，再挂工作区工具或 shell。
+// newDshWorker 为 ticketID 的 asgID 这次派工建 yoyo 自带的代理，登记五个 orchestrator 工具，再挂工作区工具或 shell。
 // dir 是工单目录；为空或没有 Mount 时只挂 shell。返回的 jobs 和 wait 来自 Mount，没有时为 nil。
-func newDshWorker(e *Executor, ticketID, dir string) (*dshWorker, func() int, func(time.Duration)) {
+func newDshWorker(e *Executor, ticketID, asgID, dir string) (*dshWorker, func() int, func(time.Duration)) {
 	reg := dsh.NewRegistry()
 	agent := dsh.New("ticket-"+ticketID, e.Model, reg, dsh.Options{
 		Prompt: workerPrompt(e, dir, ticketID),
 		Model:  "yoyo-dsh",
 	})
-	for _, tool := range e.orchestratorTools(ticketID, true) {
+	for _, tool := range e.assignmentTools(ticketID, asgID, true) {
 		reg.Add(tool)
 	}
 	var jobs func() int
@@ -177,6 +177,28 @@ func (e *Executor) orchestratorTools(ticketID string, planGate bool) []dsh.Tool 
 		e.followTool(ticketID),
 		e.unrelatedTool(ticketID),
 	}
+}
+
+// handedOffText 是工单改派之后，旧工人再调 orchestrator 工具时拿到的回复。
+const handedOffText = "这张工单已经改派给别人。停下，不要再做，也不要再报告。"
+
+// assignmentTools 是 asgID 这次派工的工人拿到的 orchestrator 工具。
+// 之后有了交接派工，这些工具一律拒绝，旧工人的报告和回复落不到新派工上。
+func (e *Executor) assignmentTools(ticketID, asgID string, planGate bool) []dsh.Tool {
+	tools := e.orchestratorTools(ticketID, planGate)
+	if asgID == "" || e.Engine == nil {
+		return tools
+	}
+	for i := range tools {
+		run := tools[i].Run
+		tools[i].Run = func(ctx context.Context, call dsh.ToolCall) (dsh.Result, error) {
+			if e.Engine.HandedOff(ticketID, asgID) {
+				return dsh.Result{Text: handedOffText, IsError: true, Code: "handedOff", Concludes: true}, nil
+			}
+			return run(ctx, call)
+		}
+	}
+	return tools
 }
 
 // steerOrFollow 先插话，工人不支持时改成排队。

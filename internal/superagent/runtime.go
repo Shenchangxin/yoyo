@@ -224,6 +224,46 @@ func (rt *Runtime) TicketLabel(id string) string {
 	return strings.TrimSpace(t.Name)
 }
 
+// TriggerAgents 返回人在 id 这条触发里 @ 过的 agent，按出现顺序。没有这条触发时为空。
+func (rt *Runtime) TriggerAgents(id string) []string {
+	if rt == nil || rt.eng == nil {
+		return nil
+	}
+	tr, ok := rt.eng.Trigger(id)
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), tr.Agents...)
+}
+
+// TicketAgent 返回做 id 这张工单的 agent，yoyo 自带工人为 yoyo。没有这张工单时 ok 为假。
+func (rt *Runtime) TicketAgent(id string) (string, bool) {
+	if rt == nil || rt.eng == nil {
+		return "", false
+	}
+	t, ok := rt.eng.Ticket(id)
+	if !ok {
+		return "", false
+	}
+	return agentKey(t.Agent), true
+}
+
+// TicketNeed 返回 id 最近一份报告要人先做的事，例如 login。最近那份没有写时为空串。
+func (rt *Runtime) TicketNeed(id string) string {
+	if rt == nil || rt.eng == nil {
+		return ""
+	}
+	t, ok := rt.eng.Ticket(id)
+	if !ok {
+		return ""
+	}
+	asg := latestAssignment(&t)
+	if asg == nil || len(asg.Reports) == 0 {
+		return ""
+	}
+	return asg.Reports[len(asg.Reports)-1].Need
+}
+
 // TicketTexts 返回这张工单交给工人的正文，不截断。
 func (rt *Runtime) TicketTexts(id string) []string {
 	if rt == nil || rt.eng == nil {
@@ -565,6 +605,41 @@ func (rt *Runtime) DecideBriefFor(triggerID, kind, reason, brief string, rules [
 	return nil
 }
 
+// Reassign 把 ticketID 改派给 agent。agent 为空或 yoyo 时交回 yoyo 自带工人。
+// triggerID 是人这一句，可以为空；brief 是给新工人的说明；pinned 表示人点名了 agent。
+func (rt *Runtime) Reassign(ticketID, triggerID, agent, brief string, pinned bool) error {
+	if rt == nil || rt.eng == nil {
+		return errCode("empty")
+	}
+	rt.mu.Lock()
+	if err := rt.reassignLocked(ticketID, triggerID, agent, brief, pinned); err != nil {
+		rt.mu.Unlock()
+		return err
+	}
+	rt.saveLocked()
+	effects := rt.effects
+	rt.mu.Unlock()
+	if effects != nil {
+		effects.Pump(time.Now())
+	}
+	return nil
+}
+
+// reassignLocked 先改派再打断旧工人。反过来时，旧工人这一轮停下后还会被催着做下去。调用时要已持有 rt.mu。
+func (rt *Runtime) reassignLocked(ticketID, triggerID, agent, brief string, pinned bool) error {
+	name := agentKey(agent)
+	if rt.exec != nil {
+		name = rt.exec.agentName(agent)
+	}
+	if err := rt.eng.Reassign(ticketID, Handover{Agent: agent, Name: name, Trigger: triggerID, Brief: brief, Pinned: pinned}); err != nil {
+		return err
+	}
+	if rt.exec != nil {
+		rt.exec.Interrupt(ticketID)
+	}
+	return nil
+}
+
 // DecideMatched 接受一条推断。rules 必须是还启用的规则编号。
 func (rt *Runtime) DecideMatched(triggerID, kind, reason string, rules []string) error {
 	return rt.decide(triggerID, kind, reason, rules, false)
@@ -667,8 +742,8 @@ func (rt *Runtime) Deliver() int {
 	return n
 }
 
-// Act 执行编排台动作。kind 取 attach、assign、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、requestStatus、markUnrelated、follow 或 timeout。
-// ticketID、triggerID、text 和 reason 按动作使用。成功后立刻泵一次派工并落盘。
+// Act 执行编排台动作。kind 取 attach、assign、reply、note、say、handback、reevaluate、dismiss、unsubscribe、stop、retry、reassign、requestStatus、markUnrelated、follow 或 timeout。
+// ticketID、triggerID、text 和 reason 按动作使用。reassign 的 text 是新 agent，人在任务页选的，算点名。成功后立刻泵一次派工并落盘。
 func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	if rt == nil || rt.eng == nil {
 		return errCode("empty")
@@ -714,6 +789,8 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		err = rt.eng.Accept(ticketID, reason)
 	case "retry":
 		err = rt.eng.Retry(ticketID)
+	case "reassign":
+		err = rt.reassignLocked(ticketID, "", text, "", true)
 	case "requestStatus":
 		_, err = rt.eng.RequestStatus(ticketID)
 	case "markUnrelated":
@@ -775,13 +852,15 @@ func (rt *Runtime) View() View {
 	}
 	workers := rt.workers
 	prepare := rt.prepareCmd
+	exec := rt.exec
 	rt.mu.Unlock()
 	snap, err := rt.eng.Export()
 	if err != nil {
-		return View{Health: err.Error(), Sources: sources, At: at, Tickets: []TicketRow{}, Threads: []ThreadRow{}, Queued: []TriggerRow{}, Evals: []EvalRow{}, Decisions: []DecisionRow{}, Executions: []ExecutionRow{}, Problems: []ProblemRow{}, Allowed: []string{}}
+		return View{Health: err.Error(), Sources: sources, At: at, Tickets: []TicketRow{}, Threads: []ThreadRow{}, Queued: []TriggerRow{}, Evals: []EvalRow{}, Decisions: []DecisionRow{}, Executions: []ExecutionRow{}, Problems: []ProblemRow{}, Allowed: []string{}, Agents: []AgentLoad{}}
 	}
 	view := buildView(snap, sources, health, at, workers)
 	view.Prepare = prepare
+	view.Agents = agentLoads(view.Tickets, exec.AgentRunning())
 	if rt.effects != nil {
 		for _, row := range rt.effects.Failing() {
 			view.Problems = append(view.Problems, ProblemRow{

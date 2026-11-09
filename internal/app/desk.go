@@ -8,8 +8,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/buddy"
 	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
@@ -28,13 +30,13 @@ func (a *App) agentDesk() *dshdesk.Host {
 	return a.desk
 }
 
-// orchestrator 返回编排运行时。第一次调用时打开 SQLite、接上模型和工人，并开始两秒轮次。
+// orchestrator 返回编排运行时。第一次调用时打开 SQLite、接上模型和工人，并开始两秒轮次。应用关掉之后返回 nil。
 func (a *App) orchestrator() *superagent.Runtime {
 	if a == nil {
 		return nil
 	}
 	a.deskMu.Lock()
-	if a.orch != nil {
+	if a.orch != nil || a.orchShut {
 		rt := a.orch
 		a.deskMu.Unlock()
 		return rt
@@ -116,7 +118,7 @@ func (a *App) relayWaiting() {
 	}
 }
 
-// stopOrchestrator 停掉两秒轮次。还没打开过时什么都不做。
+// stopOrchestrator 停掉两秒轮次，之后不再打开。还没打开过时只记下已关。
 func (a *App) stopOrchestrator() {
 	if a == nil {
 		return
@@ -124,6 +126,7 @@ func (a *App) stopOrchestrator() {
 	a.deskMu.Lock()
 	rt := a.orch
 	a.orch = nil
+	a.orchShut = true
 	a.deskMu.Unlock()
 	if rt != nil {
 		rt.Stop()
@@ -192,10 +195,21 @@ func (a *App) WorkerTranscript(ticketID string) []superagent.TranscriptLine {
 }
 
 // OrchestratorAct 执行编排台动作。kind、ticketID、triggerID、text 和 reason 交给运行时。
+// 换人时 text 是 agent 编号，空着是 yoyo；现在派不了的先拒掉，不让工单落到一个开不起来的工人上。
 func (a *App) OrchestratorAct(kind, ticketID, triggerID, text, reason string) error {
 	rt := a.orchestrator()
 	if rt == nil {
 		return errString("orchestrator unavailable")
+	}
+	if kind == "reassign" {
+		agent := strings.ToLower(strings.TrimSpace(text))
+		if agent == "" {
+			agent = buddy.YoyoID
+		}
+		if why := a.agentRoutable(agent); why != "" {
+			return errString(agent + " " + why)
+		}
+		text = agent
 	}
 	return rt.Act(kind, ticketID, triggerID, text, reason)
 }

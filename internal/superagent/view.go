@@ -36,6 +36,23 @@ type View struct {
 	Flow FlowView `json:"flow"`
 	// Load 是执行器正在跑、排队和空闲的工单数。MaxWorkers 是普通槽位。
 	Load LoadView `json:"load"`
+	// Agents 是每个 agent 正在跑和排队的工单数，按编号排序。两样都为零的不列。
+	Agents []AgentLoad `json:"agents"`
+}
+
+// AgentLoad 是一个 agent 的负载。yoyo 自带工人记在 yoyo 名下。
+type AgentLoad struct {
+	Agent   string `json:"agent"`
+	Running int    `json:"running"`
+	Queued  int    `json:"queued"`
+}
+
+// UsageRow 是外部 agent 报的用量。Used 和 Size 是 token 数，Cost 按 Currency 计。
+type UsageRow struct {
+	Used     int     `json:"used,omitempty"`
+	Size     int     `json:"size,omitempty"`
+	Cost     float64 `json:"cost,omitempty"`
+	Currency string  `json:"currency,omitempty"`
 }
 
 // FlowView 是最近二十四小时的流量。Received 含 Filtered。Ignored 是这段里被忽略的决定。
@@ -96,6 +113,11 @@ type TicketRow struct {
 	Inputs        []InputRow      `json:"inputs"`
 	Follows       []FollowRow     `json:"follows"`
 	Assignments   []AssignmentRow `json:"assignments"`
+	// Agent 是做这张工单的 agent，yoyo 自带工人记成 yoyo。AgentPinned 为真表示人点名了它。
+	Agent       string `json:"agent"`
+	AgentPinned bool   `json:"agentPinned,omitempty"`
+	// Usage 是外部 agent 最近一次报的用量。没报过时为空。
+	Usage *UsageRow `json:"usage,omitempty"`
 }
 
 // InputRow 是工单上的一条输入。Delivered 为假表示执行器还没领走。
@@ -113,20 +135,23 @@ type FollowRow struct {
 	Closed string `json:"closed,omitempty"`
 }
 
-// AssignmentRow 是一次派工的摘要。Summary 是最近一次报告的正文。Lines 是这一轮里给人看的报告。
+// AssignmentRow 是一次派工的摘要。Summary 是最近一次报告的正文。Lines 是这一轮里给人看的报告。Agent 是这次派工交给的 agent。
 type AssignmentRow struct {
 	ID      string       `json:"id"`
 	State   string       `json:"state"`
 	Report  string       `json:"report,omitempty"`
 	Summary string       `json:"summary,omitempty"`
 	Lines   []ReportLine `json:"lines,omitempty"`
+	Agent   string       `json:"agent,omitempty"`
 }
 
-// ReportLine 是派工上的一条报告。进度和空正文不放进来。
+// ReportLine 是派工上的一条报告。进度和空正文不放进来。At 是 RFC3339，旧报告没有时为空。Need 为 login 时人要先去登录。
 type ReportLine struct {
 	State    string `json:"state"`
 	Summary  string `json:"summary,omitempty"`
 	Question string `json:"question,omitempty"`
+	At       string `json:"at,omitempty"`
+	Need     string `json:"need,omitempty"`
 }
 
 // ProblemRow 是总览上要人看的一条故障。Kind 取 source、unavailable、outgoing、overdue。
@@ -226,6 +251,7 @@ func buildView(snap Snapshot, sources []SourceState, health, at string, workers 
 		Decisions:   []DecisionRow{},
 		Executions:  []ExecutionRow{},
 		Problems:    []ProblemRow{},
+		Agents:      []AgentLoad{},
 		Allowed:     allowedNames(snap.Policy.Allowed),
 		Workers:     workers,
 		Load:        LoadView{MaxWorkers: workers},
@@ -389,6 +415,10 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 		Strength: ticket.Mandate.Strength, Sender: ticket.Mandate.Sender, Attention: ticket.Attention,
 		DeliveryError: ticket.DeliveryErr, Directory: ticket.Directory,
 		Inputs: []InputRow{}, Follows: []FollowRow{}, Assignments: []AssignmentRow{},
+		Agent: agentKey(ticket.Agent), AgentPinned: ticket.AgentPinned,
+	}
+	if u := ticket.Usage; u != nil {
+		row.Usage = &UsageRow{Used: u.Used, Size: u.Size, Cost: u.Cost, Currency: u.Currency}
 	}
 	if ticket.Ended != nil {
 		row.Outcome = ticket.Ended.Outcome
@@ -443,7 +473,7 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 		row.Follows = append(row.Follows, item)
 	}
 	for _, asg := range ticket.Assignments {
-		item := AssignmentRow{ID: asg.ID, State: asg.State}
+		item := AssignmentRow{ID: asg.ID, State: asg.State, Agent: agentKey(assignmentAgent(ticket, asg.ID))}
 		for _, rep := range asg.Reports {
 			if strings.TrimSpace(rep.Summary) == "" && strings.TrimSpace(rep.Question) == "" {
 				continue
@@ -451,9 +481,13 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 			if rep.State == "progress" {
 				continue
 			}
-			item.Lines = append(item.Lines, ReportLine{
-				State: rep.State, Summary: clipRunes(rep.Summary, 4000), Question: clipRunes(rep.Question, 2000),
-			})
+			line := ReportLine{
+				State: rep.State, Summary: clipRunes(rep.Summary, 4000), Question: clipRunes(rep.Question, 2000), Need: rep.Need,
+			}
+			if !rep.At.IsZero() {
+				line.At = rep.At.UTC().Format(time.RFC3339)
+			}
+			item.Lines = append(item.Lines, line)
 		}
 		if len(asg.Reports) > 0 {
 			last := asg.Reports[len(asg.Reports)-1]
@@ -463,6 +497,34 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 		row.Assignments = append(row.Assignments, item)
 	}
 	return row
+}
+
+// agentLoads 把执行器记的 running 和还在排队的工单收成每个 agent 一行，按编号排序。
+func agentLoads(tickets []TicketRow, running map[string]int) []AgentLoad {
+	byAgent := map[string]*AgentLoad{}
+	get := func(agent string) *AgentLoad {
+		agent = agentKey(agent)
+		if byAgent[agent] == nil {
+			byAgent[agent] = &AgentLoad{Agent: agent}
+		}
+		return byAgent[agent]
+	}
+	for agent, n := range running {
+		if n > 0 {
+			get(agent).Running = n
+		}
+	}
+	for _, row := range tickets {
+		if row.Stage == "working" && row.Action == "queued" {
+			get(row.Agent).Queued++
+		}
+	}
+	out := make([]AgentLoad, 0, len(byAgent))
+	for _, load := range byAgent {
+		out = append(out, *load)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Agent < out[j].Agent })
+	return out
 }
 
 // originURL 把 GitHub 议题或拉取请求收成可打开的地址。其他来源返回空串。

@@ -954,6 +954,7 @@ func (e *Engine) receive(in Trigger) (status string, launches, inputs []string) 
 	cp := in
 	stamp(&cp, e.now())
 	cp.Threads = threads
+	cp.Agents = append([]string(nil), in.Agents...)
 	cp.Reached = nil
 	cp.Handbacks = nil
 	cp.DecisionID = ""

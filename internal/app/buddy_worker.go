@@ -54,6 +54,7 @@ func (a *App) closeBuddyWorkers() {
 }
 
 // openBuddyWorker 是执行器的 Opener：spec.Agent 在线时为这张工单打开一个外部工人，不在线时返回包着 ErrAgentOffline 的错误。
+// 要先登录时错误里带上 ReasonAuthRequired，执行器就等人登录，不换人。
 // 工人说明、续接编号和回调已经由执行器填好；这里补上启动方式、控制面、审批和写入检查。
 func (a *App) openBuddyWorker(ctx context.Context, spec superagent.WorkerSpec) (superagent.Worker, error) {
 	m := a.Buddies()
@@ -68,6 +69,9 @@ func (a *App) openBuddyWorker(ctx context.Context, spec superagent.WorkerSpec) (
 		_, _ = m.Probe(ctx, id)
 	}
 	if !m.Online(id) {
+		if v, err := m.Get(id); err == nil && v.State == buddy.StateNeedsAuth {
+			return nil, fmt.Errorf("%s: %s: %w", name, superagent.ReasonAuthRequired, superagent.ErrAgentOffline)
+		}
 		return nil, fmt.Errorf("%s: %w", name, superagent.ErrAgentOffline)
 	}
 	launch, secrets, err := m.LaunchRedacted(id)

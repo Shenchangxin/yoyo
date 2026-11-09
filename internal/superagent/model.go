@@ -27,6 +27,8 @@ type Trigger struct {
 	At time.Time `json:"At,omitempty"`
 	// Due 是日历上的开始时间。空着表示没有到期点。
 	Due string `json:"Due,omitempty"`
+	// Agents 是人在这条消息里 @ 过、确认存在的 agent 编号，按出现顺序。路由只能交给它们或 yoyo。
+	Agents []string `json:"Agents,omitempty"`
 }
 
 // Thread 按时间收触发。Subs 是订阅它的工单。Queued 是还没评估的触发。
@@ -71,6 +73,8 @@ type Report struct {
 	Seq      int
 	// At 是这份报告记下的时刻。旧快照没有这一项时为零。
 	At time.Time `json:"At,omitempty"`
+	// Need 是人要先做的事。login 表示 agent 要先在 Buddy 登录。
+	Need string `json:"Need,omitempty"`
 }
 
 // Assignment 把工单绑到一次执行。State 取 pending、running、ended。
@@ -80,6 +84,8 @@ type Assignment struct {
 	Reports []Report
 	// Agent 是这次派工交给的 agent。空串表示沿用工单的 Agent。
 	Agent string `json:"Agent,omitempty"`
+	// From 是改派前做这张工单的 agent。非空表示这次派工是交接，工人日志从这里另起一段。
+	From string `json:"From,omitempty"`
 }
 
 // Usage 是外部 agent 报的上下文用量和花费。Used 和 Size 是 token 数，Cost 按 Currency 计。

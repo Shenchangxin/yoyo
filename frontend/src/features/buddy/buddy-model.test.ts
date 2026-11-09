@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import type { BuddyView } from "../../lib/client.ts";
 import { en } from "../../lib/copy.ts";
 import {
+  agentStateText,
   attentionCount,
+  blockedHint,
   buddyMenu,
   buddyPrimary,
   buddySections,
@@ -13,16 +15,18 @@ import {
   checkedAgo,
   fill,
   formatSize,
+  mentionAgents,
   newer,
   onlineCount,
   parseEnv,
   progressBar,
   progressText,
+  routable,
   updateTo,
 } from "./buddy-model.ts";
 
 /**
- * 拥有：Buddy 栏目的纯判断：色调、主按钮、更多菜单、分组、角标、状态句、进度和表单解析。
+ * 拥有：Buddy 栏目的纯判断：色调、主按钮、更多菜单、分组、角标、状态句、进度、表单解析，以及输入框 @ 里的 agent 列表。
  * 不拥有：组件怎么画，也不碰网络。
  */
 
@@ -172,5 +176,35 @@ describe("helpers", () => {
     assert.equal(checkedAgo("2026-11-09T07:57:00Z", now, "en"), "3 minutes ago");
     assert.equal(checkedAgo("2026-11-09T07:59:50Z", now, "en"), "now");
     assert.equal(checkedAgo("", now, "en"), "");
+  });
+});
+
+describe("agent mentions", () => {
+  /** @ 菜单只在装了外部 agent 时有。yoyo 在前，能派的排在前面；编号、名字、厂商和中文别名都能搜到。 */
+  it("lists installed agents, routable first, matched by alias", () => {
+    const codex = view({ id: "codex", name: "Codex", vendor: "OpenAI", order: 2 });
+    const claude = view({ id: "claude", name: "Claude Code", vendor: "Anthropic", order: 1, state: "needs_auth", aliases: ["克劳德"] });
+    const gemini = notInstalled("gemini");
+    assert.deepEqual(mentionAgents([yoyo, gemini], ""), []);
+    assert.deepEqual(mentionAgents([gemini, claude, codex, yoyo], "").map((v) => v.id), ["yoyo", "codex", "claude"]);
+    assert.deepEqual(mentionAgents([yoyo, claude, codex], "克劳").map((v) => v.id), ["claude"]);
+    assert.deepEqual(mentionAgents([yoyo, claude, codex], "openai").map((v) => v.id), ["codex"]);
+  });
+
+  /** 能不能派和路由一致：检查中、刚断开也算，停用、要登录、离线不算。点了派不了的，说清先做什么。 */
+  it("routes like the router and explains the blocked ones", () => {
+    const off = view({ id: "a", name: "A", config: { ...view({ id: "a" }).config, enabled: false } });
+    assert.equal(routable(view({ id: "a", state: "probing" })), true);
+    assert.equal(routable(view({ id: "a", state: "recently_lost" })), true);
+    assert.equal(routable(view({ id: "a", state: "offline" })), false);
+    assert.equal(routable(off), false);
+    assert.equal(routable(yoyo), true);
+    assert.equal(blockedHint(off, en.composer), "Turn on A in Buddy first");
+    assert.equal(blockedHint(view({ id: "c", name: "Claude Code", state: "needs_auth" }), en.composer), "Sign in to Claude Code first");
+    assert.equal(blockedHint(view({ id: "g", name: "Gemini CLI", state: "needs_config" }), en.composer), "Set up Gemini CLI first");
+    assert.equal(blockedHint(view({ id: "q", name: "Qwen", state: "offline" }), en.composer), "Qwen can't take tasks right now");
+    assert.equal(agentStateText(view({ id: "a", working: 2 }), c), "Working on 2");
+    assert.equal(agentStateText(off, c), c.disabled);
+    assert.equal(agentStateText(yoyo, c), c.state.online);
   });
 });

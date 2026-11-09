@@ -203,7 +203,11 @@ function WorkstationApp() {
   }, [ws.booted, popout]);
   useEffect(() => {
     useNeeds.getState().setFocusTask("");
-  }, [ws.activeId, ws.surface]);
+  }, [ws.activeId]);
+  useEffect(() => {
+    // Buddy 详情点开工单时先放工单、再回到对话，所以回到对话这一下不能清。
+    if (ws.surface !== "agent") useNeeds.getState().setFocusTask("");
+  }, [ws.surface]);
   const deskCfg = ws.savedCfg.desk;
   const deskSynced = useRef(false);
   useEffect(() => {

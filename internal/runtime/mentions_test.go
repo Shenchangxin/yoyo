@@ -11,6 +11,50 @@ import (
 	"unicode/utf8"
 )
 
+// TestParseMentionsAgent 锁住 @agent:<编号> 认成 agent 提及：小写、按出现顺序去重，句末标点不算进编号，不合格式的不认。
+func TestParseMentionsAgent(t *testing.T) {
+	text := "@agent:codex 做后端，@agent:Claude-Code 做前端，再让 @agent:codex 复查。@agent:-bad @agent:gemini."
+	if got := MentionAgents(text); strings.Join(got, ",") != "codex,claude-code,gemini" {
+		t.Fatalf("agents %v", got)
+	}
+	var kinds []string
+	for _, m := range ParseMentions("@agent:codex 看 @file:a.go") {
+		kinds = append(kinds, m.Kind+":"+m.Ref)
+	}
+	if strings.Join(kinds, " ") != "file:a.go agent:codex" {
+		t.Fatalf("mentions %v", kinds)
+	}
+	if got := MentionAgents("mail me at a@agent.test"); len(got) != 0 {
+		t.Fatalf("not a mention: %v", got)
+	}
+}
+
+// TestBareMentionsSkipAgent 锁住裸 @ 的路径解析跳过 agent 前缀，即使工作区里正好有同名的文件。
+func TestBareMentionsSkipAgent(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "codex"), []byte("not an agent"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := parseBareWorkspaceMentions(dir, "@agent:codex 来做", map[string]bool{}); len(got) != 0 {
+		t.Fatalf("bare mentions %+v", got)
+	}
+}
+
+// TestExpandMentionsIgnoresAgent 锁住 agent 提及不注入任何内容，也不挤掉同一句里的文件注入。
+func TestExpandMentionsIgnoresAgent(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pin.txt"), []byte("hello pin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inject, refs := ExpandMentions(dir, "@agent:codex 读 @file:pin.txt", "", 2400)
+	if strings.Contains(inject, "codex") || !strings.Contains(inject, "hello pin") || len(refs) != 2 {
+		t.Fatalf("inject=%q refs=%+v", inject, refs)
+	}
+	if inject, _ := ExpandMentions(dir, "@agent:codex", "", 2400); inject != "" {
+		t.Fatalf("agent alone injected %q", inject)
+	}
+}
+
 // TestExpandMentionsFileAndJail 锁住 @file 和 @harness 会注入正文，@skill 能展开技能，逃出工作区的路径会报 escapes。
 func TestExpandMentionsFileAndJail(t *testing.T) {
 	dir := t.TempDir()

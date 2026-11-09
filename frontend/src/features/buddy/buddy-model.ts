@@ -46,6 +46,46 @@ export function canDispatch(v: BuddyView): boolean {
   return !!v.builtin || (v.config.enabled && v.state === "online");
 }
 
+/** routable 表示路由现在能把工单交给它，和 Go 的 blockedReason 一致：yoyo 永远能；其余要装好、启用，并且在线、检查中或刚断开。 */
+export function routable(v: BuddyView): boolean {
+  if (v.builtin) return true;
+  if (!installed(v) || !v.config.enabled) return false;
+  return v.state === "online" || v.state === "probing" || v.state === "recently_lost";
+}
+
+/** matchesAgent 在 q 为空，或编号、名字、厂商、别名里有一个包含 q 时为真，不分大小写。 */
+export function matchesAgent(v: BuddyView, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+  return [v.id, v.name, v.vendor, ...(v.aliases ?? [])].some((s) => !!s && s.toLowerCase().includes(needle));
+}
+
+/** mentionAgents 是输入框 @ 菜单里的 agent。一个外部 agent 都没装时没有。yoyo 在最前，能派的排在不能派的前面，各自按 sortBuddies。 */
+export function mentionAgents(list: BuddyView[], q: string): BuddyView[] {
+  if (!hasExternal(list)) return [];
+  const rows = sortBuddies(list).filter((v) => (v.builtin || installed(v)) && matchesAgent(v, q));
+  return [...rows.filter(routable), ...rows.filter((v) => !routable(v))];
+}
+
+/** agentStateText 是 @ 菜单和任务页上的短状态：在做几个、停用，或者状态本身，不带原因。 */
+export function agentStateText(v: BuddyView, c: BuddyCopy): string {
+  if ((v.working ?? 0) > 0) return fill(c.state.working, { n: v.working ?? 0 });
+  if (v.builtin) return c.state.online;
+  if (installed(v) && !v.config.enabled) return c.disabled;
+  return c.state[v.state] ?? v.state;
+}
+
+/** BlockedCopy 是点了派不了的 agent 时的几句提示，模板里的 {name} 换成名字。 */
+export type BlockedCopy = { agentSignIn: string; agentSetup: string; agentTurnOn: string; agentUnavailable: string };
+
+/** blockedHint 说清这一项要先怎样才能派：启用、登录、配置，否则只说现在接不了。 */
+export function blockedHint(v: BuddyView, c: BlockedCopy): string {
+  if (installed(v) && !v.config.enabled) return fill(c.agentTurnOn, { name: v.name });
+  if (v.state === "needs_auth") return fill(c.agentSignIn, { name: v.name });
+  if (v.state === "needs_config") return fill(c.agentSetup, { name: v.name });
+  return fill(c.agentUnavailable, { name: v.name });
+}
+
 /** needsYou 表示这一项启用着，却因为要登录、要配置、出错或离线而接不了任务。dock 角标数的就是它。 */
 export function needsYou(v: BuddyView): boolean {
   return installed(v) && v.config.enabled && (v.working ?? 0) === 0 && NEEDS_YOU.has(v.state);

@@ -1,5 +1,5 @@
 /**
- * 拥有：选中一个 agent 时的详情：头部（字形、名字、厂商、版本、来源和路径）、状态、能力、登录、行内配置表单和危险区。
+ * 拥有：选中一个 agent 时的详情：头部（字形、名字、厂商、版本、来源和路径）、状态和它手上的工单、能力、登录、行内配置表单和危险区。
  * 不拥有：按钮背后的动作（buddy-actions.ts）和对话框（BuddyWorkspace 统一挂）。密钥只显示「已保存」，保存后输入框清空。
  */
 
@@ -17,6 +17,9 @@ import { writeClipboard } from "../../lib/clipboard";
 import { getLocale, useCopy } from "../../lib/i18n";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
+import { ticketAgent } from "../superagent/agent-model";
+import { useNeeds } from "../superagent/needs";
+import { taskStatus } from "../superagent/TaskPage";
 import { BuddyMark } from "./BuddyMark";
 import { ApprovalSelect, draftPatch, emptyDraft, ModelSelect, SecretRow, type KeyDraft } from "./BuddyConfigDialog";
 import { BuddyMoreMenu, BuddyPrimary } from "./BuddyRow";
@@ -94,6 +97,36 @@ function Caps({ v, c }: { v: BuddyView; c: BuddyCopy }) {
         ))}
       </div>
     </Section>
+  );
+}
+
+/** Tasks 列出这一项手上没结束的工单。点一条就回到对话，把那张工单放到中间。 */
+function Tasks({ v }: { v: BuddyView }) {
+  const copy = useCopy();
+  const tickets = useNeeds((s) => s.view?.tickets);
+  const mine = (tickets ?? []).filter((t) => t.stage !== "ended" && ticketAgent(t) === v.id);
+  if (!mine.length) return null;
+  return (
+    <div className="pt-2" data-testid="buddy-tasks">
+      <p className="text-ui-footnote text-muted">{copy.buddy.detail.tasks}</p>
+      <ul className="mt-1 divide-y divide-border/60">
+        {mine.map((t) => (
+          <li key={t.id}>
+            <button
+              type="button"
+              className="flex w-full min-w-0 items-center gap-3 py-1.5 text-left text-ui-body text-foreground/85 hover:text-foreground"
+              onClick={() => {
+                useNeeds.getState().setFocusTask(t.id);
+                useUI.getState().showConversation();
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate">{t.title || copy.work.taskEmpty}</span>
+              <span className="shrink-0 text-ui-caption text-muted">{taskStatus(t, copy.work)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -326,6 +359,7 @@ export function BuddyDetail({ v }: { v: BuddyView }) {
               {c.action.test}
             </Button>
           ) : null}
+          <Tasks v={v} />
         </div>
       </Section>
       {has ? <Caps v={v} c={c} /> : null}
