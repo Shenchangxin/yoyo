@@ -1,5 +1,5 @@
 // probe_test.go 锁住探测和健康检查：全探成功记下模型和能力、要求登录记成 needs_auth、缺必填密钥不启动进程、
-// 轻探失败进入「刚断开」并在 5 分钟后落成离线、正在服务工单的视为在线，以及图标清洗。
+// 轻探失败进入「刚断开」并在 5 分钟后落成离线、正在服务工单的视为在线、图标清洗，以及 Doctor 的摘要不替人开始检测。
 
 package buddy
 
@@ -64,6 +64,55 @@ func TestProbeNeedsAuth(t *testing.T) {
 	}
 	if f.m.Ready(id) {
 		t.Fatal("needs_auth buddy is ready")
+	}
+}
+
+// TestSummaryDoesNotStart 锁住 Doctor 的摘要不替人打开 Buddy：还没 Start 时只说没开始，也不会因此开始；
+// 开始以后列出内置项和装了的项，没装的只计数，出错的详情里没有密钥值。
+func TestSummaryDoesNotStart(t *testing.T) {
+	const secret = "hunter2-very-secret-value"
+	f := newFixture(t, func(o *Options) {
+		o.Dial = func(context.Context, acp.Options) (*acp.Client, error) {
+			return nil, errors.New("agent exited: 1: invalid key " + secret)
+		}
+	})
+	if s := f.m.Summary(); s.Started || len(s.Agents) != 0 || len(s.States) != 0 {
+		t.Fatalf("before start %+v", s)
+	}
+	f.m.mu.Lock()
+	started := f.m.started
+	f.m.mu.Unlock()
+	if started {
+		t.Fatal("Summary started the manager")
+	}
+	f.m.Start()
+	id := f.withCustom(t, "fake")
+	// 不走 Configure：它会在后台再探一次，和下面的同步探测抢着改状态。
+	_ = f.settings.save(func(s *Settings) {
+		if s.Items == nil {
+			s.Items = map[string]ItemConfig{}
+		}
+		item := s.Items[id]
+		item.Secrets = []string{"FAKE_API_KEY"}
+		s.Items[id] = item
+	})
+	f.m.setSecret(id, "FAKE_API_KEY", secret)
+	if v, _ := f.m.Probe(context.Background(), id); v.State != StateError {
+		t.Fatalf("probe %s %q", v.State, v.Detail)
+	}
+	s := f.m.Summary()
+	if !s.Started || s.States[StateError] != 1 || s.States[StateNotInstalled] == 0 {
+		t.Fatalf("states %+v", s)
+	}
+	ids := map[string]SummaryItem{}
+	for _, it := range s.Agents {
+		ids[it.ID] = it
+	}
+	if len(ids) != 2 || ids[YoyoID].ID == "" || ids[id].Install != "custom" || ids[id].State != StateError {
+		t.Fatalf("agents %+v", s.Agents)
+	}
+	if strings.Contains(ids[id].Detail, "hunter2") || !strings.Contains(ids[id].Detail, "invalid key") {
+		t.Fatalf("detail %q", ids[id].Detail)
 	}
 }
 

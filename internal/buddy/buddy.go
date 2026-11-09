@@ -254,3 +254,22 @@ type RosterItem struct {
 	MaxParallel int      `json:"maxParallel"`
 	Strengths   string   `json:"strengths,omitempty"`
 }
+
+// Summary 是 Doctor 里的 Buddy 摘要：各状态各有几项，以及内置项和装了的项各自的状态。没有密钥，也没有路径。
+type Summary struct {
+	Started   bool          `json:"started"`
+	Detecting bool          `json:"detecting,omitempty"`
+	States    map[State]int `json:"states,omitempty"`
+	Agents    []SummaryItem `json:"agents,omitempty"`
+}
+
+// SummaryItem 是摘要里的一项。Install 是 managed、system、custom 或 none；Detail 已经打过码。
+type SummaryItem struct {
+	ID         string `json:"id"`
+	State      State  `json:"state"`
+	Install    string `json:"install,omitempty"`
+	Version    string `json:"version,omitempty"`
+	Working    int    `json:"working,omitempty"`
+	Unverified bool   `json:"unverified,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+}

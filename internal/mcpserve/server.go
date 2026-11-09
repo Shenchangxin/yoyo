@@ -128,6 +128,13 @@ func (s *Server) URL() string {
 	return s.url
 }
 
+// Registered 返回现在登记着几个 token，也就是有几张工单能调控制面。
+func (s *Server) Registered() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.regs)
+}
+
 // Close 停止监听，清掉全部登记和会话。之后 Register 返回 ErrClosed。可以重复调用。
 func (s *Server) Close() error {
 	s.mu.Lock()
@@ -176,7 +183,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !loopbackHost(r.Host) || !loopbackOrigin(r.Header.Get("Origin")) {
-		diaglog.Warn("mcpserve rejected a non-local request", "host", r.Host, "origin", r.Header.Get("Origin"))
+		diaglog.Warn("mcpserve rejected a non-local request", "component", "acp", "host", r.Host, "origin", r.Header.Get("Origin"))
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -326,7 +333,7 @@ func (e *entry) call(ctx context.Context, m message) reply {
 	if err != nil {
 		text, isErr = err.Error(), true
 	}
-	diaglog.Debug("mcpserve tool call", "ticket", e.ticket, "tool", p.Name, "is_error", isErr)
+	diaglog.Debug("mcpserve tool call", "component", "acp", "cat", "acp", "ticket", e.ticket, "tool", p.Name, "is_error", isErr)
 	return result(m.ID, map[string]any{
 		"content": []map[string]any{{"type": "text", "text": text}},
 		"isError": isErr,

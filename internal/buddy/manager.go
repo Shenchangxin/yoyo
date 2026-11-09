@@ -289,6 +289,33 @@ func (m *Manager) List() ([]View, Prefs) {
 	return out, prefsOf(settings)
 }
 
+// Summary 是给 Doctor 的摘要。和 List 不同，它不 Start、不开始检测：还没人打开过 Buddy 时只返回 started 为假。
+func (m *Manager) Summary() Summary {
+	m.mu.Lock()
+	started := m.started
+	m.mu.Unlock()
+	if !started {
+		return Summary{}
+	}
+	working := m.working()
+	settings := m.opts.Settings()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := Summary{Started: true, Detecting: !m.detected, States: map[State]int{}}
+	for _, e := range m.entries {
+		v := m.viewLocked(e, settings, working)
+		out.States[v.State]++
+		if !v.Builtin && v.Install.Kind == "none" {
+			continue
+		}
+		out.Agents = append(out.Agents, SummaryItem{
+			ID: v.ID, State: v.State, Install: v.Install.Kind, Version: v.Version,
+			Working: v.Working, Unverified: v.Install.Unverified, Detail: redactText(v.Detail),
+		})
+	}
+	return out
+}
+
 // Get 返回一项。
 func (m *Manager) Get(id string) (View, error) {
 	working := m.working()

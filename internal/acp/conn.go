@@ -78,6 +78,8 @@ type ConnOptions struct {
 	OnNotify NotifyFunc
 	// Log 记下坏行等诊断信息。可以为 nil。
 	Log func(string)
+	// Frame 拿到收发的每一行原文，dir 是 send 或 recv。它在读循环和写锁里调用，不能阻塞；line 只在调用期间有效。可以为 nil。
+	Frame func(dir string, line []byte)
 }
 
 // Conn 是一条按换行分隔的 JSON-RPC 2.0 连接。两端都能发请求和通知。
@@ -155,6 +157,9 @@ func (c *Conn) readLoop() {
 			continue
 		}
 		if len(bytes.TrimSpace(line)) > 0 {
+			if c.opts.Frame != nil {
+				c.opts.Frame("recv", line)
+			}
 			c.dispatch(line)
 		}
 		if err != nil {
@@ -302,6 +307,9 @@ func (c *Conn) write(msg message) error {
 	}
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
+	if c.opts.Frame != nil {
+		c.opts.Frame("send", raw[:len(raw)-1])
+	}
 	_, err = c.w.Write(raw)
 	return err
 }

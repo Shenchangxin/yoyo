@@ -1,5 +1,6 @@
 /**
- * 拥有：Buddy 栏目的端到端用例：分组和底部坞、安装进度、一键配置不回显密钥、登录、空状态推荐、装到系统的确认、自定义 agent。
+ * 拥有：Buddy 栏目的端到端用例：分组和底部坞、安装进度、一键配置不回显密钥、登录、空状态推荐、装到系统的确认、自定义 agent，
+ * 以及第一次检测期间先出骨架、界面照常能用。
  * 不拥有：Buddy 的后端。假后端在 buddy-mock.ts。每条 test 的标题就是它断言什么。
  */
 
@@ -158,4 +159,25 @@ test("a custom agent can be added and opens its page", async ({ page }) => {
   expect(params).toEqual({ name: "My Agent", command: "my-agent", args: ["--acp"], env: {} });
   await expect(page.getByTestId("buddy-detail").getByRole("heading", { name: "My Agent" })).toBeVisible();
   await expect(page.getByTestId("buddy-detail-status")).toContainText("Online", { timeout: 10_000 });
+});
+
+test("opening Buddy during the first scan shows a skeleton and the app stays usable", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", { buddies: [YOYO_BUDDY, CODEX] });
+  let scanning = true;
+  await page.route("**/api/rpc", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body?.method !== "buddy.list" || !scanning) return route.fallback();
+    await new Promise((done) => setTimeout(done, 800));
+    return route.fulfill({ json: { jsonrpc: "2.0", id: body.id ?? 1, result: { buddies: [YOYO_BUDDY], detecting: true } } });
+  });
+  await page.goto("/");
+  await dock(page).click();
+  await expect(page.getByTestId("buddy-skeleton")).toBeVisible();
+  await dock(page).click();
+  await expect(page.getByTestId("conversation-column")).toBeVisible();
+  await dock(page).click();
+  await expect(page.getByTestId("buddy-skeleton")).toBeVisible();
+  scanning = false;
+  await expect(page.getByTestId("buddy-overview").getByRole("region", { name: "Online" })).toContainText("Codex", { timeout: 10_000 });
+  await expect(page.getByTestId("buddy-skeleton")).toHaveCount(0);
 });

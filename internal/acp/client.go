@@ -86,6 +86,10 @@ type Options struct {
 	Handler Handler
 	// Log 记连接诊断。可以为 nil。
 	Log func(string)
+	// Frame 拿到收发的每一行原文，见 ConnOptions.Frame。可以为 nil。
+	Frame func(dir string, line []byte)
+	// Name 是这个 agent 在 Buddy 里的编号，只写进诊断日志。可以为空。
+	Name string
 	// InitTimeout 小于等于 0 时用 20 秒。
 	InitTimeout time.Duration
 }
@@ -185,7 +189,7 @@ func newClient(r io.Reader, w io.Writer, opts Options) *Client {
 		perms:    map[string]map[int]context.CancelFunc{},
 		sessions: map[string]bool{},
 	}
-	c.conn = NewConn(r, w, ConnOptions{OnRequest: c.onRequest, OnNotify: c.onNotify, Log: opts.Log})
+	c.conn = NewConn(r, w, ConnOptions{OnRequest: c.onRequest, OnNotify: c.onNotify, Log: opts.Log, Frame: opts.Frame})
 	return c
 }
 

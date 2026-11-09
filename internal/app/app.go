@@ -243,6 +243,8 @@ type App struct {
 	control *mcpserve.Server
 	// buddyDial 换掉连 agent 的方式，探测、健康检查和外部工人都用它；nil 时启动真进程。测试换成同进程的假 agent。
 	buddyDial func(ctx context.Context, opts acp.Options) (*acp.Client, error)
+	// buddyLog 记着每项最后写进诊断日志的状态。
+	buddyLog buddyStates
 }
 
 // Open 打开数据根目录并装配应用对象。

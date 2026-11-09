@@ -343,13 +343,19 @@ func TestForeignOriginAndHostAreForbidden(t *testing.T) {
 	}
 }
 
-// TestUnregisterRevokesTokenAndSessions 锁住撤销后原 token 回 401；重新登记的新 token 带旧会话号回 404，不带会话号照常处理。
+// TestUnregisterRevokesTokenAndSessions 锁住撤销后原 token 回 401，Registered 不再算它；重新登记的新 token 带旧会话号回 404，不带会话号照常处理。
 func TestUnregisterRevokesTokenAndSessions(t *testing.T) {
 	s, token := serveEcho(t)
 	resp, _ := do(t, s, as(token), http.MethodPost, rpcBody(1, "initialize", nil))
 	sid := resp.Header.Get("Mcp-Session-Id")
+	if n := s.Registered(); n != 1 {
+		t.Fatalf("registered before revoke = %d", n)
+	}
 	s.Unregister(token)
 	s.Unregister("never-registered")
+	if n := s.Registered(); n != 0 {
+		t.Fatalf("registered after revoke = %d", n)
+	}
 	call := rpcBody(2, "tools/call", map[string]any{"name": "orchestrator_report"})
 	if resp, _ := do(t, s, as(token), http.MethodPost, call); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("revoked token = %d", resp.StatusCode)

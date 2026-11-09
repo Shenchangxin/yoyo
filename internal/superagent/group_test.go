@@ -1,6 +1,7 @@
 // group_test.go 锁住任务组：拆分开出成员、共享目录和成员说明，坏的拆法什么都不改；有前置的成员挂着，前置做完带上结果放行，
 // 前置没做成就挂起、重试做成后再放行；整组的状态、同一个状态只唤醒一次和唤醒上限；停掉整组、对比采用一份、路由推荐只做标记；
-// 快照来回、旧快照照常能读；挂着的成员不会被启动；两份 yoyo 前后接着做完、只唤醒一次的验收；以及写给路由的摘要和 task_read 的详情。
+// 快照来回、旧快照照常能读；挂着的成员不会被启动；两份 yoyo 前后接着做完、只唤醒一次的验收；写给路由的摘要和 task_read 的详情；
+// 以及任务组给轮询的 view 加的体积。
 
 package superagent
 
@@ -897,6 +898,50 @@ func TestGroupDigestStaysShort(t *testing.T) {
 	}
 	if rt.GroupDigest("grp-404") != "" {
 		t.Fatal("unknown group")
+	}
+}
+
+// TestGroupsAddLittleToTheView 锁住任务组给 2 秒轮询一次的 view 加的体积不超过一成：一天里六张普通工单、一个分工组、一个对比组，
+// 和去掉任务组与工单上的组字段相比。view 里只有刚拆出来的成员时比例更高（两组四张约一成半），成员一报告就降下来。
+func TestGroupsAddLittleToTheView(t *testing.T) {
+	rt, err := Open("", autoPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 6; i++ {
+		id := fmt.Sprintf("solo%d", i)
+		rt.Receive(deskAsk(id, fmt.Sprintf("帮我整理一下第 %d 份周报，把数字核对一遍，列出要跟进的事", i)))
+		if _, err := rt.eng.Decide(id, "accept", "ok"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, row := range rt.View().Tickets {
+		_ = rt.eng.Report(row.ID, Report{State: "ready", Summary: "周报整理好了，有三处数字对不上，已经标出来。"})
+	}
+	rt.Receive(deskAsk("m1", "做个 todo 应用，后端给 @agent:codex", "codex"))
+	split := backFront("")
+	split.Trigger = "m1"
+	if _, err := rt.Split(split); err != nil {
+		t.Fatal(err)
+	}
+	rt.Receive(deskAsk("m2", "@Codex @yoyo 分别做一个登录页", "codex"))
+	if _, err := rt.Split(SplitRequest{Trigger: "m2", Mode: GroupCompare, Title: "登录页", Brief: "做一个登录页", Parts: []SplitPart{{Agent: "codex"}, {Agent: "yoyo"}}}); err != nil {
+		t.Fatal(err)
+	}
+	view := rt.View()
+	if len(view.Groups) != 2 || len(view.Tickets) != 10 {
+		t.Fatalf("%d groups, %d tickets", len(view.Groups), len(view.Tickets))
+	}
+	with, _ := json.Marshal(view)
+	view.Groups = []GroupRow{}
+	for i := range view.Tickets {
+		view.Tickets[i].Group, view.Tickets[i].Role, view.Tickets[i].DependsOn, view.Tickets[i].Held = "", "", nil, ""
+	}
+	without, _ := json.Marshal(view)
+	growth := float64(len(with)-len(without)) / float64(len(without))
+	t.Logf("view %d bytes, %d without groups, +%.1f%%", len(with), len(without), growth*100)
+	if growth > 0.10 {
+		t.Fatalf("groups add %.1f%% to the view", growth*100)
 	}
 }
 

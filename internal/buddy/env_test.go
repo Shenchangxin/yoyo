@@ -158,19 +158,21 @@ func TestPrefsValidation(t *testing.T) {
 	}
 }
 
-// TestRedactText 锁住已知密钥值、Bearer、key=value 形式和 *_KEY= 赋值都会被打码，导出的 Redact 结果相同。
+// TestRedactText 锁住已知密钥值、Bearer、key=value 形式、*_KEY= 赋值，以及协议帧里名字像密钥的 name/value 条目都会被打码，
+// 名字不像密钥的条目原样留着；导出的 Redact 结果相同。
 func TestRedactText(t *testing.T) {
-	in := "boom sk-alpha-123456 Authorization: Bearer abc.def.ghi token=t0p api_key=zzz OPENAI_API_KEY=sk-proj-xyz done"
+	in := "boom sk-alpha-123456 Authorization: Bearer abc.def.ghi token=t0p api_key=zzz OPENAI_API_KEY=sk-proj-xyz " +
+		`{"env":[{"name":"YOYO_MCP_URL","value":"http://127.0.0.1:4321/mcp"},{"name":"YOYO_MCP_TOKEN","value":"9f8e7d6c5b4a"}]} done`
 	out := redactText(in, "sk-alpha-123456")
 	if Redact(in, "sk-alpha-123456") != out {
 		t.Fatal("Redact differs from redactText")
 	}
-	for _, leak := range []string{"sk-alpha-123456", "abc.def.ghi", "t0p", "zzz", "sk-proj-xyz"} {
+	for _, leak := range []string{"sk-alpha-123456", "abc.def.ghi", "t0p", "zzz", "sk-proj-xyz", "9f8e7d6c5b4a"} {
 		if strings.Contains(out, leak) {
 			t.Errorf("leaked %s in %s", leak, out)
 		}
 	}
-	if !strings.Contains(out, "boom") || !strings.Contains(out, "done") {
+	if !strings.Contains(out, "boom") || !strings.Contains(out, "done") || !strings.Contains(out, `"value":"http://127.0.0.1:4321/mcp"`) {
 		t.Fatalf("over-redacted %s", out)
 	}
 }

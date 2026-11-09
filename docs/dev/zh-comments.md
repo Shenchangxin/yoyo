@@ -1587,3 +1587,5 @@
 - [ ] `frontend/e2e/multi-agent.spec.ts`
 - [ ] `frontend/src/features/transcript/GroupCard.tsx`
 - [ ] `frontend/src/features/transcript/WakeReceipt.tsx`
+- [ ] `internal/app/buddy_diag.go`
+- [ ] `internal/app/buddy_diag_test.go`

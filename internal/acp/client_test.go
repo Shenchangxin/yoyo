@@ -1,5 +1,5 @@
 // client_test.go 锁住 ACP 客户端的协议规则：版本协商、流式回复、取消时答复挂起的权限、未知方法、换行转义、要求登录、续接退化顺序、
-// 挂起不关会话、换模型的方法名、加载回放标记，以及进程崩溃时带上 stderr 尾部。
+// 挂起不关会话、换模型的方法名、加载回放标记、进程崩溃时带上 stderr 尾部，以及诊断能看到收发的每一行。
 
 package acp_test
 
@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -181,7 +182,10 @@ func TestUnknownMethodAnswered(t *testing.T) {
 // TestNewlinesStayEscaped 锁住正文里的换行被转义，一条消息只占一行，往返后原样还原。
 func TestNewlinesStayEscaped(t *testing.T) {
 	var buf bytes.Buffer
-	conn := acp.NewConn(strings.NewReader(""), &buf, acp.ConnOptions{})
+	// 读端读到 EOF 会关掉连接，之后的 Notify 就不写了，所以给一个一直开着的读端。
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	conn := acp.NewConn(pr, &buf, acp.ConnOptions{})
 	_ = conn.Notify("session/update", map[string]any{"text": "第一行\n第二行\r\n"})
 	if strings.Count(buf.String(), "\n") != 1 || !strings.HasSuffix(buf.String(), "\n") {
 		t.Fatalf("wire %q", buf.String())
@@ -197,6 +201,33 @@ func TestNewlinesStayEscaped(t *testing.T) {
 	}
 	if got.said() != "echo: a\nb" {
 		t.Fatalf("said %q", got.said())
+	}
+}
+
+// TestFrameSeesEveryLine 锁住 Frame 看到收发的每一行：握手时先记下发出的 initialize，再记下收到的回复，行里不带换行。
+func TestFrameSeesEveryLine(t *testing.T) {
+	var mu sync.Mutex
+	var frames []string
+	r, w, _ := acptest.Pipe(acptest.Script{})
+	c, err := acp.Connect(context.Background(), r, w, acp.Options{Version: "test", Frame: func(dir string, line []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		frames = append(frames, dir+" "+string(line))
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(frames) < 2 || !strings.HasPrefix(frames[0], "send ") || !strings.Contains(frames[0], `"method":"initialize"`) ||
+		!strings.HasPrefix(frames[1], "recv ") || !strings.Contains(frames[1], `"protocolVersion"`) {
+		t.Fatalf("frames %q", frames)
+	}
+	for _, f := range frames {
+		if strings.ContainsAny(f, "\r\n") {
+			t.Fatalf("a frame carries a line break: %q", f)
+		}
 	}
 }
 

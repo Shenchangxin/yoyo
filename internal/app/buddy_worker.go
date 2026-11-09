@@ -19,6 +19,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/acpworker"
 	"github.com/Shenchangxin/yoyo/internal/buddy"
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/mcpserve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
@@ -38,7 +39,9 @@ func (a *App) configureBuddyWorkers() {
 }
 
 // dialBuddy 启动并连上 agent。探测、健康检查和工人都走这里，测试换过 buddyDial 时连同进程的假 agent。
+// 每条连接都带上诊断日志（withACPDiag）。
 func (a *App) dialBuddy(ctx context.Context, opts acp.Options) (*acp.Client, error) {
+	opts = withACPDiag(opts)
 	if a.buddyDial != nil {
 		return a.buddyDial(ctx, opts)
 	}
@@ -85,6 +88,7 @@ func (a *App) openBuddyWorker(ctx context.Context, spec superagent.WorkerSpec) (
 	}
 	exe, _ := os.Executable()
 	ctl := a.control
+	diaglog.Info("acp worker open", "component", "acp", "agent", id, "ticket", spec.TicketID, "resume", spec.Pointer != "")
 	return acpworker.Open(acpworker.Config{
 		Spec:        spec,
 		Launch:      launch,
@@ -98,9 +102,14 @@ func (a *App) openBuddyWorker(ctx context.Context, spec superagent.WorkerSpec) (
 		CheckWrite:  a.buddyWriteCheck(spec),
 		TurnTimeout: time.Duration(a.buddySettings().TurnMinutesOf()) * time.Minute,
 		OnAuth:      func(detail string) { m.NoteAuthFailure(id, detail) },
-		OnRun:       func(err error) { m.NoteRun(id, err) },
-		Redact:      func(s string) string { return buddy.Redact(s, secrets...) },
-		OnClose:     func() { ctl.Unregister(token) },
+		OnRun: func(err error) {
+			if err != nil {
+				diaglog.Warn("acp connect failed", "component", "acp", "agent", id, "ticket", spec.TicketID, "err", buddy.Redact(err.Error(), secrets...))
+			}
+			m.NoteRun(id, err)
+		},
+		Redact:  func(s string) string { return buddy.Redact(s, secrets...) },
+		OnClose: func() { ctl.Unregister(token) },
 	}), nil
 }
 

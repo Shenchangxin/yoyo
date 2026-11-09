@@ -120,6 +120,7 @@ func (m *Manager) authenticate(id string, l acp.Launch, methodID string, secrets
 	opts := l.Options()
 	opts.Dir = m.probeDir(id)
 	opts.Version = m.opts.Version
+	opts.Name = id
 	opts.InitTimeout = probeTimeout
 	c, err := m.opts.Dial(ctx, opts)
 	if err != nil {
@@ -194,6 +195,7 @@ func (m *Manager) Logout(ctx context.Context, id string) (View, error) {
 	opts := l.Options()
 	opts.Dir = m.probeDir(id)
 	opts.Version = m.opts.Version
+	opts.Name = id
 	c, err := m.opts.Dial(ctx, opts)
 	if err != nil {
 		return View{}, errors.New(shortDetail(redactText(err.Error(), secrets...)))

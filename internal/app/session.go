@@ -602,7 +602,8 @@ func chatTurnContext() (context.Context, context.CancelFunc) {
 	return context.WithCancel(context.Background())
 }
 
-// launchSend 占住运行槽后异步调用 sendLocked。不是续跑时先 commitUser，把用户行写入 JSONL。回合结束后 kickQueue 取下一条。
+// launchSend 占住运行槽后异步调用 sendLocked。不是续跑时先 commitUser，把用户行写入 JSONL。
+// 回合结束后先放掉槽，再 kickQueue 取下一条：槽还占着时取出来的那条只会又被塞回队尾，之后没人再取。
 func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment, resume bool) error {
 	ctx, cancel := chatTurnContext()
 	ctx, release, err := a.acquireRun(sessionID, ctx)
@@ -631,6 +632,7 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 		a.Threads.MarkTurnInFlight(sessionID, true, plan)
 	}
 	go func() {
+		defer a.kickQueue(sessionID)
 		defer cancel()
 		defer release()
 		defer func() {
@@ -646,8 +648,11 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 				})
 			}
 		}()
-		defer a.kickQueue(sessionID)
 		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts, resume, committed, turnID)
+		// sendLocked 在取不到模型这类早退里不会清掉进行中的标记，重启后会把这一轮当成没跑完再续一次。
+		if a.Threads != nil {
+			a.Threads.MarkTurnInFlight(sessionID, false, false)
+		}
 	}()
 	return nil
 }

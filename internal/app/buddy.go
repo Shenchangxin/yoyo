@@ -1,5 +1,6 @@
 // buddy.go 拥有 app 对 Buddy 的接线：建 buddy.Manager（buddies 目录、vault、config.yaml 的 buddies 段、Hub 事件、yoyo 自己的钥匙），
-// 以及 buddy.* RPC 的包装方法。安装、探测、登录的细节在 internal/buddy；手机上的禁用和确认在 internal/remote/policy.go。
+// 以及 buddy.* RPC 的包装方法；安装、取消、卸载、配置、登录、退出、添加、清缓存这些操作各写一行诊断日志（buddy_diag.go）。
+// 安装、探测、登录的细节在 internal/buddy；手机上的禁用和确认在 internal/remote/policy.go。
 // Manager 第一次被列出时才开始检测和健康检查，单元测试打开 App 不会去碰本机装的 agent。
 
 package app
@@ -92,10 +93,14 @@ func (a *App) saveBuddySettings(fn func(*buddy.Settings)) error {
 // buddyNoticeLine 是事件里进度行的最多字数。整条事件要小到能内联进桌面通知（liveInlineBytes），否则界面只收到一个空壳。
 const buddyNoticeLine = 160
 
-// publishBuddy 把一项的变化发到 Hub：system 类事件，来源和种类都是 buddy。
+// publishBuddy 把一项的变化发到 Hub：system 类事件，来源和种类都是 buddy。状态变了时另写一行诊断日志。
 // 载荷只有编号、状态、进度和在做的任务数；界面要全量视图时再调 buddy.get。
 func (a *App) publishBuddy(v buddy.View) {
-	if a == nil || a.Hub == nil {
+	if a == nil {
+		return
+	}
+	a.noteBuddy(v)
+	if a.Hub == nil {
 		return
 	}
 	payload := map[string]any{"id": v.ID, "state": string(v.State)}
@@ -215,7 +220,9 @@ func (a *App) BuddyInstall(id, mode string) (buddy.View, error) {
 		return buddy.View{}, err
 	}
 	m.Start()
-	return m.Install(id, mode)
+	v, err := m.Install(id, mode)
+	logBuddyAction("install", id, err, "mode", mode)
+	return v, err
 }
 
 // BuddyCancel 取消进行中的安装。
@@ -224,7 +231,9 @@ func (a *App) BuddyCancel(id string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true}, m.Cancel(id)
+	err = m.Cancel(id)
+	logBuddyAction("cancel", id, err)
+	return map[string]any{"ok": true}, err
 }
 
 // BuddyUninstall 卸载一项。
@@ -234,7 +243,9 @@ func (a *App) BuddyUninstall(ctx context.Context, id string) (buddy.View, error)
 		return buddy.View{}, err
 	}
 	m.Start()
-	return m.Uninstall(ctx, id)
+	v, err := m.Uninstall(ctx, id)
+	logBuddyAction("uninstall", id, err)
+	return v, err
 }
 
 // BuddyConfigure 保存一项的设置，密钥进 vault。返回的视图只有 hasKey。
@@ -244,7 +255,9 @@ func (a *App) BuddyConfigure(id string, p buddy.ConfigPatch) (buddy.View, error)
 		return buddy.View{}, err
 	}
 	m.Start()
-	return m.Configure(id, p)
+	v, err := m.Configure(id, p)
+	logBuddyAction("configure", id, err, "fields", patchFields(p))
+	return v, err
 }
 
 // BuddyLogin 开始登录，结果走事件。
@@ -254,7 +267,9 @@ func (a *App) BuddyLogin(ctx context.Context, id, method string) (buddy.LoginRes
 		return buddy.LoginResult{}, err
 	}
 	m.Start()
-	return m.Login(ctx, id, method)
+	res, err := m.Login(ctx, id, method)
+	logBuddyAction("login", id, err, "method", method)
+	return res, err
 }
 
 // BuddyLogout 退出登录。
@@ -264,7 +279,9 @@ func (a *App) BuddyLogout(ctx context.Context, id string) (buddy.View, error) {
 		return buddy.View{}, err
 	}
 	m.Start()
-	return m.Logout(ctx, id)
+	v, err := m.Logout(ctx, id)
+	logBuddyAction("logout", id, err)
+	return v, err
 }
 
 // BuddyPrefs 保存偏好，返回保存后的偏好。
@@ -283,7 +300,9 @@ func (a *App) BuddyAdd(c buddy.CustomAgent) (buddy.View, error) {
 		return buddy.View{}, err
 	}
 	m.Start()
-	return m.Add(c)
+	v, err := m.Add(c)
+	logBuddyAction("add", firstNonEmpty(v.ID, c.ID), err)
+	return v, err
 }
 
 // BuddyDisk 统计 Buddy 占的磁盘。
@@ -303,6 +322,7 @@ func (a *App) BuddyClearCache(ctx context.Context) (map[string]any, error) {
 	}
 	m.Start()
 	freed, err := m.ClearCache(ctx)
+	logBuddyAction("cache.clear", "", err, "freed", freed)
 	if err != nil {
 		return nil, err
 	}

@@ -246,7 +246,7 @@ func (w *Worker) runTurn(ctx context.Context, turn int, msgs []dsh.UserMessage) 
 	end := w.prompt(ctx, turn, msgs)
 	w.jr.finish(end.Kind == "completed")
 	if end.Kind == "error" {
-		diaglog.Warn("acp worker turn failed", "component", "acpworker", "ticket", w.spec.TicketID, "agent", w.spec.Agent, "reason", end.Reason)
+		diaglog.Warn("acp worker turn failed", "component", "acp", "ticket", w.spec.TicketID, "agent", w.spec.Agent, "reason", end.Reason)
 	}
 	w.sess.Append(dsh.EventTurnEnd, turn, 0, end)
 }
@@ -340,6 +340,7 @@ func (w *Worker) connect(ctx context.Context, turn int) (*acp.Client, string, st
 	opts := w.cfg.Launch.Options()
 	opts.Dir = w.spec.Dir
 	opts.Version = w.cfg.Version
+	opts.Name = w.spec.Agent
 	opts.Log = w.cfg.Log
 	opts.Handler = acp.Handler{Update: w.jr.update, Permission: w.onPermission, ReadFile: w.readFile, WriteFile: w.writeFile}
 	dial := w.cfg.Dial
@@ -387,7 +388,7 @@ func (w *Worker) connect(ctx context.Context, turn int) (*acp.Client, string, st
 		w.spec.OnPointer(sid)
 	}
 	w.noteRun(nil)
-	diaglog.Info("acp worker connected", "component", "acpworker", "ticket", w.spec.TicketID, "agent", w.spec.Agent, "session", how)
+	diaglog.Info("acp worker connected", "component", "acp", "ticket", w.spec.TicketID, "agent", w.spec.Agent, "session", how)
 	return c, sid, preface, nil
 }
 
@@ -454,7 +455,7 @@ func (w *Worker) applyModel(ctx context.Context, c *acp.Client, sid string, resp
 		}
 	}
 	if err != nil {
-		diaglog.Warn("acp worker could not switch model", "component", "acpworker", "agent", w.spec.Agent, "err", w.redact(err.Error()))
+		diaglog.Warn("acp worker could not switch model", "component", "acp", "agent", w.spec.Agent, "err", w.redact(err.Error()))
 	}
 }
 
@@ -504,7 +505,7 @@ func (w *Worker) suspend() {
 	w.mu.Unlock()
 	_ = c.Suspend()
 	w.pool.remove(w)
-	diaglog.Info("acp worker suspended", "component", "acpworker", "ticket", w.spec.TicketID, "agent", w.spec.Agent)
+	diaglog.Info("acp worker suspended", "component", "acp", "ticket", w.spec.TicketID, "agent", w.spec.Agent)
 }
 
 // stopped 在工人已经关掉或在应用退出时停下后为真，这时不再连接。

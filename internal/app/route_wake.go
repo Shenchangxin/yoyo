@@ -118,7 +118,7 @@ func (a *App) launchWake(sessionID, group, state, digest string, client runtime.
 			}
 		}()
 		out, err := a.sendLocked(ctx, sessionID, "", client, nil, false, nil, true, false, "")
-		// sendLocked 在取不到模型这类早退里不会清掉进行中的标记，会话会一直显示在跑。
+		// sendLocked 在取不到模型这类早退里不会清掉进行中的标记，重启后会把这一轮当成没跑完再续一次。
 		if a.Threads != nil {
 			a.Threads.MarkTurnInFlight(sessionID, false, false)
 		}

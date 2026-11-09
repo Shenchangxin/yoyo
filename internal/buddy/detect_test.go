@@ -1,15 +1,20 @@
 // detect_test.go 锁住检测规则：PATH 上找到 ACP 命令算系统安装、只有 CLI 时标出缺适配器、托管安装优先、第一次检测做完前报告检测中，
-// 以及 npm 垫片的解析和查找器的扩展名规则。
+// npm 垫片的解析和查找器的扩展名规则；以及性能目标：全量检测不等 --version、检测完以后 List 只读缓存。
 
 package buddy
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/acp"
 )
 
 // TestDetectingUntilFirstScan 锁住第一次检测做完之前 Detecting 为真，第一次列出之后很快变成假，并且已经认出系统安装。
@@ -36,6 +41,121 @@ func TestDetectingUntilFirstScan(t *testing.T) {
 	if v, _ := f.m.Get("codex"); v.Install.Kind != "system" {
 		t.Fatalf("codex after scan: %+v", v.Install)
 	}
+}
+
+// TestDetectionDoesNotWaitForVersions 锁住全量检测不等 --version：每个版本命令都要 5 秒时，「检测中」也在 3 秒内结束，
+// 找到的系统安装先列出来，版本之后再补。
+func TestDetectionDoesNotWaitForVersions(t *testing.T) {
+	bin := t.TempDir()
+	f := newFixture(t, func(o *Options) {
+		o.LookPath = func(name string) (string, error) {
+			p := filepath.Join(bin, name)
+			if err := os.WriteFile(p, nil, 0o755); err != nil {
+				return "", err
+			}
+			return p, nil
+		}
+		o.Run = func(ctx context.Context, _ Cmd) ([]byte, error) {
+			select {
+			case <-time.After(5 * time.Second):
+				return []byte("9.9.9"), nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	start := time.Now()
+	go func() {
+		defer close(done)
+		f.m.detectAll(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	for f.m.Detecting() {
+		if time.Since(start) > 3*time.Second {
+			t.Fatal("still detecting after 3 seconds")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Logf("detected in %v", time.Since(start))
+	if v, _ := f.m.Get("gemini"); v.System == nil || v.System.Path == "" || v.System.Version != "" {
+		t.Fatalf("gemini before its version %+v", v.System)
+	}
+}
+
+// TestListReadsCacheOnly 锁住检测做完以后 List 只读缓存：不再找命令、不跑命令，整张目录一次平均在 50 毫秒以内。
+func TestListReadsCacheOnly(t *testing.T) {
+	var lookups, runs atomic.Int32
+	f := newFixture(t, func(o *Options) {
+		o.LookPath = func(name string) (string, error) {
+			lookups.Add(1)
+			if name == "codex-acp" {
+				return "/usr/bin/codex-acp", nil
+			}
+			return "", errNotFound
+		}
+		o.Run = func(context.Context, Cmd) ([]byte, error) {
+			runs.Add(1)
+			return []byte("1.0.0"), nil
+		}
+	})
+	f.m.Start()
+	f.m.detectAll(context.Background())
+	// 第一次列出时的后台检测、探测和注册表刷新已经算过了，这里只量读缓存。
+	f.m.mu.Lock()
+	f.m.kicked = true
+	f.m.mu.Unlock()
+	before := lookups.Load() + runs.Load()
+	const n = 50
+	var views []View
+	start := time.Now()
+	for i := 0; i < n; i++ {
+		views, _ = f.m.List()
+	}
+	avg := time.Since(start) / n
+	t.Logf("%d items, %v per List", len(views), avg)
+	if len(views) < 10 {
+		t.Fatalf("listed %d items", len(views))
+	}
+	if lookups.Load()+runs.Load() != before {
+		t.Fatal("List looked up or ran commands")
+	}
+	if avg > 50*time.Millisecond {
+		t.Fatalf("List took %v", avg)
+	}
+}
+
+// BenchmarkDetectOnThisMachine 量本机上一遍全量检测的找命令部分：真的 PATH（macOS 和 Linux 上含登录 shell）和常见安装目录，
+// 不跑任何命令、不碰网络。只在 -bench 时运行，用来核对「全量检测小于 3 秒」。
+func BenchmarkDetectOnThisMachine(b *testing.B) {
+	s := &memSettings{}
+	m := New(Options{
+		Root: b.TempDir(), RuntimeDir: b.TempDir(), Version: "test",
+		HTTP: &http.Client{Transport: offline{}},
+		Run:  func(context.Context, Cmd) ([]byte, error) { return nil, nil },
+		Dial: func(context.Context, acp.Options) (*acp.Client, error) {
+			return nil, ErrNotInstalled
+		},
+		Vault: &memVault{}, Settings: s.get, SaveSettings: s.save,
+	})
+	b.Cleanup(m.Close)
+	m.mu.Lock()
+	entries := slices.Clone(m.entries)
+	m.mu.Unlock()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.paths.mu.Lock()
+		m.paths.dirs = nil
+		m.paths.mu.Unlock()
+		for _, e := range entries {
+			m.detectFast(e)
+		}
+	}
+	b.ReportMetric(float64(len(entries)), "entries")
 }
 
 // TestPrepareDetectsOneBeforeFirstList 锁住第一次列出之前 Prepare 只检测这一项：之后 Ready 按记下的状态判断、Launch 用找到的命令，

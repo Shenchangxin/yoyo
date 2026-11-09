@@ -114,6 +114,7 @@ func (m *Manager) probe(ctx context.Context, id string, full bool) error {
 	opts := l.Options()
 	opts.Dir = dir
 	opts.Version = m.opts.Version
+	opts.Name = id
 	opts.InitTimeout = probeTimeout
 	c, err := m.opts.Dial(ctx, opts)
 	if err != nil {

@@ -1,12 +1,18 @@
-// 忙时入队、重试不入队，以及回合结束后槽仍占着时继续排队。
+// 忙时入队、重试不入队，回合结束后槽仍占着时继续排队，以及一轮跑完放掉槽之后才取下一条排队的回合。
 
 package app
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/Shenchangxin/yoyo/internal/connection"
+	"github.com/Shenchangxin/yoyo/internal/trace"
+	"github.com/Shenchangxin/yoyo/internal/vault"
 )
 
 // TestQueueWhenBusy 在槽还占着时发送，应返回 ErrQueued 且队列里有这一轮。
@@ -126,6 +132,50 @@ func TestDoneSlotIsNotRunningButStillQueues(t *testing.T) {
 	}
 	if err := a.StartSendOpts(sess.ID, "hello", false, nil); !errors.Is(err, ErrQueued) {
 		t.Fatalf("want queued while slot held, got %v", err)
+	}
+}
+
+// TestQueuedTurnRunsAfterTurnEnds 锁住一轮跑完后排着的下一轮会跑：先放掉槽再取，取出来的那条不会因为槽还占着又被塞回队尾。
+// 连接表换成只读测试 vault 的一份，环境里的钥匙也清掉，开发机上的钥匙串和环境变量都拿不到，
+// 取不到模型，每轮都在 sendLocked 里早退；早退也要清掉进行中的标记，不然重启后会再续一次。
+func TestQueuedTurnRunsAfterTurnEnds(t *testing.T) {
+	for _, name := range []string{vault.EnvAPIKey, "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"} {
+		t.Setenv(name, "")
+	}
+	a, sess := openWakeApp(t)
+	reg, err := connection.Open(t.TempDir(), a.Vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Video.Conn = reg
+	a.mu.Lock()
+	a.runs[sess.ID] = &runSlot{cancel: func() {}}
+	a.mu.Unlock()
+	if err := a.StartSendOpts(sess.ID, "第二句", false, nil); !errors.Is(err, ErrQueued) {
+		t.Fatalf("want queued, got %v", err)
+	}
+	a.mu.Lock()
+	delete(a.runs, sess.ID)
+	a.mu.Unlock()
+	if err := a.launchSend(sess.ID, "第一句", false, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "queue drained", func() bool { return len(a.QueueList(sess.ID)) == 0 && !a.runSlotHeld(sess.ID) })
+	evs, err := a.Traces.Read(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	for _, ev := range evs {
+		if ev.Type == trace.TypeUser {
+			said = append(said, fmt.Sprint(ev.Payload["text"]))
+		}
+	}
+	if strings.Join(said, "|") != "第一句|第二句" {
+		t.Fatalf("user lines %q", said)
+	}
+	if a.Threads.Load(sess.ID).ResumeInFlight {
+		t.Fatal("an early return left the turn marked in flight")
 	}
 }
 
