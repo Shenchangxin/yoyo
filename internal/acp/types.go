@@ -100,12 +100,17 @@ type AuthMethod struct {
 	Type        string          `json:"type,omitempty"`
 	Args        []string        `json:"args,omitempty"`
 	Env         json.RawMessage `json:"env,omitempty"`
+	// VarName 是 env_var 型方法要的环境变量名。
+	VarName string `json:"varName,omitempty"`
 }
 
-// Kind 返回 agent 或 terminal。没写 type 时是 agent。
+// Kind 返回 agent、terminal 或 env_var。没写 type 时是 agent。
 func (m AuthMethod) Kind() string {
-	if strings.EqualFold(m.Type, "terminal") {
+	switch strings.ToLower(m.Type) {
+	case "terminal":
 		return "terminal"
+	case "env_var", "env":
+		return "env_var"
 	}
 	return "agent"
 }
@@ -272,9 +277,48 @@ type SessionModeState struct {
 
 // NewSessionResponse 是 session/new 的结果。
 type NewSessionResponse struct {
-	SessionID string             `json:"sessionId"`
-	Modes     *SessionModeState  `json:"modes,omitempty"`
-	Models    *SessionModelState `json:"models,omitempty"`
+	SessionID     string                `json:"sessionId"`
+	Modes         *SessionModeState     `json:"modes,omitempty"`
+	Models        *SessionModelState    `json:"models,omitempty"`
+	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
+}
+
+// SessionConfigOption 是会话的一个可选设置，例如模型、模式或思考强度。Category 为 model 的就是模型选择。
+// Options 原样保留，可能是平铺的取值，也可能按组嵌套，用 Values 取平铺后的结果。
+type SessionConfigOption struct {
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
+	Category     string          `json:"category,omitempty"`
+	Type         string          `json:"type,omitempty"`
+	CurrentValue string          `json:"currentValue,omitempty"`
+	Options      json.RawMessage `json:"options,omitempty"`
+}
+
+// SessionConfigValue 是设置的一个取值。
+type SessionConfigValue struct {
+	Value       string `json:"value"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// Values 把取值摊平：平铺的直接返回，分组的把各组的取值按顺序接起来。认不出时返回空。
+func (o SessionConfigOption) Values() []SessionConfigValue {
+	var items []struct {
+		SessionConfigValue
+		Options []SessionConfigValue `json:"options"`
+	}
+	if len(o.Options) == 0 || json.Unmarshal(o.Options, &items) != nil {
+		return nil
+	}
+	var out []SessionConfigValue
+	for _, it := range items {
+		if it.Value != "" {
+			out = append(out, it.SessionConfigValue)
+		}
+		out = append(out, it.Options...)
+	}
+	return out
 }
 
 // LoadSessionRequest 是 session/load 和 session/resume 的参数。

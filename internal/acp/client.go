@@ -78,6 +78,8 @@ type Options struct {
 	Env []string
 	// Dir 是工作目录。
 	Dir string
+	// CmdLine 只在 Windows 上生效：非空时原样作为进程命令行，经 cmd.exe 启动垫片时用它避开参数转义。
+	CmdLine string
 	// Version 写进 clientInfo。
 	Version string
 	// Handler 处理 agent 发来的更新和请求。
@@ -117,6 +119,7 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 	if cmd.Env == nil {
 		cmd.Env = os.Environ()
 	}
+	SetCmdLine(cmd, opts.CmdLine)
 	inR, inW, err := os.Pipe()
 	if err != nil {
 		return nil, err

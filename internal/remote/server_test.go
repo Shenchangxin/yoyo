@@ -1,6 +1,7 @@
 // 锁住手机路径：连 wss 时跳过系统信任库，改用证书原文的 SHA-256 对照查询串 fp。
 // 电脑允许后才 pair_ok。thread.model.set 不带 confirm 也能把模型写回会话，并且 StateEpoch 不是 0。
-// 不带 confirm 的 key.set 失败。remote.pair.begin 即使带了 confirm 也失败。Scrub 之后的配置里没有 search-secret。
+// 不带 confirm 的 key.set 失败。remote.pair.begin、buddy.install、buddy.login 即使带了 confirm 也失败，不带 confirm 的 buddy.prefs 失败。
+// Scrub 之后的配置里没有 search-secret。
 // resume 不用再扫码。同一枚 nonce 第二次 health 失败。收回之后调用失败。未配对的第一帧得到 error。
 // 不覆盖浏览器那扇明文 HTTP。
 
@@ -187,6 +188,15 @@ func TestPairModelAndStepUp(t *testing.T) {
 	mint := call("remote.pair.begin", []byte(`{}`), true)
 	if mint["error"] == nil {
 		t.Fatal("phone minted a pairing")
+	}
+	if install := call("buddy.install", []byte(`{"id":"gemini","mode":"managed"}`), true); install["error"] == nil {
+		t.Fatal("phone installed an agent")
+	}
+	if login := call("buddy.login", []byte(`{"id":"gemini"}`), true); login["error"] == nil {
+		t.Fatal("phone started a login")
+	}
+	if prefs := call("buddy.prefs", []byte(`{"npmRegistry":"npmjs"}`), false); prefs["error"] == nil {
+		t.Fatal("buddy prefs changed without confirmation")
 	}
 	raw, _ := json.Marshal(Scrub(a.Config))
 	if strings.Contains(string(raw), "search-secret") {

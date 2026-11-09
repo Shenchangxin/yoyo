@@ -16,6 +16,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/browser"
+	"github.com/Shenchangxin/yoyo/internal/buddy"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/computeruse"
 	"github.com/Shenchangxin/yoyo/internal/connector"
@@ -115,6 +116,7 @@ type Config struct {
 	Log                  LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
 	Paused               bool                `yaml:"paused" json:"paused"`
 	Desk                 DeskConfig          `yaml:"desk,omitempty" json:"desk,omitempty"`
+	Buddies              BuddiesConfig       `yaml:"buddies,omitempty" json:"buddies,omitempty"`
 }
 
 // SkillsConfig 是技能自动调用的可选设置。AutoInvoke 取 off、hint 或 on，默认 on。
@@ -229,6 +231,10 @@ type App struct {
 
 	agentWatch sync.Map
 	agentSess  sync.Map
+
+	// buddies 管外部 agent 的目录、安装、探测和登录；buddyMu 护着 Config.Buddies 的读写。
+	buddies *buddy.Manager
+	buddyMu sync.Mutex
 }
 
 // Open 打开数据根目录并装配应用对象。
@@ -436,6 +442,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		return nil, err
 	}
 	a.configurePwsh()
+	a.configureBuddies()
 	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {
 			off := c.Events().On(runtimeHookPreTool(), func(payload any) (any, error) {
@@ -711,6 +718,7 @@ func (a *App) Close() error {
 	if a.IM != nil {
 		a.IM.Close()
 	}
+	a.closeBuddies()
 	diaglog.Info("app close", "component", "boot")
 	if a.Video != nil {
 		_ = a.Video.Close()

@@ -180,6 +180,8 @@ func methodGroup(name string) string {
 		return "陪伴"
 	case strings.HasPrefix(name, "remote."):
 		return "配对"
+	case strings.HasPrefix(name, "buddy."):
+		return "Buddy"
 	default:
 		return "其他"
 	}

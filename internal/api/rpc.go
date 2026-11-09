@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/buddy"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/im"
@@ -1335,6 +1336,142 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return a.PwshStatus(), nil
 	case "runtime.pwsh.install":
 		return a.PwshInstall(), nil
+	case "buddy.list":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyList()
+	case "buddy.get", "buddy.probe", "buddy.cancel", "buddy.uninstall", "buddy.logout":
+		var p struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		switch method {
+		case "buddy.get":
+			return a.BuddyGet(p.ID)
+		case "buddy.probe":
+			return a.BuddyProbe(ctx, p.ID)
+		case "buddy.cancel":
+			return a.BuddyCancel(p.ID)
+		case "buddy.uninstall":
+			return a.BuddyUninstall(ctx, p.ID)
+		}
+		return a.BuddyLogout(ctx, p.ID)
+	case "buddy.log.tail":
+		var p struct {
+			ID    string `json:"id"`
+			Lines int    `json:"lines"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyLogTail(p.ID, p.Lines)
+	case "buddy.refresh":
+		var p struct {
+			Force bool `json:"force"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyRefresh(p.Force)
+	case "buddy.install":
+		var p struct {
+			ID   string `json:"id"`
+			Mode string `json:"mode"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyInstall(p.ID, p.Mode)
+	case "buddy.configure":
+		var p struct {
+			ID          string             `json:"id"`
+			Enabled     *bool              `json:"enabled"`
+			Mode        *string            `json:"mode"`
+			Model       *string            `json:"model"`
+			Approval    *string            `json:"approval"`
+			MaxParallel *int               `json:"maxParallel"`
+			Args        *[]string          `json:"args"`
+			Env         *map[string]string `json:"env"`
+			Secrets     map[string]string  `json:"secrets"`
+			Reuse       *[]string          `json:"reuse"`
+			Strengths   *string            `json:"strengths"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyConfigure(p.ID, buddy.ConfigPatch{
+			Enabled: p.Enabled, Mode: p.Mode, Model: p.Model, Approval: p.Approval, MaxParallel: p.MaxParallel,
+			Args: p.Args, Env: p.Env, Secrets: p.Secrets, Reuse: p.Reuse, Strengths: p.Strengths,
+		})
+	case "buddy.login":
+		var p struct {
+			ID     string `json:"id"`
+			Method string `json:"method"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyLogin(ctx, p.ID, p.Method)
+	case "buddy.prefs":
+		var p struct {
+			NPMRegistry  *string `json:"npmRegistry"`
+			PyIndex      *string `json:"pyIndex"`
+			DefaultAgent *string `json:"defaultAgent"`
+			AutoPick     *bool   `json:"autoPick"`
+			TurnMinutes  *int    `json:"turnMinutes"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyPrefs(buddy.PrefsPatch{NPMRegistry: p.NPMRegistry, PyIndex: p.PyIndex, DefaultAgent: p.DefaultAgent, AutoPick: p.AutoPick, TurnMinutes: p.TurnMinutes})
+	case "buddy.add":
+		var p struct {
+			Name    string            `json:"name"`
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyAdd(buddy.CustomAgent{Name: p.Name, Command: p.Command, Args: p.Args, Env: p.Env})
+	case "buddy.disk.get":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyDisk()
+	case "buddy.cache.clear":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.BuddyClearCache(ctx)
 	case "review.queue":
 		return a.ReviewQueue(), nil
 	case "browser.view":
