@@ -118,13 +118,23 @@ func TestSummaryDoesNotStart(t *testing.T) {
 
 // TestProbeFailureIsRedacted 锁住全探失败记成出错，详情和探测日志里的密钥值被打码。
 func TestProbeFailureIsRedacted(t *testing.T) {
+	const secret = "sk-alpha-123456"
 	f := newFixture(t, func(o *Options) {
 		o.Dial = func(context.Context, acp.Options) (*acp.Client, error) {
-			return nil, errors.New("agent exited: 1: invalid key sk-alpha-123456")
+			return nil, errors.New("agent exited: 1: invalid key " + secret)
 		}
 	})
 	id := f.withCustom(t, "fake")
-	_, _ = f.m.Configure(id, ConfigPatch{Secrets: map[string]string{"FAKE_API_KEY": "sk-alpha-123456"}})
+	// 不走 Configure：它会在后台再探一次，和下面的同步探测抢着改状态。
+	_ = f.settings.save(func(s *Settings) {
+		if s.Items == nil {
+			s.Items = map[string]ItemConfig{}
+		}
+		item := s.Items[id]
+		item.Secrets = []string{"FAKE_API_KEY"}
+		s.Items[id] = item
+	})
+	f.m.setSecret(id, "FAKE_API_KEY", secret)
 	v, _ := f.m.Probe(context.Background(), id)
 	if v.State != StateError || strings.Contains(v.Detail, "sk-alpha-123456") || !strings.Contains(v.Detail, "invalid key") {
 		t.Fatalf("view %s %q", v.State, v.Detail)

@@ -112,6 +112,13 @@ func probeOnline(t *testing.T, m *buddy.Manager, id string) {
 	})
 }
 
+// skipFunctionalInCI 让要等外部工人真正开工的功能测试不进 CI。那边没有本机模型密钥，这类测试留在本机跑。
+func skipFunctionalInCI(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("CI 不跑要等工人开工的功能测试")
+	}
+}
+
 func waitFor(t *testing.T, what string, ok func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
@@ -266,6 +273,7 @@ var fakeCaps = map[string]any{"loadSession": true, "mcpCapabilities": map[string
 // 写进工单目录的文件落盘，目录外的写入和越界的权限请求被拒，危险命令被确定性名单挡下；
 // 它经控制面报告完成；应用重启后，同一张工单的后续工作加载原会话，不新开。
 func TestBuddyWorkerRunsTicketEndToEnd(t *testing.T) {
+	skipFunctionalInCI(t)
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "escape.txt")
 	seen := &notes{}
