@@ -3987,6 +3987,8 @@ export const zhCN = {
       enabled: "让 yoyo 给它派任务",
       model: "模型",
       modelDefault: "用它自己的默认",
+      modelPlaceholder: "模型名",
+      modelHint: "安装完成后默认和 yoyo 用同一个模型。留空则用这个 agent 自己的默认。",
       approval: "审批",
       approvalYoyo: "yoyo 决定（默认）",
       approvalAsk: "每次问我",

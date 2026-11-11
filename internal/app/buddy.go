@@ -53,6 +53,7 @@ func (a *App) configureBuddies() {
 		SaveSettings: a.saveBuddySettings,
 		Publish:      a.publishBuddy,
 		YoyoKey:      a.yoyoKey,
+		YoyoChat:     a.yoyoChat,
 		Dial:         a.dialBuddy,
 	})
 	a.configureBuddyWorkers()
@@ -147,6 +148,70 @@ func officialFor(provider string, c connection.Connection) bool {
 		return (vendor == "gemini" || vendor == "google") && (ep == "" || strings.Contains(ep, "generativelanguage.googleapis.com"))
 	}
 	return false
+}
+
+// yoyoChat 是 yoyo 当前用来聊天的模型、提供商、钥匙和端点。新装好的 agent 还没自己配过时，用这份做默认。
+// 有活动的聊天连接就用它，连自建端点也算；没有连接时退回配置里的模型和环境里的钥匙。
+func (a *App) yoyoChat() (model, provider, key, endpoint string) {
+	if a == nil {
+		return "", "", "", ""
+	}
+	model, connID := a.defaultChatSlot()
+	provider = chatProviderName(a.Config.Provider, a.Config.BaseURL)
+	endpoint = strings.TrimSpace(a.Config.BaseURL)
+	r := a.connReg()
+	if r == nil {
+		return model, provider, a.fallbackChatKey(), endpoint
+	}
+	var c connection.Connection
+	var err error
+	if connID != "" {
+		c, err = r.Get(connID)
+	}
+	if err != nil || c.ID == "" {
+		c, err = r.Active(connection.CapChat, "")
+	}
+	if err != nil || c.ID == "" {
+		return model, provider, a.fallbackChatKey(), endpoint
+	}
+	provider = chatProviderName(c.Vendor, c.Endpoint)
+	endpoint = strings.TrimSpace(c.Endpoint)
+	if m := connection.ModelFor(c, connection.CapChat); m != "" {
+		model = m
+	}
+	if k, e := r.Lease(c); e == nil {
+		key = strings.TrimSpace(k)
+	}
+	if key == "" {
+		key = a.fallbackChatKey()
+	}
+	return model, provider, key, endpoint
+}
+
+// chatProviderName 把聊天连接的厂商收成 buddy 用来对密钥的名字。空厂商时再看端点。
+func chatProviderName(vendor, endpoint string) string {
+	switch strings.ToLower(strings.TrimSpace(vendor)) {
+	case "claude", "anthropic":
+		return "anthropic"
+	case "gemini", "google":
+		return "gemini"
+	case "openai", "azure":
+		return "openai"
+	case "":
+		ep := strings.ToLower(endpoint)
+		switch {
+		case strings.Contains(ep, "api.anthropic.com"):
+			return "anthropic"
+		case strings.Contains(ep, "generativelanguage.googleapis.com"):
+			return "gemini"
+		case strings.Contains(ep, "api.openai.com"), strings.Contains(ep, "openai.azure.com"):
+			return "openai"
+		default:
+			return ""
+		}
+	default:
+		return strings.ToLower(strings.TrimSpace(vendor))
+	}
 }
 
 // buddyManager 返回管理器，没有时报错。

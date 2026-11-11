@@ -3,7 +3,7 @@
  * Buddy 入口上的数字数要处理的 agent，有 agent 在干活时右下角亮一个点（读 Buddy 仓库）。
  * 不拥有：切到哪一面。点下去只调用外面传入的回调。
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BookOpen, Bot, Clapperboard, FileText, GitBranch, Heart, MessageSquare, Settings } from "lucide-react";
 import GlassIcons from "./GlassIcons";
 import { useTheme } from "../../lib/theme";
@@ -63,9 +63,6 @@ const DOCK_MAX = 44;
 const DOCK_MIN = 18;
 /** 间距大约是图标边长的这个比例，宽栏时图标到顶后间距继续拉开。 */
 const DOCK_GAP_RATIO = 0.28;
-/** DOCK_PAD 是 .rail-dock 左右内边距之和。 */
-const DOCK_PAD = 24;
-
 /** 按侧栏内容宽度算出同一行里的图标边长。间距交给两端对齐去分。 */
 function dockSize(width: number) {
   if (width <= 0) return 28;
@@ -75,31 +72,31 @@ function dockSize(width: number) {
   return size;
 }
 
-/** 侧栏一变宽就重算边长。basis 是模块栏占窗口的百分比：给了就按模块栏的宽度排这一行，靠左，
- *  和模块栏同一起点。会话页的今天栏更宽时，图标大小和间距仍跟其他模块一致。row 为 0 时铺满整栏。 */
-function useRowSize(basis?: number) {
-  const hostRef = useRef<HTMLDivElement>(null);
+/** 进场只在这次打开后的第一次挂载上播。侧栏之后再挂，不再从透明长出来。 */
+let dockIntroPlayed = false;
+
+/** 按这一行的实际宽度算边长。会话页的行比今天栏窄，边长跟那一行走，不跟整栏走。 */
+function useDockSize(rowRef: { current: HTMLDivElement | null }) {
   const [size, setSize] = useState(28);
-  const [row, setRow] = useState(0);
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
     const fit = () => {
-      const limit = basis ? Math.floor((window.innerWidth * basis) / 100) - DOCK_PAD : Infinity;
-      const width = Math.min(host.clientWidth, limit);
-      setRow(width < host.clientWidth ? width : 0);
-      setSize(dockSize(width));
+      const width = row.clientWidth;
+      if (width <= 0) return;
+      const next = dockSize(width);
+      setSize((prev) => (prev === next ? prev : next));
     };
     fit();
     const observer = new ResizeObserver(fit);
-    observer.observe(host);
+    observer.observe(row);
     window.addEventListener("resize", fit);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", fit);
     };
-  }, [basis]);
-  return { hostRef, size, row };
+  }, [rowRef]);
+  return size;
 }
 
 /** RailDock 画出侧栏底部的八个入口。当前面加一圈强调色，Harness 有未提交改动时右上角加一点，会话入口带「需要你」的数字，
@@ -109,7 +106,8 @@ export function RailDock(props: {
   surface: Surface;
   mark?: boolean;
   needs?: number;
-  basis?: number;
+  /** 小于 1 时图标行只占侧栏这个比例并靠左，用来让会话页和模块栏同一套大小、间距。 */
+  scale?: number;
   onChats: () => void;
   onBuddy: () => void;
   onSkills: () => void;
@@ -120,7 +118,14 @@ export function RailDock(props: {
   onSettings: () => void;
 }) {
   const { light, tokens } = useDockTokens();
-  const { hostRef, size, row } = useRowSize(props.basis);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const size = useDockSize(rowRef);
+  const scale = props.scale && props.scale > 0 && props.scale < 0.98 ? props.scale : 0;
+  const [intro] = useState(() => {
+    if (dockIntroPlayed) return false;
+    dockIntroPlayed = true;
+    return true;
+  });
   const label = props.copy.rail;
   const needs = props.needs || 0;
   const buddyNeeds = useBuddy((s) => attentionCount(s.list));
@@ -136,8 +141,8 @@ export function RailDock(props: {
     { id: "settings", icon: <Settings />, color: tokens.muted, label: label.settings, onClick: props.onSettings, current: props.surface === "settings" },
   ];
   return (
-    <div ref={hostRef} className="rail-glass-host">
-      <div style={row ? { width: row } : undefined}>
+    <div className="rail-glass-host">
+      <div ref={rowRef} style={scale ? { width: `${scale * 100}%`, maxWidth: "100%", marginRight: "auto" } : undefined}>
         <GlassIcons
           className="rail-glass"
           items={items.map((item) => ({
@@ -162,7 +167,7 @@ export function RailDock(props: {
           hover="press"
           parallax={0.35}
           labels="hover"
-          intro
+          intro={intro}
           theme={light ? "light" : "dark"}
         />
       </div>

@@ -52,6 +52,8 @@ type Options struct {
 	Terminal func(ctx context.Context, l acp.Launch) (TerminalResult, error)
 	// YoyoKey 按提供商返回 yoyo 自己的钥匙，「从 yoyo 复用」用它。
 	YoyoKey func(provider string) (string, bool)
+	// YoyoChat 返回 yoyo 当前聊天用的模型、提供商、钥匙和端点。安装完成且这项还没自己配过时用来填默认。
+	YoyoChat func() (model, provider, key, endpoint string)
 	// Working 返回每个 agent 正在做的工单数。
 	Working func() map[string]int
 	// BaseEnv 是清洗前的环境，nil 时用 os.Environ。
@@ -816,6 +818,7 @@ func (m *Manager) Add(c CustomAgent) (View, error) {
 	e, _ := m.entryLocked(id)
 	m.mu.Unlock()
 	m.detectOne(m.ctx, e)
+	m.adoptYoyoChat(id)
 	m.markProbing(id)
 	m.publish(id)
 	m.goSafe(func() { _ = m.probe(m.ctx, id, true) })

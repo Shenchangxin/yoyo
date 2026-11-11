@@ -272,9 +272,9 @@ export function buddyStatusText(v: BuddyView, c: BuddyCopy): string {
   return why ? `${label} · ${why}` : label;
 }
 
-/** setupSecrets 是一键配置里要列的密钥：必填的，以及能从 yoyo 复用的。 */
+/** setupSecrets 是一键配置里要列的密钥：必填的、能从 yoyo 复用的，以及已经存过的。 */
 export function setupSecrets(v: BuddyView): BuddySecret[] {
-  return v.config.secrets.filter((s) => !s.optional || s.reusable);
+  return v.config.secrets.filter((s) => !s.optional || s.reusable || s.hasKey);
 }
 
 /** splitLines 把多行文本拆成去掉首尾空白的非空行。 */

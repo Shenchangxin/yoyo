@@ -3986,6 +3986,8 @@ export const en = {
       enabled: "Let yoyo give it tasks",
       model: "Model",
       modelDefault: "Agent's default",
+      modelPlaceholder: "Model id",
+      modelHint: "After install this starts as yoyo's model. Leave it empty to use the agent's own default.",
       approval: "Approvals",
       approvalYoyo: "yoyo decides (default)",
       approvalAsk: "Ask me every time",

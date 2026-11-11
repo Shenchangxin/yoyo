@@ -697,9 +697,10 @@ type TranscriptRow = {
   render: () => ReactNode;
 };
 
-/** 按正文字数估算高度，夹在 520 和 2400 之间，底数是 160 加长度乘 0.48。copyText 读取 length，为空时不读。 */
+/** 测量跟上之前的占位。按字数略估，并且故意偏低：旧的 520 底会在测量被跳过时把下一条顶出一块空白，字数一长就顶到 2400。 */
 function agentEstimate(copyText: string): number {
-  return Math.max(520, Math.min(2400, 160 + Math.round((copyText?.length || 0) * 0.48)));
+  const n = copyText?.length || 0;
+  return Math.max(72, Math.min(360, 56 + Math.round(n * 0.2)));
 }
 
 /**
@@ -818,6 +819,25 @@ function TranscriptLane({
     followCtl.current?.setFollowing(true);
     followEnd("smooth");
   }, [latestNonce, followEnd]);
+  // 跟底时虚拟列表会跳过一部分测量。占位一旦比内容高出一截，空白就留在这条和下一跳之间，而且会随着字数变大。只把明显偏高的行收回内容高度。
+  useLayoutEffect(() => {
+    const root = listRef.current;
+    if (!root) return;
+    const id = requestAnimationFrame(() => {
+      const node = listRef.current;
+      if (!node) return;
+      const slots = virtualizer.getVirtualItems();
+      node.querySelectorAll<HTMLElement>("[data-index]").forEach((el) => {
+        const index = Number(el.dataset.index);
+        const height = el.offsetHeight;
+        const slot = slots.find((item) => item.index === index);
+        if (slot && Number.isInteger(index) && height > 0 && slot.size - height > 48) {
+          virtualizer.resizeItem(index, height);
+        }
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [followNonce, rows.length, rows[0]?.key, rows[rows.length - 1]?.key, virtualizer]);
   useLayoutEffect(() => {
     const key = jumpTo?.key;
     const nonce = jumpTo?.nonce || 0;
@@ -960,6 +980,7 @@ function TranscriptLane({
                   top: 0,
                   left: 0,
                   width: "100%",
+                  height: "max-content",
                   transform: `translateY(${v.start - scrollMargin}px)`,
                 }}
               >

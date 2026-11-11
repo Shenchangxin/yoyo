@@ -173,6 +173,7 @@ func (m *Manager) finishInstall(e Entry, err error, log *installLog) {
 	m.saveRecords()
 	m.publish(e.ID)
 	if err == nil {
+		m.adoptYoyoChat(e.ID)
 		_ = m.probe(m.ctx, e.ID, true)
 	}
 }

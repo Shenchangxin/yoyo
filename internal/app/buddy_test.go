@@ -53,3 +53,20 @@ func TestOfficialFor(t *testing.T) {
 		}
 	}
 }
+
+// TestChatProviderName 锁住默认钥匙跟着 yoyo 当前的聊天厂商走，自建端点也留着自己的名字。
+func TestChatProviderName(t *testing.T) {
+	cases := []struct{ vendor, endpoint, want string }{
+		{"claude", "", "anthropic"},
+		{"openai", "https://api.deepseek.com/v1", "openai"},
+		{"deepseek", "https://api.deepseek.com/v1", "deepseek"},
+		{"", "https://api.anthropic.com/v1", "anthropic"},
+		{"gemini", "", "gemini"},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := chatProviderName(c.vendor, c.endpoint); got != c.want {
+			t.Fatalf("%s %s => %s, want %s", c.vendor, c.endpoint, got, c.want)
+		}
+	}
+}

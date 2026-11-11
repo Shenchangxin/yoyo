@@ -92,6 +92,36 @@ export function SecretRow(props: { s: BuddySecret; draft: KeyDraft; onDraft: (ne
 /** DIALOG_LAYER 让下拉浮在对话框（z-200）上面。 */
 const DIALOG_LAYER = "z-[210]";
 
+/** ModelField 是模型：探测到列表、而且当前值就在列表里时用下拉；否则用输入框，好填 yoyo 的模型或别的名字。 */
+export function ModelField(props: { v: BuddyView; value: string; onChange: (model: string) => void; c: BuddyCopy; id?: string; layer?: string }) {
+  const models = props.v.config.models ?? [];
+  const known = !props.value || models.some((m) => m.id === props.value);
+  if (models.length && known) return <ModelSelect {...props} />;
+  const listId = props.id ? `${props.id}-models` : undefined;
+  return (
+    <>
+      <Input
+        id={props.id}
+        list={listId}
+        className="h-8"
+        value={props.value}
+        placeholder={props.c.detail.modelPlaceholder}
+        spellCheck={false}
+        onChange={(e) => props.onChange(e.target.value)}
+      />
+      {listId && models.length ? (
+        <datalist id={listId}>
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name || m.id}
+            </option>
+          ))}
+        </datalist>
+      ) : null}
+    </>
+  );
+}
+
 /** ModelSelect 是模型下拉：第一项是用 agent 自己的默认，其余是探测时拿到的模型。layer 是下拉层的类名，放在对话框里时要抬高。 */
 export function ModelSelect(props: { v: BuddyView; value: string; onChange: (model: string) => void; c: BuddyCopy; id?: string; layer?: string }) {
   const models = props.v.config.models ?? [];
@@ -135,14 +165,13 @@ function SetupForm({ v, onClose }: { v: BuddyView; onClose: () => void }) {
   const [draft, setDraft] = useState<KeyDraft>(() => emptyDraft(secrets));
   const [model, setModel] = useState(v.config.model ?? "");
   const [approval, setApproval] = useState<"yoyo" | "ask">(v.config.approval);
-  const hasModels = !!v.config.models?.length;
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         const patch: BuddyConfigPatch = { ...draftPatch(secrets, draft) };
-        if (hasModels && model !== (v.config.model ?? "")) patch.model = model;
+        if (model !== (v.config.model ?? "")) patch.model = model;
         if (approval !== v.config.approval) patch.approval = approval;
         void buddyConfigure(v, patch, true).then((next) => {
           if (!next) return;
@@ -156,12 +185,11 @@ function SetupForm({ v, onClose }: { v: BuddyView; onClose: () => void }) {
       ) : (
         <p className="text-ui-body text-muted">{c.setup.nothing}</p>
       )}
-      {hasModels ? (
-        <div className="space-y-1.5">
-          <label htmlFor="buddy-setup-model" className="text-ui-footnote text-muted">{c.detail.model}</label>
-          <ModelSelect id="buddy-setup-model" v={v} value={model} onChange={setModel} c={c} layer={DIALOG_LAYER} />
-        </div>
-      ) : null}
+      <div className="space-y-1.5">
+        <label htmlFor="buddy-setup-model" className="text-ui-footnote text-muted">{c.detail.model}</label>
+        <ModelField id="buddy-setup-model" v={v} value={model} onChange={setModel} c={c} layer={DIALOG_LAYER} />
+        <p className="text-ui-caption text-muted">{c.detail.modelHint}</p>
+      </div>
       <div className="space-y-1.5">
         <label htmlFor="buddy-setup-approval" className="text-ui-footnote text-muted">{c.detail.approval}</label>
         <ApprovalSelect id="buddy-setup-approval" value={approval} onChange={setApproval} c={c} layer={DIALOG_LAYER} />

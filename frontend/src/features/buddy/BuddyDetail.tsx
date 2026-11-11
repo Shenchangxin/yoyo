@@ -21,7 +21,7 @@ import { ticketAgent } from "../superagent/agent-model";
 import { useNeeds } from "../superagent/needs";
 import { taskStatus } from "../superagent/TaskPage";
 import { BuddyMark } from "./BuddyMark";
-import { ApprovalSelect, draftPatch, emptyDraft, ModelSelect, SecretRow, type KeyDraft } from "./BuddyConfigDialog";
+import { ApprovalSelect, draftPatch, emptyDraft, ModelField, SecretRow, type KeyDraft } from "./BuddyConfigDialog";
 import { BuddyMoreMenu, BuddyPrimary } from "./BuddyRow";
 import { buddyConfigure, buddyDo, buddyLogin } from "./buddy-actions";
 import {
@@ -232,12 +232,11 @@ function ConfigForm({ v, c }: { v: BuddyView; c: BuddyCopy }) {
           <Switch checked={enabled} onCheckedChange={(on) => { setEnabled(on); setNote(""); }} aria-label={c.detail.enabled} />
         </label>
         <div className="grid gap-4 sm:grid-cols-3">
-          {v.config.models?.length ? (
-            <div className={FIELD}>
-              <label htmlFor="buddy-model" className={FIELD_LABEL}>{c.detail.model}</label>
-              <ModelSelect id="buddy-model" v={v} value={model} onChange={(m) => { setModel(m); setNote(""); }} c={c} />
-            </div>
-          ) : null}
+          <div className={FIELD}>
+            <label htmlFor="buddy-model" className={FIELD_LABEL}>{c.detail.model}</label>
+            <ModelField id="buddy-model" v={v} value={model} onChange={(m) => { setModel(m); setNote(""); }} c={c} />
+            <p className="text-ui-caption text-muted">{c.detail.modelHint}</p>
+          </div>
           <div className={FIELD}>
             <label htmlFor="buddy-approval" className={FIELD_LABEL}>{c.detail.approval}</label>
             <ApprovalSelect id="buddy-approval" value={approval} onChange={(a) => { setApproval(a); setNote(""); }} c={c} />
