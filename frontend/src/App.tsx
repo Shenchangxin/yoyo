@@ -3,8 +3,8 @@
  * 不拥有：会话状态，那些在 useWorkstation。会调用 api 改工作区、模型、权限、隔离、置顶、归档、分叉、页面和密钥。
  */
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Group, Panel } from "react-resizable-panels";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Group, Panel, useGroupRef } from "react-resizable-panels";
 import { toast } from "sonner";
 import { cn } from "./lib/utils";
 import { THREAD_COL, THREAD_GUTTER } from "./lib/thread";
@@ -252,6 +252,21 @@ function WorkstationApp() {
   }, []);
   const mac = isMac();
   const railShare = dayInRail ? layout.day : layout.rail;
+  const shellGroup = useGroupRef();
+  // 今天栏和模块栏宽度不同，但不能靠换 key 把整条侧栏拆掉重挂。拆掉会让左下角菜单重播进场、玻璃样式闪一下。
+  useLayoutEffect(() => {
+    const group = shellGroup.current;
+    if (!group) return;
+    try {
+      if (!showRail) {
+        group.setLayout({ stage: 100 });
+        return;
+      }
+      group.setLayout({ rail: railShare, stage: 100 - railShare });
+    } catch {
+      // 分割组还没登记好时跳过，下一帧宽度变了会再排。
+    }
+  }, [shellGroup, showRail, railShare]);
   const stagePct = showRail ? Math.max(58, 100 - railShare) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
@@ -906,7 +921,7 @@ function WorkstationApp() {
       onIdolSlot={onIdolSlot}
       day={dayInRail ? work : undefined}
       needs={needCount}
-      dockBasis={showRail ? layout.rail : undefined}
+      dockScale={showRail && dayInRail && layout.day > layout.rail ? layout.rail / layout.day : 1}
       onRename={async (t, title) => {
         try {
           await api.renameSession(t.id, title);
@@ -1318,7 +1333,8 @@ function WorkstationApp() {
       )}
     >
       <Group
-        key={showRail ? (dayInRail ? "day" : "rail") : "norail"}
+        id="yoyo-shell"
+        groupRef={shellGroup}
         className="h-full min-h-0 min-w-0 flex-1"
         style={{ height: "100%" }}
         orientation="horizontal"

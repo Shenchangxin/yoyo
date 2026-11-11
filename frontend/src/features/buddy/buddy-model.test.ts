@@ -20,6 +20,7 @@ import {
   onlineCount,
   parseEnv,
   progressBar,
+  setupSecrets,
   progressText,
   routable,
   updateTo,
@@ -206,5 +207,23 @@ describe("agent mentions", () => {
     assert.equal(agentStateText(view({ id: "a", working: 2 }), c), "Working on 2");
     assert.equal(agentStateText(off, c), c.disabled);
     assert.equal(agentStateText(yoyo, c), c.state.online);
+  });
+});
+
+describe("setupSecrets", () => {
+  /** 一键配置列出必填、可复用，以及已经存好的钥匙。没存过的可选项不占地方。 */
+  it("keeps a saved optional key and drops an empty optional one", () => {
+    const config = {
+      enabled: true,
+      mode: "managed" as const,
+      approval: "yoyo" as const,
+      maxParallel: 2,
+      secrets: [
+        { name: "OPENAI_API_KEY", optional: true, hasKey: true },
+        { name: "EXTRA", optional: true, hasKey: false },
+        { name: "NEED", hasKey: false },
+      ],
+    };
+    assert.deepEqual(setupSecrets(view({ id: "a", config })).map((s) => s.name), ["OPENAI_API_KEY", "NEED"]);
   });
 });

@@ -258,8 +258,8 @@ export function ThreadRail(props: {
   day?: ReactNode;
   /** needs 是等你决定的条数，挂在底部坞的会话图标上。 */
   needs?: number;
-  /** dockBasis 是模块栏占窗口的百分比。底部坞按它排，靠左，会话页和其他模块一样大。 */
-  dockBasis?: number;
+  /** dockScale 小于 1 时，底部坞只占侧栏这个比例并靠左，会话页因此和模块栏一样大。 */
+  dockScale?: number;
 }) {
   const copy = useCopy();
   const videoPane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
@@ -497,7 +497,7 @@ export function ThreadRail(props: {
           surface={props.surface}
           mark={dirty || canary}
           needs={props.needs}
-          basis={props.dockBasis}
+          scale={props.dockScale}
           onChats={props.onChats}
           onBuddy={props.onBuddy}
           onSkills={props.onSkills}
