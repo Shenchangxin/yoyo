@@ -178,6 +178,7 @@ func TestGroupCardEmitted(t *testing.T) {
 // TestTaskReadTool 锁住 task_read 读到工单的状态、任务组、目录和工人最后一段话；没有的工单说清楚。
 func TestTaskReadTool(t *testing.T) {
 	skipFunctionalInCI(t)
+	testModelKey(t)
 	a, _ := openAgentsApp(t, acptest.Script{Caps: fakeCaps, OnPrompt: quietTurn}, "fake")
 	rt := a.orchestrator()
 	a.intakeDesk("s1", "t1", "@agent:fake 写个登录页，和 yoyo 比一比")
@@ -240,6 +241,7 @@ func TestTaskRecommendTool(t *testing.T) {
 // 有任务组在做时，人没 @ 也给路由看可派名单。
 func TestRosterShowsGroup(t *testing.T) {
 	skipFunctionalInCI(t)
+	testModelKey(t)
 	a, _ := openAgentsApp(t, acptest.Script{Caps: fakeCaps, OnPrompt: quietTurn}, "fake")
 	rt := a.orchestrator()
 	a.intakeDesk("s1", "t1", "@agent:fake 做个 todo 应用")

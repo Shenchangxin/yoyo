@@ -85,6 +85,13 @@ func openBuddyApp(t *testing.T, root string, f *fakeAgents) *App {
 	return a
 }
 
+// testModelKey 给要让工人真正开工的测试带一把假的模型密钥。编排开工前先确认有密钥可用，
+// 测试的仓库只写文件，读不到这台电脑钥匙串里的那一把，也不该用它。
+func testModelKey(t *testing.T) {
+	t.Helper()
+	t.Setenv(vault.EnvAPIKey, "test-key")
+}
+
 // fakeCommand 造一个找得到、但跑不起来的命令文件。连接都走假 agent，它永远不会被执行。
 func fakeCommand(t *testing.T) string {
 	t.Helper()
@@ -274,6 +281,7 @@ var fakeCaps = map[string]any{"loadSession": true, "mcpCapabilities": map[string
 // 它经控制面报告完成；应用重启后，同一张工单的后续工作加载原会话，不新开。
 func TestBuddyWorkerRunsTicketEndToEnd(t *testing.T) {
 	skipFunctionalInCI(t)
+	testModelKey(t)
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "escape.txt")
 	seen := &notes{}
