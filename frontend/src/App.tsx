@@ -921,7 +921,6 @@ function WorkstationApp() {
       onIdolSlot={onIdolSlot}
       day={dayInRail ? work : undefined}
       needs={needCount}
-      dockScale={showRail && dayInRail && layout.day > layout.rail ? layout.rail / layout.day : 1}
       onRename={async (t, title) => {
         try {
           await api.renameSession(t.id, title);
