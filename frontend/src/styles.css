@@ -1818,8 +1818,10 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
 .rail-dock {
   position: relative;
   z-index: 2;
-  padding: 0 12px 6px;
+  flex-shrink: 0;
+  padding: 0 12px 2px;
   border-top: 0;
+  background: transparent;
 }
 
 .rail-glass-host {
@@ -1832,6 +1834,7 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+  min-width: 0;
   max-width: none;
   margin: 0;
   gap: 0;
@@ -5524,7 +5527,7 @@ html.companion .presence-engine svg {
     height: 2.5rem;
   }
   .rail-dock {
-    padding-bottom: max(6px, env(safe-area-inset-bottom));
+    padding-bottom: max(2px, env(safe-area-inset-bottom));
   }
   .rail-dock::-webkit-scrollbar {
     display: none;

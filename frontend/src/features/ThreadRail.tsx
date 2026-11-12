@@ -258,8 +258,6 @@ export function ThreadRail(props: {
   day?: ReactNode;
   /** needs 是等你决定的条数，挂在底部坞的会话图标上。 */
   needs?: number;
-  /** dockScale 小于 1 时，底部坞只占侧栏这个比例并靠左，会话页因此和模块栏一样大。 */
-  dockScale?: number;
 }) {
   const copy = useCopy();
   const videoPane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
@@ -378,7 +376,8 @@ export function ThreadRail(props: {
     return <ThreadRow key={e.thread.id} thread={e.thread} nested={!!e.thread.parentId || (!q && !e.thread.pinned && !videoOn)} {...props} />;
   }
   return (
-    <SidebarCard>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <SidebarCard className="h-auto min-h-0 flex-1">
       <div className={cn("chrome drag flex h-12 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
         <YoyoMark live />
         {props.isolated ? <span className="rounded-full bg-lift px-1.5 py-0.5 text-ui-badge text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
@@ -491,13 +490,13 @@ export function ThreadRail(props: {
           )}
         </nav>
       ) : null}
+    </SidebarCard>
       <div className="rail-dock">
         <RailDock
           copy={copy}
           surface={props.surface}
           mark={dirty || canary}
           needs={props.needs}
-          scale={props.dockScale}
           onChats={props.onChats}
           onBuddy={props.onBuddy}
           onSkills={props.onSkills}
@@ -508,7 +507,7 @@ export function ThreadRail(props: {
           onSettings={props.onSettings}
         />
       </div>
-    </SidebarCard>
+    </div>
   );
 }
 

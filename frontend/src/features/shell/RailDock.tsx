@@ -75,7 +75,7 @@ function dockSize(width: number) {
 /** 进场只在这次打开后的第一次挂载上播。侧栏之后再挂，不再从透明长出来。 */
 let dockIntroPlayed = false;
 
-/** 按这一行的实际宽度算边长。会话页的行比今天栏窄，边长跟那一行走，不跟整栏走。 */
+/** 按这一行的实际宽度算边长。会话页和模块栏都铺满自己的侧栏，边长跟整栏走。 */
 function useDockSize(rowRef: { current: HTMLDivElement | null }) {
   const [size, setSize] = useState(28);
   useLayoutEffect(() => {
@@ -106,8 +106,6 @@ export function RailDock(props: {
   surface: Surface;
   mark?: boolean;
   needs?: number;
-  /** 小于 1 时图标行只占侧栏这个比例并靠左，用来让会话页和模块栏同一套大小、间距。 */
-  scale?: number;
   onChats: () => void;
   onBuddy: () => void;
   onSkills: () => void;
@@ -120,7 +118,6 @@ export function RailDock(props: {
   const { light, tokens } = useDockTokens();
   const rowRef = useRef<HTMLDivElement>(null);
   const size = useDockSize(rowRef);
-  const scale = props.scale && props.scale > 0 && props.scale < 0.98 ? props.scale : 0;
   const [intro] = useState(() => {
     if (dockIntroPlayed) return false;
     dockIntroPlayed = true;
@@ -141,36 +138,34 @@ export function RailDock(props: {
     { id: "settings", icon: <Settings />, color: tokens.muted, label: label.settings, onClick: props.onSettings, current: props.surface === "settings" },
   ];
   return (
-    <div className="rail-glass-host">
-      <div ref={rowRef} style={scale ? { width: `${scale * 100}%`, maxWidth: "100%", marginRight: "auto" } : undefined}>
-        <GlassIcons
-          className="rail-glass"
-          items={items.map((item) => ({
-            ...item,
-            className: [item.current ? "is-current" : "", "className" in item ? item.className : ""].filter(Boolean).join(" "),
-          }))}
-          size={size}
-          gap={0}
-          columns={DOCK_COUNT}
-          roundness={0.62}
-          refraction={0.45}
-          bevel={0.45}
-          dispersion={0}
-          frost={0.08}
-          shine={light ? 0.5 : 0.72}
-          tint={tokens.glass}
-          tintOpacity={light ? 0.55 : 0.28}
-          iconColor={tokens.ink}
-          plate="tilt"
-          tilt={8}
-          spread={0.18}
-          hover="press"
-          parallax={0.35}
-          labels="hover"
-          intro={intro}
-          theme={light ? "light" : "dark"}
-        />
-      </div>
+    <div className="rail-glass-host" ref={rowRef}>
+      <GlassIcons
+        className="rail-glass"
+        items={items.map((item) => ({
+          ...item,
+          className: [item.current ? "is-current" : "", "className" in item ? item.className : ""].filter(Boolean).join(" "),
+        }))}
+        size={size}
+        gap={0}
+        columns={DOCK_COUNT}
+        roundness={0.62}
+        refraction={0.45}
+        bevel={0.45}
+        dispersion={0}
+        frost={0.08}
+        shine={light ? 0.5 : 0.72}
+        tint={tokens.glass}
+        tintOpacity={light ? 0.55 : 0.28}
+        iconColor={tokens.ink}
+        plate="tilt"
+        tilt={8}
+        spread={0.18}
+        hover="press"
+        parallax={0.35}
+        labels="hover"
+        intro={intro}
+        theme={light ? "light" : "dark"}
+      />
     </div>
   );
 }
