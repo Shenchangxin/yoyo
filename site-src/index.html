@@ -3,21 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Yoyo</title>
+    <title>Yoyo — the open-source desktop super agent</title>
     <meta
       name="description"
-      content="Today, tasks, skills, video, study, and a desktop companion in one window. You bring the model. Chats stay on this machine."
+      content="An open-source super agent for the desktop. Today, tasks, skills, video, study, and a companion in one window, with Claude Code, Codex, and other local agents as workers. You bring the model. Chats stay on this machine."
     />
     <link rel="canonical" href="https://shenchangxin.github.io/yoyo/" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <meta property="og:title" content="Yoyo" />
+    <link rel="preload" as="image" href="./shots/today.webp" type="image/webp" fetchpriority="high" />
+    <meta property="og:site_name" content="Yoyo" />
+    <meta property="og:title" content="Yoyo — the open-source desktop super agent" />
     <meta
       property="og:description"
-      content="Today, tasks, skills, video, study, and a desktop companion in one window. You bring the model. Chats stay on this machine."
+      content="An open-source super agent for the desktop. Today, tasks, skills, video, study, and a companion in one window, with Claude Code, Codex, and other local agents as workers. You bring the model. Chats stay on this machine."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://shenchangxin.github.io/yoyo/" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="https://shenchangxin.github.io/yoyo/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Yoyo’s Today. An evening brief on the left, the day’s conversation on the right." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://shenchangxin.github.io/yoyo/og.jpg" />
     <meta name="theme-color" content="#f7f4ee" />
     <script>
       (function () {
@@ -49,10 +56,12 @@
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "Yoyo",
+        "description": "An open-source super agent for the desktop. Today, tasks, skills, video, study, and a companion in one window. You bring the model. Chats stay on this machine.",
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Windows, macOS, Linux",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "url": "https://shenchangxin.github.io/yoyo/",
+        "image": "https://shenchangxin.github.io/yoyo/og.jpg",
         "downloadUrl": "https://github.com/Shenchangxin/yoyo/releases/latest",
         "codeRepository": "https://github.com/Shenchangxin/yoyo",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -61,6 +70,13 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p style="max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem; font: 16px/1.6 system-ui, sans-serif">
+        Yoyo is an open-source super agent for the desktop. Download it from
+        <a href="https://github.com/Shenchangxin/yoyo/releases/latest">GitHub Releases</a>, or read the
+        <a href="https://github.com/Shenchangxin/yoyo#readme">README</a>.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

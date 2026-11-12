@@ -5,10 +5,11 @@
 
 const REPO = "Shenchangxin/yoyo";
 export const RELEASES = `https://github.com/${REPO}/releases/latest`;
-export const FALLBACK_VERSION = "0.4.2";
+/** FALLBACK_VERSION 是构建这一刻仓库里的产品版本，来自 internal/version/version.go。 */
+export const FALLBACK_VERSION = __YOYO_VERSION__;
 
 export type Asset = {
-  os: "windows" | "mac" | "linux" | "deb" | "rpm";
+  os: "windows" | "mac" | "linux" | "deb" | "rpm" | "android";
   label: string;
   name: string;
   href: string;
@@ -27,7 +28,7 @@ function formatBytes(n: number) {
   return `${(n / (1024 * 1024)).toFixed(0)} MB`;
 }
 
-/** fallbackAssets 按版本号拼出 Windows、macOS、Linux、deb 和 rpm 五条地址。尺寸留空，等 hydrateRelease 填。ver 拼进字符串，传给 named。 */
+/** fallbackAssets 按版本号拼出 Windows、macOS、Linux、deb、rpm 和 Android 六条地址。尺寸留空，等 hydrateRelease 填。ver 拼进字符串，传给 named。 */
 export function fallbackAssets(ver: string): Asset[] {
   return [
     { os: "windows", label: "Windows", name: `Yoyo-${ver}-windows-x64-setup.exe`, href: named(ver, `Yoyo-${ver}-windows-x64-setup.exe`), size: "" },
@@ -35,14 +36,16 @@ export function fallbackAssets(ver: string): Asset[] {
     { os: "linux", label: "Linux", name: `Yoyo-${ver}-linux-amd64.AppImage`, href: named(ver, `Yoyo-${ver}-linux-amd64.AppImage`), size: "" },
     { os: "deb", label: "Debian", name: `Yoyo-${ver}-linux-amd64.deb`, href: named(ver, `Yoyo-${ver}-linux-amd64.deb`), size: "" },
     { os: "rpm", label: "RPM", name: `Yoyo-${ver}-linux-amd64.rpm`, href: named(ver, `Yoyo-${ver}-linux-amd64.rpm`), size: "" },
+    { os: "android", label: "Android", name: `Yoyo-${ver}-android.apk`, href: named(ver, `Yoyo-${ver}-android.apk`), size: "" },
   ];
 }
 
-/** detectOs 用浏览器标识区分 mac、linux 和 windows。Android 不算 linux。认不出时返回 windows。 */
+/** detectOs 用浏览器标识区分 android、mac、linux 和 windows。Android 先于 linux 判断。认不出时返回 windows。 */
 export function detectOs(): Asset["os"] {
   const ua = navigator.userAgent;
+  if (/Android/.test(ua)) return "android";
   if (/Mac OS X|Macintosh/.test(ua)) return "mac";
-  if (/Linux/.test(ua) && !/Android/.test(ua)) return "linux";
+  if (/Linux/.test(ua)) return "linux";
   return "windows";
 }
 
@@ -73,7 +76,8 @@ export async function hydrateRelease(): Promise<{ version: string; assets: Asset
     const linux = pick(raw, [/linux-amd64\.AppImage$/i, /\.AppImage$/i]);
     const deb = pick(raw, [/\.deb$/i]);
     const rpm = pick(raw, [/\.rpm$/i]);
-    const overlay = [win, mac, linux, deb, rpm];
+    const android = pick(raw, [/android\.apk$/i, /\.apk$/i]);
+    const overlay = [win, mac, linux, deb, rpm, android];
     return {
       version,
       assets: mapped.map((item, i) => {

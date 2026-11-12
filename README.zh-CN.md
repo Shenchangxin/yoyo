@@ -15,7 +15,7 @@
 <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-5c99d6?style=flat&labelColor=1c1c1a"></a>
 <a href="https://go.dev/dl/"><img alt="go" src="https://img.shields.io/badge/go-1.26+-00ADD8?style=flat&logo=go&logoColor=white"></a>
 <a href="https://v3.wails.io"><img alt="wails" src="https://img.shields.io/badge/wails-v3-5c99d6?style=flat&labelColor=1c1c1a"></a>
-<a href="https://github.com/Shenchangxin/yoyo/releases/latest"><img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-5c99d6?style=flat&labelColor=1c1c1a"></a>
+<a href="https://github.com/Shenchangxin/yoyo/releases/latest"><img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-5c99d6?style=flat&labelColor=1c1c1a"></a>
 <a href="https://shenchangxin.github.io/yoyo/"><img alt="site" src="https://img.shields.io/badge/site-shenchangxin.github.io-5c99d6?style=flat&labelColor=1c1c1a"></a>
 </div>
 
@@ -23,6 +23,7 @@
 
 <a href="https://github.com/Shenchangxin/yoyo/releases/latest">下载</a> ｜
 <a href="https://shenchangxin.github.io/yoyo/">产品站</a> ｜
+<a href="#快速开始">快速开始</a> ｜
 <a href="docs/architecture/invariants.md">架构</a> ｜
 <a href="https://github.com/Shenchangxin/yoyo/issues">问题反馈</a>
 
@@ -30,21 +31,137 @@
 
 <br>
 
-Yoyo 是一个开源的本地智能体工作站。桌面应用用 Go 和 [Wails v3](https://v3.wails.io) 写成。它在你指定的文件夹里改代码、按处审查改动，也能把文字拍成短片和短剧。模型由你自己接入，文件和密钥留在这台电脑上。提示词和工作手册可以打磨，但要先经过评测，再由你换成正在使用的那一份。评测器、密钥库和更新器不在它能改的范围里。
+Yoyo 是一个开源的桌面超级智能体，用 Go 和 [Wails v3](https://v3.wails.io) 写成，装在 Windows、macOS 或 Linux 上。今天要你看的事、交出去的任务、技能、视频、学习和桌面上的偶像，都在同一个窗口里。活可以交给它自己，也可以派给 Claude Code、Codex 这些本机 agent。模型由你自己接入，文件、对话和密钥留在这台电脑上。
 
-适合想在自己的电脑上跑 Agent、看清它改了什么，并且不把对话托管到别人云上的人。
+<p align="center">
+  <img src="assets/今天.png" width="920" alt="Yoyo 的今天。左边是晚间简报，右边是这一天的对话。">
+</p>
 
-## 主要功能
+适合想在自己的电脑上跑 Agent、看清它做了什么，并且不把对话托管到别人云上的人。
 
-1. 💯 免费开源，Apache-2.0。对话留在这台电脑上，动手范围是你选的文件夹。
-2. ✨ 流式 Agent。用 `@file`、`@folder`、`@harness`、`@skill` 点名上下文。一个 `@` 只会注入你点到的内容。
-3. 🛡️ 写文件和跑命令之前先问你：一次、本对话、总是，或拒绝。Plan 只提议。Stop 留下已经写好的内容。美元预算到顶，这一轮就停。
-4. 🔍 按 hunk 审查 diff。隔离浏览器打开工作区里的页面。会话可以搜索、改名、分叉。
-5. 🎬 创作、短片、短剧、画布共用一套界面。片子有自己的目录，和代码仓库分开。
-6. 📦 技能包默认关闭。你为当前文件夹打开之后才进入这一轮。评测不加载它们。
-7. 🧪 Harness 按内容哈希存放。评价和整理只写草稿，自动打磨只写待晋升版本。正在使用的版本，由你切换。
-8. 💻 同一条 Go 循环，四扇门：桌面、本机浏览器、命令行，以及同一局域网里的手机。
-9. 🤖 自备 OpenAI 兼容模型。图像、视频、语音等连接共用一套登记，密钥进本地保管库。MCP 和签名后的 WASM 工具可以接进来。
+## 为什么是 Yoyo
+
+1. 🪟 **一个窗口，装下这一天。** 今天、任务、技能、视频、学习、偶像，从底栏换面。动手的始终是同一个助手。
+2. 🧭 **主动，但先想好要不要开口。** 到期的、卡住的、等你回答的，才会出现在「今天」。晨间和晚间各一份简报，写完就不再改。主动程度和安静时段由你调。
+3. 🤝 **一个路由，一群 agent。** Claude Code、Codex、Gemini CLI、Qwen Code 等支持 ACP 的本机 agent，装好、登录，就能接 Yoyo 派的工单。可以分工，也可以同一件事各做一份再比。
+4. 📦 **十一个技能目录，一处安装。** WorkBuddy、SkillHub、ClawHub、Anthropic、Vercel 等目录在同一个市场里搜索。装好以后，在对话里用 `@` 调用。技能包默认关闭。
+5. 🎬 **从一句话到成片。** 创作、短片、短剧、画布共用一间工作台。生图、生视频、配音和剪辑接你自己的账号，仓库里带着 90 多个模型插件。
+6. 🛡️ **写之前先问你。** 写文件和跑命令先问：一次、本对话、总是，或拒绝。改动按 hunk 审查。Plan 只提议。美元预算到顶，这一轮就停。
+7. 🧪 **先证明，再换上。** 提示词和工作手册可以自己打磨，但要先过评测，再由你换成正在使用的那一份。内核、评测器、密钥库和更新器，它改不了。
+8. 💻 **一条 Go 循环，几扇门。** 桌面、本机浏览器、命令行、同一局域网里的手机，以及飞书、钉钉、企业微信、QQ、Telegram 等消息平台。
+9. 💯 **免费开源，Apache-2.0。** 模型你自己接，密钥进本地保管库，对话不托管到别人的云上。
+
+## 一个窗口里的几面
+
+底栏换的是同一扇窗口里的一面，不是另一个应用。
+
+### 今天 · 任务 · 记忆
+
+今天和任务是同一间屋子。右边始终是这一天的对话。
+
+<p align="center">
+  <img src="assets/任务.png" width="920" alt="Yoyo 的任务。左边列出交出去的工作，右边仍是对话。">
+</p>
+
+- **今天** — 到期的和要你回答的出现在这里：要不要允许一个动作、一个问题、做好了等你看一眼的结果、待发送的草稿。已经在做的留在任务里。
+- **任务** — 任务是对话交出去的一件工作。做完的、停下的、在等下一条消息的，列在旁边。
+- **记忆** — 能核对的事实会自己留下。写错的可以忘掉。
+- **简报** — 晨间和晚间各一份，写完就不再改。每一条都能看到「为什么是这条」，也可以告诉它少推这类。
+- 定时任务、目标和盯梢在设置里。GitHub 和飞书可以作为工作来源，并在原地回复。
+
+### 技能
+
+<p align="center">
+  <img src="assets/技能.png" width="920" alt="Yoyo 的技能。市场里可以搜索目录并安装。">
+</p>
+
+- 三个页签：**已安装**、**市场**、**包**。
+- 市场把 11 个目录放在一处：Work Buddy、SkillHub 中国、ClawHub、SkillHub、SkillsMP、Anthropic、Addy Osmani、Claude Skills、Vercel、Markdown Registry、Tessl。
+- 已安装的技能在对话里用 `@` 调用。它不会自己闯进每一轮。
+- 技能包是成套的技能树，例如 Superpowers 和 NovelToGame。默认关闭，按工作区启用，评测不加载。详见 [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
+
+### 视频
+
+<p align="center">
+  <img src="assets/视频.png" width="920" alt="Yoyo 的视频工作台。创作页问今天想做一条什么样的片子。">
+</p>
+
+| 车道 | 你在这里做什么 |
+| --- | --- |
+| **创作** | 成片台。选择视频、翻拍参考片、剪视频、生图、生视频、配音。案例只是把做法放进输入框，不会直接生成 |
+| **短片** | 选一个选题，再做成片。口播、合成和交接都在这张桌上 |
+| **短剧** | 贴上一章，先确认分集，再拍 |
+| **画布** | 镜头排在同一张空间桌面上 |
+
+短片、短剧和画布负责生成。要收尾时点 **送到成片台**。片子有自己的目录和会话，和写代码的工作区分开。密钥和适配器在设置里。
+
+### 学习
+
+<p align="center">
+  <img src="assets/学习.png" width="920" alt="Yoyo 的学习。计划、阅读、课本和练习，旁边是导师。">
+</p>
+
+先选一条路，每一页只做一件事。
+
+- **学习** — 先定大纲，再一次做一个知识点。
+- **阅读** — 在文库里检索，按页阅读。
+- **课本** — 用文库里的摘录编成一本短书。
+- **练习** — 先做到期的题，一次只答一题。
+- 旁边有一位导师。计划、文库和练习记录都在这台机器上。
+
+### 偶像
+
+<p align="center">
+  <img src="assets/偶像.png" width="920" alt="Yoyo 的偶像。左边选一位，中间可以和她说话。">
+</p>
+
+- 选一位，或者新建一位。
+- 可以打字，也可以通话。对话模型、语音、听写和画像在设置里选。
+- 她可以待在桌面上。
+- 你让她干活时，那句话交给这台电脑上的普通 Agent 会话。聊天和通话留在她自己的记录里。
+
+## 多 agent 协作
+
+人只跟主会话说话。路由把事情开成工单，再派给工人。工人可以是 Yoyo 自己，也可以是 Buddy 里在线的外部 agent。
+
+| 你做什么 | 发生什么 |
+| --- | --- |
+| 什么都不 `@` | 交给默认 agent，缺省是 Yoyo 自带的工人 |
+| `@` 一个 agent | 这张工单派给它。它离线时不会擅自换人 |
+| `@` 几个 agent 分工 | 开一个任务组，每人一份，可以有先后依赖 |
+| 让几个 agent 做同一件事 | 各自在自己的目录里做。做完由路由比较、推荐，你来挑 |
+
+- 内置精选 14 个：Claude Code、Codex、Gemini CLI、Qwen Code、Kimi Code、CodeBuddy Code、GitHub Copilot、Qoder CLI、Cline、Grok Build、Cursor、OpenCode、goose、Kiro CLI。任何支持 ACP v1 的自定义命令也能加进来。
+- 默认装进 Yoyo 自己的目录，不动系统环境。密钥进保管库。
+- 外部 agent 的审批和 Yoyo 自带的工人走同一道门。它能写的只有这张工单的目录和任务组的共享目录，危险命令照样被拦下。
+- 工人之间不直接对话。协调只由路由做。
+
+详见 [docs/architecture/buddy.md](docs/architecture/buddy.md)。
+
+## 对话与审查
+
+直接写任务。`@` 是有预算的注入，只注入你点到的内容。
+
+```text
+把 @file:internal/runtime/loop.go 里的解析错误补上返回值
+按 @folder:docs 里的约定来改
+现在用的是哪一份 harness？ @harness
+这一轮载入 @skill:novel-to-game
+这件事交给 @agent:claude
+```
+
+| 动作 | 结果 |
+| --- | --- |
+| 发送 / Ctrl+Enter | 流式输出文字和工具调用 |
+| Stop | 取消这一轮。已经写出的留下 |
+| Plan | 只提议。写入和 shell 保持关闭 |
+| 一次 / 本对话 / 总是 / 拒绝 | 审批画在这一轮里。桌面默认是问你 |
+
+审查在侧栏，是待处理的队列。
+
+- **Diff** — 按 hunk 勾选再应用。文件已经不在时，恢复会直接失败，仓库不会被悄悄倒回去。
+- **浏览器** — 工作区里的 HTML 走隔离的 Chrome。截图和点击不会把页面重载掉。页面可以丢到系统浏览器。
+- **会话** — 搜索、改名、分叉。分叉复制 JSONL，不会移动 `refs/active`。
 
 ## 快速开始
 
@@ -59,36 +176,30 @@ Yoyo 是一个开源的本地智能体工作站。桌面应用用 Go 和 [Wails 
 
 ### 安装桌面应用
 
-对于希望在 Windows、macOS 或 Linux 上直接使用、而不想先安装 Go 的用户，我们推荐发布包。
-
-前往 [Releases](https://github.com/Shenchangxin/yoyo/releases/latest)，按系统下载：
+前往 [Releases](https://github.com/Shenchangxin/yoyo/releases/latest)，按系统下载。[产品站](https://shenchangxin.github.io/yoyo/) 会按你的系统给出对应的安装包。
 
 | 系统 | 文件 | 安装 |
 | --- | --- | --- |
 | **Windows x64** | `Yoyo-*-windows-x64-setup.exe` | 当前用户安装，不需要管理员。`windows-amd64` 是同一份安装包 |
 | **macOS** | `Yoyo-*-darwin-universal.dmg` | 打开镜像，把 Yoyo 拖进「应用程序」 |
 | **Linux** | `Yoyo-*-linux-amd64.AppImage`、`.deb` 或 `.rpm` | AppImage 先 `chmod +x`，再双击 |
+| **Android** | `Yoyo-*-android.apk` | 手机端，要配合电脑上的 Yoyo 使用。见 [手机](#手机) |
 
 > [!WARNING]
 > Windows 和 Linux 安装包未签名。macOS 是 ad-hoc 签名，没有公证。Windows 若被 SmartScreen 拦住：更多信息 → 仍要运行。源码是 Apache-2.0，也可以自己编译。
 
 装好之后：
 
-1. 打开 Yoyo。第一次运行会在本机准备 home：Windows 是 `%USERPROFILE%\.yoyo`，其他系统是 `~/.yoyo`。里面有内容寻址的对象、refs，以及当前正在使用的 harness。换位置用环境变量 `YOYO_HOME`。
-2. 在设置里选一个工作文件夹。它只在这个文件夹里改代码。
-3. 在设置里粘贴 OpenAI 兼容的 API Key。环境变量 `YOYO_API_KEY` 和 `OPENAI_API_KEY` 同样有效。
-4. 输入任务，用 `@` 点名文件。写文件或跑命令时，问题会出现在这一轮里。
+1. 打开 Yoyo。第一次运行会在本机准备 home：Windows 是 `%USERPROFILE%\.yoyo`，其他系统是 `~/.yoyo`。换位置用环境变量 `YOYO_HOME`。
+2. 在设置里粘贴 OpenAI 兼容的 API Key。环境变量 `YOYO_API_KEY` 和 `OPENAI_API_KEY` 同样有效。
+3. 打开「今天」，告诉它先盯哪件事。要改代码时，在设置里选一个工作文件夹，它只在这个文件夹里改。
+4. 输入任务，用 `@` 点名文件、技能或 agent。写文件或跑命令时，问题会出现在这一轮里。
+5. 技能、视频、学习和偶像从底栏进去。
 
 默认模型是 `gpt-4.1-mini`，地址是 `https://api.openai.com/v1`。任何兼容的 `base_url` 都可以。模型、地址、工作区和预算写在 home 里的 `config.yaml`，设置界面改的是同一份文件。
 
 > [!NOTE]
 > 应用内更新读取 ModelScope 上签名的发布信息：<https://modelscope.ai/datasets/yoyo-agent/yoyo>。下载可以自动完成。装上去是人的动作，见下面的 `yoyo update apply`。智能体不能替你替换正在运行的程序。
-
-命令行如果要单独准备 home，并看当前 harness：
-
-```bash
-go run ./cmd/yoyo init
-```
 
 ### 在浏览器里打开
 
@@ -142,7 +253,7 @@ Windows 上的产物是 `bin\Yoyo.exe`。
 
 1. 打开 [Releases](https://github.com/Shenchangxin/yoyo/releases/latest)，下载 `Yoyo-*-android.apk`。每次推送和拉取请求的 CI 也会上传这个包，可以从 Actions 里下载。
 2. 把安装包传到手机，允许「安装未知应用」，然后打开它。
-3. 在电脑上打开 Yoyo，进入 **设置 → 高级 → 手机**，点 **显示配对码**。
+3. 在电脑上打开 Yoyo，在 **设置** 里找到 **手机**，点 **显示配对码**。
 4. 用手机 App 扫这个码。回到电脑，点 **允许**。
 
 配对码两分钟有效，只能用一次。移除这台手机之后，要重新出示。手机休眠时，Android 会留一条已连接设备的通知。签名密钥如果换了，先卸载旧的再装新的。
@@ -166,61 +277,22 @@ iOS 需要一台 Mac、Xcode 和 Apple 签名。这条 CI 不发布可以直接�
 
 鸿蒙服务卡片的源码在 [`handheld/harmony`](handheld/harmony)，需要 DevEco Studio 和 flutter-oh。CI 不发布 HAP。
 
-## 工作站
+## 模型与连接
 
-窗口是这条循环的客户端。设置（保管库、策略、更新）打开时，会话列表让开。智能体改不了这些。
+对话模型你自己带。Yoyo 不训练专属模型，权重留在你接上的服务里。
 
-### 对话
-
-直接写任务。`@` 是有预算的注入。
-
-```text
-把 @file:internal/runtime/loop.go 里的解析错误补上返回值
-按 @folder:docs 里的约定来改
-现在用的是哪一份 harness？ @harness
-这一轮载入 @skill:novel-to-game
-```
-
-| 动作 | 结果 |
-| --- | --- |
-| 发送 / Ctrl+Enter | 流式输出文字和工具调用 |
-| Stop | 取消这一轮。已经写出的留下 |
-| Plan | 只提议。写入和 shell 保持关闭 |
-| 一次 / 本对话 / 总是 / 拒绝 | 审批画在这一轮里。桌面默认是问你 |
-
-### 审查
-
-侧栏是待处理的队列。
-
-- **Diff** — 按 hunk 勾选再应用。文件已经不在时，恢复会直接失败，仓库不会被悄悄倒回去。
-- **浏览器** — 工作区里的 HTML 走隔离的 Chrome。截图和点击不会把页面重载掉。再次打开同一份文件会清掉点击。页面可以丢到系统浏览器。
-- **会话** — 搜索、改名、分叉。分叉复制 JSONL，不会移动 `refs/active`。
-
-### 视频
-
-创作、短片、短剧、画布共用一套壳，目录是自己的。密钥和适配器在设置里。视频会话和写代码的会话不是同一条。
-
-| 车道 | 你在这里做什么 |
-| --- | --- |
-| **创作** | 成片台。导入一条片子之后，剪辑、配音和成片留在这里 |
-| **短片** | 选一个选题，再做成片。口播、合成和交接都在这张桌上 |
-| **短剧** | 贴上一章，先确认分集，再拍 |
-| **画布** | 镜头排在同一张空间桌面上。编辑器保持干净，画面才看得清 |
-
-短片、短剧和画布负责生成。要进成片台时，点 **送到成片台**。画布自己的时间线和成片台不是同一个编辑器。
-
-### 技能
-
-第三方技能树安装到 `~/.yoyo/packs/`，默认关闭。工作区里的 `.yoyo/packs.json` 优先于全局 `config.yaml`。Harbor 评测不加载任何技能包。
-
-| 种类 | 例子 | 启用之后 |
+| 能力 | 怎么接 | 密钥 |
 | --- | --- | --- |
-| 方法论 | Superpowers | 会话开始时装入一份 bootstrap。它不写进身份，也不改系统提示词 |
-| 领域 | NovelToGame | 按目录描述匹配后载入，或由你 `@skill` / `load_skill`。`@skill` 是覆盖 |
+| **对话** | OpenAI 及兼容服务。默认 `gpt-4.1-mini` | 设置，或 `YOYO_API_KEY` / `OPENAI_API_KEY` |
+| **图像、视频、语音、音乐、抠图、转写** | 设置里的连接。目录里有通义、即梦、可灵、Vidu、混元、Kolors、CogView，以及 OpenAI、Gemini 等 | `~/.yoyo/connections`，密钥进保管库 |
+| **搜索、素材、存储、工作流** | 同一套登记 | 同上 |
+| **外部 agent** | 在 Buddy 里安装、登录。走 ACP | 保管库。要复用 Yoyo 的钥匙，得逐项打开 |
+| **消息平台** | 在设置里添加机器人。飞书、钉钉、企业微信、QQ、Telegram、Slack、Discord 等 | 保管库。进来的消息不可信 |
+| **MCP** | 设置里添加服务器 | 留在本机 |
 
-命令是 `yoyo pack list`、`install`、`uninstall`、`enable`、`update`。桌面入口是 **Skills → Packs**。安装之后默认作用于当前工作区。详见 [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
+创作台只看已经启用、并且已经有密钥的连接。换了对话模型，就换一套对应的干活方式。为这个模型调好的手册，不会套到另一个模型上。
 
-### Harness
+## 实验室
 
 Harness 是它干活的那一套材料：提示词、playbook、技能、循环预设和评测套件。材料用 BLAKE3 做内容寻址，放进 CAS。能改的是指针。
 
@@ -231,32 +303,11 @@ Harness 是它干活的那一套材料：提示词、playbook、技能、循环�
 | `refs/active` | 你，在 Harbor 通过之后 | 正在使用 |
 | `refs/archive/*` | 换下来的旧指针 | 可以回头看 |
 
-`YOYO.md`、`AGENTS.md`、`CLAUDE.md` 和 ACE playbook 每一轮都会重建。工具抄本是工作记忆：外溢、清理、做检查点。playbook 不会被摘要掉。
-
 晋升要同时满足三件事：持有集和留出集都不能退步，至少有一边变好，安全任务没有失败。候选跑在单独的 git worktree 里，不在你的工作区。布局和参数见 [docs/architecture/harbor.md](docs/architecture/harbor.md)。
 
-Harness 实验室顺着 `parent` 读这些快照，并解码 CAS 里的对象。**打开文件** 会在文件管理器里打开那份检出。命令行是 `yoyo harness lineage`、`reveal`、`show`。
+`YOYO.md`、`AGENTS.md`、`CLAUDE.md` 和 ACE playbook 每一轮都会重建。工具抄本是工作记忆：外溢、清理、做检查点。playbook 不会被摘要掉。
 
-### 同一条循环上的其他表面
-
-| 表面 | 做什么 |
-| --- | --- |
-| **学习 / 页面** | 这台电脑上的文档。对话是过程，确认过的页面才是结果。Agent 不能把文件直接写进页面目录 |
-| **身份** | 同一条循环上的角色和工具授权。Harbor、子任务和视频不读它 |
-| **偶像** | 桌宠窗口里的对话和通话。你让她干活时，那一行交给这台电脑上的普通 Agent 会话 |
-
-## 模型与连接
-
-对话模型你自己带。Yoyo 不训练专属模型，权重留在你接上的服务里。
-
-| 能力 | 怎么接 | 密钥 |
-| --- | --- | --- |
-| **对话** | OpenAI 及兼容服务。默认 `gpt-4.1-mini` | 设置，或 `YOYO_API_KEY` / `OPENAI_API_KEY` |
-| **图像、视频、语音、音乐、抠图、转写** | 设置里的连接。目录里有通义、即梦、可灵、Vidu、混元、Kolors、CogView，以及 OpenAI、Gemini 等 | `~/.yoyo/connections`，密钥进保管库 |
-| **搜索、素材、存储、工作流** | 同一套登记 | 同上 |
-| **MCP** | 设置里添加服务器 | 留在本机 |
-
-创作台只看已经启用、并且已经有密钥的连接。换了对话模型，就换一套对应的干活方式。为这个模型调好的手册，不会套到另一个模型上。
+实验室顺着 `parent` 读这些快照，并解码 CAS 里的对象。**打开文件** 会在文件管理器里打开那份检出。命令行是 `yoyo harness lineage`、`reveal`、`show`。
 
 ## 架构
 
@@ -267,8 +318,10 @@ flowchart LR
     HTTP[浏览器]
     CLI[命令行]
     Phone[手机]
+    IM[消息平台]
   end
   Loop[Go 循环]
+  Workers[工人 · Yoyo 与外部 agent]
   Tools[工具 · MCP · WASM]
   CAS[CAS 与 refs]
   Harbor[Harbor]
@@ -276,12 +329,14 @@ flowchart LR
   HTTP --> Loop
   CLI --> Loop
   Phone --> Loop
+  IM --> Loop
+  Loop --> Workers
   Loop --> Tools
   Loop --> CAS
   Harbor -->|晋升| CAS
 ```
 
-手机连的是电脑上的这一条循环。
+窗口是这条循环的客户端。手机和消息平台连的也是电脑上的这一条循环。
 
 谁可以改什么：
 
@@ -300,10 +355,11 @@ flowchart LR
 | --- | --- |
 | [不变量](docs/architecture/invariants.md) | 不能改的规则。这些规则是测试 |
 | [Harbor](docs/architecture/harbor.md) | 评测套件和晋升门 |
+| [Buddy](docs/architecture/buddy.md) | 外部 agent 当工人，以及多 agent 任务组 |
+| [主动式](docs/proactive.md) | 什么时候开口，什么时候保持安静 |
 | [技能包](docs/architecture/skill-packs.md) | 方法论包和领域包怎么载入 |
 | [上下文](docs/architecture/context.md) | 一轮里什么会被注入、什么会被裁掉 |
 | [持久化](docs/architecture/persist.md) | home、连接和保管库 |
-| [Buddy](docs/architecture/buddy.md) | 外部 agent 当工人，以及多 agent 任务组 |
 | [威胁模型](docs/architecture/threat-model.md) | 信任边界 |
 
 ## 命令
@@ -325,6 +381,7 @@ flowchart LR
 | `yoyo version` | 版本号 |
 
 ```bash
+go run ./cmd/yoyo init
 go run ./cmd/yoyo eval
 go run ./cmd/yoyo eval --sealed
 go run ./cmd/yoyo eval --safety
@@ -332,7 +389,7 @@ go run ./cmd/yoyo evolve --rounds 4
 go run ./cmd/yoyo evolve --promote
 ```
 
-JSON-RPC 覆盖 `thread.*`、`turn.start` / `turn.interrupt`、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*` 和 `packs.*`。
+JSON-RPC 覆盖 `thread.*`、`turn.start` / `turn.interrupt`、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`、`packs.*` 和 `buddy.*`。
 
 ## 配置
 
@@ -350,16 +407,26 @@ JSON-RPC 覆盖 `thread.*`、`turn.start` / `turn.interrupt`、`playbook.rate`�
 ## 仓库
 
 ```text
-cmd/yoyo            命令行
-main.go             Wails 桌面
-frontend/           React + Vite
-handheld/           Android、iOS，以及鸿蒙服务卡片
-internal/runtime    循环、工具、上下文
-internal/artifact   CAS、refs、快照
-internal/eval       Harbor 和晋升门
-internal/evolve     反思、整理、提议
-internal/plugin     MCP 和 wazero WASM
-docs/architecture   不变量、Harbor、威胁模型
+cmd/yoyo              命令行
+main.go               Wails 桌面
+frontend/             React + Vite
+handheld/             Android、iOS，以及鸿蒙服务卡片
+internal/runtime      循环、工具、上下文
+internal/superagent   路由、工单、任务组
+internal/buddy        外部 agent 的安装、登录和健康检查
+internal/artifact     CAS、refs、快照
+internal/eval         Harbor 和晋升门
+internal/evolve       反思、整理、提议
+internal/plugin       MCP 和 wazero WASM
+internal/video        创作、短片、短剧、画布
+internal/learn        学习计划、文库、课本、练习
+internal/idol         偶像
+internal/skillmarket  技能市场的各个目录
+plugins/yingce        画布用的模型插件
+skills/               随应用带的技能
+evals/                评测任务
+site-src/             产品站源码，构建到 site/
+docs/architecture     不变量、Harbor、Buddy、威胁模型
 ```
 
 ## 开发
@@ -374,11 +441,13 @@ cd frontend && npm install && npm run build
 CI 在 Windows 上跑 Go 测试，在 Ubuntu 上构建前端，并打出可安装的 Android APK。推送 `v*` 标签会跑 [release.yml](.github/workflows/release.yml)，把桌面包、CLI 和 `Yoyo-*-android.apk` 挂到 GitHub Release。iOS 和鸿蒙不在这条流水线里。
 
 ```bash
-git tag v0.6.0
-git push origin v0.6.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 把版本号换成你要发布的版本。macOS 构建是 ad-hoc 签名，没有公证。Windows 和 Linux 包未签名。
+
+产品站的源码在 [`site-src/`](site-src/)。改动推到 `master` 之后，[pages.yml](.github/workflows/pages.yml) 把它发布到 GitHub Pages。
 
 ## 开始之前
 
@@ -390,7 +459,8 @@ git push origin v0.6.0
 - 内核、评测器、密钥库和更新器保持冻结。
 - 隔离是你打开的选项，并如实报告。一份 shell 拒绝名单不是沙箱。
 - 更新由人执行。正在运行的程序不会被悄悄换掉。
-- `@` 只注入你点名的文件、目录、harness 或技能。
+- `@` 只注入你点名的文件、目录、harness、技能或 agent。
+- 手机要和电脑在同一个局域网里。活在电脑上干。
 
 ## 社区
 
@@ -413,7 +483,7 @@ git push origin v0.6.0
 
 <br>
 
-_在你选的文件夹里，跑一轮智能体。写之前先问你。新的干活方式，先证明，再由你换上。_
+_你的这一天，在这一个窗口里。写之前先问你。新的干活方式，先证明，再由你换上。_
 
 <br>
 
