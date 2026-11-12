@@ -380,7 +380,7 @@ export function IdolSettings() {
 
   return (
     <>
-      <SettingSection id="idol-services" title={copy.settings.sections.idolServices} description={copy.settings.tabHints.idol} actions={saveButton}>
+      <SettingSection id="idol-services" title={copy.settings.sections.idolServices} actions={saveButton}>
         <label className="block text-ui-footnote text-muted">
           {c.chatModel}
           <select className={fieldClass} value={form.chat_model} onChange={(e) => set({ chat_model: e.target.value })}>

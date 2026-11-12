@@ -1,0 +1,48 @@
+/*
+ * 拥有：阅读器里批注的五种荧光色，和查找命中时闪一下的底色。它们画在浏览器的自定义高亮层上，不改正文的 DOM。
+ * 不拥有：阅读器别的样式，那些用工具类写在组件里。
+ */
+
+::highlight(learn-hl-yellow) {
+  background-color: oklch(0.9 0.15 98 / 0.55);
+}
+
+::highlight(learn-hl-green) {
+  background-color: oklch(0.86 0.13 150 / 0.5);
+}
+
+::highlight(learn-hl-blue) {
+  background-color: oklch(0.84 0.09 240 / 0.5);
+}
+
+::highlight(learn-hl-pink) {
+  background-color: oklch(0.86 0.1 350 / 0.5);
+}
+
+::highlight(learn-hl-purple) {
+  background-color: oklch(0.83 0.1 300 / 0.5);
+}
+
+::highlight(learn-hl-flash) {
+  background-color: oklch(0.82 0.11 250 / 0.5);
+}
+
+.learn-swatch-yellow {
+  background-color: oklch(0.86 0.16 98);
+}
+
+.learn-swatch-green {
+  background-color: oklch(0.78 0.15 150);
+}
+
+.learn-swatch-blue {
+  background-color: oklch(0.74 0.12 240);
+}
+
+.learn-swatch-pink {
+  background-color: oklch(0.78 0.13 350);
+}
+
+.learn-swatch-purple {
+  background-color: oklch(0.72 0.13 300);
+}

@@ -158,6 +158,7 @@ func TestRouteRejectsUnmentionedAgent(t *testing.T) {
 // 再填同一个 agent 时照常继续，不再改派。
 func TestRouteContinueReassigns(t *testing.T) {
 	skipFunctionalInCI(t)
+	testModelKey(t)
 	a, f := openAgentsApp(t, acptest.Script{Caps: fakeCaps, OnPrompt: quietTurn}, "fake", "other")
 	rt := a.orchestrator()
 	a.intakeDesk("s1", "t1", "@agent:fake 写个 hello.txt")

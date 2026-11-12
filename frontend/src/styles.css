@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Inter (with the optical-size axis) is the UI face. Plus Jakarta stays for the yoyo wordmark only. */
+@import "@fontsource-variable/inter/opsz.css";
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
@@ -93,9 +95,9 @@ html.dark {
   --z-popover: 50;
   --z-modal: 60;
   --z-skip: 80;
-  /* Streaming letter tokens — deepseek-harness ui-theme / markdown ladder. */
-  --dsh-font-family-text-default: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Streaming letter tokens — deepseek-harness ui-theme / markdown ladder.
+     The letter reads in the same face as the chrome, so one window never mixes two CJK typefaces. */
+  --dsh-font-family-text-default: var(--font-sans);
   --dsh-font-family-code-default: "SF Mono", "JetBrains Mono", "Fira Code", Consolas,
     "Liberation Mono", Menlo, Courier, "PingFang SC", "Microsoft YaHei";
   --dsw-font-family: var(--dsh-font-family-text-default);
@@ -221,7 +223,8 @@ html.light[data-palette="mist"] {
 }
 
 @theme inline {
-  --font-sans: "Plus Jakarta Sans Variable", "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  /* Latin in Inter, CJK in the platform's own UI face: PingFang on macOS, Noto Sans SC on Windows 11, YaHei UI before that. */
+  --font-sans: "Inter Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei UI", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
   /* Type scale (docs/uiux-plan.md §6.1). rem, so the interface size setting scales text with spacing.
      ui-badge is only for badge numerals and one-letter diff marks. */
@@ -314,7 +317,8 @@ html {
   /* 16px × 100/125/150% lands on whole device pixels at common Windows scales. */
   font-size: calc(16px * var(--ui-scale, 1));
   font-optical-sizing: auto;
-  font-feature-settings: "ss01" 1, "cv11" 1, "calt" 1;
+  /* Inter's stock letterforms: two-storey a, plain digits. Contextual alternates keep 12:34 colons centred. */
+  font-feature-settings: "calt" 1;
 }
 
 body {
@@ -322,7 +326,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 1rem;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: auto;
   overflow: hidden;
@@ -1806,6 +1810,20 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   background: color-mix(in srgb, var(--background) 82%, transparent) !important;
 }
 
+/* Settings grouped card: every direct child is a row, with a hairline between rows inset by the card padding.
+   In the components layer, so a utility on the row itself (py-5, border-0) still wins. */
+@layer components {
+  .setting-card > * {
+    padding-block: 0.75rem;
+  }
+  .setting-card > * + * {
+    border-top: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  }
+  .setting-card-tight > * {
+    padding-block: 0.5rem;
+  }
+}
+
 .media-surface {
   background: var(--media-surface);
   color: var(--media-foreground, #f4f4f0);
@@ -2254,6 +2272,11 @@ html[data-skin] .app-grain {
 @media (prefers-reduced-transparency: reduce) {
   .app-grain { display: none !important; }
   html { --glass-blur: 0px !important; }
+}
+
+/* The wordmark keeps its own face, so the UI face can change without redrawing the brand. */
+.yoyo-mark {
+  font-family: "Plus Jakarta Sans Variable", var(--font-sans);
 }
 
 .mark-well {

@@ -1410,6 +1410,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Secrets     map[string]string  `json:"secrets"`
 			Reuse       *[]string          `json:"reuse"`
 			Strengths   *string            `json:"strengths"`
+			HostCLI     *bool              `json:"hostCli"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, err
@@ -1419,7 +1420,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		return a.BuddyConfigure(p.ID, buddy.ConfigPatch{
 			Enabled: p.Enabled, Mode: p.Mode, Model: p.Model, Approval: p.Approval, MaxParallel: p.MaxParallel,
-			Args: p.Args, Env: p.Env, Secrets: p.Secrets, Reuse: p.Reuse, Strengths: p.Strengths,
+			Args: p.Args, Env: p.Env, Secrets: p.Secrets, Reuse: p.Reuse, Strengths: p.Strengths, HostCLI: p.HostCLI,
 		})
 	case "buddy.login":
 		var p struct {

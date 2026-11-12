@@ -1,4 +1,5 @@
 // Package vault 保存模型供应商的密钥。已保存的值在内存、操作系统钥匙串和权限 0o600 的 vault.json 中。环境变量只在 Get 的名字是 openai 或 default 时回落。
+// 钥匙串里的条目按名字存，不分 home：两个 home 里同名的密钥是钥匙串里的同一条。所以测试进程一律不碰钥匙串，见 New。
 package vault
 
 import (
@@ -8,6 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"testing"
+)
+
+// 钥匙串的三个操作。仓库只经过这三个变量调用它们，测试能换成记数的假实现，确认只写文件的仓库一次都不碰钥匙串。
+var (
+	kcSet    = keychainSet
+	kcGet    = keychainGet
+	kcDelete = keychainDelete
 )
 
 // EnvAPIKey 是环境变量 YOYO_API_KEY。Get 在名字为 openai 或 default 时，第一个回落它。
@@ -22,11 +31,13 @@ type Store struct {
 }
 
 // New 用 home 打开仓库。钥匙串是否启用由本平台的 keychainAvailable 决定。
+// 测试进程里一律只写文件。钥匙串不分 home，测试开的是临时 home，写进去、读出来、删掉的却是这台电脑上真实的那一条：
+// 跑一遍测试就会把人存的 default 换成测试值，还会留下一批删不掉的 conn 条目。
 func New(home string) *Store {
-	return open(home, keychainAvailable())
+	return open(home, keychainAvailable() && !testing.Testing())
 }
 
-// NewFileOnly 只使用 vault.json，不启用操作系统钥匙串，避免测试改写系统钥匙串。
+// NewFileOnly 只使用 vault.json，不启用操作系统钥匙串。写入、读取和删除都不碰钥匙串。
 // home 和 false 一起交给 open。
 func NewFileOnly(home string) *Store {
 	return open(home, false)
@@ -47,9 +58,9 @@ func open(home string, useKeychain bool) *Store {
 }
 
 // Set 在持锁期间保存或删除一条密钥，然后写回文件，落盘错误被忽略。
-// value 为空时从内存删除，并调用 keychainDelete，与钥匙串是否启用不相关。
-// value 非空时写入内存；只有钥匙串启用才调用 keychainSet。钥匙串错误被忽略。
-// name 作为内存的键；value 为空时也交给 keychainDelete，非空且钥匙串启用时交给 keychainSet。
+// value 为空时从内存删除，非空时写入内存。只有钥匙串启用时才去钥匙串里删或写；钥匙串错误被忽略。
+// 只写文件的仓库删密钥时不碰钥匙串：它没往那里写过，同名的那一条是别的仓库的。
+// name 作为内存的键；钥匙串启用时，value 为空交给 kcDelete，非空交给 kcSet。
 func (s *Store) Set(name, value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -58,11 +69,13 @@ func (s *Store) Set(name, value string) {
 	}
 	if value == "" {
 		delete(s.mem, name)
-		_ = keychainDelete(name)
+		if s.keychain {
+			_ = kcDelete(name)
+		}
 	} else {
 		s.mem[name] = value
 		if s.keychain {
-			_ = keychainSet(name, value)
+			_ = kcSet(name, value)
 		}
 	}
 	_ = s.flushLocked()
@@ -96,7 +109,7 @@ func (s *Store) Get(name string) (string, error) {
 // GetStored 返回已经保存的密钥。持锁查看内存，非空字符串则返回，空串视为未命中；读钥匙串和文件时已经解锁。
 // 钥匙串只在启用时查询，查询失败或值为空则继续读 vault.json，钥匙串错误不返回给调用方。
 // 本函数不读进程环境变量，残留的 OPENAI_API_KEY 不会盖住自定义供应商的令牌。三处都没有则返回 vault: missing key。
-// name 先查内存，非空字符串则返回；钥匙串启用时再交给 keychainGet；仍没有则交给 readFileKey。
+// name 先查内存，非空字符串则返回；钥匙串启用时再交给 kcGet；仍没有则交给 readFileKey。
 func (s *Store) GetStored(name string) (string, error) {
 	s.mu.Lock()
 	if v := s.mem[name]; v != "" {
@@ -108,7 +121,7 @@ func (s *Store) GetStored(name string) (string, error) {
 	s.mu.Unlock()
 	// 读钥匙串和文件前先解锁。下面不读进程环境变量，残留的 OPENAI_API_KEY 不会盖住已保存的令牌。
 	if useKeychain {
-		if v, err := keychainGet(name); err == nil && v != "" {
+		if v, err := kcGet(name); err == nil && v != "" {
 			return v, nil
 		}
 	}
@@ -162,7 +175,7 @@ func (s *Store) migrateToKeychain() {
 		if v == "" {
 			continue
 		}
-		_ = keychainSet(k, v)
+		_ = kcSet(k, v)
 	}
 	_ = s.flushLocked()
 }

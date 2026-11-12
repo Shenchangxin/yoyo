@@ -218,6 +218,7 @@ export function threadOf(v: any): Thread {
     libraryId: str(pick(v, "library_id", "LibraryID", "libraryId")),
     pathId: str(pick(v, "path_id", "PathID", "pathId")),
     materialId: str(pick(v, "material_id", "MaterialID", "materialId")),
+    bookId: str(pick(v, "book_id", "BookID", "bookId")),
     researchBrief: str(pick(v, "research_brief", "ResearchBrief", "researchBrief")),
     researchShot: str(pick(v, "research_shot", "ResearchShot", "researchShot")),
   };
@@ -3240,6 +3241,11 @@ export type BuddyView = {
   canManage?: boolean;
   system?: { path: string; version?: string };
   cliOnly?: boolean;
+  /**
+   * host 表示有东西是在 PATH 之外、这台电脑上的常见位置找到的。kind 为 acp 是能直接连的命令（已经当系统版用）；
+   * cli 是只有 CLI、还缺适配器；app 是只装了桌面应用，要连还得另装命令行。app 是它来自哪个应用。
+   */
+  host?: { kind: "acp" | "cli" | "app"; path: string; app?: string };
   state: BuddyState; detail?: string; checkedAt?: string; working?: number;
   progress?: { phase: string; percent?: number; line?: string };
   auth?: { methods: { id: string; name: string; type: "agent" | "terminal"; description?: string }[] };
@@ -3248,6 +3254,8 @@ export type BuddyView = {
     enabled: boolean; mode: "managed" | "system"; model?: string; models?: { id: string; name: string }[];
     approval: "yoyo" | "ask"; maxParallel: number; args?: string[]; env?: Record<string, string>; strengths?: string;
     secrets: BuddySecret[];
+    /** hostCli 是「用这台电脑上已装的 CLI」：适配器支持、本机又找到了才有。on 为假时用适配器自带的。 */
+    hostCli?: { path: string; on: boolean };
   };
   systemInstall?: { available: boolean; command?: string; reason?: string };
 };
@@ -3259,6 +3267,7 @@ export type BuddyPrefs = { npmRegistry: string; pyIndex: string; defaultAgent: s
 export type BuddyConfigPatch = {
   enabled?: boolean; mode?: "managed" | "system"; model?: string; approval?: "yoyo" | "ask"; maxParallel?: number;
   args?: string[]; env?: Record<string, string>; secrets?: Record<string, string>; reuse?: string[]; strengths?: string;
+  hostCli?: boolean;
 };
 
 /** BuddyDisk 是 Buddy 占的磁盘（字节）：items 按 agent 列托管安装，runtime 是托管 Node 和 uv，cache 是能清掉的部分。 */

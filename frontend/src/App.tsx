@@ -7,7 +7,8 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { Group, Panel, useGroupRef } from "react-resizable-panels";
 import { toast } from "sonner";
 import { cn } from "./lib/utils";
-import { THREAD_COL, THREAD_GUTTER } from "./lib/thread";
+import { THREAD_COL, THREAD_GUTTER, THREAD_READ } from "./lib/thread";
+import { coerceTranscriptView } from "./lib/presentation-policy";
 import { hasConversation } from "./lib/transcript-layout";
 import * as api from "./lib/client";
 import { writeClipboard } from "./lib/clipboard";
@@ -84,7 +85,6 @@ const HarnessLab = lazy(() => import("./features/labs/HarnessLab").then((m) => (
 const HarnessWorkspace = lazy(() => import("./features/harness/HarnessWorkspace").then((m) => ({ default: m.HarnessWorkspace })));
 const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const SkillsWorkspace = lazy(() => import("./features/skills/SkillsWorkspace").then((m) => ({ default: m.SkillsWorkspace })));
-const BuddyWorkspace = lazy(() => import("./features/buddy/BuddyWorkspace").then((m) => ({ default: m.BuddyWorkspace })));
 const LearnWorkspace = lazy(() => import("./features/learn/LearnWorkspace").then((m) => ({ default: m.LearnWorkspace })));
 const VideoWorkshop = lazy(() => import("./features/video/VideoWorkshop").then((m) => ({ default: m.VideoWorkshop })));
 
@@ -119,7 +119,6 @@ function WorkstationApp() {
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
   const skills = !popout && ws.surface === "skills";
-  const buddying = !popout && ws.surface === "buddy";
   const paging = !popout && ws.surface === "pages";
   const idling = !popout && ws.surface === "idol";
   const videoing = !popout && ws.surface === "video";
@@ -209,11 +208,16 @@ function WorkstationApp() {
     useNeeds.getState().setFocusGroup("");
   }, [ws.activeId]);
   useEffect(() => {
-    // Buddy 详情点开工单时先放工单、再回到对话，所以回到对话这一下不能清。
+    // 离开对话去别的表面时，放到中间的工单收回去。回到对话这一下不清：别处可能刚放好一张。
     if (ws.surface === "agent") return;
     useNeeds.getState().setFocusTask("");
     useNeeds.getState().setFocusGroup("");
   }, [ws.surface]);
+  // 今天栏收着或窗口太窄时点了「去 Buddy」：把栏滑出来，不然翻过去的那一页没人看得见。不改人记下的折叠偏好。
+  const buddyPulse = useUI((s) => s.buddyPulse);
+  useEffect(() => {
+    if (buddyPulse > 0 && !popout && (ws.sidebarCollapsed || railNarrow)) ws.setSidebarHover(true);
+  }, [buddyPulse]);
   const deskCfg = ws.savedCfg.desk;
   const deskSynced = useRef(false);
   useEffect(() => {
@@ -232,6 +236,9 @@ function WorkstationApp() {
   const createEntrance = createDesk && !cutBound && !(createEngaged && ws.items.length > 0);
   // 主循环的版式不跟正文到没到走。空会话和已经有消息的会话用同一套输入框，避免启动后自己从「选工作区」跳成普通会话。
   const agentLoop = ws.surface === "agent";
+  // 主会话是那一条常驻的对话。人在今天栏点开别的代理对话时，表面还是 agent，但那不是主会话。
+  const mainChat = agentLoop && !popout && (!ws.activeId || !ws.mainId || ws.activeId === ws.mainId);
+  const detailView = ["detailed", "verbose"].includes(coerceTranscriptView(ws.savedCfg.transcriptView));
   const home = !agentLoop && !staged && (agent || videoing) && (createEntrance || ((ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0));
   const copilotItems = paneMismatch ? [] : ws.items;
   const boundCopilotId = studioDesk ? studioCopilotSession : "";
@@ -355,7 +362,8 @@ function WorkstationApp() {
     onSteerQueue: () => { void ws.onSteerQueue(); },
     taskPlan: latestTaskPlan(ws.items) || parsePlanText(ws.active?.planText || ""),
     methodologyActive: ws.methodologyActive,
-    connectionId: ws.active?.connectionId,
+    // 主会话用的是应用的默认连接，不看这条会话上早先记下的那一个。
+    connectionId: mainChat ? undefined : ws.active?.connectionId,
     chatProviders: ws.health.chatProviders,
     onBuildPlan: () => {
       const plan = latestTaskPlan(ws.items) || parsePlanText(ws.active?.planText || "");
@@ -375,9 +383,12 @@ function WorkstationApp() {
       running={ws.threadRunning}
       disabled={!!ws.health.paused}
       disabledReason={ws.health.paused ? copy.composer.paused : ""}
-      model={ws.active?.model || ws.savedCfg.model || ws.health.model}
+      // 主会话的模型就是应用的默认：路由和它开出的任务用的是同一个，在这里换等于在设置里换。
+      model={mainChat ? (ws.savedCfg.model || ws.health.model) : (ws.active?.model || ws.savedCfg.model || ws.health.model)}
       models={ws.savedCfg.models}
       provider={ws.savedCfg.provider}
+      main={mainChat}
+      detail={detailView}
       ctx={ws.ctx}
       queued={ws.queued}
       onSend={(opts) => {
@@ -392,6 +403,8 @@ function WorkstationApp() {
         const t = await api.setSessionModel(ws.activeId, model);
         ws.setActive(t);
         ws.refreshCtx();
+        // 在主会话上换模型，后端把它设成了应用的默认。重新取一次配置和连接，芯片和设置页才对得上。
+        if (mainChat) await ws.refresh();
       }}
       ask={pendingAsk(ws.approvals, ws.activeId)}
       approvals={ws.approvals}
@@ -692,9 +705,11 @@ function WorkstationApp() {
             jumpTo={ws.jumpTo}
             latestNonce={ws.latestNonce}
             onActiveTurn={ws.setActiveTurn}
-            onRestoreFiles={(from) => { void ws.onRestoreFiles(from); }}
-            onForkFrom={(from) => { void ws.onForkFrom(from); }}
+            // 主会话只派活，自己不改文件，也只有这一条：还原文件和分叉在这里没有东西可做。
+            onRestoreFiles={mainChat ? undefined : (from) => { void ws.onRestoreFiles(from); }}
+            onForkFrom={mainChat ? undefined : (from) => { void ws.onForkFrom(from); }}
             onJumpLatest={ws.jumpToLatest}
+            main={mainChat}
           />
         )}
         {home && !railNarrow && filmSurface ? homeStarters : null}
@@ -706,10 +721,12 @@ function WorkstationApp() {
               onRemake={() => { void ws.startRemake(); }}
             />
           ) : null}
-          {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && hasConversation(copilotItems) && !ws.threadRunning && lastTurnFailed(copilotItems) ? (
-            <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
-          ) : null}
-          {composer}
+          <div className={mainChat && !home ? THREAD_READ : "contents"}>
+            {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && hasConversation(copilotItems) && !ws.threadRunning && lastTurnFailed(copilotItems) ? (
+              <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
+            ) : null}
+            {composer}
+          </div>
         </div>
         {home && !railNarrow && !filmSurface && !agent ? homeStarters : null}
         </div>
@@ -831,11 +848,6 @@ function WorkstationApp() {
       workspace={ws.surface === "video" ? (ws.savedCfg.videoWorkspace || ws.health.videoWorkspace || ws.savedCfg.workspace) : ws.savedCfg.workspace}
       onLab={ws.setLab}
       onChats={() => { leaveRail(); ws.showConversation(); }}
-      onBuddy={() => {
-        leaveRail();
-        if (ws.surface === "buddy") ws.closeBuddy();
-        else ws.openBuddy();
-      }}
       onHarness={() => {
         leaveRail();
         if (ws.surface === "harness") ws.showConversation();
@@ -976,8 +988,6 @@ function WorkstationApp() {
     ? null
     : skills
       ? <span className="text-ui-body font-medium">{copy.skills.title}</span>
-    : buddying
-      ? <span className="text-ui-body font-medium">{copy.buddy.title}</span>
     : paging
       ? <span className="text-ui-body font-medium">{copy.rail.pages}</span>
     : idling
@@ -1117,12 +1127,6 @@ function WorkstationApp() {
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{skillsPane}</div>
     </Suspense>
-  ) : buddying ? (
-    <Suspense fallback={null}>
-      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="buddy-surface">
-        <BuddyWorkspace />
-      </div>
-    </Suspense>
   ) : paging ? (
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="pages-surface">
@@ -1132,6 +1136,7 @@ function WorkstationApp() {
           navInRail={navInRail}
           tutorQuiet={ws.items.length === 0 && !ws.threadRunning}
           onTutorPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+          onTutorSend={(text) => { void ws.onSend({ text }); }}
           onEnsureScope={(spec) => ws.ensureLearnScope(spec)}
           onOpenInChat={(pageId) => {
             void ws.ensureLearnScope(learnScopeSpec({ lane: "library", shelf: "notes", title: copy.learn.notesTab })).then(async (t) => {

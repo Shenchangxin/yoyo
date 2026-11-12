@@ -1,7 +1,6 @@
 /**
- * 拥有：设置里的「主动与通知」页：简报几点写、主动程度和安静时段、怎么告诉你、来信要不要自己接成任务，
- * 以及它自己在跑的定时、目标、盯梢、想法和个人事务。
- * 不拥有：开口门和编排本身。改动经 host.patch、开口门反馈和编排模式落到 Go。
+ * 拥有：设置里的「主动与通知」页：简报几点写、主动程度和安静时段、怎么告诉你、来信要不要自己接成任务。
+ * 不拥有：开口门和编排本身，也不拥有它自己在跑的定时和目标（那在「自动化」页）。改动经 host.patch、开口门反馈和编排模式落到 Go。
  */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -14,8 +13,7 @@ import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import { DESK_EVENT, deskMutes, refreshDesk, sendFeedback } from "../superagent/desk-feed";
 import { refreshNeeds, useNeeds } from "../superagent/needs";
-import { SettingEmpty, SettingRow, SettingSection, SettingSegmented, SettingsGroupLabel } from "./SettingChrome";
-import { GoalSection, IdeaSection, JobSection, ProposalSection, WatchSection, WorkSection } from "./PersonalPanel";
+import { SettingEmpty, SettingRow, SettingSection, SettingSegmented } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
 /** ProactiveSettings 是「主动与通知」整页。 */
@@ -85,14 +83,6 @@ export function ProactiveSettings({ host }: { host: SettingsHost }) {
       </SettingSection>
 
       <IntakeSection />
-
-      <SettingsGroupLabel>{p.runningGroup}</SettingsGroupLabel>
-      <JobSection />
-      <GoalSection />
-      <WatchSection />
-      <IdeaSection />
-      <WorkSection />
-      <ProposalSection />
     </>
   );
 }

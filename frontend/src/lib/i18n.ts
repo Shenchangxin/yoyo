@@ -48,6 +48,11 @@ export function getLocale(): Locale {
   return locale;
 }
 
+/** dateLocale 是日期和时刻按当前语言格式化时用的地区码。界面选了中文，日期就写中文，不跟着操作系统走。 */
+export function dateLocale(): string {
+  return locale === "zh-CN" ? "zh-CN" : "en-US";
+}
+
 /** setLocale 切换语言、换上文案表，并通知订阅者。写入失败时忽略。next 用作下标，赋给 locale，传给 localStorage.setItem。 */
 export function setLocale(next: Locale) {
   locale = next;

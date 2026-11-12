@@ -20,6 +20,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/dshdesk"
@@ -89,6 +90,70 @@ func (a *App) routeSession(meta SessionMeta, sessionID string) bool {
 // routeFragment 是写进主会话的路由说明。
 func routeFragment() artifact.PromptFragment {
 	return artifact.PromptFragment{Slot: "role", Text: routePrompt}
+}
+
+// isMainSession 在 sessionID 就是那条常驻的主会话时为真。
+func (a *App) isMainSession(sessionID string) bool {
+	if a == nil || a.Home == nil {
+		return false
+	}
+	id := strings.TrimSpace(sessionID)
+	return id != "" && id == a.readMainID()
+}
+
+// chatSlotFor 返回这条会话该用哪个聊天连接和模型。主会话清掉自己钉下的，跟着应用的默认走；
+// 它开出的工人用的也是默认，这样接话的和干活的是同一个模型，在设置里换了默认也立刻生效。
+// 其余会话原样返回，各自选的模型照旧只管自己。
+func (a *App) chatSlotFor(meta SessionMeta, sessionID string) SessionMeta {
+	if a.isMainSession(sessionID) && a.routeSession(meta, sessionID) {
+		meta.Model, meta.ConnectionID = "", ""
+	}
+	return meta
+}
+
+// adoptChatDefault 把 meta 选中的连接和模型设成应用的默认，并写回配置。连接库不可用或找不到连接时只改配置里的模型。
+// 只在主会话上换模型时调用：那里换的是 yoyo 的模型，不是某一段对话的。
+func (a *App) adoptChatDefault(meta SessionMeta) {
+	model := strings.TrimSpace(meta.Model)
+	if a == nil || model == "" {
+		return
+	}
+	r := a.connReg()
+	if r == nil {
+		a.Config.Model = model
+		_ = a.SaveConfig()
+		return
+	}
+	c, err := a.resolveChatConnection(meta)
+	if err != nil || strings.TrimSpace(c.ID) == "" {
+		a.Config.Model = model
+		_ = a.SaveConfig()
+		return
+	}
+	if c.DefaultModel == nil {
+		c.DefaultModel = map[string]string{}
+	}
+	c.DefaultModel[connection.CapChat] = model
+	if !slices.Contains(c.Models, model) {
+		c.Models = append([]string{model}, c.Models...)
+	}
+	out, err := r.Upsert(c, "")
+	if err != nil {
+		return
+	}
+	if err := r.SetDefault(connection.CapChat, out.ID); err != nil {
+		return
+	}
+	a.promoteChatDefault(out)
+}
+
+// compactOptsFor 是这条会话做检查点时的参数。路由的会话是一段长期对话，不是一件写代码的任务，摘要用对话的形状：
+// 人先后提过什么、定下了什么、还有什么没了结。其余会话用默认的目标、文件、决定。
+func (a *App) compactOptsFor(routing bool) runtime.CompactOpts {
+	if !routing {
+		return runtime.CompactOpts{}
+	}
+	return runtime.CompactOpts{Profile: runtime.ConversationProfile()}
 }
 
 // intakeDesk 把这一轮桌面消息记成明确触发。已经落到同一条具体线程上的，告诉路由只能停止。

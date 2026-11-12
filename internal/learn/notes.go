@@ -370,11 +370,6 @@ func (s *Store) findReview(id string) (pages.Review, error) {
 	return r, err
 }
 
-func (s *Store) markNotesStale() error {
-	_, err := s.db.Exec(`UPDATE libraries SET status = 'needs_reindex', updated_at = ? WHERE id = 'notes' AND published_gen > 0`, time.Now().UTC().Format(time.RFC3339Nano))
-	return err
-}
-
 type rower interface {
 	Scan(dest ...any) error
 }

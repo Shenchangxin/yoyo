@@ -1,0 +1,25 @@
+/*
+ * 拥有：今天栏的两种软卡片。今天、任务、记忆和 Buddy 都在这一栏里，卡片是同一个样子。
+ * 圆角比全局的六级刻度大，是这一栏自己的视觉（docs/uiux-plan.md 的落地记录里写了保留）。
+ * 数值只写在这里，组件里用类名，不再手写圆角。WorkPane.tsx 里原有的写法没有动。
+ */
+
+/* 大卡片：一段完整的内容，比如一个 agent 的概况、一组设置。 */
+.day-card {
+  border-radius: 28px;
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+/* 小卡片：列表里的一行，或者一组用细线分开的行。 */
+.day-tile {
+  border-radius: 20px;
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+/* 卡片里的输入区：多行文字、命令、日志。 */
+.day-well {
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--lift) 60%, transparent);
+}

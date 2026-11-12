@@ -81,18 +81,27 @@ func (p *PathFinder) Dirs() []string {
 	return out
 }
 
-// commonDirs 是常见的用户级安装目录。
+// commonDirs 是常见的用户级安装目录：npm、pnpm、bun 的全局目录，厂商安装脚本用的 ~/.local/bin，
+// 以及 Windows 上 scoop 和 winget 放命令的地方。刚装完的东西 PATH 还没刷新，或者安装器根本没改 PATH 时，靠这里找到。
+// 排在 PATH 后面，只补缺，不改变已经找得到的命令。
 func (p *PathFinder) commonDirs() []string {
 	if p.goos == "windows" {
+		var out []string
 		if appdata := p.env("APPDATA"); appdata != "" {
-			return []string{filepath.Join(appdata, "npm")}
+			out = append(out, filepath.Join(appdata, "npm"))
 		}
-		return nil
+		if home := p.env("USERPROFILE"); home != "" {
+			out = append(out, filepath.Join(home, ".local", "bin"), filepath.Join(home, ".bun", "bin"), filepath.Join(home, "scoop", "shims"))
+		}
+		if local := p.env("LOCALAPPDATA"); local != "" {
+			out = append(out, filepath.Join(local, "pnpm"), filepath.Join(local, "Microsoft", "WinGet", "Links"))
+		}
+		return out
 	}
 	home := p.env("HOME")
 	var out []string
 	if home != "" {
-		out = append(out, filepath.Join(home, ".local", "bin"), filepath.Join(home, ".npm-global", "bin"))
+		out = append(out, filepath.Join(home, ".local", "bin"), filepath.Join(home, ".npm-global", "bin"), filepath.Join(home, ".bun", "bin"))
 	}
 	return append(out, "/opt/homebrew/bin", "/usr/local/bin")
 }

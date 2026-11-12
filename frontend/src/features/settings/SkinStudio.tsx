@@ -12,7 +12,6 @@ import { defaultMaterials, isUserSkinId, type SkinMaterials } from "../../lib/sk
 import { useTheme } from "../../lib/theme";
 import { Button } from "../../components/ui/button";
 import { Slider } from "../../components/ui/slider";
-import { cn } from "../../lib/utils";
 import { SettingRow, SettingSection, SettingSegmented } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
@@ -185,43 +184,43 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
       description={copy.settings.skinHint}
       footnote={copy.settings.appearanceHint}
     >
-      <div
-        className="relative mx-4 mt-3 overflow-hidden rounded-xl border border-border"
-        style={{ height: 120, ...previewStyle, backgroundColor: "var(--lift)" }}
-      >
-        {hasWall ? (
-          <div
-            className="absolute inset-0"
-            style={{ background: `color-mix(in srgb, var(--background) ${dimPct}%, transparent)` }}
-          />
-        ) : (
-          <p className="absolute inset-0 grid place-items-center px-4 text-center text-ui-footnote text-muted">{copy.settings.skinEmpty}</p>
-        )}
-      </div>
-      <SettingRow title={copy.settings.skinWallpaper} description={copy.settings.skinWallpaperDesc} stack>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="lift" className="h-8" disabled={busy} onClick={() => wallRef.current?.click()}>
-            <ImagePlus className="size-3.5" />
-            {copy.settings.skinPickImage}
-          </Button>
+      <div>
+        <div
+          className="relative overflow-hidden rounded-md border border-border"
+          style={{ height: 128, ...previewStyle, backgroundColor: "var(--lift)" }}
+        >
           {hasWall ? (
-            <Button type="button" variant="ghost" className="h-8 text-danger" disabled={busy} onClick={() => void clearWallpaper()}>
-              <Trash2 className="size-3.5" />
-              {copy.settings.skinRemove}
-            </Button>
-          ) : null}
-          <input
-            ref={wallRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f) void onPick(f);
-            }}
-          />
+            <div
+              className="absolute inset-0"
+              style={{ background: `color-mix(in srgb, var(--background) ${dimPct}%, transparent)` }}
+            />
+          ) : (
+            <p className="absolute inset-0 grid place-items-center px-4 text-center text-ui-body text-muted">{copy.settings.skinEmpty}</p>
+          )}
         </div>
+      </div>
+      <SettingRow title={copy.settings.skinWallpaper} description={copy.settings.skinWallpaperDesc}>
+        {hasWall ? (
+          <Button type="button" size="sm" variant="ghost" className="text-danger hover:bg-danger/10 hover:text-danger" disabled={busy} onClick={() => void clearWallpaper()}>
+            <Trash2 aria-hidden />
+            {copy.settings.skinRemove}
+          </Button>
+        ) : null}
+        <Button type="button" size="sm" variant="lift" disabled={busy} onClick={() => wallRef.current?.click()}>
+          <ImagePlus aria-hidden />
+          {copy.settings.skinPickImage}
+        </Button>
+        <input
+          ref={wallRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void onPick(f);
+          }}
+        />
       </SettingRow>
       <SettingRow title={copy.settings.skinFit}>
         <SettingSegmented
@@ -260,11 +259,11 @@ export function SkinStudio({ host }: { host: SettingsHost }) {
         />
       </SettingRow>
       {hasWall ? (
-        <div className={cn("px-4 pb-3")}>
+        <div className="flex justify-end">
           <Button
             type="button"
+            size="sm"
             variant="ghost"
-            className="h-8"
             disabled={busy || !wallpaperUrl}
             onClick={async () => {
               try {

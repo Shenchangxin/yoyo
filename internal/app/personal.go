@@ -69,8 +69,12 @@ func (a *App) openPersonal() error {
 			return nil, err
 		}
 		store.Embed = a.embedTexts
+		store.Complete = a.learnComplete
+		store.OnChange = a.publishLearn
 		a.Learn = store
 		a.Pages = store
+		// 上次没建完的索引要等嵌入函数接好之后再接着建，否则那一代只有词法检索。
+		store.ResumeIndexing()
 		return func() error {
 			a.Pages = nil
 			a.Learn = nil

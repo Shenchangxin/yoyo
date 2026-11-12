@@ -1,5 +1,5 @@
 /**
- * 拥有：定时、目标、盯梢、想法、个人事务和发送审阅这几块表单。设置的「主动与通知」页把它们排在一起。
+ * 拥有：设置的「自动化」页：定时、目标、盯梢、想法、个人事务和发送审阅这几块表单。
  * 不拥有：记忆。记忆在今天栏的记忆页里改。增删改会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
@@ -9,6 +9,21 @@ import { str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { SettingEmpty, SettingRow, SettingSection } from "./SettingChrome";
+
+/** AutomationsSettings 是「自动化」整页：先是要你点头的发送审阅，再是定时、目标、盯梢，最后是它自己攒下的想法和事务。 */
+export function AutomationsSettings() {
+  return (
+    <>
+      <ProposalSection />
+      <JobSection />
+      <GoalSection />
+      <WatchSection />
+      <IdeaSection />
+      <WorkSection />
+    </>
+  );
+}
+
 /** 编辑定时任务。 */
 export function JobSection() {
   const copy = useCopy();
@@ -24,43 +39,46 @@ export function JobSection() {
   }, []);
   return (
     <SettingSection id="personal-jobs" title={copy.settings.sections.personalJobs} footnote={copy.settings.automationsHint}>
-      <SettingRow stack>
-        <div className="flex w-full flex-col gap-[var(--space-group)]">
-          <label className="flex flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
-            <span>{copy.settings.scheduleSpec}</span>
-            <Input className="h-8 w-full text-ui-body font-normal" value={spec} onChange={(e) => setSpec(e.target.value)} />
-          </label>
-          <label className="flex flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
-            <span>{copy.settings.schedulePrompt}</span>
-            <Input className="h-8 w-full text-ui-body font-normal" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-          </label>
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!prompt.trim()}
-              onClick={async () => {
-                await api.scheduleCreate({ kind: "webhook", spec: spec || "hook", prompt, isolate: true });
-                setPrompt("");
-                refresh();
-              }}
-            >
-              {copy.settings.webhookJob}
-            </Button>
-            <Button
-              size="sm"
-              disabled={!prompt.trim()}
-              onClick={async () => {
-                await api.scheduleCreate({ kind: "heartbeat", spec, prompt, isolate: true });
-                setPrompt("");
-                refresh();
-              }}
-            >
-              {copy.settings.addJob}
-            </Button>
-          </div>
-        </div>
-      </SettingRow>
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        <label className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-background pl-2.5 text-ui-footnote text-muted transition-[border-color,box-shadow] focus-within:border-accent/45 focus-within:ring-2 focus-within:ring-accent/20">
+          {copy.settings.scheduleSpec}
+          <input
+            className="no-drag h-full w-16 bg-transparent pr-2 text-ui-body tabular-nums text-foreground outline-none"
+            value={spec}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => setSpec(e.target.value)}
+          />
+        </label>
+        <Input
+          aria-label={copy.settings.schedulePrompt}
+          placeholder={copy.settings.schedulePrompt}
+          className="h-8 min-w-40 flex-1 text-ui-body"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+        <Button
+          variant="ghost"
+          disabled={!prompt.trim()}
+          onClick={async () => {
+            await api.scheduleCreate({ kind: "webhook", spec: spec || "hook", prompt, isolate: true });
+            setPrompt("");
+            refresh();
+          }}
+        >
+          {copy.settings.webhookJob}
+        </Button>
+        <Button
+          disabled={!prompt.trim()}
+          onClick={async () => {
+            await api.scheduleCreate({ kind: "heartbeat", spec, prompt, isolate: true });
+            setPrompt("");
+            refresh();
+          }}
+        >
+          {copy.settings.addJob}
+        </Button>
+      </div>
       {jobs.length === 0 ? (
         <SettingEmpty>{copy.settings.noJobs}</SettingEmpty>
       ) : (
@@ -294,22 +312,19 @@ export function GoalSection() {
   const items = Array.isArray(snap.goals) ? snap.goals : [];
   return (
     <SettingSection id="personal-goals" title={copy.settings.sections.personalGoals}>
-      <SettingRow stack>
-        <Input className="h-8 w-full text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
-        <div className="flex w-full justify-end">
-          <Button
-            size="sm"
-            disabled={!title.trim()}
-            onClick={async () => {
-              await api.personalGoal(title.trim(), "");
-              setTitle("");
-              refresh();
-            }}
-          >
-            {copy.settings.addGoal}
-          </Button>
-        </div>
-      </SettingRow>
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        <Input className="h-8 min-w-40 flex-1 text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} aria-label={copy.settings.goalTitle} />
+        <Button
+          disabled={!title.trim()}
+          onClick={async () => {
+            await api.personalGoal(title.trim(), "");
+            setTitle("");
+            refresh();
+          }}
+        >
+          {copy.settings.addGoal}
+        </Button>
+      </div>
       {items.length === 0 ? (
         <SettingEmpty>{copy.settings.noGoals}</SettingEmpty>
       ) : (
@@ -371,24 +386,21 @@ export function WatchSection() {
   const items = Array.isArray(snap.monitors) ? snap.monitors : [];
   return (
     <SettingSection id="personal-watch" title={copy.settings.sections.personalWatch}>
-      <SettingRow stack>
-        <Input className="h-8 w-full text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
-        <Input className="h-8 w-full text-ui-body" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={copy.settings.watchUrl} />
-        <div className="flex w-full justify-end">
-          <Button
-            size="sm"
-            disabled={!title.trim() || !url.trim()}
-            onClick={async () => {
-              await api.personalWatch(title.trim(), url.trim(), "change", "", 15);
-              setTitle("");
-              setUrl("");
-              refresh();
-            }}
-          >
-            {copy.settings.addWatch}
-          </Button>
-        </div>
-      </SettingRow>
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        <Input className="h-8 w-40 shrink-0 text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} aria-label={copy.settings.goalTitle} />
+        <Input className="h-8 min-w-40 flex-1 font-mono text-ui-footnote" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={copy.settings.watchUrl} aria-label={copy.settings.watchUrl} />
+        <Button
+          disabled={!title.trim() || !url.trim()}
+          onClick={async () => {
+            await api.personalWatch(title.trim(), url.trim(), "change", "", 15);
+            setTitle("");
+            setUrl("");
+            refresh();
+          }}
+        >
+          {copy.settings.addWatch}
+        </Button>
+      </div>
       {items.length === 0 ? (
         <SettingEmpty>{copy.settings.noWatches}</SettingEmpty>
       ) : (

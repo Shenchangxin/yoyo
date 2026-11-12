@@ -11,6 +11,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// checkpointLead 是检查点摘要回放成用户消息时的开头。下一次检查点靠它认出上一份摘要。
+const checkpointLead = "Context checkpoint (untrusted working memory; pins were reassembled separately):\n"
+
 // MessagesFromEvents 从会话轨迹重建发给模型的消息，供下一轮继续。实时系统提示由当前 harness 另装，旧的 system 事件被忽略，升级后的快照下一轮才生效。
 // kind 为 checkpoint 的 TypeCompact 是重建起点：摘要加保留的尾部替换它之前的一切。JSONL 本身不会被截短。spill 传 nil。
 // evs 传给 MessagesFromEventsOpts。
@@ -21,6 +24,7 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 // MessagesFromEventsOpts 同样重建消息。检查点若存了 tail_id 且 spill 能取回非空正文，用这份热尾，不再读 payload 里的 tail。
 // delta 为真的事件跳过。prompt-update、repeat-tool-reminder 和唤醒路由的 wake 在正文非空白时原样变成用户消息。mention 贴进尚未被别的消息隔开的上一条用户消息，否则先攒着，最后仍没有用户消息就单独成条。其他来源的注入丢弃。
 // 同一工具 id 的再次 tool_call 丢弃。同一 id 的再次 tool_result 只在原结果正文为空白、新正文非空白时补上。用户文本为空但带了 parts 时，文本写成 (image attached)。
+// 主机代写的助手事件（工人回报、通知、桌面推送）不回放成助手消息：它们并成一条用户角色的主机记录，放在下一句人话前面，没有下一句时放在末尾。
 // evs 从最后一条 checkpoint 之后重建；该条之前的内容被摘要和尾部替换。
 func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 	start := 0
@@ -38,7 +42,7 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 		if sum, _ := ev.Payload["summary"].(string); strings.TrimSpace(sum) != "" {
 			head = append(head, Message{
 				Role:    RoleUser,
-				Content: "Context checkpoint (untrusted working memory; pins were reassembled separately):\n" + sum,
+				Content: checkpointLead + sum,
 			})
 		}
 		if spill != nil {
@@ -64,6 +68,9 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 	lastUser := -1
 	seenCall := map[string]bool{}
 	seenResult := map[string]int{}
+	// hostBuf 攒着主机代写的行：工人回报、通知、简报。它们不是这条会话的模型说的，不能回放成助手消息。
+	// 只在下一句人话前面或末尾并成一条主机记录，这样不会插进一组工具调用和结果中间。
+	var hostBuf []HostLine
 	applyMention := func(user string) string {
 		text := AttachMention(user, pendingMention)
 		pendingMention = ""
@@ -80,13 +87,28 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 		out = append(out, pending)
 		pending = Message{}
 	}
+	flushHost := func() {
+		if len(hostBuf) == 0 {
+			return
+		}
+		out = append(out, Message{Role: RoleUser, Content: HostNote(hostBuf)})
+		hostBuf = nil
+	}
 	for _, ev := range evs[start:] {
 		if delta, _ := ev.Payload["delta"].(bool); delta {
+			continue
+		}
+		if line, ok := HostLineOf(ev); ok {
+			hostBuf = append(hostBuf, line)
+			continue
+		}
+		if HostWritten(ev) {
 			continue
 		}
 		switch ev.Type {
 		case trace.TypeUser:
 			flush()
+			flushHost()
 			text, _ := ev.Payload["text"].(string)
 			parts := partsFromPayload(ev.Payload["parts"])
 			if text != "" || len(parts) > 0 {
@@ -166,6 +188,7 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 		}
 	}
 	flush()
+	flushHost()
 	if pendingMention != "" {
 		out = append(out, Message{Role: RoleUser, Content: AttachMention("", pendingMention)})
 	}

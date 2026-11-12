@@ -9,7 +9,7 @@ This file is the skill-layer source for visual direction. Token values and gramm
 | Dial | Value | Why |
 |---|---|---|
 | Style | Swiss Modernism 2.0 + Flat Design | Grid, Inter, one accent, mathematical spacing. No decorations. |
-| Typography | Plus Jakarta Variable (UI) + CJK stack + system mono (evidence) | Letter is 14/1.65/full ink. Do not use Inter on the session column. |
+| Typography | Inter Variable (UI and letter) + platform CJK stack + JetBrains Mono (evidence) | One face across chrome and transcript. Letter is 14/1.65/full ink. Plus Jakarta is the wordmark only. |
 | Color | Quiet stone + Codex blue | Color is evidence. Palettes change the paper, not Harbor. Light default is Neutral (WorkBuddy paper); Paper cream is opt-in. |
 | Motion | Subtle (120–180ms, `--ease-out`) | Motion is state. No overshoot on data. |
 | Density | 7 / 4pt grid | Operator density. Empty and lab surfaces get one extra step of air. |
@@ -24,8 +24,8 @@ This file is the skill-layer source for visual direction. Token values and gramm
 
 ## Do / Don't
 
-- Do: Plus Jakarta, CJK fallbacks (Noto / PingFang / YaHei), 4pt grid, quiet stone + Codex blue, inset highlights, underline tabs, MarkWell on empty still-lifes.
-- Don't: Inter on the letter, gradients as decoration, glows, avatars, spinners on text, cards in cards, headlines > 21px, daisyUI, a second agent loop.
+- Do: Inter, CJK fallbacks (PingFang / Noto / YaHei), 4pt grid, quiet stone + Codex blue, inset highlights, underline tabs, MarkWell on empty still-lifes.
+- Don't: Plus Jakarta outside the wordmark, gradients as decoration, glows, avatars, spinners on text, cards in cards, headlines > 21px, daisyUI, a second agent loop.
 
 ## Stack
 

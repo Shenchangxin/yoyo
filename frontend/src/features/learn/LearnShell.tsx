@@ -49,7 +49,7 @@ export function LearnTabs(props: {
   onChange: (id: string) => void;
 }) {
   return (
-    <div role="tablist" aria-label={props.label} className="flex gap-1 overflow-x-auto border-b border-border/60">
+    <div role="tablist" aria-label={props.label} className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border/60">
       {props.items.map((item) => {
         const on = props.value === item.id;
         return (

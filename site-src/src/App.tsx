@@ -1,14 +1,16 @@
 /**
- * 拥有：产品站的页面，包括主题、语言、下载和六个真实模块的截图。
+ * 拥有：产品站的页面，包括主题、语言、下载、六个真实模块的截图、能力和入口。
  * 不拥有：桌面应用本身。下载地址来自 release.ts。
  */
 
-import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { COPY, detectLang, htmlLang, ROOM_SHOT, ROOMS, type Lang, type Room } from "./copy";
+import { lazy, Suspense, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { COPY, detectLang, htmlLang, ROOM_SHOT, ROOMS, SHOT_SIZE, type Lang, type Room } from "./copy";
 import { detectOs, FALLBACK_VERSION, fallbackAssets, hydrateRelease, RELEASES, type Asset } from "./release";
-import { PageField } from "./page-field";
 
 const REPO = "https://github.com/Shenchangxin/yoyo";
+
+/** 背景的玻璃碎片单独成块，首屏的文字和截图不等它。 */
+const PageField = lazy(() => import("./page-field").then((module) => ({ default: module.PageField })));
 
 type Theme = "light" | "dark";
 
@@ -38,6 +40,7 @@ export function App() {
   const [menu, setMenu] = useState(false);
   const [zone, setZone] = useState("home");
   const [room, setRoom] = useState<Room>(() => initialRoom());
+  const [field, setField] = useState(false);
   const [version, setVersion] = useState(FALLBACK_VERSION);
   const [assets, setAssets] = useState<Asset[]>(() => fallbackAssets(FALLBACK_VERSION));
   const [os, setOs] = useState<Asset["os"]>("windows");
@@ -83,6 +86,31 @@ export function App() {
     });
   }, []);
 
+  // 背景只在有 WebGPU 的浏览器里画。没有 WebGPU 就不下载那一块代码；有的话等浏览器空下来再取。
+  useEffect(() => {
+    if (!("gpu" in navigator)) return;
+    const start = () => setField(true);
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(start, { timeout: 1500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(start, 300);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  // 模块一段进入视口时，把其余五张截图先取回来，切换时不用等。没滚到这里就不取。
+  useEffect(() => {
+    const node = document.getElementById("rooms");
+    if (!node) return;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      io.disconnect();
+      for (const id of ROOMS) new Image().src = shotSrc(id);
+    });
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const nodes = [...document.querySelectorAll<HTMLElement>("main > section:not(.hero-home), .foot")];
@@ -98,7 +126,8 @@ export function App() {
           io.unobserve(entry.target);
         }
       },
-      { threshold: 0.14, rootMargin: "0px 0px -6% 0px" },
+      // 门槛放低：窄屏上「能力」一段比视口高好几倍，露出一小截就该进场。
+      { threshold: 0.05, rootMargin: "0px 0px -6% 0px" },
     );
     nodes.forEach((node) => io.observe(node));
     return () => io.disconnect();
@@ -176,9 +205,22 @@ export function App() {
 
   const closeMenu = () => setMenu(false);
 
+  /** 页眉和折叠菜单用同一份锚点。第一项回到页首。 */
+  const links = [
+    { href: "#top", zone: "home", label: t.nav.home },
+    { href: "#rooms", zone: "rooms", label: t.nav.rooms },
+    { href: "#why", zone: "why", label: t.nav.why },
+    { href: "#doors", zone: "doors", label: t.nav.doors },
+    { href: "#download", zone: "download", label: t.nav.download },
+  ];
+
   return (
     <>
-      <PageField theme={theme} />
+      {field ? (
+        <Suspense fallback={null}>
+          <PageField theme={theme} />
+        </Suspense>
+      ) : null}
       <a className="skip" href="#download">
         {t.nav.download}
       </a>
@@ -188,18 +230,11 @@ export function App() {
           <span>yoyo</span>
         </a>
         <nav className="nav-links" aria-label="On this page">
-          <a href="#top" aria-current={zone === "home" ? "true" : undefined}>
-            {t.nav.home}
-          </a>
-          <a href="#rooms" aria-current={zone === "rooms" ? "true" : undefined}>
-            {t.nav.rooms}
-          </a>
-          <a href="#local" aria-current={zone === "local" ? "true" : undefined}>
-            {t.nav.local}
-          </a>
-          <a href="#download" aria-current={zone === "download" ? "true" : undefined}>
-            {t.nav.download}
-          </a>
+          {links.map((link) => (
+            <a key={link.zone} href={link.href} aria-current={zone === link.zone ? "true" : undefined}>
+              {link.label}
+            </a>
+          ))}
         </nav>
         <div className="nav-end">
           <LangSwitch lang={lang} onPick={chooseLang} />
@@ -229,18 +264,11 @@ export function App() {
         {menu ? <button type="button" className="nav-backdrop" aria-label={t.nav.close} onClick={closeMenu} /> : null}
         <div className="nav-panel" id="nav-panel" hidden={!menu}>
           <nav aria-label="On this page">
-            <a href="#top" onClick={closeMenu}>
-              {t.nav.home}
-            </a>
-            <a href="#rooms" onClick={closeMenu}>
-              {t.nav.rooms}
-            </a>
-            <a href="#local" onClick={closeMenu}>
-              {t.nav.local}
-            </a>
-            <a href="#download" onClick={closeMenu}>
-              {t.nav.download}
-            </a>
+            {links.map((link) => (
+              <a key={link.zone} href={link.href} onClick={closeMenu}>
+                {link.label}
+              </a>
+            ))}
             <a href={REPO}>{t.hero.github}</a>
           </nav>
           <div className="nav-panel-tools">
@@ -282,7 +310,7 @@ export function App() {
             </ul>
           </div>
           <figure className="hero-shot">
-            <img src={shotSrc("today")} alt={t.hero.shotAlt} />
+            <img src={shotSrc("today")} alt={t.hero.shotAlt} width={SHOT_SIZE.width} height={SHOT_SIZE.height} fetchPriority="high" decoding="async" />
           </figure>
         </section>
 
@@ -311,22 +339,48 @@ export function App() {
                 ))}
               </div>
               <p className="room-line">{current.line}</p>
+              <ul className="room-points">
+                {current.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
             </div>
             <figure className="room-shot" id="room-shot" role="tabpanel" aria-labelledby={`room-${room}`}>
-              <img key={room} src={shotSrc(room)} alt={current.alt} />
+              <img key={room} src={shotSrc(room)} alt={current.alt} width={SHOT_SIZE.width} height={SHOT_SIZE.height} loading="lazy" decoding="async" />
             </figure>
           </div>
         </section>
 
-        <section className="section split wrap" id="local" data-zone="local">
-          <div className="section-copy">
+        <section className="section section-stack wrap" id="why" data-zone="why">
+          <header className="section-head">
             <p className="kicker">02</p>
-            <Lines text={t.local.title} />
-            <p className="dek">{t.local.dek}</p>
+            <Lines text={t.why.title} />
+            <p className="dek">{t.why.dek}</p>
+          </header>
+          <div className="why-grid">
+            {t.why.items.map((item) => (
+              <article className="why-card" key={item.tag}>
+                <p className="why-tag">{item.tag}</p>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </article>
+            ))}
           </div>
-          <ul className="limits">
-            {t.local.items.map((item) => (
-              <li key={item}>{item}</li>
+        </section>
+
+        <section className="section split wrap" id="doors" data-zone="doors">
+          <div className="section-copy">
+            <p className="kicker">03</p>
+            <Lines text={t.doors.title} />
+            <p className="dek">{t.doors.dek}</p>
+          </div>
+          <ul className="door-list">
+            {t.doors.items.map((item) => (
+              <li className="door" key={item.name}>
+                <h3>{item.name}</h3>
+                <p>{item.body}</p>
+                <code>{item.hint}</code>
+              </li>
             ))}
           </ul>
         </section>
@@ -362,6 +416,7 @@ export function App() {
                 );
               })}
             </div>
+            <p className="note">{t.get.phone}</p>
             <p className="note">{t.get.note}</p>
           </div>
         </section>

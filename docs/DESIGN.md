@@ -14,7 +14,7 @@ Beauty is instrument craft — not personality marketing. Skill-layer notes live
 in `design-system/yoyo/MASTER.md`; this file still wins on grammar.
 
 The source of truth for tokens is `frontend/src/styles.css`. This document
-explains how to spend them. Do not follow stale Inter / sage / zinc recipes.
+explains how to spend them. Do not follow stale sage / zinc recipes.
 
 Hosted 影策 (`.yingce-island`) maps onto these tokens via
 `frontend/src/features/video/canvas-host/design-system/` and a thin
@@ -98,7 +98,11 @@ with the same hue — colour lives in **either** the marker **or** the fill.
 
 ### Typography
 
-- **UI:** Plus Jakarta Sans Variable. Body 13px, labels 12.5px, meta 11.5px,
+- **UI:** Inter Variable with the optical-size axis for Latin, then the
+  platform's own CJK face (PingFang SC, Noto Sans SC, Microsoft YaHei UI). The
+  transcript letter reads in the same stack, so one window never mixes two CJK
+  typefaces. Plus Jakarta Sans is the yoyo wordmark only (`.yoyo-mark`).
+  Body 13px, labels 12.5px, meta 11.5px,
   eyebrow 10.5px uppercase `tracking-[0.08em]`. Headlines cap at **21px**/600/
   `tracking-[-0.03em]`. Pane titles 13px/500. Transcript prose is a three-step
   ramp: answer 13.5px/1.6, headings 16 / 14.5 / 13.5px, process 12.5px, code
@@ -108,8 +112,8 @@ with the same hue — colour lives in **either** the marker **or** the fill.
   `font-variant-ligatures: none` everywhere code is shown.
 - **Numbers:** `tabular-nums` on every count, duration and size.
 
-Do not use Inter. Do not use `fs-display` 36 / 72. Yingce island `--fs-display`
-is remapped to 21px.
+Do not set UI text in Plus Jakarta. Do not use `fs-display` 36 / 72. Yingce
+island `--fs-display` is remapped to 21px.
 
 ### Spacing & radius
 
@@ -138,7 +142,8 @@ HoverBorderGradient, no WorkingGlow.
 ### Mark
 
 The mark (`YoyoMark`) stays in chrome — rail, header, menus. It is the
-lowercase word **yoyo** in the UI face. No pictogram, no mascot. The spherical
+lowercase word **yoyo** in its own face, Plus Jakarta Sans. No pictogram, no
+mascot. The spherical
 robot occupies empty stage, live process, boot, module loading, and the
 desktop companion window. Never replace the robot with Sparkles, a wordmark
 illustration, or a purple agent orb.
@@ -193,6 +198,13 @@ stops the moment `running` is false.
   music also lists MiniMax / ElevenLabs / Stability / Lyria; stock from
   Unsplash / Pexels / Pixabay / Giphy; transcription from local whisper.cpp
   then cloud ASR. Missing keys do not appear to the agent.
+- **Settings** is five groups and fourteen pages, one job per page.
+  Preferences: General, Appearance, Shortcuts. Capabilities: Models (with the
+  spending cap), Generation. Assistant: Proactive & notifications, Automations,
+  Security & privacy. Connections: Apps, Messaging, MCP & plugins, Mobile.
+  System: Advanced, About. Each page opens with its title and one line; a
+  section is a heading above one grouped card. `settings/registry.ts` owns the
+  map and redirects every older tab and section id.
 - **Drama** is conversation-first. Chat stays mounted. Opening an episode
   splits a director desk beside it: four phases (script / looks / board /
   cut), viewer plus inspector, film strip on board and cut. Factory stages
@@ -227,7 +239,7 @@ stops the moment `running` is false.
   A 22–28px sphere stamp sits to the left: the **pinned live turn** portals the
   single live engine (or yields to the process-row glyph); history uses a
   static cream-sphere silhouette. The answer is the scan target (**14px / 1.65
-  / 0.01em**, full ink, CJK fallbacks after Plus Jakarta). Headings step
+  / 0.01em**, full ink, CJK fallbacks after Inter). Headings step
   16 / 15 / 14px — never Streamdown's stock `text-3xl`. Process rows and
   fenced code sit a step quieter (13px / 12px). Copy/review actions sit at the
   foot and appear on hover once the turn is settled. Turns are separated by
@@ -272,6 +284,53 @@ stops the moment `running` is false.
   turn runs, the circle is a stop square until the draft has text; with text it
   queues (Enter), and a ghost `Steer` sits beside it (Ctrl/⌘ Enter).
 
+### The main conversation
+
+The main conversation is one chat that never ends. The router there only hands
+work out; it spans days and unrelated topics. It follows the grammar above with
+these differences, and they apply to that one conversation only — task
+transcripts, Video, Learn and a popped-out window keep the general rules.
+
+- **Reading width** — content and composer sit in one centered column capped at
+  46rem (`THREAD_READ`). The scroll container still fills the pane, so the
+  scrollbar stays on the pane edge. A wider window adds margin, not line length.
+- **Day dividers** — when the calendar day changes, a centered caption between
+  two hairlines sits above the first row of that day: `今天`, `昨天`, then the
+  date with the weekday, with the year once it differs. Days are local calendar
+  days, not 24-hour spans. A conversation that began today carries no divider.
+  Dates and clocks use the app language, not the operating system's.
+- **Who is speaking** — the yoyo face marks what yoyo said or did itself. A
+  report written back by an external agent carries that agent's glyph in a
+  `lift` circle of the same size, so its words do not borrow yoyo's face.
+- **Checkpoint** — one quiet centered line, `更早的对话已整理成要点，原话都还在。`.
+  The token counts stay in the hover title and in Review → Context.
+- **User turn actions** — copy only. Restore files and fork do nothing useful
+  here: the router changes no files and there is one main conversation.
+- **Composer** — no permission control: the router's tools do not pass the
+  permission gate and workers always run with full access, so the control
+  changed nothing. The model chip shows the app default, the same model workers
+  use; picking another here changes that default. Turn count, step count and
+  the context meter are a lifetime odometer for an endless chat, so they stay
+  out from under the composer unless transcript detail is `detailed` or
+  `verbose`.
+
+### The day pane
+
+今天, 任务, 记忆 and Buddy share the left pane and one look, kept in
+`features/superagent/day-ui.tsx` and `day-pane.css`: a pill tablist on
+`lift/80`, soft cards on `card` with `--shadow-card` (`.day-card` 28px for a
+whole piece of content, `.day-tile` 20px for a row or a group of rows,
+`.day-well` 16px for input areas inside a card), round 32px icon buttons, pill
+buttons (solid `foreground` for the one action that matters on a page, `lift`
+for the rest, `danger/10` for destructive), 28px text buttons, a 48×28 round
+switch, and section heads at 15px with a tabular count. These radii are larger
+than the global scale on purpose and live in CSS, not in feature code. Buddy is
+a page here, not a surface: a list in four groups (needs attention, found on
+this computer, online, available), one page per agent, and its preferences,
+custom-agent form and log as further pages. Confirmations (install to system,
+uninstall) are a card in place, never a dialog, and an install card shows the
+full command before anything runs.
+
 ---
 
 ## 5. Review panel grammar
@@ -295,10 +354,11 @@ stops the moment `running` is false.
 |---|---|
 | Icon button | `size-6 rounded-md text-muted hover:bg-lift hover:text-foreground`, always with `aria-label` and a tooltip |
 | Text action | `h-6 px-2 rounded-md text-[11px] font-medium`; primary = `bg-foreground text-background`; danger only on hover |
-| Segmented | `bg-lift/80 p-0.5 rounded-[10px]`; active segment `bg-card` 8px radius (iOS) |
+| Segmented | `bg-lift p-0.5 rounded-lg`, 32px tall; active segment `bg-background` 8px radius with the card highlight (iOS) |
 | Code surface | `rounded-lg border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11px] leading-[1.55]` |
 | Section eyebrow | `h-8 px-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80` + tabular count |
-| Grouped Form | macOS Settings: 12px card, 13px labels, trailing controls, hairlines between rows |
+| Grouped Form | Settings: 14px/600 section heading above a 12px card with a hairline border; 14px row titles, 13px descriptions, trailing controls, inset hairlines between rows (`SettingSection`, `SettingRow`) |
+| Switch | 34×20, white thumb; track `foreground/16` off, `accent` on |
 | kbd | 20px tall, `lift` fill, `border`, 10px/500 |
 | Pill CTA | `rounded-full px-3 py-1.5 text-[12px] font-medium`; filled `foreground` for primary |
 | Canvas node | 12px radius, hairline, monochrome type glyph, teal outline while generating or selected |
@@ -338,8 +398,8 @@ spinners on text · cards inside cards · bordered list items ·
 labelled buttons in toolbars · colour on chrome · ligatures in code · headlines
 over 21px · Sparkles / WandSparkles · gradients · glows · HoverBorderGradient ·
 SpotlightSurface · WorkingGlow · daisyUI · marketing empty states · fake sandbox
-badges · a second agent loop in the client · a 7-item Video shell · Inter /
-sage / zinc as the live system · Apple-blue + SF Pro as the default brand ·
+badges · a second agent loop in the client · a 7-item Video shell · sage /
+zinc as the live system · Apple-blue + SF Pro as the default brand ·
 credit-cost chips in the hosted island · a Chat dock on Video · Dock
 magnification · SpotlightSurface on menus · purple agent orbs · card-in-card
 create grids.

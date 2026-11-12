@@ -1,10 +1,10 @@
 ﻿/**
- * 拥有：MCP 和插件的设置。MCP 排在连接页，插件排在高级页。
+ * 拥有：MCP 和插件的设置，两块都排在「MCP 与插件」页。
  * 不拥有：连接应用。启动、停止和替换会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Braces, Plus } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
 import { asArray, str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
@@ -12,7 +12,6 @@ import { Input } from "../../components/ui/input";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { FormDialog } from "../FormDialog";
 import {
-  SettingActionRow,
   SettingEmpty,
   SettingRow,
   SettingSection,
@@ -65,17 +64,26 @@ export function McpSection({ host }: { host: SettingsHost }) {
       id="extensions-mcp"
       title={copy.settings.sections.extensionsMcp}
       footnote={jsonMode ? copy.settings.mcpJsonDesc : copy.settings.mcpHint}
-      actions={
-        <Button size="sm" variant="ghost" aria-pressed={jsonMode} onClick={() => setJsonMode((v) => !v)}>
-          {copy.settings.editJson}
-        </Button>
+      headerActions={
+        <>
+          <Button size="sm" variant="ghost" aria-pressed={jsonMode} className={jsonMode ? "bg-lift text-foreground" : undefined} onClick={() => setJsonMode((v) => !v)}>
+            <Braces aria-hidden />
+            {copy.settings.editJson}
+          </Button>
+          {jsonMode ? null : (
+            <Button size="sm" variant="lift" onClick={() => setAdding(true)}>
+              <Plus aria-hidden />
+              {copy.settings.addServer}
+            </Button>
+          )}
+        </>
       }
     >
       {jsonMode ? (
-        <div className="p-3">
+        <div>
           <textarea
             aria-label={copy.settings.mcpJson}
-            className="no-drag h-44 w-full rounded-md border border-border bg-background p-3 font-mono text-ui-footnote leading-[1.6] text-foreground outline-none focus-visible:border-foreground/25"
+            className="no-drag block h-44 w-full rounded-md border border-border bg-background p-3 font-mono text-ui-footnote leading-[1.6] text-foreground outline-none transition-[border-color,box-shadow] focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20"
             value={json}
             spellCheck={false}
             autoComplete="off"
@@ -123,13 +131,6 @@ export function McpSection({ host }: { host: SettingsHost }) {
               );
             })
           )}
-          <SettingActionRow
-            border={false}
-            chevron={false}
-            title={copy.settings.addServer}
-            trailing={<Plus className="size-4" aria-hidden />}
-            onClick={() => setAdding(true)}
-          />
           <FormDialog open={adding} title={copy.settings.addServer} description={copy.settings.mcpHint} onClose={reset}>
             <div className="flex flex-col gap-3">
               <Field label={copy.settings.mcpName} value={name} onChange={setName} />

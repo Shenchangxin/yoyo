@@ -259,6 +259,10 @@ func (a *App) SetSessionModel(id, model string) (SessionMeta, error) {
 	if err := a.writeSession(m); err != nil {
 		return m, err
 	}
+	if a.isMainSession(id) && a.routeSession(m, id) {
+		// 在主会话上换模型，换的是 yoyo 的模型：路由和工人都用应用的默认，设置里看到的也是这一个。
+		a.adoptChatDefault(m)
+	}
 	return m, nil
 }
 
@@ -555,7 +559,8 @@ func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
 	client, _ := a.ClientFor(meta)
 	loop = runtime.ApplyChatHorizon(loop)
-	opt := runtime.CompactOpts{Trigger: "user", Focus: focus}
+	opt := a.compactOptsFor(a.routeSession(meta, id))
+	opt.Trigger, opt.Focus = "user", focus
 	scope, from := runtime.ParseRewindScope(focus)
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(focus)), "from ") || from != "" {
 		opt.Trigger = "rewind"

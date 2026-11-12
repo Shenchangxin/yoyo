@@ -130,15 +130,18 @@ func (s *Store) JournalInject() (string, error) {
 	return b.String(), nil
 }
 
-// Today 是今日这一栏：使命、到期练习、还没走完的路径、最近的课本。
+// Today 是学习计划这一栏：使命、练习的汇总和到期的题、还没走完的路径、最近的课本和最近读的材料。
+// Due 最多 5 道已经到期的题，不带标准答案。
 type Today struct {
-	Journal Journal    `json:"journal"`
-	Due     []Card     `json:"due"`
-	Paths   []PathView `json:"paths"`
-	Books   []Book     `json:"books"`
+	Journal   Journal         `json:"journal"`
+	Practice  PracticeSummary `json:"practice"`
+	Due       []Question      `json:"due"`
+	Paths     []PathSummary   `json:"paths"`
+	Books     []BookSummary   `json:"books"`
+	Materials []Material      `json:"materials"`
 }
 
-// TodayView 组装今日。now 用来判断练习是否到期。
+// TodayView 组装学习计划。now 用来判断练习是否到期。走完且没有到期复习的路径不列出来。
 func (s *Store) TodayView(now time.Time) (Today, error) {
 	if s == nil {
 		return Today{}, fmt.Errorf("learn store unavailable")
@@ -147,14 +150,16 @@ func (s *Store) TodayView(now time.Time) (Today, error) {
 	if err != nil {
 		return Today{}, err
 	}
-	var paths []PathView
+	paths := []PathSummary{}
 	for _, p := range s.Paths() {
-		full, err := s.Path(p.ID)
-		if err != nil || full.Complete {
+		if p.Complete || p.Status == "archived" {
 			continue
 		}
-		full.Next = nil
-		paths = append(paths, full)
+		paths = append(paths, p)
 	}
-	return Today{Journal: j, Due: s.DueCards(now), Paths: paths, Books: s.RecentBooks(4)}, nil
+	summary, due, err := s.practiceToday(now, todayDueLimit)
+	if err != nil {
+		return Today{}, err
+	}
+	return Today{Journal: j, Practice: summary, Due: due, Paths: paths, Books: s.RecentBooks(4), Materials: s.RecentMaterials(4)}, nil
 }

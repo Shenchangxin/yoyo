@@ -121,6 +121,13 @@ export function Composer(props: {
   plain?: boolean;
   /** plus 在精简输入条上保留加号：上传附件、选择技能、剪贴板和截图。 */
   plus?: boolean;
+  /**
+   * main 是主会话的输入框。路由只派活，权限选择在这里什么也管不了，所以不放；
+   * 下面的轮数、步数和上下文用量是一条永远不结束的对话的累计数，默认也不放，要看去审阅里的上下文。
+   */
+  main?: boolean;
+  /** detail 为真时（对话详略选了详细或完整）主会话也放出轮数、步数和上下文用量。 */
+  detail?: boolean;
   flush?: boolean;
   hero?: boolean;
   authMode?: AuthMode | string;
@@ -1049,7 +1056,7 @@ export function Composer(props: {
                     }}
                   />
                   <div className="sc-modes">
-                    {props.onAuthMode && !talkDesk && !dramaDesk ? (
+                    {props.onAuthMode && !talkDesk && !dramaDesk && !props.main ? (
                       <PermissionSelect
                         value={props.authMode}
                         disabled={disabled}
@@ -1135,7 +1142,7 @@ export function Composer(props: {
               </div>
             </div>
             </CardFrame>
-            {props.compact ? null : (
+            {props.compact || (props.main && !props.detail) ? null : (
             <div className="sc-dock" data-composer-dock>
               <StatsPills
                 stats={props.sessionStats}

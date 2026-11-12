@@ -23,10 +23,11 @@ import { SpeakFeedback } from "./superagent/SpeakFeedback";
 import { speakPhrases, speakSentence } from "./superagent/work-model";
 import { Markdown } from "../lib/markdown";
 import { cn } from "../lib/utils";
-import { useCopy } from "../lib/i18n";
+import { dateLocale, useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { writeClipboard } from "../lib/clipboard";
-import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
+import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT, THREAD_READ } from "../lib/thread";
+import { dayKey, dayLabel } from "../lib/day-label";
 import {
   formatToolBody,
   isArtifactTool,
@@ -41,6 +42,7 @@ import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikeMCPUI, looksLik
 import type { Approval, Item } from "../lib/protocol";
 import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
 import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
+import { isLearnQuizItem, LearnQuizCard } from "./learn/cards/LearnQuizCard";
 import { classifyItem, errorCopy } from "../lib/error";
 import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, foldAsks, hasConversation, hydrateLayout, isGroupCard, isGroupCardRow, isWakeReceipt, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig } from "../lib/stream-live";
@@ -124,6 +126,52 @@ function isUserRow(row: LayoutRow): boolean {
   return row.kind === "user";
 }
 
+/** 这一块最早的那条条目是什么时候的。没有条目返回空串。 */
+function partTime(part: AgentPart): string {
+  if (part.kind === "item" || part.kind === "stream") return part.item.ts;
+  if (part.kind === "work") return part.parts.length ? partTime(part.parts[0]) : "";
+  return part.items[0]?.ts || "";
+}
+
+/** 这一行是什么时候的，毫秒。读不出时间返回 0。 */
+function rowTime(row: LayoutRow): number {
+  const ts = row.kind === "agent" ? (row.parts.length ? partTime(row.parts[0]) : "") : row.item.ts;
+  const at = Date.parse(ts || "");
+  return Number.isFinite(at) ? at : 0;
+}
+
+/**
+ * 主会话是一条跨很多天的对话，换了一天就在这一行上面放一条日期。返回每一行上面要不要放，以及放哪一天的时刻。
+ * 第一行只有不是今天时才放：今天刚开始的对话不用顶着一条「今天」。读不出时间的行不放，也不打断前后的比较。
+ */
+function dayBreaks(rows: LayoutRow[], now = Date.now()): number[] {
+  const out: number[] = [];
+  let prev = "";
+  for (const row of rows) {
+    const at = rowTime(row);
+    const key = dayKey(at);
+    if (!key) {
+      out.push(0);
+      continue;
+    }
+    out.push(key !== (prev || dayKey(now)) ? at : 0);
+    prev = key;
+  }
+  return out;
+}
+
+/** 这一行是外部 agent 写回来的回报时，返回它是谁。yoyo 自己做的、路由说的话和任务组卡片都返回 null。 */
+function workerOf(row: LayoutRow): { agent: string; name: string } | null {
+  if (row.kind !== "agent" || row.parts.length !== 1) return null;
+  const part = row.parts[0];
+  if (part.kind !== "item" || part.item.type !== "assistant") return null;
+  const kind = part.item.payload?.kind;
+  if (kind !== "status" && kind !== "handoff") return null;
+  const agent = String(part.item.payload?.agent || "");
+  if (!agent) return null;
+  return { agent, name: String(part.item.payload?.agentName || agent) };
+}
+
 /**
  * 第一行不加顶距。紧凑时用户行 pt-4、其余 pt-2。普通时用户行 pt-10，用户后面的 agent 行 pt-4，连续 agent 行 pt-5；
  * 任务组卡片紧跟在 agent 行后面时 pt-2。rows 按下标读取。i 减去 1，用作下标。compact 为真时才继续。
@@ -196,10 +244,14 @@ export function Transcript(props: {
   onJumpLatest?: () => void | Promise<void>;
   onRestoreFiles?: (from: string) => void | Promise<void>;
   onForkFrom?: (from: string) => void | Promise<void>;
+  /** main 是那条常驻的主会话：内容收成一列阅读宽度，换了一天放一条日期，检查点写成人话。 */
+  main?: boolean;
 }) {
+  const copy = useCopy();
   const linkFiles = props.linkFiles ?? !!props.workspace;
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
+  const main = !!props.main && !props.compact;
   const policy = useMemo(
     () => presentationPolicyFor(coerceTranscriptView(props.transcriptView), coerceCollapseTiming(props.collapseTiming)),
     [props.transcriptView, props.collapseTiming],
@@ -220,9 +272,31 @@ export function Transcript(props: {
   }, [visible]);
   const retryKey = lastErrorKey(visible);
   const pinnedTurn = lastAgentKey(layout);
+  const breaks = useMemo(() => (main ? dayBreaks(layout) : []), [main, layout]);
+  const dayWords = { today: copy.transcript.dayToday, yesterday: copy.transcript.dayYesterday };
 
   const rows: TranscriptRow[] = [
-    ...layout.map((row, i) => {
+    ...layout.flatMap((row, i): TranscriptRow[] => {
+      const body = layoutRow(row, i);
+      if (!breaks[i]) return [body];
+      const label = dayLabel(breaks[i], dayWords, dateLocale());
+      // 日期下面的第一行不再留整轮的顶距，日期自己已经把两天隔开了。
+      return [
+        { key: `day:${row.key}`, kind: "day", space: i === 0 ? "pt-0" : "pt-8", estimate: 28, render: () => <DayRow label={label} /> },
+        { ...body, space: "pt-4" },
+      ];
+    }),
+    ...props.approvals.filter((a) => a.action !== "ask_user").map((a) => ({
+      key: `ask:${a.id}`,
+      kind: "ask" as const,
+      space: "pt-4",
+      estimate: 160,
+      render: () => <ApprovalCard item={a} onResolve={props.onResolve} />,
+    })),
+  ];
+
+  /** 把一条版式行收成虚拟列表里的一行。 */
+  function layoutRow(row: LayoutRow, i: number): TranscriptRow {
       if (row.kind === "user") {
         return {
           key: row.key,
@@ -248,6 +322,7 @@ export function Transcript(props: {
         const last = row.key === pinnedTurn;
         const lastProcessAt = lastProcessIndex(row.parts);
         const hasStream = row.parts.some((p) => p.kind === "stream");
+        const worker = workerOf(row);
         return {
           key: row.key,
           kind: "agent" as const,
@@ -258,6 +333,8 @@ export function Transcript(props: {
             <article className={cn("assistant-letter group/turn flex min-w-0 gap-2.5", props.compact && "gap-2")} data-testid="agent-turn">
               {isGroupCardRow(row) ? (
                 <span className={cn("shrink-0", props.compact ? "w-8" : "w-9")} aria-hidden />
+              ) : worker ? (
+                <WorkerStamp agent={worker.agent} name={worker.name} compact={props.compact} />
               ) : (
                 <PresenceStamp size={props.compact ? 32 : 36} live={liveHere || (props.running && last)} className="mt-0.5 shrink-0" />
               )}
@@ -282,6 +359,7 @@ export function Transcript(props: {
                       streamingKey={streamingKey}
                       workspace={props.workspace}
                       onOpenReview={props.onOpenReview}
+                      main={main}
                     />
                   ) : part.kind === "process" ? (
                     <ProcessGroup
@@ -316,6 +394,7 @@ export function Transcript(props: {
                       item={part.item}
                       streaming={false}
                       rich={part.item.type === "assistant" && !props.running}
+                      main={main}
                     />
                   )}
                 </div>
@@ -345,19 +424,12 @@ export function Transcript(props: {
         render: () => (
           <ItemRow
             item={row.item}
+            main={main}
             onRetry={row.item.key === retryKey ? props.onRetry : undefined}
           />
         ),
       };
-    }),
-    ...props.approvals.filter((a) => a.action !== "ask_user").map((a) => ({
-      key: `ask:${a.id}`,
-      kind: "ask" as const,
-      space: "pt-4",
-      estimate: 160,
-      render: () => <ApprovalCard item={a} onResolve={props.onResolve} />,
-    })),
-  ];
+  }
   return (
     <FileActions.Provider value={{ workspace: props.workspace, linkFiles, reveal: props.onRevealPath, openBrowser: (path) => { void openFilePreview(props.workspace || "", path); } }}>
     <div
@@ -366,7 +438,9 @@ export function Transcript(props: {
     >
       {empty && !props.compact ? (
         <div className={cn(col, "transcript-scroll flex min-h-full flex-col justify-end overflow-y-auto pb-8 pt-10")}>
-          <EmptyTurn workspace={props.workspace} onPrompt={props.onPrompt} />
+          <div className={main ? THREAD_READ : "w-full min-w-0"}>
+            <EmptyTurn workspace={props.workspace} onPrompt={props.onPrompt} />
+          </div>
         </div>
       ) : visible.length === 0 && props.approvals.length === 0 && props.compact ? (
         <CompactCopilotEmpty className={col} />
@@ -374,6 +448,7 @@ export function Transcript(props: {
         <TranscriptLane
           className={cn(col, props.compact ? "min-h-0 flex-1 py-2" : "min-h-0 flex-1 pb-4 pt-5")}
           compact={props.compact}
+          read={main}
           rows={rows}
           older={!!props.older}
           loadingOlder={!!props.loadingOlder}
@@ -482,6 +557,7 @@ function TurnWork({
   workspace,
   onOpenReview,
   streamingKey,
+  main,
 }: {
   part: Extract<AgentPart, { kind: "work" }>;
   running: boolean;
@@ -491,6 +567,8 @@ function TurnWork({
   workspace?: string;
   onOpenReview?: (path?: string) => void;
   streamingKey: string;
+  /** main 传给里面的条目，主会话里的检查点写成一句人话。 */
+  main?: boolean;
 }) {
   const inner = part.parts;
   const lastProcessAt = lastProcessIndex(inner);
@@ -538,7 +616,7 @@ function TurnWork({
           ) : p.kind === "stream" ? (
             <ItemRow item={p.item} streaming={!!p.item.delta || !!p.item.payload?.streaming} rich={false} />
           ) : p.kind === "item" ? (
-            <ItemRow item={p.item} streaming={false} rich={p.item.type === "assistant" && !running} />
+            <ItemRow item={p.item} streaming={false} rich={p.item.type === "assistant" && !running} main={main} />
           ) : null}
         </div>
       ))}
@@ -690,7 +768,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
 /** 虚拟列表里的一行：估算高度和怎么画。 */
 type TranscriptRow = {
   key: string;
-  kind?: "user" | "agent" | "solo" | "ask" | "working";
+  kind?: "user" | "agent" | "solo" | "ask" | "working" | "day";
   turnKey?: string;
   space?: string;
   estimate: number;
@@ -722,6 +800,7 @@ function agentEstimate(copyText: string): number {
 function TranscriptLane({
   className,
   compact,
+  read,
   rows,
   older,
   loadingOlder,
@@ -736,6 +815,8 @@ function TranscriptLane({
 }: {
   className?: string;
   compact?: boolean;
+  /** read 为真时把内容收成一列阅读宽度并居中。滚动容器不变，滚动条照旧贴着窗格边缘。 */
+  read?: boolean;
   rows: TranscriptRow[];
   older: boolean;
   loadingOlder: boolean;
@@ -957,14 +1038,14 @@ function TranscriptLane({
         {older ? (
           <button
             type="button"
-            className="mb-3 w-full rounded-md py-1.5 text-center text-ui-footnote text-muted hover:bg-lift hover:text-foreground"
+            className={cn("mb-3 block rounded-md py-1.5 text-center text-ui-footnote text-muted hover:bg-lift hover:text-foreground", read ? THREAD_READ : "w-full")}
             disabled={loadingOlder}
             onClick={() => { void onLoadOlder?.(); }}
           >
             {copy.transcript.loadEarlier}
           </button>
         ) : null}
-        <div ref={listRef} className="relative w-full shrink-0 overflow-hidden bg-background" style={{ height: virtualizer.getTotalSize() }}>
+        <div ref={listRef} className={cn("relative shrink-0 overflow-hidden bg-background", read ? THREAD_READ : "w-full")} style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((v) => {
             const row = rows[v.index];
             if (!row) return null;
@@ -1316,8 +1397,37 @@ function UserMsgActions({
   );
 }
 
-/** 优先用 note，否则拼保留、省略、补回的数量。都没有时用压缩文案。item 读取 payload、text。 */
-function CompactRow({ item }: { item: Item }) {
+/** DayRow 是主会话里换了一天时的那条日期：居中的小字，两边各一条细线。 */
+function DayRow({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 text-ui-caption text-muted" role="separator" aria-label={label} data-testid="day-divider">
+      <span className="h-px flex-1 bg-border/60" aria-hidden />
+      <span className="shrink-0 tabular-nums">{label}</span>
+      <span className="h-px flex-1 bg-border/60" aria-hidden />
+    </div>
+  );
+}
+
+/** WorkerStamp 是外部 agent 回报那一行的头像位：它自己的字形放在一枚浅底圆里，和 yoyo 的脸一样大。回报是它写的，不借 yoyo 的脸。 */
+function WorkerStamp({ agent, name, compact }: { agent: string; name: string; compact?: boolean }) {
+  const v = useBuddy((s) => s.list.find((x) => x.id === agent));
+  return (
+    <span
+      className={cn("mt-0.5 grid shrink-0 place-items-center rounded-full bg-lift text-foreground/80", compact ? "size-8" : "size-9")}
+      title={v?.name || name}
+      aria-hidden
+      data-testid="worker-stamp"
+    >
+      <BuddyMark v={v ?? { name }} className="size-4 border-0 text-ui-footnote" />
+    </span>
+  );
+}
+
+/**
+ * 优先用 note，否则拼保留、省略、补回的数量。都没有时用压缩文案。item 读取 payload、text。
+ * main 为真时是主会话：只说一句人话，原来那行计数留在悬停提示里，要细看去审阅里的上下文。
+ */
+function CompactRow({ item, main }: { item: Item; main?: boolean }) {
   const copy = useCopy();
   const p = item.payload || {};
   const note = String(p.note || item.text || "");
@@ -1331,6 +1441,13 @@ function CompactRow({ item }: { item: Item }) {
     hydrated ? copy.transcript.checkpointHydrated.replace("{n}", String(hydrated)) : "",
   ].filter(Boolean);
   const label = note || bits.join(" · ") || copy.app.compacted;
+  if (main) {
+    return (
+      <p className="py-1 text-center text-ui-caption leading-[1.4] text-muted" title={label} data-testid="compact-row">
+        {copy.transcript.tidied}
+      </p>
+    );
+  }
   return (
     <div className="flex justify-center py-1" data-testid="compact-row">
       <div className="max-w-[36rem] rounded-full border border-border/50 bg-lift/40 px-3 py-1 text-center text-ui-caption leading-[1.4] text-muted">
@@ -1452,6 +1569,7 @@ const ItemRow = memo(function ItemRow({
   onFork,
   rich,
   onRetry,
+  main,
 }: {
   item: Item;
   streaming?: boolean;
@@ -1462,6 +1580,8 @@ const ItemRow = memo(function ItemRow({
   onFork?: (from: string) => void | Promise<void>;
   rich?: boolean;
   onRetry?: () => void;
+  /** main 为真时这一行在主会话里，检查点写成一句人话。 */
+  main?: boolean;
 }) {
   const copy = useCopy();
   const fileActions = useContext(FileActions);
@@ -1560,7 +1680,7 @@ const ItemRow = memo(function ItemRow({
   if (shown.type === "compaction") {
     const kind = String(shown.payload?.kind || "");
     if (kind === "checkpoint_start") return null;
-    return <CompactRow item={shown} />;
+    return <CompactRow item={shown} main={main} />;
   }
   if (shown.type === "tool_call" || shown.type === "tool_result") {
     return <ToolLine item={shown} />;
@@ -1673,6 +1793,9 @@ function ArtifactCard({
     if (codeChange || pending) return;
     if (artifactPreviewOpen(view) || !!view.diff) setOpen(true);
   }, [codeChange, pending, view.kind, view.path, view.html, view.diff]);
+  if (isLearnQuizItem(call) || isLearnQuizItem(result)) {
+    return <LearnQuizCard call={call} result={result} />;
+  }
   if (isPageReviewItem(call) || isPageReviewItem(result)) {
     return <PageReviewCard item={call} result={result} />;
   }

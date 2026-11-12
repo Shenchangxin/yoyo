@@ -38,11 +38,13 @@ import (
 )
 
 // ToolResult 是一次工具调用的返回。Content 是给模型的文本，Err 非空表示失败，FileChange 记录改过的文件，Parts 是多模态片段。
+// Halt 为真时这批工具结束后本轮就停，模型不再接着说。学习出题用它把回合交还给学习者。
 type ToolResult struct {
 	Content    string
 	Err        error
 	FileChange *FileChange
 	Parts      []ContentPart
+	Halt       bool
 }
 
 // FileChange 记录这次写入涉及的路径、统一 diff、增删行数，以及是否新建。
@@ -386,7 +388,12 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	}
 	if t != nil && t.Extra != nil {
 		if extra, ok := t.Extra[name]; ok {
-			return extra.Call(argsJSON)
+			res := extra.Call(argsJSON)
+			if res.Halt {
+				// 评测循环看 HaltAfter，桌面的 dsh 循环看结果上的 Halt。两边都要收轮。
+				t.HaltAfter = true
+			}
+			return res
 		}
 	}
 	return ToolResult{Err: fmt.Errorf("unknown tool %s", name)}

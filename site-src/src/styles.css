@@ -19,7 +19,9 @@
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
     "Noto Sans JP", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+  /* CJK names come before the generic family, or Windows draws Chinese labels in SimSun. */
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Noto Sans JP",
+    "Microsoft YaHei", monospace;
   color-scheme: light;
 }
 

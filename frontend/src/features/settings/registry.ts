@@ -24,19 +24,29 @@ export type SettingsSectionDef = {
   keywords?: string;
 };
 
-/** SETTINGS_GROUPS 是设置分组的顺序。 */
-export const SETTINGS_GROUPS: readonly GroupKey[] = ["app", "agent", "link", "system"];
+/** SETTINGS_GROUPS 是设置分组的顺序：偏好、能力、助手、连接、系统。 */
+export const SETTINGS_GROUPS: readonly GroupKey[] = ["app", "model", "agent", "link", "system"];
 
-/** SETTINGS_TABS 是现行页签：八页进侧栏，偶像页从偶像模块打开。 */
+/**
+ * SETTINGS_TABS 是现行页签：十四页进侧栏，一页只管一件事；偶像页从偶像模块打开。
+ * 偏好是这个应用自己的样子，能力是它能调用的模型和生成服务，助手是它怎么主动、怎么自己跑、哪些要先问，
+ * 连接是它够得着的应用、消息、工具和手机，系统是诊断和版本。
+ */
 export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "general", group: "app", icon: "sliders" },
   { key: "appearance", group: "app", icon: "palette" },
-  { key: "proactive", group: "app", icon: "bell" },
-  { key: "provider", group: "agent", icon: "cpu" },
-  { key: "generation", group: "agent", icon: "film" },
+  { key: "shortcuts", group: "app", icon: "keyboard" },
+  { key: "provider", group: "model", icon: "cpu" },
+  { key: "generation", group: "model", icon: "film" },
+  { key: "proactive", group: "agent", icon: "bell" },
+  { key: "personal", group: "agent", icon: "repeat" },
   { key: "policy", group: "agent", icon: "shield" },
-  { key: "connectors", group: "link", icon: "link" },
+  { key: "connectors", group: "link", icon: "blocks" },
+  { key: "messaging", group: "link", icon: "message" },
+  { key: "extensions", group: "link", icon: "plug" },
+  { key: "handheld", group: "link", icon: "phone" },
   { key: "advanced", group: "system", icon: "wrench" },
+  { key: "about", group: "system", icon: "info" },
   { key: "idol", group: "app", icon: "heart", hidden: true },
 ];
 
@@ -45,7 +55,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "general-workspace", tab: "general", titleKey: "generalWorkspace", keywords: "workspace folder directory" },
   { id: "general-desktop", tab: "general", titleKey: "generalDesktop", keywords: "tray login always on top window startup companion 托盘 开机 置顶" },
   { id: "general-language", tab: "general", titleKey: "generalLanguage", keywords: "language locale english chinese 语言 中文 英文" },
-  { id: "shortcuts-map", tab: "general", titleKey: "shortcutsMap", keywords: "keymap hotkey binding shortcuts" },
+  { id: "shortcuts-map", tab: "shortcuts", titleKey: "shortcutsMap", keywords: "keymap hotkey binding shortcuts 快捷键 键位" },
   { id: "appearance-theme", tab: "appearance", titleKey: "appearanceTheme", keywords: "theme dark light color mode palette paper mist ink dim slate neutral 色板 深色 浅色" },
   { id: "appearance-skins", tab: "appearance", titleKey: "appearanceSkins", keywords: "wallpaper background picture image veil" },
   { id: "appearance-display", tab: "appearance", titleKey: "appearanceDisplay", keywords: "scale zoom thinking reasoning work details compact detailed 界面尺寸 思考 工作细节" },
@@ -53,14 +63,15 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "proactive-level", tab: "proactive", titleKey: "proactiveLevel", keywords: "proactive quiet hours weekend mute hold 主动 安静 周末 按住" },
   { id: "proactive-notify", tab: "proactive", titleKey: "proactiveNotify", keywords: "notifications toast system 通知" },
   { id: "proactive-intake", tab: "proactive", titleKey: "proactiveIntake", keywords: "intake admission auto observe off orchestrator 自动接单 观察" },
-  { id: "personal-jobs", tab: "proactive", titleKey: "personalJobs", keywords: "automation schedule cron job heartbeat webhook 定时" },
-  { id: "personal-goals", tab: "proactive", titleKey: "personalGoals", keywords: "goal milestone plan 目标" },
-  { id: "personal-watch", tab: "proactive", titleKey: "personalWatch", keywords: "monitor watch page diff price 盯梢 监视" },
-  { id: "personal-ideas", tab: "proactive", titleKey: "personalIdeas", keywords: "ideas mail form meet goal 想法" },
-  { id: "personal-work", tab: "proactive", titleKey: "personalWork", keywords: "task document proposal lease 事务" },
-  { id: "personal-proposals", tab: "proactive", titleKey: "personalProposals", keywords: "proposal send approval hash 发送审阅" },
+  { id: "personal-jobs", tab: "personal", titleKey: "personalJobs", keywords: "automation schedule cron job heartbeat webhook routine 定时 自动化 例行" },
+  { id: "personal-goals", tab: "personal", titleKey: "personalGoals", keywords: "goal milestone plan 目标" },
+  { id: "personal-watch", tab: "personal", titleKey: "personalWatch", keywords: "monitor watch page diff price 盯梢 监视" },
+  { id: "personal-ideas", tab: "personal", titleKey: "personalIdeas", keywords: "ideas mail form meet goal 想法" },
+  { id: "personal-work", tab: "personal", titleKey: "personalWork", keywords: "task document proposal lease 事务" },
+  { id: "personal-proposals", tab: "personal", titleKey: "personalProposals", keywords: "proposal send approval hash 发送审阅" },
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },
   { id: "provider-models", tab: "provider", titleKey: "providerModels", keywords: "model catalog context window" },
+  { id: "policy-budget", tab: "provider", titleKey: "policyBudget", keywords: "budget usd cost mtok spend cap 预算 花费 上限" },
   { id: "generation-studio", tab: "generation", titleKey: "generationStudio", keywords: "workshop language ffmpeg drama studio shorts 短片 remotion aspect publish 画幅 平台" },
   { id: "generation-canvas", tab: "generation", titleKey: "generationCanvas", keywords: "canvas protocol plugin channel kling veo seedream" },
   { id: "generation-image", tab: "generation", titleKey: "generationImage", keywords: "image still seedream gemini openai gpt-image qwen jimeng kolors cogview hunyuan 即梦 万相 可图" },
@@ -73,20 +84,19 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "generation-storage", tab: "generation", titleKey: "generationStorage", keywords: "s3 oss cas bucket object storage 阿里云 腾讯云 cos" },
   { id: "generation-search", tab: "generation", titleKey: "generationSearch", keywords: "search web duckduckgo bocha metaso jina exa 秘塔 搜索" },
   { id: "generation-workflow", tab: "generation", titleKey: "generationWorkflow", keywords: "runninghub workflow comfy" },
-  { id: "policy-gate", tab: "policy", titleKey: "policyGate", keywords: "approval gate shell auto allow" },
-  { id: "policy-budget", tab: "policy", titleKey: "policyBudget", keywords: "budget usd cost mtok" },
+  { id: "policy-gate", tab: "policy", titleKey: "policyGate", keywords: "approval gate shell auto allow 审批 权限" },
   { id: "policy-isolation", tab: "policy", titleKey: "policyIsolation", keywords: "isolation sandbox vault signature pwsh powershell 7 runtime sidecar shell 命令行" },
   { id: "policy-data", tab: "policy", titleKey: "policyData", keywords: "data memory export privacy 数据 记忆 导出 隐私" },
   { id: "extensions-work", tab: "connectors", titleKey: "extensionsWorkSources", keywords: "github feishu source token work 来源 飞书" },
   { id: "extensions-connectors", tab: "connectors", titleKey: "connectorsDirectory", keywords: "connector oauth gmail notion slack github 连接应用 邮件 日历" },
-  { id: "messaging-policy", tab: "connectors", titleKey: "messagingPolicy", keywords: "im bot telegram qq discord slack wechat lark dingtalk line whatsapp wake mention 消息 机器人 唤醒" },
-  { id: "messaging-accounts", tab: "connectors", titleKey: "messagingAccounts", keywords: "im account bot token webhook 账号 令牌 回调" },
-  { id: "extensions-mcp", tab: "connectors", titleKey: "extensionsMcp", keywords: "mcp server stdio http json" },
-  { id: "advanced-handheld", tab: "connectors", titleKey: "advancedHandheld", keywords: "phone handheld qr pair remote mobile android ios harmony 手机 配对 扫码" },
-  { id: "advanced-updates", tab: "advanced", titleKey: "advancedUpdates", keywords: "update version release ota modelscope" },
+  { id: "messaging-accounts", tab: "messaging", titleKey: "messagingAccounts", keywords: "im account bot token webhook 账号 令牌 回调" },
+  { id: "messaging-policy", tab: "messaging", titleKey: "messagingPolicy", keywords: "im bot telegram qq discord slack wechat lark dingtalk line whatsapp wake mention 消息 机器人 唤醒" },
+  { id: "extensions-mcp", tab: "extensions", titleKey: "extensionsMcp", keywords: "mcp server stdio http json tools 工具" },
+  { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm 插件" },
+  { id: "advanced-handheld", tab: "handheld", titleKey: "advancedHandheld", keywords: "phone handheld qr pair remote mobile android ios harmony 手机 配对 扫码" },
   { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs diagnostics debug support journal audit chain doctor health 日志 审计 本机检查" },
-  { id: "extensions-fibers", tab: "advanced", titleKey: "extensionsFibers", keywords: "plugin fiber wasm" },
   { id: "advanced-labs", tab: "advanced", titleKey: "advancedLabs", keywords: "laboratory lab harness sealed bon hash verbose collapse 实验室" },
+  { id: "advanced-updates", tab: "about", titleKey: "advancedUpdates", keywords: "update version release ota modelscope about 更新 版本 关于" },
   { id: "idol-services", tab: "idol", titleKey: "idolServices", keywords: "idol llm asr tts image voice chat speech 偶像 语音 模型 音色 对话" },
   { id: "idol-you", tab: "idol", titleKey: "idolYou", keywords: "address birthday timezone name 称呼 生日" },
   { id: "idol-work", tab: "idol", titleKey: "idolWork", keywords: "agent profile tools work 动手 工作" },
@@ -94,19 +104,16 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
 
 /** 现行分组之前就存在的页签。深链和菜单仍使用它们。 */
 const LEGACY_TABS: Readonly<Record<string, { tab: SettingsTab; section: string }>> = {
-  shortcuts: { tab: "general", section: "shortcuts-map" },
   isolation: { tab: "policy", section: "policy-isolation" },
-  extensions: { tab: "connectors", section: "extensions-mcp" },
-  messaging: { tab: "connectors", section: "messaging-policy" },
-  personal: { tab: "proactive", section: "personal-jobs" },
   memory: { tab: "policy", section: "policy-data" },
-  automations: { tab: "proactive", section: "personal-jobs" },
+  automations: { tab: "personal", section: "personal-jobs" },
   notifications: { tab: "proactive", section: "proactive-notify" },
-  mcp: { tab: "connectors", section: "extensions-mcp" },
-  plugins: { tab: "advanced", section: "extensions-fibers" },
-  updates: { tab: "advanced", section: "advanced-updates" },
+  mcp: { tab: "extensions", section: "extensions-mcp" },
+  plugins: { tab: "extensions", section: "extensions-fibers" },
+  phone: { tab: "handheld", section: "advanced-handheld" },
+  updates: { tab: "about", section: "advanced-updates" },
   logs: { tab: "advanced", section: "advanced-logs" },
-  danger: { tab: "advanced", section: "advanced-updates" },
+  danger: { tab: "about", section: "advanced-updates" },
 };
 
 const LEGACY_SECTIONS: Readonly<Record<string, string>> = {

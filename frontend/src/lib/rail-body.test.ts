@@ -23,8 +23,13 @@ describe("railBody", () => {
     assert.equal(railBody("idol"), "idol");
   });
 
-  /** Buddy 栏目用自己的 agent 列表，不回落到会话列表。 */
-  it("gives buddy its agent list", () => {
-    assert.equal(railBody("buddy"), "buddy");
+  /**
+   * Buddy 不再是一个表面，也没有自己的侧栏：它在会话的今天栏里，和今天、任务、记忆并排。
+   * 所以七个表面各有各的侧栏，里面没有 buddy 这一种。
+   */
+  it("has no sidebar of its own for buddy", () => {
+    const bodies = (["agent", "video", "settings", "pages", "skills", "harness", "idol"] as const).map((surface) => railBody(surface));
+    assert.deepEqual(bodies, ["home", "video", "settings", "learn", "skills", "harness", "idol"]);
+    assert.equal(bodies.includes("buddy" as never), false);
   });
 });

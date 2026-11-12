@@ -22,7 +22,7 @@ const remoteMethods = <RemoteMethod>[
   RemoteMethod('buddy.add', 'Buddy', true, false, ['args', 'command', 'env', 'name']),
   RemoteMethod('buddy.cache.clear', 'Buddy', false, true, []),
   RemoteMethod('buddy.cancel', 'Buddy', false, false, ['id']),
-  RemoteMethod('buddy.configure', 'Buddy', true, false, ['approval', 'args', 'enabled', 'env', 'id', 'maxParallel', 'mode', 'model', 'reuse', 'secrets', 'strengths']),
+  RemoteMethod('buddy.configure', 'Buddy', true, false, ['approval', 'args', 'enabled', 'env', 'hostCli', 'id', 'maxParallel', 'mode', 'model', 'reuse', 'secrets', 'strengths']),
   RemoteMethod('buddy.disk.get', 'Buddy', false, false, []),
   RemoteMethod('buddy.get', 'Buddy', false, false, ['id']),
   RemoteMethod('buddy.install', 'Buddy', false, true, ['id', 'mode']),

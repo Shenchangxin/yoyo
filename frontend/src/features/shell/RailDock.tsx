@@ -1,16 +1,14 @@
 /**
- * 拥有：侧栏底部的玻璃图标菜单。底板颜色读主题令牌，字色跟前景。会话入口上的数字只数「需要你」；
- * Buddy 入口上的数字数要处理的 agent，有 agent 在干活时右下角亮一个点（读 Buddy 仓库）。
+ * 拥有：侧栏底部的玻璃图标菜单。底板颜色读主题令牌，字色跟前景。会话入口上的数字只数「需要你」。
+ * Buddy 不在这里：它在会话的今天栏里，和今天、任务、记忆并排，要处理的 agent 数挂在那个页签上。
  * 不拥有：切到哪一面。点下去只调用外面传入的回调。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { BookOpen, Bot, Clapperboard, FileText, GitBranch, Heart, MessageSquare, Settings } from "lucide-react";
+import { BookOpen, Clapperboard, FileText, GitBranch, Heart, MessageSquare, Settings } from "lucide-react";
 import GlassIcons from "./GlassIcons";
 import { useTheme } from "../../lib/theme";
 import type { Copy } from "../../lib/copy";
 import type { Surface } from "../../lib/protocol";
-import { anyWorking, attentionCount, fill } from "../buddy/buddy-model";
-import { useBuddy } from "../buddy/buddy-store";
 
 const FALLBACK = {
   light: {
@@ -58,7 +56,7 @@ function useDockTokens() {
   return { light, tokens };
 }
 
-const DOCK_COUNT = 8;
+const DOCK_COUNT = 7;
 const DOCK_MAX = 44;
 const DOCK_MIN = 18;
 /** 间距大约是图标边长的这个比例，宽栏时图标到顶后间距继续拉开。 */
@@ -99,15 +97,13 @@ function useDockSize(rowRef: { current: HTMLDivElement | null }) {
   return size;
 }
 
-/** RailDock 画出侧栏底部的八个入口。当前面加一圈强调色，Harness 有未提交改动时右上角加一点，会话入口带「需要你」的数字，
- *  Buddy 入口带要处理的 agent 数。 */
+/** RailDock 画出侧栏底部的七个入口。当前面加一圈强调色，Harness 有未提交改动时右上角加一点，会话入口带「需要你」的数字。 */
 export function RailDock(props: {
   copy: Copy;
   surface: Surface;
   mark?: boolean;
   needs?: number;
   onChats: () => void;
-  onBuddy: () => void;
   onSkills: () => void;
   onVideo: () => void;
   onPages: () => void;
@@ -125,11 +121,8 @@ export function RailDock(props: {
   });
   const label = props.copy.rail;
   const needs = props.needs || 0;
-  const buddyNeeds = useBuddy((s) => attentionCount(s.list));
-  const buddyLive = useBuddy((s) => anyWorking(s.list));
   const items = [
     { id: "sessions", icon: <MessageSquare />, color: tokens.accent, label: label.sessions, onClick: props.onChats, current: props.surface === "agent", badge: needs, badgeLabel: label.needsBadge.replace("{n}", String(needs)) },
-    { id: "buddy", icon: <Bot />, color: tokens.success, label: label.buddy, onClick: props.onBuddy, current: props.surface === "buddy", badge: buddyNeeds, badgeLabel: fill(label.buddyBadge, { n: buddyNeeds }), className: buddyLive ? "has-live" : "" },
     { id: "skills", icon: <BookOpen />, color: tokens.mark, label: label.skills, onClick: props.onSkills, current: props.surface === "skills" },
     { id: "video", icon: <Clapperboard />, color: tokens.warning, label: label.video, onClick: props.onVideo, current: props.surface === "video" },
     { id: "pages", icon: <FileText />, color: tokens.muted, label: label.pages, onClick: props.onPages, current: props.surface === "pages" },
