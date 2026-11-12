@@ -83,6 +83,11 @@ func (m *Manager) launchFor(e Entry, item ItemConfig, d detection) (acp.Launch, 
 	default:
 		return acp.Launch{}, nil, ErrNotInstalled
 	}
+	// 适配器能改用外部 CLI、本机又装着一个时，把它的路径交给适配器：用的是人已经装好的那一个。
+	// 文件不在了就不交，适配器退回自带的；人在环境变量里自己写了同名变量时，下面会用人写的盖掉。
+	if !e.Custom && e.CLIEnv != "" && d.CLIPath != "" && !item.NoHostCLI && fileExists(d.CLIPath) {
+		extraEnv[e.CLIEnv] = d.CLIPath
+	}
 	l.Args = append(l.Args, item.Args...)
 	for k, v := range item.Env {
 		if !SecretLike(k) {

@@ -15,7 +15,7 @@ Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`)
 | `cas/objects` | Content-addressed blobs. |
 | `vault.json` / OS keychain | API keys. |
 | `personal/workspace.json` | Durable personal tasks, hashed proposals (with activity), ideas, goals, monitors, artifacts. Atomic temp+rename. |
-| `learn/learn.sqlite` | Learning system of record: notes, libraries, chunks, embeddings, paths, practice, journal, books. WAL. |
+| `learn/learn.sqlite` | Learning system of record: notes, libraries, chunks, embeddings, paths and their evidence, the question bank and its review log, reading positions and annotations, the journal, books. WAL. Schema changes are numbered migrations recorded in `schema_migrations`; see [learn.md](learn.md). |
 | `learn/raw/<sha256>` | Original imported bytes. Linked libraries keep the operator's files in place. |
 | `pages/{spaceId}/{pageId}.md` | Archive of notes imported once into `learn/learn.sqlite`. Later edits stay in the database. |
 | `pages/index.json` | Old rebuildable page tree. Not read after the one-shot import. |

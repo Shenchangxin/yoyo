@@ -1,5 +1,5 @@
 /**
- * 拥有：设置侧栏和轨道里的页签导航。
+ * 拥有：设置侧栏和轨道里的页签导航：搜索、分组、页签。
  * 不拥有：表单。只切换当前页签，不调用 api。
  */
 import { useMemo, useState } from "react";
@@ -7,16 +7,19 @@ import { motion } from "motion/react";
 import {
   Bell,
   Blocks,
-  Brain,
-  Link2,
-  MessageCircle,
+  Clapperboard,
   Cpu,
+  Heart,
+  Info,
+  Keyboard,
+  MessageCircle,
   Palette,
+  Plug,
+  Repeat,
   Search,
   Shield,
   SlidersHorizontal,
-  Clapperboard,
-  Heart,
+  Smartphone,
   Wrench,
   X,
 } from "lucide-react";
@@ -31,15 +34,18 @@ const ICONS = {
   bell: Bell,
   sliders: SlidersHorizontal,
   palette: Palette,
+  keyboard: Keyboard,
   cpu: Cpu,
   film: Clapperboard,
+  repeat: Repeat,
   heart: Heart,
   shield: Shield,
   blocks: Blocks,
-  link: Link2,
   message: MessageCircle,
-  brain: Brain,
+  plug: Plug,
+  phone: Smartphone,
   wrench: Wrench,
+  info: Info,
 } as const;
 
 /** 按名字取出页签图标。key 用作下标。 */
@@ -102,8 +108,8 @@ export function SettingsSidebar(props: {
               aria-current={on ? "page" : undefined}
               onClick={() => props.onTab(t.key)}
               className={cn(
-                "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-ui-body font-medium",
-                on ? "bg-lift text-foreground" : "text-muted",
+                "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-ui-body font-medium transition-colors",
+                on ? "bg-lift text-foreground" : "text-muted hover:text-foreground",
               )}
             >
               <Icon className="size-3.5" aria-hidden />
@@ -120,11 +126,11 @@ export function SettingsSidebar(props: {
     <nav
       className={cn(
         "flex h-full min-h-0 shrink-0 flex-col overflow-hidden",
-        rail ? "w-full" : "glass-chrome w-[228px]",
+        rail ? "w-full" : "glass-chrome w-[232px]",
       )}
       aria-label={copy.settings.title}
     >
-      <div className="px-3 pb-1.5 pt-3">
+      <div className="px-3 pb-2 pt-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
           <input
@@ -138,7 +144,7 @@ export function SettingsSidebar(props: {
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-            className="no-drag h-8 w-full rounded-md border border-border bg-background pl-8 pr-7 text-ui-body text-foreground placeholder:text-muted outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15 [&::-webkit-search-cancel-button]:hidden"
+            className="no-drag h-8 w-full rounded-lg border border-transparent bg-foreground/[0.055] pl-8 pr-7 text-ui-body text-foreground outline-none transition-[background-color,border-color,box-shadow] duration-[var(--duration-fast)] placeholder:text-muted hover:bg-foreground/[0.075] focus-visible:border-accent/45 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-accent/20 [&::-webkit-search-cancel-button]:hidden"
           />
           {query ? (
             <button
@@ -153,16 +159,16 @@ export function SettingsSidebar(props: {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-2.5 pb-4">
+      <div className="min-h-0 flex-1 overflow-auto px-2 pb-4">
         {q ? (
           results.length ? (
-            <ul className="pt-1.5">
+            <ul className="pt-1">
               {results.map((s) => (
                 <li key={s.id}>
                   <button
                     type="button"
                     onClick={() => props.onSection(s.tab, s.id)}
-                    className="flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-[7px] text-left transition-colors hover:bg-lift"
+                    className="flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-lift/70"
                   >
                     <span className="text-ui-body font-medium text-foreground">
                       {copy.settings.sections[s.titleKey]}
@@ -177,8 +183,8 @@ export function SettingsSidebar(props: {
           )
         ) : (
           SETTINGS_GROUPS.map((group) => (
-            <div key={group} className="pt-2.5 first:pt-1">
-              <div className="px-2.5 pb-1 text-ui-caption font-medium text-muted">
+            <div key={group} className="pt-4 first:pt-1">
+              <div className="px-2.5 pb-1 text-ui-caption font-medium text-muted/80">
                 {copy.settings.groups[group]}
               </div>
               {tabsInGroup(group).map((t) => (
@@ -199,13 +205,12 @@ export function SettingsSidebar(props: {
   );
 }
 
-/** 画一个页签按钮。props 读取 icon、active、compact、label、onClick。 */
+/** 画一个页签按钮：一枚线条图标加文字，选中时底下滑过来一块浅底。props 读取 icon、active、label、onClick。 */
 function TabButton(props: {
   tab: SettingsTab;
   icon: string;
   label: string;
   active: boolean;
-  compact?: boolean;
   onClick: () => void;
 }) {
   const Icon = iconFor(props.icon);
@@ -214,12 +219,10 @@ function TabButton(props: {
     <button
       type="button"
       aria-current={props.active ? "page" : undefined}
-      title={props.compact ? props.label : undefined}
       onClick={props.onClick}
       className={cn(
-        "relative flex w-full items-center gap-2.5 rounded-md text-left text-ui-body font-medium transition-colors",
-        props.compact ? "justify-center px-0 py-1.5" : "mb-px px-2 py-[5px]",
-        props.active ? "text-foreground" : "text-muted hover:text-foreground",
+        "group relative mb-px flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-ui-body transition-colors",
+        props.active ? "font-medium text-foreground" : "text-foreground/75 hover:bg-lift/60 hover:text-foreground",
       )}
     >
       {props.active ? (
@@ -229,19 +232,15 @@ function TabButton(props: {
           transition={motionTransition(reduced, DURATION)}
         />
       ) : null}
-      <span
+      <Icon
         className={cn(
-          "relative z-10 flex size-[22px] shrink-0 items-center justify-center rounded-sm transition-colors",
-          props.active ? "bg-accent text-accent-fg" : "bg-lift text-foreground/65",
+          "relative z-10 size-4 shrink-0 transition-colors",
+          props.active ? "text-foreground" : "text-muted group-hover:text-foreground",
         )}
-      >
-        <Icon className="size-[13px]" aria-hidden strokeWidth={2.1} />
-      </span>
-      {props.compact ? (
-        <span className="sr-only">{props.label}</span>
-      ) : (
-        <span className="relative z-10 truncate">{props.label}</span>
-      )}
+        aria-hidden
+        strokeWidth={1.75}
+      />
+      <span className="relative z-10 truncate">{props.label}</span>
     </button>
   );
 }

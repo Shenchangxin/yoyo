@@ -90,6 +90,10 @@ test("an agent that can't take tasks opens Buddy with what to do first instead o
   await expect(detail).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Claude Code" })).toBeVisible();
   await expect(page.getByTestId("buddy-login")).toBeVisible();
+  // Buddy 在今天栏里翻开，对话和正在写的那句话都还在。
+  await expect(page.getByTestId("work-tab-buddy")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("conversation-column")).toBeVisible();
+  await expect(box).toBeVisible();
 });
 
 test("two agents show the split hint once and the message carries both tokens", async ({ page }) => {

@@ -170,6 +170,9 @@ func isControlUser(text string) bool {
 	if strings.HasPrefix(s, hydratePrefix) {
 		return true
 	}
+	if strings.HasPrefix(s, hostNotePrefix) {
+		return true
+	}
 	return false
 }
 

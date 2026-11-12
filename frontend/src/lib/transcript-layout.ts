@@ -123,6 +123,8 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
   if (toolResultUnchanged(pair.result)) return false;
   const path = pairToolPath(pair);
   if (name === "cite_sources" || name === "review_page" || name === "browser_screenshot" || name === "browser_snapshot" || name === "browser_verify") return true;
+  // 出题的结果画成题卡，学习者在卡片上作答，所以它算产出，不进过程轨。
+  if (name === "learn_quiz") return !!pair.result;
   if (name.startsWith("office_")) return /\.(docx|xlsx|pptx|pdf)$/i.test(path);
   if (name === "write_file" || name === "create_file" || name === "str_replace" || name === "edit_file" || name === "apply_patch") {
     return !!pair.result && !isToolFailed(pair.result);

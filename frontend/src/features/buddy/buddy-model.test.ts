@@ -3,9 +3,12 @@ import { describe, it } from "node:test";
 import type { BuddyView } from "../../lib/client.ts";
 import { en } from "../../lib/copy.ts";
 import {
+  actionLabel,
   agentStateText,
   attentionCount,
   blockedHint,
+  foundOnHost,
+  hostNote,
   buddyMenu,
   buddyPrimary,
   buddySections,
@@ -96,6 +99,38 @@ describe("buddySections", () => {
     assert.deepEqual(s.needs.map((v) => v.id), ["broken", "gemini"]);
     assert.deepEqual(s.available.map((v) => v.id), ["claude", "slow"]);
     assert.deepEqual(s.more.map((v) => v.id), ["other", "zed-x"]);
+    assert.deepEqual(s.found, []);
+  });
+
+  /**
+   * 本机已经有它的东西、但还不能直接派的，单独一组：只有命令行缺适配器的、只装了桌面应用的。
+   * 厂商安装器放在 PATH 之外、已经能连的命令算装好了，不在这一组；正在装的、此系统不可用的也不在。
+   */
+  it("lists what is already on this computer in its own group", () => {
+    const cli = notInstalled("claude", { featured: true, order: 1, cliOnly: true, host: { kind: "cli", path: "/apps/claude", app: "Claude" } });
+    const onPath = notInstalled("codex", { featured: true, order: 2, cliOnly: true });
+    const app = notInstalled("cursor", { featured: true, order: 3, canManage: false, host: { kind: "app", path: "/apps/Cursor.app", app: "Cursor" } });
+    const offPath = view({ id: "opencode", order: 4, install: { kind: "system", source: "path", path: "/home/me/.opencode/bin/opencode" }, host: { kind: "acp", path: "/home/me/.opencode/bin/opencode" } });
+    const installing = notInstalled("gemini", { featured: true, order: 5, state: "installing", cliOnly: true });
+    const blocked = notInstalled("kiro", { state: "unsupported", canManage: false, host: { kind: "app", path: "/apps/Kiro.app", app: "Kiro" } });
+    const plain = notInstalled("qwen", { featured: true, order: 6 });
+    const s = buddySections([cli, onPath, app, offPath, installing, blocked, plain, yoyo]);
+    assert.deepEqual(s.found.map((v) => v.id), ["claude", "codex", "cursor"]);
+    assert.deepEqual(s.online.map((v) => v.id), ["yoyo", "opencode"]);
+    assert.deepEqual(s.available.map((v) => v.id), ["gemini", "qwen"]);
+    assert.deepEqual(s.more.map((v) => v.id), ["kiro"]);
+    for (const v of [offPath, installing, blocked, plain, yoyo]) assert.equal(foundOnHost(v), false, v.id);
+
+    // 状态句说清找到的是什么、还差什么；装适配器这一步叫「连接」，只有桌面应用的还是「安装」。
+    assert.equal(buddyStatusText(cli, c), fill(c.cliOnlyApp, { app: "Claude" }));
+    assert.equal(buddyStatusText(onPath, c), c.cliOnly);
+    assert.equal(buddyStatusText(app, c), fill(c.appOnly, { app: "Cursor", name: "cursor" }));
+    assert.equal(hostNote(app, c), buddyStatusText(app, c));
+    assert.equal(actionLabel("install", cli, c), c.action.connect);
+    assert.equal(actionLabel("install", onPath, c), c.action.connect);
+    assert.equal(actionLabel("install", app, c), c.action.install);
+    assert.equal(actionLabel("install", plain, c), c.action.install);
+    assert.equal(actionLabel("installSystem", app, c), c.action.installSystem);
   });
 
   /** 角标只数启用着却接不了任务的；在线个数把 yoyo 也算上。 */

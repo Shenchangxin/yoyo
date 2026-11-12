@@ -24,7 +24,7 @@ export function LearnRailNav() {
   const setLane = useUI((s) => s.setLearnLane);
   const labels: Record<LearnLane, string> = {
     today: L.today,
-    study: L.study,
+    study: L.mastery.title,
     library: L.library,
     practice: L.practice,
   };

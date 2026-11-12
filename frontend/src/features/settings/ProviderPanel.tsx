@@ -223,7 +223,8 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
     }
   }
 
-  const showPicker = picking || empty;
+  // 一家都没有时先出厂商表；挑了一家就要让位给编辑器，否则第一家永远填不进去。
+  const showPicker = picking || (empty && !draft);
 
   return (
     <>
@@ -240,24 +241,26 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
         >
           {rows.map((p) => {
             const open = draft?.id === p.id;
+            /** 点这一行：开着就收起，否则打开它的编辑器。 */
+            const toggle = () => {
+              if (open) closeEditor();
+              else openDraft(fromRow(p));
+            };
             return (
-              <div key={p.id} className={cn("-mx-1 rounded-lg px-1", open && "bg-lift/55")}>
-                <div className="flex items-center gap-3 py-2">
+              <div key={p.id}>
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     aria-expanded={open}
-                    onClick={() => {
-                      if (open) closeEditor();
-                      else openDraft(fromRow(p));
-                    }}
+                    onClick={toggle}
                   >
                     <ProviderMark id={p.vendor} className="size-8" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
-                        <span className="truncate text-ui-body font-medium leading-[1.4] text-foreground">{p.name || p.vendor}</span>
+                        <span className="truncate text-ui-body-l leading-[1.45] text-foreground">{p.name || p.vendor}</span>
                         {p.isDefault ? (
-                          <span className="shrink-0 rounded-full bg-background px-1.5 py-px text-ui-badge font-medium text-muted">
+                          <span className="shrink-0 rounded-full bg-lift px-1.5 py-px text-ui-badge font-medium text-muted">
                             {copy.settings.defaultBadge}
                           </span>
                         ) : null}
@@ -266,10 +269,6 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                         {[p.model, hostOf(p.endpoint)].filter(Boolean).join(" · ") || hostOf(p.endpoint) || "—"}
                       </span>
                     </span>
-                    <ChevronDown
-                      className={cn("size-4 shrink-0 text-muted/70 transition-transform duration-200", open ? "rotate-0" : "-rotate-90")}
-                      aria-hidden
-                    />
                   </button>
                   <div className="flex shrink-0 items-center gap-1">
                     {p.hasKey ? null : (
@@ -280,13 +279,17 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                     {p.isDefault ? null : (
                       <button
                         type="button"
-                        className="rounded-full px-2 py-0.5 text-ui-caption font-medium text-muted hover:bg-background hover:text-foreground"
+                        className="rounded-full px-2 py-0.5 text-ui-caption font-medium text-muted transition-colors hover:bg-lift hover:text-foreground"
                         onClick={() => void setDefault(p)}
                       >
                         {copy.settings.setDefault}
                       </button>
                     )}
                   </div>
+                  {/* 箭头排在最右，每一行都对齐；它只是这一行按钮的延伸，读屏不重复念。 */}
+                  <button type="button" tabIndex={-1} aria-hidden className="grid size-6 shrink-0 place-items-center rounded-md text-muted/70 transition-colors hover:text-foreground" onClick={toggle}>
+                    <ChevronDown className={cn("size-4 transition-transform duration-200", open ? "rotate-0" : "-rotate-90")} />
+                  </button>
                 </div>
               </div>
             );
@@ -302,13 +305,13 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
               title={copy.settings.pickVendor}
               description={copy.settings.providerTemplateHint}
             >
-              <div className="grid grid-cols-2 gap-1.5 py-2 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="-mx-1.5 grid grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-4">
                 {PROVIDER_PRESETS.map((p) => (
                   <button
                     type="button"
                     key={p.id}
                     onClick={() => openDraft(fromPreset(p.id, catalog, empty))}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-lift/70"
+                    className="flex items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-lift/70"
                   >
                     <ProviderMark id={p.id} className="size-8" />
                     <span className="min-w-0">
@@ -319,7 +322,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                 ))}
               </div>
               {empty ? null : (
-                <div className="flex justify-end pb-2">
+                <div className="flex justify-end">
                   <Button size="sm" variant="ghost" onClick={() => setPicking(false)}>
                     {copy.settings.backToList}
                   </Button>
@@ -443,7 +446,7 @@ function ProviderEditor({
       id="provider-edit"
       title={draft.id ? (draft.name || selected?.name || copy.settings.sections.providerAccount) : copy.settings.editorNew}
     >
-      {hint ? <p className="-mt-1 text-ui-footnote leading-[1.5] text-muted">{hint}</p> : null}
+      {hint ? <p className="text-ui-body leading-[1.5] text-muted">{hint}</p> : null}
 
       <Field label={copy.settings.providerName}>
         <Input className={CONTROL_LG} value={draft.name} onChange={(e) => patch({ name: e.target.value })} />
@@ -473,8 +476,8 @@ function ProviderEditor({
 
       <div className="flex flex-col gap-[var(--space-item)]">
         <div>
-          <div className="text-ui-body font-medium leading-[1.4] text-foreground">{copy.settings.modelsCsv}</div>
-          <p className="mt-1 text-ui-footnote leading-[1.45] text-muted">{copy.settings.composerModelsHint}</p>
+          <div className="text-ui-body-l leading-[1.45] text-foreground">{copy.settings.modelsCsv}</div>
+          <p className="mt-0.5 text-ui-body leading-[1.5] text-muted">{copy.settings.composerModelsHint}</p>
         </div>
         <ModelTokens
           models={draft.models}
@@ -501,7 +504,7 @@ function ProviderEditor({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 pb-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="ghost" onClick={onClose}>{copy.settings.backToList}</Button>
         <span className="flex-1" />
         {canDelete ? (
@@ -591,7 +594,7 @@ function AddModelRow({ onAdd }: { onAdd: (id: string) => void }) {
           }
         }}
       />
-      <Button size="sm" variant="lift" disabled={!value.trim()} onClick={commit}>
+      <Button variant="lift" className="shrink-0" disabled={!value.trim()} onClick={commit}>
         {copy.settings.addModel}
       </Button>
     </div>
@@ -708,10 +711,10 @@ function CatalogBrowse({
 /** 画一带说明的字段。label 用作标签，作为子节点渲染。hint 为真时才继续，作为子节点渲染。children 作为子节点渲染。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label className="flex w-full flex-col gap-[var(--space-item)] text-ui-body font-medium text-foreground">
+    <label className="flex w-full flex-col gap-[var(--space-item)] text-ui-body-l leading-[1.45] text-foreground">
       <span>
         {label}
-        {hint ? <span className="mt-0.5 block text-ui-footnote font-normal leading-[1.45] text-muted">{hint}</span> : null}
+        {hint ? <span className="mt-0.5 block text-ui-body leading-[1.5] text-muted">{hint}</span> : null}
       </span>
       {children}
     </label>

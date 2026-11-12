@@ -52,6 +52,8 @@ type ItemConfig struct {
 	Approval    string            `yaml:"approval,omitempty" json:"approval,omitempty"`
 	MaxParallel int               `yaml:"max_parallel,omitempty" json:"max_parallel,omitempty"`
 	Strengths   string            `yaml:"strengths,omitempty" json:"strengths,omitempty"`
+	// NoHostCLI 为真时不把本机已装的 CLI 交给适配器，用适配器自带的那一个。
+	NoHostCLI bool `yaml:"no_host_cli,omitempty" json:"no_host_cli,omitempty"`
 }
 
 // CustomAgent 是人手动加的 ACP agent：一条命令加参数。
@@ -138,6 +140,7 @@ type View struct {
 	CanManage     bool               `json:"canManage,omitempty"`
 	System        *SystemView        `json:"system,omitempty"`
 	CLIOnly       bool               `json:"cliOnly,omitempty"`
+	Host          *HostView          `json:"host,omitempty"`
 	State         State              `json:"state"`
 	Detail        string             `json:"detail,omitempty"`
 	CheckedAt     string             `json:"checkedAt,omitempty"`
@@ -162,6 +165,15 @@ type InstallView struct {
 type SystemView struct {
 	Path    string `json:"path"`
 	Version string `json:"version,omitempty"`
+}
+
+// HostView 说明这一项有东西是在 PATH 之外、这台电脑上的常见位置找到的。
+// Kind 为 acp 是能直接连的命令，已经当系统版用；cli 是只有 CLI、还缺适配器；app 是只装了桌面应用，要连还得另装命令行。
+// App 是它来自哪个应用，可能为空。Path 只是位置，不含任何凭证。
+type HostView struct {
+	Kind string `json:"kind"`
+	Path string `json:"path"`
+	App  string `json:"app,omitempty"`
 }
 
 // Progress 是安装进度。Phase 取 queued、node、download、extract、deps、verify、done。
@@ -208,6 +220,14 @@ type ConfigView struct {
 	Env         map[string]string `json:"env,omitempty"`
 	Strengths   string            `json:"strengths,omitempty"`
 	Secrets     []SecretView      `json:"secrets"`
+	HostCLI     *HostCLIView      `json:"hostCli,omitempty"`
+}
+
+// HostCLIView 是「用这台电脑上已装的 CLI」这一项。适配器支持改用外部 CLI、本机又找到了才有。
+// On 为真时启动适配器会把 Path 交给它；为假时用适配器自带的。
+type HostCLIView struct {
+	Path string `json:"path"`
+	On   bool   `json:"on"`
 }
 
 // ModelView 是一个可选模型。

@@ -100,7 +100,20 @@
 - [x] `internal/app/model_catalog.go`
 - [x] `internal/app/model_catalog_test.go`
 - [ ] `internal/app/learn_api.go`
+- [ ] `internal/app/learn_api_books.go`
+- [ ] `internal/app/learn_api_library.go`
+- [ ] `internal/app/learn_api_mastery.go`
+- [ ] `internal/app/learn_api_practice.go`
+- [ ] `internal/app/learn_books_test.go`
+- [ ] `internal/app/learn_library_test.go`
+- [ ] `internal/app/learn_llm.go`
+- [ ] `internal/app/learn_practice_test.go`
+- [ ] `internal/app/learn_prompt.go`
 - [ ] `internal/app/learn_tools.go`
+- [ ] `internal/app/learn_tools_books.go`
+- [ ] `internal/app/learn_tools_library.go`
+- [ ] `internal/app/learn_tools_practice.go`
+- [ ] `internal/app/learn_tutor_test.go`
 - [x] `internal/app/personal.go`
 - [x] `internal/app/personal_api.go`
 - [x] `internal/app/personal_os.go`
@@ -424,18 +437,49 @@
 
 ### `internal/learn`
 
+- [ ] `internal/learn/bank.go`
 - [ ] `internal/learn/book.go`
+- [ ] `internal/learn/book_blocks.go`
+- [ ] `internal/learn/book_create.go`
+- [ ] `internal/learn/book_payload.go`
+- [ ] `internal/learn/book_spine.go`
+- [ ] `internal/learn/book_test.go`
+- [ ] `internal/learn/book_worker.go`
 - [ ] `internal/learn/db.go`
+- [ ] `internal/learn/fsrs.go`
+- [ ] `internal/learn/fsrs_test.go`
 - [ ] `internal/learn/index.go`
 - [ ] `internal/learn/journal.go`
 - [ ] `internal/learn/learn_test.go`
 - [ ] `internal/learn/library.go`
+- [ ] `internal/learn/library_test.go`
+- [ ] `internal/learn/llm.go`
 - [ ] `internal/learn/mastery.go`
+- [ ] `internal/learn/mastery_draft.go`
+- [ ] `internal/learn/mastery_evidence.go`
+- [ ] `internal/learn/mastery_judge.go`
+- [ ] `internal/learn/mastery_migrate.go`
+- [ ] `internal/learn/mastery_outline.go`
+- [ ] `internal/learn/mastery_policy.go`
+- [ ] `internal/learn/mastery_quiz.go`
+- [ ] `internal/learn/mastery_test.go`
 - [ ] `internal/learn/migrate.go`
 - [ ] `internal/learn/notes.go`
 - [ ] `internal/learn/parse.go`
+- [ ] `internal/learn/parse_html.go`
+- [ ] `internal/learn/parse_pdf.go`
+- [ ] `internal/learn/parse_sections.go`
 - [ ] `internal/learn/practice.go`
+- [ ] `internal/learn/practice_bank.go`
+- [ ] `internal/learn/practice_draft.go`
+- [ ] `internal/learn/practice_generate.go`
+- [ ] `internal/learn/practice_import.go`
+- [ ] `internal/learn/practice_insights.go`
+- [ ] `internal/learn/practice_review.go`
+- [ ] `internal/learn/practice_test.go`
 - [ ] `internal/learn/reading.go`
+- [ ] `internal/learn/schema.go`
+- [ ] `internal/learn/schema_test.go`
 
 ### `internal/memory`
 
@@ -1135,6 +1179,41 @@
 ### `frontend/src/features/learn`
 
 - [ ] `frontend/src/features/learn/LearnWorkspace.tsx`
+- [ ] `frontend/src/features/learn/books/BlockView.tsx`
+- [ ] `frontend/src/features/learn/books/BooksPane.tsx`
+- [ ] `frontend/src/features/learn/cards/LearnQuestionCard.tsx`
+- [ ] `frontend/src/features/learn/cards/LearnQuizCard.tsx`
+- [ ] `frontend/src/features/learn/home/HomePane.tsx`
+- [ ] `frontend/src/features/learn/library/LibraryPane.tsx`
+- [ ] `frontend/src/features/learn/library/Reader.tsx`
+- [ ] `frontend/src/features/learn/mastery/MasteryPane.tsx`
+- [ ] `frontend/src/features/learn/mastery/OutlineEditor.tsx`
+- [ ] `frontend/src/features/learn/mastery/PathBoard.tsx`
+- [ ] `frontend/src/features/learn/practice/GeneratePanel.tsx`
+- [ ] `frontend/src/features/learn/practice/ImportPanel.tsx`
+- [ ] `frontend/src/features/learn/practice/PracticeInsights.tsx`
+- [ ] `frontend/src/features/learn/practice/PracticePane.tsx`
+- [ ] `frontend/src/features/learn/practice/QuestionBank.tsx`
+- [ ] `frontend/src/features/learn/practice/QuestionForm.tsx`
+- [ ] `frontend/src/features/learn/practice/ReviewSession.tsx`
+- [ ] `frontend/src/features/learn/practice/parts.tsx`
+
+### `frontend/src/lib/copy-learn` and learn clients
+
+- [ ] `frontend/src/lib/copy-learn/books.ts`
+- [ ] `frontend/src/lib/copy-learn/home.ts`
+- [ ] `frontend/src/lib/copy-learn/library.ts`
+- [ ] `frontend/src/lib/copy-learn/mastery.ts`
+- [ ] `frontend/src/lib/copy-learn/practice.ts`
+- [ ] `frontend/src/lib/learn-api.ts`
+- [ ] `frontend/src/lib/learn-books.ts`
+- [ ] `frontend/src/lib/learn-events.ts`
+- [ ] `frontend/src/lib/learn-format.ts`
+- [ ] `frontend/src/lib/learn-library.ts`
+- [ ] `frontend/src/lib/learn-practice.ts`
+- [ ] `frontend/src/lib/learn-practice-util.ts`
+- [ ] `frontend/src/lib/learn-quiz.ts`
+- [ ] `frontend/src/lib/learn-reader-util.ts`
 
 ### `frontend/src/features/pages`
 

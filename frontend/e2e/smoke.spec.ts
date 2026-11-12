@@ -72,7 +72,8 @@ test("control shortcuts section is reachable", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("button", { name: "General", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "palette" })).toHaveText("Mod+K");
+  await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
+  await expect(page.getByRole("button", { name: "palette" })).toHaveText(/^(Ctrl|⌘)\s*K$/);
 });
 
 test("generation tab lists music stock and transcription templates", async ({ page }) => {
@@ -227,10 +228,10 @@ test("provider preset fills a compatible base URL", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Models", exact: true }).click();
-  await page.getByRole("radio", { name: "DeepSeek" }).click();
+  // 一家都没有时，挑了厂商就要进编辑器；模型是一枚枚标签，不再是一个输入框。
+  await page.getByRole("button", { name: /DeepSeek/ }).click();
   await expect(page.getByRole("textbox", { name: "Base URL" })).toHaveValue("https://api.deepseek.com");
-  await expect(page.getByRole("textbox", { name: "Model", exact: true })).toHaveValue("deepseek-chat");
-  await expect(page.getByText("DeepSeek Chat")).toBeVisible();
+  await expect(page.getByRole("button", { name: "deepseek-chat", exact: true }).first()).toBeVisible();
 });
 
 test("two-turn transcript keeps both assistant rounds", async ({ page }) => {
@@ -350,17 +351,29 @@ test("copy sits under the message, not the column corner", async ({ page }) => {
   expect(c!.x).toBeLessThan(a!.x + a!.width + 48);
 });
 
-test("user turn restore and fork match the copy action", async ({ page }) => {
-  await mockApi(page, "C:/tmp/ws", {
-    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
-    events: [
-      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", seq: 4, payload: { text: "first question", id: "s1:user:1" } },
-      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "first answer", id: "s1:r1" } },
-      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:02Z", seq: 6, payload: { text: "second question", id: "s1:user:2" } },
-      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "second answer", id: "s1:r2" } },
-    ],
-  });
+const TWO_TURNS = [
+  { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", seq: 4, payload: { text: "first question", id: "s1:user:1" } },
+  { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "first answer", id: "s1:r1" } },
+  { type: "user", session_id: "s1", ts: "2026-01-01T00:00:02Z", seq: 6, payload: { text: "second question", id: "s1:user:2" } },
+  { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "second answer", id: "s1:r2" } },
+];
+
+test("the main conversation offers copy on a user turn, not restore or fork", async ({ page }) => {
+  // 主会话只派活、自己不改文件，也只有这一条：还原文件和分叉在这里没有东西可做。
+  await mockApi(page, "C:/tmp/ws", { sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }], events: TWO_TURNS });
   await page.goto("/");
+  const bubble = page.locator(".user-bubble").filter({ hasText: "second question" });
+  await bubble.hover();
+  const row = bubble.locator("xpath=..");
+  await expect(row.getByRole("button", { name: "Copy" })).toBeVisible();
+  await expect(row.getByTestId("user-restore-files")).toHaveCount(0);
+  await expect(row.getByTestId("user-fork-from")).toHaveCount(0);
+});
+
+test("user turn restore and fork match the copy action", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", { sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }], events: TWO_TURNS });
+  // 单独打开的会话窗口不是主会话，还原和分叉照旧。
+  await page.goto("/?popout=s1");
   const bubble = page.locator(".user-bubble").filter({ hasText: "second question" });
   await bubble.hover();
   const row = bubble.locator("xpath=..");
@@ -666,9 +679,39 @@ test("model picker stays on the configured provider", async ({ page }) => {
   await expect(page.getByRole("option", { name: /claude/i })).toHaveCount(0);
 });
 
+test("the main composer keeps turn counts and the context meter out of the way", async ({ page }) => {
+  // 主会话是一条不结束的对话，轮数、步数和上下文用量默认不放在输入框下面；权限选择在这里什么也管不了，也不放。
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: TWO_TURNS,
+    context: { tokens: 6200, budget: 100000, window: 128000, prefix_tokens: 4200, schema_tokens: 1800, dynamic_tokens: 200 },
+  });
+  await page.goto("/");
+  await expect(page.getByText("second answer")).toBeVisible();
+  await expect(page.getByTestId("composer-input")).toBeVisible();
+  await expect(page.locator("[data-composer-dock]")).toHaveCount(0);
+  await expect(page.getByTestId("composer-context-meter")).toHaveCount(0);
+  await expect(page.getByTestId("composer-auth")).toHaveCount(0);
+});
+
+test("the main composer shows them again when the transcript is set to detailed", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: TWO_TURNS,
+    config: { transcript_view: "detailed" },
+    context: { tokens: 6200, budget: 100000, window: 128000, prefix_tokens: 4200, schema_tokens: 1800, dynamic_tokens: 200 },
+  });
+  await page.goto("/");
+  await expect(page.getByText("second answer")).toBeVisible();
+  await expect(page.locator("[data-composer-dock]")).toBeVisible();
+  await expect(page.getByTestId("composer-context-meter")).toBeVisible();
+});
+
 test("composer shows context breakdown", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    // 主会话默认不放上下文用量；对话详略选了详细才放出来。
+    config: { transcript_view: "detailed" },
     context: {
       tokens: 6200,
       budget: 100000,
@@ -1511,7 +1554,7 @@ test("advanced diagnostics is not the journal", async ({ page }) => {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Advanced" }).click();
   await expect(page.getByRole("heading", { name: "Diagnostics" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Journal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   await expect(page.getByTestId("diagnostics-tail")).toContainText("boot");
   await expect(page.getByTestId("journal-tail")).toContainText("checkout");
   await expect(page.getByText("Journal tail. The agent cannot edit this file.")).toHaveCount(0);

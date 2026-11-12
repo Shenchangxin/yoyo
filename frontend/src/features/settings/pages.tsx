@@ -1,6 +1,6 @@
 /**
- * 拥有：通用、外观、快捷键、策略和高级设置的表单。
- * 不拥有：侧栏。改配置会调用 api 改状态。
+ * 拥有：通用、外观、快捷键、预算、安全与隐私、诊断、实验室和关于这几页的表单。
+ * 不拥有：侧栏，以及哪一块排在哪一页（那在 SettingsPage 和 registry）。改配置会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
 import { Check, Copy, Download, FolderOpen, Stethoscope } from "lucide-react";
@@ -22,9 +22,10 @@ import { Input } from "../../components/ui/input";
 import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { Switch } from "../../components/ui/switch";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { MarkWell } from "../shell/YoyoMark";
 import {
   CONTROL_LG,
-  CONTROL_SM,
+  Keycaps,
   SettingCodePanel,
   SettingRow,
   SettingSection,
@@ -43,19 +44,15 @@ export { ProviderSettings } from "./ProviderPanel";
 /** GenerationSettings 从生成设置再导出。 */
 export { GenerationSettings } from "./GenerationSettings";
 
-/** GeneralSettings 改工作区、窗口与启动、语言和快捷键。通知在「主动与通知」。host 读取 cfg，调用 patch，调用 onBrowse，写到 ShortcutsSettings 的 host。 */
+/** GeneralSettings 改工作区、窗口与启动和语言。快捷键有自己的一页，通知在「主动与通知」。host 读取 cfg，调用 patch，调用 onBrowse。 */
 export function GeneralSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const cfg = host.cfg;
   const locale = (cfg.locale === "zh-CN" ? "zh-CN" : cfg.locale === "en" ? "en" : getLocale()) as Locale;
   return (
     <>
-      <SettingSection
-        id="general-workspace"
-        title={copy.settings.sections.generalWorkspace}
-        description={copy.settings.workspaceDesc}
-      >
-        <SettingRow stack>
+      <SettingSection id="general-workspace" title={copy.settings.sections.generalWorkspace}>
+        <SettingRow stack title={copy.settings.agentWorkspace} description={copy.settings.workspaceDesc}>
           <div className="flex w-full items-center gap-2">
             <Input
               aria-label={copy.settings.workspace}
@@ -64,7 +61,6 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
               onChange={(e) => void host.patch({ workspace: e.target.value })}
             />
             <Button
-              size="sm"
               variant="lift"
               onClick={async () => {
                 const p = await host.onBrowse();
@@ -85,7 +81,6 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
               onChange={(e) => void host.patch({ videoWorkspace: e.target.value })}
             />
             <Button
-              size="sm"
               variant="lift"
               onClick={async () => {
                 const p = await host.onBrowse();
@@ -137,8 +132,6 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
           />
         </SettingRow>
       </SettingSection>
-
-      {browserSurface() ? null : <ShortcutsSettings host={host} />}
     </>
   );
 }
@@ -288,50 +281,64 @@ export function LabsSection({ host }: { host: SettingsHost }) {
   );
 }
 
-/** ShortcutsSettings 改快捷键映射。host 读取 cfg，调用 patch。 */
+type ShortcutGroupKey = "app" | "approval" | "turns";
+
+/** SHORTCUT_GROUPS 把键位分成三组：应用、审批、对话。默认表里以后多出来的键位落到最后一组，不会丢。 */
+const SHORTCUT_GROUPS: readonly { key: ShortcutGroupKey; ids: readonly KeymapId[] }[] = [
+  { key: "app", ids: ["palette", "newChat", "control", "toggleReview"] },
+  { key: "approval", ids: ["once", "session", "always", "deny"] },
+  { key: "turns", ids: ["prevTurn", "nextTurn"] },
+];
+
+/** ShortcutsSettings 是快捷键页：按组列出键位，点一行再按键就改掉这一条。host 读取 cfg，调用 patch。 */
 export function ShortcutsSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const keymap = mergeKeymap(host.cfg.keymap);
   const [armed, setArmed] = useState<KeymapId | null>(null);
-  const ids = Object.keys(DEFAULT_KEYMAP) as KeymapId[];
+  const grouped = new Set<KeymapId>(SHORTCUT_GROUPS.flatMap((g) => g.ids));
+  const rest = (Object.keys(DEFAULT_KEYMAP) as KeymapId[]).filter((id) => !grouped.has(id));
+  const groups = SHORTCUT_GROUPS.map((g, i) => (i === SHORTCUT_GROUPS.length - 1 ? { ...g, ids: [...g.ids, ...rest] } : g));
   return (
-    <SettingSection
-      id="shortcuts-map"
-      title={copy.settings.sections.shortcutsMap}
-      footnote={copy.settings.recordHint}
-    >
-      {ids.map((id) => (
-        <SettingRow key={id} list title={copy.settings.keys[id] || id}>
-          <button
-            type="button"
-            aria-label={id}
-            className={cn(
-              "h-8 min-w-[7.5rem] rounded-md border px-3 text-ui-footnote tabular-nums transition-colors",
-              armed === id
-                ? "border-accent/70 bg-accent/10 text-foreground"
-                : "border-border bg-background text-foreground hover:bg-lift/60",
-            )}
-            onClick={() => setArmed(id)}
-            onBlur={() => setArmed(null)}
-            onKeyDown={(e) => {
-              if (armed !== id) return;
-              e.preventDefault();
-              const spec = formatShortcut(e);
-              if (!spec) return;
-              void host.patch({ keymap: { ...keymap, [id]: spec } });
-              setArmed(null);
-            }}
-          >
-            {armed === id ? copy.settings.recording : keymap[id]}
-          </button>
-        </SettingRow>
+    <>
+      {groups.map((group, i) => (
+        <SettingSection
+          key={group.key}
+          id={i === 0 ? "shortcuts-map" : `shortcuts-${group.key}`}
+          title={copy.settings.shortcutGroups[group.key]}
+          footnote={i === groups.length - 1 ? copy.settings.recordHint : undefined}
+        >
+          {group.ids.map((id) => (
+            <SettingRow key={id} list title={copy.settings.keys[id] || id}>
+              <button
+                type="button"
+                aria-label={id}
+                className={cn(
+                  "-mr-1.5 inline-flex h-8 min-w-24 items-center justify-end rounded-md px-1.5 text-ui-footnote transition-colors",
+                  armed === id ? "bg-accent/10 text-accent ring-1 ring-accent/50" : "hover:bg-lift/70",
+                )}
+                onClick={() => setArmed(id)}
+                onBlur={() => setArmed(null)}
+                onKeyDown={(e) => {
+                  if (armed !== id) return;
+                  e.preventDefault();
+                  const spec = formatShortcut(e);
+                  if (!spec) return;
+                  void host.patch({ keymap: { ...keymap, [id]: spec } });
+                  setArmed(null);
+                }}
+              >
+                {armed === id ? <span className="px-1.5">{copy.settings.recording}</span> : <Keycaps spec={keymap[id]} />}
+              </button>
+            </SettingRow>
+          ))}
+        </SettingSection>
       ))}
-    </SettingSection>
+    </>
   );
 }
 
-/** PolicySettings 改门禁、预算，并查看壳和隔离。host 读取 cfg，调用 patch，写到 IsolationSection 的 host。 */
-export function PolicySettings({ host }: { host: SettingsHost }) {
+/** BudgetSection 改一个对话的花费上限和估算单价，排在模型页。改了才浮出保存条。host 读取 cfg，调用 patch。 */
+export function BudgetSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const savedBudget = String(host.cfg.maxBudgetUsd || 0);
   const savedRate = String(host.cfg.usdPerMtok || 0);
@@ -342,6 +349,48 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
     setRate(savedRate);
   }, [savedBudget, savedRate]);
   const dirty = budget !== savedBudget || rate !== savedRate;
+  return (
+    <>
+      <SettingSection id="policy-budget" title={copy.settings.sections.policyBudget}>
+        <SettingRow title={copy.settings.maxBudget} description={copy.settings.maxBudgetDesc}>
+          <Input
+            aria-label={copy.settings.maxBudget}
+            className="h-8 w-28 text-right tabular-nums"
+            type="number"
+            min={0}
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+          />
+        </SettingRow>
+        <SettingRow title={copy.settings.usdPerMtok} description={copy.settings.usdPerMtokDesc}>
+          <Input
+            aria-label={copy.settings.usdPerMtok}
+            className="h-8 w-28 text-right tabular-nums"
+            type="number"
+            min={0}
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+          />
+        </SettingRow>
+      </SettingSection>
+      <SettingsSaveBar
+        open={dirty}
+        onDiscard={() => {
+          setBudget(savedBudget);
+          setRate(savedRate);
+        }}
+        onSave={async () => {
+          await host.patch({ maxBudgetUsd: Number(budget) || 0, usdPerMtok: Number(rate) || 0 });
+          toast.success(copy.app.controlSaved);
+        }}
+      />
+    </>
+  );
+}
+
+/** PolicySettings 是安全与隐私页：审批、运行环境、数据与记忆。预算在模型页。host 读取 cfg，调用 patch，写到 IsolationSection 和 DataSection 的 host。 */
+export function PolicySettings({ host }: { host: SettingsHost }) {
+  const copy = useCopy();
   return (
     <>
       <SettingSection id="policy-gate" title={copy.settings.sections.policyGate}>
@@ -369,43 +418,9 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
         </SettingRow>
       </SettingSection>
 
-      <SettingSection id="policy-budget" title={copy.settings.sections.policyBudget}>
-        <SettingRow title={copy.settings.maxBudget}>
-          <Input
-            aria-label={copy.settings.maxBudget}
-            className={CONTROL_SM}
-            type="number"
-            value={budget}
-            onChange={(e) => setBudget(e.target.value)}
-          />
-        </SettingRow>
-        <SettingRow title={copy.settings.usdPerMtok} border={false}>
-          <Input
-            aria-label={copy.settings.usdPerMtok}
-            className={CONTROL_SM}
-            type="number"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-          />
-        </SettingRow>
-      </SettingSection>
-
       <IsolationSection host={host} />
 
       <DataSection host={host} />
-
-      <SettingsSaveBar
-        open={dirty}
-        saveLabel={copy.settings.savePolicy}
-        onDiscard={() => {
-          setBudget(savedBudget);
-          setRate(savedRate);
-        }}
-        onSave={async () => {
-          await host.patch({ maxBudgetUsd: Number(budget) || 0, usdPerMtok: Number(rate) || 0 });
-          toast.success(copy.app.controlSaved);
-        }}
-      />
     </>
   );
 }
@@ -588,15 +603,13 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 }
 
 /**
- * AdvancedSettings 改更新，并查看日志、日记和诊断。
- * host 读取 cfg、logs、journal、health、onExportDiagnostics、onDiagnose 等，调用 onCheckUpdate，调用 patch，调用 onRevealLogs，调用 onExportDiagnostics，调用 onDiagnose，调用 onRevealJournal，调用 onApplyUpdate。
+ * AboutSettings 是关于页：字标、一句话介绍、当前版本，以及检查和安装更新。
+ * host 读取 cfg、health，调用 onCheckUpdate，调用 patch，调用 onApplyUpdate。
  */
-export function AdvancedSettings({ host }: { host: SettingsHost }) {
+export function AboutSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const [url, setUrl] = useState(host.cfg.updateUrl);
   const [applyOpen, setApplyOpen] = useState(false);
-  const [level, setLevel] = useState("all");
-  const [copiedPath, setCopiedPath] = useState(false);
   const [ota, setOta] = useState<any>(null);
   const phase = String(ota?.phase || "idle");
   const ready = phase === "ready" || !!ota?.downloaded;
@@ -618,6 +631,98 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
     }, 1500);
     return () => window.clearInterval(id);
   }, [phase]);
+  const busy = phase === "checking" || phase === "downloading";
+  // 版本那一行下面的一句状态：在查、在下、可以装了，或者上次什么时候查过。
+  const status = phase === "checking"
+    ? copy.settings.checking
+    : phase === "downloading"
+      ? `${copy.settings.downloading} ${percent}%`
+      : ready
+        ? `${copy.settings.updateReady} ${String(ota?.manifest?.version || ota?.asset?.filename || "")}`.trim()
+        : ota?.last_check
+          ? `${copy.settings.lastCheck} ${String(ota.last_check)}`
+          : undefined;
+
+  return (
+    <>
+      <div className="mb-8 flex items-center gap-4 px-1">
+        <MarkWell />
+        <div className="min-w-0 flex-1">
+          <div className="text-ui-title-s font-semibold text-foreground">Yoyo</div>
+          <p className="mt-0.5 text-ui-body leading-[1.5] text-muted">{copy.settings.aboutBody}</p>
+        </div>
+      </div>
+
+      <SettingSection id="advanced-updates" title={copy.settings.sections.advancedUpdates}>
+        <SettingRow title={copy.settings.currentVersion} description={status}>
+          <span className="font-mono text-ui-footnote tabular-nums text-muted">{host.health.version}</span>
+          <Button
+            size="sm"
+            variant="lift"
+            disabled={busy}
+            onClick={async () => {
+              const u = await host.onCheckUpdate();
+              setOta(u);
+              if (u?.error) toast.error(String(u.error));
+              else if (u?.downloaded || u?.phase === "ready") toast.success(copy.settings.updateReady);
+              else if (u?.newer || u?.phase === "downloading") toast.message(copy.settings.downloading);
+              else toast.message(copy.settings.upToDate);
+            }}
+          >
+            {copy.settings.checkUpdate}
+          </Button>
+          {ready ? (
+            <Button size="sm" onClick={() => setApplyOpen(true)}>
+              {copy.settings.applyUpdate}
+            </Button>
+          ) : null}
+        </SettingRow>
+        {busy ? <ProgressHairline value={phase === "downloading" ? percent : 0} /> : null}
+        {ota?.error ? <p className="text-ui-body leading-[1.5] text-danger">{String(ota.error)}</p> : null}
+        <SettingRow title={copy.settings.autoCheck} description={copy.settings.autoCheckDesc}>
+          <Switch
+            checked={host.cfg.updateAutoCheck !== false}
+            onCheckedChange={(v) => void host.patch({ updateAutoCheck: v })}
+          />
+        </SettingRow>
+        <SettingRow title={copy.settings.updateUrl} description={copy.settings.updateUrlDesc} stack>
+          <Input
+            aria-label={copy.settings.updateUrl}
+            className={cn(CONTROL_LG, "font-mono text-ui-footnote")}
+            placeholder={String(ota?.feed || "")}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onBlur={() => {
+              if (url !== host.cfg.updateUrl) void host.patch({ updateUrl: url });
+            }}
+          />
+        </SettingRow>
+      </SettingSection>
+
+      <ConfirmDialog
+        open={applyOpen}
+        title={copy.settings.applyUpdate}
+        body={copy.settings.applyUpdateConfirm}
+        danger
+        confirmLabel={copy.settings.applyUpdate}
+        onCancel={() => setApplyOpen(false)}
+        onConfirm={async () => {
+          setApplyOpen(false);
+          await host.onApplyUpdate();
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * DiagnosticsSettings 是高级页里的诊断：日志尾部、审计记录和本机检查，可以复制路径、在文件夹里显示、导出支持包。
+ * host 读取 logs、journal、doctor、onExportDiagnostics、onDiagnose、onRevealJournal，调用 onRevealLogs，调用 onExportDiagnostics，调用 onDiagnose，调用 onRevealJournal。
+ */
+export function DiagnosticsSettings({ host }: { host: SettingsHost }) {
+  const copy = useCopy();
+  const [level, setLevel] = useState("all");
+  const [copiedPath, setCopiedPath] = useState(false);
   const lines = asArray(host.logs?.lines);
   const diagnostic = lines.length
     ? lines
@@ -641,109 +746,13 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   return (
     <>
       <SettingSection
-        id="advanced-updates"
-        title={copy.settings.sections.advancedUpdates}
-        footnote={copy.settings.updateUrlDesc}
-        actions={
-          <div className="flex items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                const u = await host.onCheckUpdate();
-                setOta(u);
-                if (u?.error) toast.error(String(u.error));
-                else if (u?.downloaded || u?.phase === "ready") toast.success(copy.settings.updateReady);
-                else if (u?.newer || u?.phase === "downloading") toast.message(copy.settings.downloading);
-                else toast.message(copy.settings.upToDate);
-              }}
-            >
-              {copy.settings.checkUpdate}
-            </Button>
-            {ready ? (
-              <Button size="sm" variant="lift" onClick={() => setApplyOpen(true)}>
-                {copy.settings.applyUpdate}
-              </Button>
-            ) : null}
-          </div>
-        }
-      >
-        <SettingValueRow title={copy.settings.currentVersion} value={host.health.version} mono />
-        <SettingRow title={copy.settings.autoCheck} description={copy.settings.autoCheckDesc}>
-          <Switch
-            checked={host.cfg.updateAutoCheck !== false}
-            onCheckedChange={(v) => void host.patch({ updateAutoCheck: v })}
-          />
-        </SettingRow>
-        {ota?.last_check ? <SettingValueRow title={copy.settings.lastCheck} value={String(ota.last_check)} mono /> : null}
-        {phase === "downloading" || phase === "checking" ? (
-          <SettingValueRow
-            title={copy.settings.installProgress}
-            value={phase === "checking" ? copy.settings.checking : `${percent}%`}
-            mono
-          />
-        ) : null}
-        {ready ? <SettingValueRow title={copy.settings.updateReady} value={String(ota?.manifest?.version || ota?.asset?.filename || "")} mono /> : null}
-        {ota?.error ? <SettingValueRow title="Error" value={String(ota.error)} /> : null}
-        <SettingRow title={copy.settings.updateUrl} border={false}>
-          <Input
-            aria-label={copy.settings.updateUrl}
-            className={cn(CONTROL_LG, "font-mono")}
-            placeholder={String(ota?.feed || "")}
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onBlur={() => {
-              if (url !== host.cfg.updateUrl) void host.patch({ updateUrl: url });
-            }}
-          />
-        </SettingRow>
-      </SettingSection>
-
-      <SettingSection
         id="advanced-logs"
         title={copy.settings.sections.advancedLogs}
-        footnote={copy.settings.logsHint}
-        actions={
-          <div className="flex items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                if (logPath && (await writeClipboard(logPath))) {
-                  setCopiedPath(true);
-                  window.setTimeout(() => setCopiedPath(false), 1200);
-                  toast.success(copy.settings.pathCopied);
-                }
-              }}
-            >
-              <IconSwap
-                on={copiedPath}
-                className="size-4"
-                off={<Copy aria-hidden />}
-                live={<Check aria-hidden />}
-              />
-              {copy.settings.copyPath}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => void host.onRevealLogs()}>
-              {copy.settings.reveal}
-            </Button>
-            {host.onExportDiagnostics ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={async () => {
-                  try {
-                    await host.onExportDiagnostics?.();
-                    toast.success(copy.settings.exportedBundle);
-                  } catch (e) {
-                    toast.error(String(e));
-                  }
-                }}
-              >
-                <Download aria-hidden />
-                {copy.settings.exportBundle}
-              </Button>
-            ) : null}
+        description={copy.settings.logsHint}
+        bare
+        tight
+        headerActions={
+          <>
             {host.onDiagnose ? (
               <Button
                 size="sm"
@@ -761,13 +770,34 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
                 {copy.settings.diagnoseTurn}
               </Button>
             ) : null}
-          </div>
+            {host.onExportDiagnostics ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    await host.onExportDiagnostics?.();
+                    toast.success(copy.settings.exportedBundle);
+                  } catch (e) {
+                    toast.error(String(e));
+                  }
+                }}
+              >
+                <Download aria-hidden />
+                {copy.settings.exportBundle}
+              </Button>
+            ) : null}
+            <Button size="sm" variant="lift" onClick={() => void host.onRevealLogs()}>
+              <FolderOpen aria-hidden />
+              {copy.settings.reveal}
+            </Button>
+          </>
         }
       >
-        <SettingRow title={copy.settings.filterLevel} border={false}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           <SettingSegmented
             id="log-level"
-            ariaLabel="Level"
+            ariaLabel={copy.settings.filterLevel}
             value={level}
             options={[
               { value: "all", label: "All" },
@@ -777,49 +807,64 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
             ]}
             onChange={setLevel}
           />
-        </SettingRow>
-        {logPath ? <SettingValueRow title={copy.settings.copyPath} value={logPath} mono /> : null}
+          {logPath ? (
+            <button
+              type="button"
+              aria-label={copy.settings.copyPath}
+              title={copy.settings.copyPath}
+              className="ml-auto flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 font-mono text-ui-footnote text-muted transition-colors hover:bg-lift/70 hover:text-foreground"
+              onClick={async () => {
+                if (await writeClipboard(logPath)) {
+                  setCopiedPath(true);
+                  window.setTimeout(() => setCopiedPath(false), 1200);
+                  toast.success(copy.settings.pathCopied);
+                }
+              }}
+            >
+              <span className="truncate">{logPath}</span>
+              <IconSwap
+                on={copiedPath}
+                className="size-3.5 shrink-0"
+                off={<Copy className="size-3.5" aria-hidden />}
+                live={<Check className="size-3.5" aria-hidden />}
+              />
+            </button>
+          ) : null}
+        </div>
         <div data-testid="diagnostics-tail">
           <SettingCodePanel className="max-h-[360px] min-h-[96px]">
             {diagnostic || copy.settings.emptyLogs}
           </SettingCodePanel>
         </div>
-        <div className="mt-4" data-setting-section-highlight-target="advanced-journal">
-          <div className="mb-1.5 flex items-center gap-2">
-            <h3 className="min-w-0 flex-1 text-ui-body font-medium text-foreground">{copy.settings.sections.advancedJournal}</h3>
-            {host.onRevealJournal ? (
-              <Button size="sm" variant="ghost" onClick={() => void host.onRevealJournal?.()}>
-                {copy.settings.reveal}
-              </Button>
-            ) : null}
-          </div>
-          <p className="mb-1.5 text-ui-footnote text-muted">{copy.settings.journalHint}</p>
-          <div data-testid="journal-tail">
-            <SettingCodePanel className="max-h-[240px] min-h-[72px]">
-              {journal || copy.settings.emptyJournal}
-            </SettingCodePanel>
-          </div>
-        </div>
-        <div className="mt-4" data-setting-section-highlight-target="advanced-doctor">
-          <h3 className="mb-1.5 text-ui-body font-medium text-foreground">{copy.settings.sections.advancedDoctor}</h3>
-          <SettingCodePanel className="max-h-64 min-h-[96px]">
-            {JSON.stringify(host.doctor || {}, null, 2).slice(0, 8000)}
+      </SettingSection>
+
+      <SettingSection
+        id="advanced-journal"
+        title={copy.settings.sections.advancedJournal}
+        description={copy.settings.journalHint}
+        bare
+        tight
+        headerActions={
+          host.onRevealJournal ? (
+            <Button size="sm" variant="lift" onClick={() => void host.onRevealJournal?.()}>
+              <FolderOpen aria-hidden />
+              {copy.settings.reveal}
+            </Button>
+          ) : undefined
+        }
+      >
+        <div data-testid="journal-tail">
+          <SettingCodePanel className="max-h-[240px] min-h-[72px]">
+            {journal || copy.settings.emptyJournal}
           </SettingCodePanel>
         </div>
       </SettingSection>
 
-      <ConfirmDialog
-        open={applyOpen}
-        title={copy.settings.applyUpdate}
-        body={copy.settings.applyUpdateConfirm}
-        danger
-        confirmLabel={copy.settings.applyUpdate}
-        onCancel={() => setApplyOpen(false)}
-        onConfirm={async () => {
-          setApplyOpen(false);
-          await host.onApplyUpdate();
-        }}
-      />
+      <SettingSection id="advanced-doctor" title={copy.settings.sections.advancedDoctor} bare tight>
+        <SettingCodePanel className="max-h-64 min-h-[96px]">
+          {JSON.stringify(host.doctor || {}, null, 2).slice(0, 8000)}
+        </SettingCodePanel>
+      </SettingSection>
     </>
   );
 }

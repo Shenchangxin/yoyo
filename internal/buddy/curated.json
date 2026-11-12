@@ -8,6 +8,14 @@
     "aliases": ["克劳德", "claude code", "anthropic"],
     "acpBins": ["claude-agent-acp"],
     "cliBins": ["claude"],
+    "cliEnv": "CLAUDE_CODE_EXECUTABLE",
+    "host": {
+      "windows": [{"kind": "cli", "dir": "%APPDATA%/Claude/claude-code/*", "app": "Claude"}],
+      "darwin": [
+        {"kind": "cli", "dir": "~/Library/Application Support/Claude/claude-code/*", "app": "Claude"},
+        {"kind": "cli", "dir": "~/Library/Application Support/Claude/claude-code/*/claude.app/Contents/MacOS", "app": "Claude"}
+      ]
+    },
     "strengths": {"zh": "长链路重构、读大仓库、补测试", "en": "long refactors, large codebases and tests"},
     "secrets": [{"name": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "provider": "anthropic"}],
     "system": {"npm": "@agentclientprotocol/claude-agent-acp"}
@@ -129,6 +137,17 @@
     "order": 11,
     "acpBins": ["cursor-agent"],
     "cliBins": ["cursor-agent"],
+    "host": {
+      "windows": [
+        {"kind": "acp", "dir": "%LOCALAPPDATA%/cursor-agent"},
+        {"kind": "app", "file": "%LOCALAPPDATA%/Programs/cursor/Cursor.exe", "app": "Cursor"},
+        {"kind": "app", "file": "%ProgramFiles%/cursor/Cursor.exe", "app": "Cursor"}
+      ],
+      "darwin": [
+        {"kind": "app", "file": "/Applications/Cursor.app", "app": "Cursor"},
+        {"kind": "app", "file": "~/Applications/Cursor.app", "app": "Cursor"}
+      ]
+    },
     "strengths": {"zh": "多文件编辑和前端", "en": "multi-file edits and frontends"},
     "secrets": [{"name": "CURSOR_API_KEY", "label": "Cursor API key"}],
     "login": [{"label": "cursor-agent login", "cmd": ["cursor-agent", "login"]}],
@@ -146,6 +165,11 @@
     "order": 12,
     "acpBins": ["opencode"],
     "cliBins": ["opencode"],
+    "host": {
+      "windows": [{"kind": "acp", "dir": "%USERPROFILE%/.opencode/bin"}],
+      "darwin": [{"kind": "acp", "dir": "~/.opencode/bin"}],
+      "linux": [{"kind": "acp", "dir": "~/.opencode/bin"}]
+    },
     "strengths": {"zh": "可接多家模型的通用编码", "en": "general coding across many model providers"},
     "login": [{"label": "opencode auth login", "cmd": ["opencode", "auth", "login"]}],
     "system": {

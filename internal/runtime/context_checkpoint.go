@@ -104,11 +104,23 @@ func slimTail(tail []Message) []Message {
 }
 
 // CompactOpts 是一次检查点的附加参数。Focus 写进笔记的 Next。From 是回绕时要对齐的用户原文片段。
+// Profile 非空时摘要按它的形状写：不记写代码用的工作笔记，也不把最早的几句人话钉在尾巴前面。
 type CompactOpts struct {
 	Focus   string
 	Trigger string
 	From    string
 	Req     *RunRequest
+	Profile *CompactProfile
+}
+
+// CompactProfile 让一类会话用自己的摘要形状，代替目标、文件、决定那一套。主会话的路由用 ConversationProfile。
+type CompactProfile struct {
+	// System 是摘要模型的系统提示。
+	System string
+	// Sections 是摘要里必须出现的小节标题，比较时忽略大小写。缺了哪一节就不用模型写的这份。
+	Sections []string
+	// Digest 在不叫模型、或模型没按小节写时给出摘要。dropped 是这次收起来的消息，kept 是原样留下的尾巴。
+	Digest func(dropped, kept []Message) string
 }
 
 // MaybeCheckpoint 在历史加上一条假系统消息后仍超过整形预算时才做检查点，触发原因是 budget。否则原样返回。
@@ -122,6 +134,11 @@ type CompactOpts struct {
 // window 放进 ShapeOpts 的 ModelWindow。
 // fragments 传给 forceCheckpoint。
 func MaybeCheckpoint(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, fragments []artifact.PromptFragment) []Message {
+	return MaybeCheckpointOpts(store, sessionID, hist, loop, spill, client, model, window, fragments, CompactOpts{})
+}
+
+// MaybeCheckpointOpts 和 MaybeCheckpoint 一样，另带 opt。opt.Trigger 为空时写成 budget；opt.Profile 决定摘要的形状。
+func MaybeCheckpointOpts(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, fragments []artifact.PromptFragment, opt CompactOpts) []Message {
 	if store == nil || len(hist) == 0 {
 		return hist
 	}
@@ -131,7 +148,10 @@ func MaybeCheckpoint(store *trace.Store, sessionID string, hist []Message, loop 
 	if messagesTokens(dummy) <= budget {
 		return hist
 	}
-	return forceCheckpoint(store, sessionID, dummy, loop, spill, client, model, window, "runtime", fragments, CompactOpts{Trigger: "budget"})
+	if opt.Trigger == "" {
+		opt.Trigger = "budget"
+	}
+	return forceCheckpoint(store, sessionID, dummy, loop, spill, client, model, window, "runtime", fragments, opt)
 }
 
 // CompactHistory 按用户触发做检查点，并返回检查点说明。历史为空时返回已在预算内。
@@ -198,20 +218,7 @@ func retainKeepTokens(msgs []Message, keep int) []Message {
 	if keep <= 0 || len(msgs) == 0 {
 		return msgs
 	}
-	used := 0
-	var tail []Message
-	for i := len(msgs) - 1; i >= 0; i-- {
-		m := msgs[i]
-		n := messageTokens(m)
-		if used > 0 && used+n > keep {
-			break
-		}
-		used += n
-		tail = append(tail, m)
-	}
-	for i, j := 0, len(tail)-1; i < j; i, j = i+1, j-1 {
-		tail[i], tail[j] = tail[j], tail[i]
-	}
+	tail := msgs[tailCut(msgs, keep):]
 	seen := map[string]bool{}
 	for _, m := range tail {
 		if m.Role == RoleUser {
@@ -231,6 +238,53 @@ func retainKeepTokens(msgs []Message, keep int) []Message {
 	}
 	out := append(head, tail...)
 	return stripSystem(Legalize(append([]Message{{Role: RoleSystem, Content: "x"}}, out...)))
+}
+
+// tailCut 返回尾巴从哪一条开始：从末尾按 token 累加，不超过 keep，至少留最后一条。
+func tailCut(msgs []Message, keep int) int {
+	used := 0
+	cut := len(msgs)
+	for i := len(msgs) - 1; i >= 0; i-- {
+		n := messageTokens(msgs[i])
+		if used > 0 && used+n > keep {
+			break
+		}
+		used += n
+		cut = i
+	}
+	return cut
+}
+
+// turnStart 把切点挪到一轮的开头，尾巴不从半句回复或半对工具调用起头。先往前找这一轮起头的用户消息；
+// 那样会让尾巴超过 keep 的两倍时，改往后找下一轮的开头；都找不到就用原来的切点。
+func turnStart(msgs []Message, cut, keep int) int {
+	if cut <= 0 || cut >= len(msgs) || msgs[cut].Role == RoleUser {
+		return cut
+	}
+	back := cut
+	for back > 0 && msgs[back].Role != RoleUser {
+		back--
+	}
+	if msgs[back].Role == RoleUser && messagesTokens(msgs[back:]) <= 2*keep {
+		return back
+	}
+	for fwd := cut + 1; fwd < len(msgs); fwd++ {
+		if msgs[fwd].Role == RoleUser {
+			return fwd
+		}
+	}
+	return cut
+}
+
+// retainTail 只留末尾不超过 keep 个 token 的消息，不另外钉住最早的几句人话；切点落在一轮中间时挪到这一轮的开头。
+// 返回配平过工具对的尾巴，以及被收起来的那一段。keep 小于等于 0 时全部留下，收起来的一段为空。
+func retainTail(msgs []Message, keep int) (tail, dropped []Message) {
+	if keep <= 0 || len(msgs) == 0 {
+		return msgs, nil
+	}
+	cut := turnStart(msgs, tailCut(msgs, keep), keep)
+	tail = stripSystem(Legalize(append([]Message{{Role: RoleSystem, Content: "x"}}, msgs[cut:]...)))
+	return tail, msgs[:cut]
 }
 
 // rewindFrom 从含有 from 的第一条非控制用户消息切起。对不上时改从最后一条非控制、非继续的用户消息切起。切点在开头则返回原历史。
@@ -323,23 +377,41 @@ func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message,
 	_ = markStaleReads(work)
 	shaped, rep := Shape(work, ShapeOpts{Loop: loop, Spill: spill, ModelWindow: window})
 	tail := stripSystem(shaped)
-	if keep := loop.KeepTokens; keep > 0 {
-		tail = retainKeepTokens(stripSystem(work), keep)
-	}
-	notes := NotesFromMessages(tail)
-	if strings.TrimSpace(opt.Focus) != "" {
-		notes.Next = strings.TrimSpace(opt.Focus)
-	}
-	WriteNotes(spill, notes)
-	if spill != nil {
-		notes = ParseNotes(ReadNotes(spill))
-	}
-	summary := notes.Markdown()
+	var notes SessionNotes
+	summary := ""
 	lossless := true
-	if loop.AllowLLMCompact && window > 0 && client != nil && model != "" {
-		if s, err := LLMTranscriptCompact(context.Background(), client, model, shaped, fragments, opt.Focus); err == nil && strings.TrimSpace(s) != "" {
-			summary = s
-			lossless = false
+	if p := opt.Profile; p != nil {
+		// 这类会话不是一件写代码的任务：不记目标和文件，也不把最早的几句人话永远钉在前面。
+		// 收起来的那一段交给 Profile 写成摘要，尾巴原样留着。
+		var dropped []Message
+		tail, dropped = retainTail(stripSystem(work), loop.KeepTokens)
+		if p.Digest != nil {
+			summary = p.Digest(dropped, tail)
+		}
+		if len(dropped) > 0 && loop.AllowLLMCompact && window > 0 && client != nil && model != "" {
+			if s, err := llmCompact(context.Background(), client, model, dropped, p.System, p.Sections, opt.Focus); err == nil && strings.TrimSpace(s) != "" {
+				summary = s
+				lossless = false
+			}
+		}
+	} else {
+		if keep := loop.KeepTokens; keep > 0 {
+			tail = retainKeepTokens(stripSystem(work), keep)
+		}
+		notes = NotesFromMessages(tail)
+		if strings.TrimSpace(opt.Focus) != "" {
+			notes.Next = strings.TrimSpace(opt.Focus)
+		}
+		WriteNotes(spill, notes)
+		if spill != nil {
+			notes = ParseNotes(ReadNotes(spill))
+		}
+		summary = notes.Markdown()
+		if loop.AllowLLMCompact && window > 0 && client != nil && model != "" {
+			if s, err := LLMTranscriptCompact(context.Background(), client, model, shaped, fragments, opt.Focus); err == nil && strings.TrimSpace(s) != "" {
+				summary = s
+				lossless = false
+			}
 		}
 	}
 	hydrated := 0
@@ -418,6 +490,19 @@ func lastCompactNote(store *trace.Store, sessionID string) string {
 // fragments 传给 compactPrompt。
 // focus 去掉空白后非空时追加到提问里。
 func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs []Message, fragments []artifact.PromptFragment, focus string) (string, error) {
+	sys := compactPrompt(fragments)
+	if strings.TrimSpace(sys) == "" {
+		sys = compactSystem
+	}
+	return llmCompact(ctx, client, model, msgs, sys, compactSections, focus)
+}
+
+// compactSections 是写代码那一套摘要必须有的六个小节。
+var compactSections = []string{"## Objective", "## Plan", "## Files", "## Decisions", "## Errors", "## Next"}
+
+// llmCompact 用 system 让模型摘要 msgs，回复里必须有 sections 的每个标题。system 和 developer 消息整段丢掉，这次调用不带工具。
+// 回复里的 playbook 字样改成 notes。缺小节时再要求一次，仍不行则返回空串，调用方用自己的后备摘要。
+func llmCompact(ctx context.Context, client Client, model string, msgs []Message, system string, sections []string, focus string) (string, error) {
 	if client == nil {
 		return "", nil
 	}
@@ -431,10 +516,8 @@ func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs
 	if len(body) == 0 {
 		return "", nil
 	}
-	sys := compactPrompt(fragments)
-	if strings.TrimSpace(sys) == "" {
-		sys = compactSystem
-	}
+	// 尾巴可能从一组工具调用中间切开。摘要请求也要配平，不然接口会拒收。
+	body = stripSystem(Legalize(append([]Message{{Role: RoleSystem, Content: "x"}}, body...)))
 	ask := "Compact the working memory above. Text only."
 	if strings.TrimSpace(focus) != "" {
 		ask += " Focus on: " + strings.TrimSpace(focus)
@@ -442,7 +525,7 @@ func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs
 	try := func(prompt string) (string, error) {
 		req := ChatRequest{
 			Model: model,
-			Messages: append([]Message{{Role: RoleSystem, Content: sys}}, append(body, Message{
+			Messages: append([]Message{{Role: RoleSystem, Content: system}}, append(body, Message{
 				Role:    RoleUser,
 				Content: prompt,
 			})...),
@@ -456,7 +539,7 @@ func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs
 			out = strings.ReplaceAll(out, "Playbook", "Notes")
 			out = strings.ReplaceAll(out, "playbook", "notes")
 		}
-		if !validCompactMarkdown(out) {
+		if !hasSections(out, sections) {
 			return "", nil
 		}
 		return capRunes(out, 4_000), nil
@@ -465,7 +548,18 @@ func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs
 	if err != nil || out != "" {
 		return out, err
 	}
-	return try(ask + " Your previous reply was missing required sections. Reply with exactly ## Objective, ## Plan, ## Files, ## Decisions, ## Errors, ## Next.")
+	return try(ask + " Your previous reply was missing required sections. Reply with exactly " + strings.Join(sections, ", ") + ".")
+}
+
+// hasSections 要求 s 里每个小节标题都在，比较时忽略大小写。
+func hasSections(s string, sections []string) bool {
+	lower := strings.ToLower(s)
+	for _, h := range sections {
+		if !strings.Contains(lower, strings.ToLower(h)) {
+			return false
+		}
+	}
+	return true
 }
 
 // slimCompactMessage 在送给摘要模型之前删掉重型写操作参数里的长字符串。摘要请求不带工具，占位不会被抄进后续工具调用。发给实时模型的投影不走这个函数。
@@ -488,13 +582,7 @@ func slimCompactMessage(m Message) Message {
 // validCompactMarkdown 要求六个小节标题都在，比较时忽略大小写。
 // s 转成小写后检查六个小节标题是否都在。
 func validCompactMarkdown(s string) bool {
-	lower := strings.ToLower(s)
-	for _, h := range []string{"## objective", "## plan", "## files", "## decisions", "## errors", "## next"} {
-		if !strings.Contains(lower, h) {
-			return false
-		}
-	}
-	return true
+	return hasSections(s, compactSections)
 }
 
 // messagesToAny 把消息收成可放进 JSON 的行，含工具调用。

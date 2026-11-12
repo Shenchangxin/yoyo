@@ -386,6 +386,9 @@ func (m *Manager) viewLocked(e Entry, settings Settings, working map[string]int)
 			v.Version = d.SystemVersion
 		}
 	}
+	if d.Host != nil {
+		v.Host = &HostView{Kind: d.Host.Kind, Path: d.Host.Path, App: d.Host.App}
+	}
 	if r != nil && r.Probe != nil && v.Version == "" {
 		v.Version = r.Probe.AgentVersion
 	}
@@ -458,6 +461,9 @@ func (m *Manager) configViewLocked(e Entry, item ItemConfig, d detection, r *rec
 		MaxParallel: item.MaxParallelOf(), Args: item.Args, Env: item.Env,
 		Strengths: firstNonEmpty(item.Strengths, e.Strengths.Pick(m.locale())),
 		Secrets:   m.secretViews(withEnvMethods(e, r), item),
+	}
+	if e.CLIEnv != "" && d.CLIPath != "" {
+		cv.HostCLI = &HostCLIView{Path: d.CLIPath, On: !item.NoHostCLI}
 	}
 	if r != nil && r.Probe != nil {
 		for _, model := range r.Probe.Models {
@@ -595,6 +601,7 @@ func (m *Manager) Settings() Settings {
 }
 
 // ConfigPatch 是一次配置修改，nil 字段不动。Secrets 里值为空表示删掉这把密钥。
+// HostCLI 为真时让适配器用本机已装的 CLI，为假时用它自带的。
 type ConfigPatch struct {
 	Enabled     *bool              `json:"enabled,omitempty"`
 	Mode        *string            `json:"mode,omitempty"`
@@ -606,6 +613,7 @@ type ConfigPatch struct {
 	Secrets     map[string]string  `json:"secrets,omitempty"`
 	Reuse       *[]string          `json:"reuse,omitempty"`
 	Strengths   *string            `json:"strengths,omitempty"`
+	HostCLI     *bool              `json:"hostCli,omitempty"`
 }
 
 // Configure 校验并保存一项的设置，密钥写进 vault。保存后在后台全探一次。返回的视图不含密钥值。
@@ -714,6 +722,9 @@ func applyPatch(item *ItemConfig, p ConfigPatch) {
 	}
 	if p.Strengths != nil {
 		item.Strengths = strings.TrimSpace(*p.Strengths)
+	}
+	if p.HostCLI != nil {
+		item.NoHostCLI = !*p.HostCLI
 	}
 }
 

@@ -64,7 +64,9 @@ type SessionMeta struct {
 	// PathID 是这段对话绑定的掌握路径。
 	PathID string `json:"path_id,omitempty"`
 	// MaterialID 是这段对话绑定的阅读材料。
-	MaterialID    string `json:"material_id,omitempty"`
+	MaterialID string `json:"material_id,omitempty"`
+	// BookID 是这段对话绑定的课本。
+	BookID        string `json:"book_id,omitempty"`
 	ResearchBrief string `json:"research_brief,omitempty"`
 	ResearchShot  string `json:"research_shot,omitempty"`
 	// Interrupted 和 Queued 是列表时填上的现场标注，不是持久 meta。writeSession 写出前会把它们清掉。
@@ -731,8 +733,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 	}
 	meter := &runtime.Meter{USDPerMTok: a.Config.USDPerMTok}
+	// 主会话跟着应用的默认模型走，和它开出的工人用的是同一个；会话上早先钉下的不再生效。其余会话用自己选的。
+	chat := a.chatSlotFor(meta, sessionID)
 	if client == nil {
-		client, err = a.ClientFor(meta)
+		client, err = a.ClientFor(chat)
 		if err != nil {
 			return "", err
 		}
@@ -753,8 +757,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	skills = runtime.FilterSkills(skills, false)
 	skillBodies, skillDirs, skillMeta := runtime.MapSkills(skills)
 	model := a.Config.Model
-	if meta.Model != "" {
-		model = meta.Model
+	if chat.Model != "" {
+		model = chat.Model
 	}
 	if a.MCP != nil && strings.TrimSpace(toolRoot) != "" {
 		a.MCP.SetRoots([]string{toolRoot})
@@ -835,9 +839,12 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		userCommitted = userCommitNeeded(message, atts)
 	}
 	hist := []runtime.Message{}
+	// hostLines 是主机直接写进这条会话的行：工人回报、通知、简报。历史里已经带着；常驻的代理靠它补上两轮之间新来的。
+	var hostLines []runtime.HostLine
 	// 历史只取最后一次检查点之后的事件。更早的原文留在 JSONL，不进这一轮的模型消息。
 	if evs, err := a.Traces.ReadFromCheckpoint(sessionID); err == nil {
 		hist = runtime.MessagesFromEventsOpts(evs, tools.Spill)
+		hostLines = runtime.HostLines(evs)
 	}
 	if userCommitted {
 		// 刚写入的用户行已经在轨迹里。从历史末尾拿掉同一句，避免模型看见两条。
@@ -848,7 +855,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		hist = runtime.DropTrailingUser(hist, drop)
 	}
 	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
-	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window, frags)
+	hist = runtime.MaybeCheckpointOpts(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window, frags, a.compactOptsFor(routing))
 	checkpoint := ""
 	if a.Traces != nil {
 		if evs, err := a.Traces.Read(sessionID); err == nil {
@@ -973,10 +980,20 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if pin := runtime.LanguagePin(voice); pin.Text != "" {
 		frags = append(frags, pin)
 	}
+	// 学习频道的父会话是一段辅导：换上导师的守则，每一轮带上引擎算出的状态简报。
+	learnLane := tools.ChatOverlay && tools.Depth == 0 && a.Learn != nil && session.NormalizeChannel(meta.Channel) == session.ChannelLearn
 	if a.studioLane(sessionID) {
 		loop, frags = applyStudioLanePrompt(loop, frags)
 	} else if a.conductorLane(sessionID) {
 		loop, frags = applyConductorLanePrompt(loop, frags)
+	} else if learnLane {
+		loop, frags = applyLearnLanePrompt(loop, frags, meta)
+		if brief := a.learnTurnBrief(meta); brief != "" {
+			if inject != "" {
+				inject += "\n"
+			}
+			inject += brief
+		}
 	}
 	if p := a.sessionProfile(sessionID); p != nil && strings.TrimSpace(p.Instructions) != "" {
 		frags = append(frags, artifact.PromptFragment{Slot: "role", Text: p.Instructions})
@@ -990,7 +1007,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			pageCtx = runtime.PageInject(pg.Title, pg.Content, 3200)
 		}
 	}
-	if tools.ChatOverlay && tools.Depth == 0 && a.Learn != nil && session.NormalizeChannel(meta.Channel) == session.ChannelLearn {
+	if learnLane {
 		if journal, err := a.Learn.JournalInject(); err == nil && journal != "" {
 			if pageCtx != "" {
 				pageCtx += "\n\n"
@@ -1023,6 +1040,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Checkpoint:       checkpoint,
 		Wake:             wake.Text,
 		WakeMeta:         wakeMeta,
+		HostLines:        hostLines,
 	})
 	a.markRunDone(sessionID)
 	if a.Threads != nil {

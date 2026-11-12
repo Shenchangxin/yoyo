@@ -4,7 +4,7 @@
  */
 
 import { briefList, composeToday, deskFeedback, deskPush, deskState, mainSession, orchestratorView, type BriefRecord, type DeskMute, type Initiative, type TodayCard } from "../../lib/client";
-import { copy } from "../../lib/i18n";
+import { copy, dateLocale } from "../../lib/i18n";
 import { briefDay, briefStorageKey, clockMinute, compareEditions, parseBriefPrefs, parseStoredBrief, quietBrief, serializeStoredBrief, slotsCrossed, BRIEF_PREFS_KEY, type BriefCard, type BriefLayout, type BriefPhrases, type BriefSlot, type MorningBrief } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
@@ -187,7 +187,7 @@ function quietLetter(): MorningBrief {
 async function pushBrief(slot: BriefSlot, day: string, brief: MorningBrief, quiet = false): Promise<void> {
   if (!sessionId || wasSent(slot, day)) return;
   const work = copy.work;
-  const chipDay = new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const chipDay = new Date(`${day}T00:00:00`).toLocaleDateString(dateLocale(), { month: "short", day: "numeric" });
   const chip = (slot === "evening" ? work.briefChipEvening : work.briefChipMorning).replace("{day}", chipDay);
   const text = quiet ? work.auditQuietTitle : slot === "evening" ? work.briefPushEvening : work.briefPushMorning;
   const pushed = await deskPush({

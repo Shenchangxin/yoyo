@@ -414,3 +414,53 @@ func TestDeskResumesTurnNumber(t *testing.T) {
 		t.Fatalf("saw %v turn %d", saw, got)
 	}
 }
+
+// countingClient 按顺序回放 steps，并记下被叫了几次。
+type countingClient struct {
+	steps []runtime.Message
+	calls int
+}
+
+// Chat 返回下一步；用尽后回一句 done。ctx 取消时返回 ctx.Err。
+func (c *countingClient) Chat(ctx context.Context, _ runtime.ChatRequest) (runtime.Message, error) {
+	if err := ctx.Err(); err != nil {
+		return runtime.Message{}, err
+	}
+	c.calls++
+	if c.calls > len(c.steps) {
+		return runtime.Message{Role: runtime.RoleAssistant, Content: "done"}, nil
+	}
+	return c.steps[c.calls-1], nil
+}
+
+// TestHaltingToolEndsTheTurn 锁住工具结果带 Halt 时，这一批之后回合就停，模型不会被再叫一次去替学习者作答。
+func TestHaltingToolEndsTheTurn(t *testing.T) {
+	ran := 0
+	tools := &runtime.WorkspaceTools{
+		ChatOverlay:  true,
+		ExtraEnabled: []string{"pose"},
+		Extra: map[string]runtime.ExtraTool{
+			"pose": {
+				JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{"name": "pose", "description": "pose a question", "parameters": map[string]any{"type": "object"}}},
+				Call: func(string) runtime.ToolResult {
+					ran++
+					return runtime.ToolResult{Content: "question posted", Halt: true}
+				},
+			},
+		},
+	}
+	client := &countingClient{steps: []runtime.Message{
+		{Role: runtime.RoleAssistant, Content: "来一道题：", ToolCalls: []runtime.ToolCall{{ID: "c1", Name: "pose", Arguments: `{}`}}},
+		{Role: runtime.RoleAssistant, Content: "答案是 B"},
+	}}
+	out, err := New().Run(context.Background(), Turn{SessionID: "halt", User: "考我", Client: client, Tools: tools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ran != 1 || client.calls != 1 {
+		t.Fatalf("tool ran %d times, model called %d times; the turn must stop after the halting tool", ran, client.calls)
+	}
+	if strings.Contains(out, "答案") {
+		t.Fatalf("the model answered its own question: %q", out)
+	}
+}

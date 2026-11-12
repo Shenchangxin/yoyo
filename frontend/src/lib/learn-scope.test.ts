@@ -46,6 +46,20 @@ describe("matchLearnThread", () => {
     assert.equal(matchLearnThread([{ id: "a", pathId: "p1" }], spec, "a"), null);
     assert.equal(matchLearnThread([{ id: "c" }], spec, "c")?.id, "c");
   });
+
+  /** 课本有自己的钥匙和绑定：带着课本 id，找得回绑了这本书的会话，文库的对话不能占用它。 */
+  it("gives each book its own bound thread", () => {
+    const spec = learnScopeSpec({ lane: "library", shelf: "books", bookId: "b1", bookTitle: "导数速成", libraryId: "lib1" });
+    assert.deepEqual(spec, { scope: "book:b1", title: "导数速成", bookId: "b1", libraryId: "lib1" });
+    const rows = [
+      { id: "lib", libraryId: "lib1" },
+      { id: "book", libraryId: "lib1", bookId: "b1" },
+    ];
+    assert.equal(matchLearnThread(rows, spec, "lib")?.id, "book");
+    assert.equal(learnBindingMatches(rows[0], spec), false);
+    const shelf = learnScopeSpec({ lane: "library", shelf: "materials", libraryId: "lib1" });
+    assert.equal(matchLearnThread(rows, shelf, "book")?.id, "lib");
+  });
 });
 
 describe("readLearnScopeMap", () => {

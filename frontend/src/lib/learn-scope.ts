@@ -13,6 +13,7 @@ export type LearnScopeSpec = {
   pathId?: string;
   libraryId?: string;
   materialId?: string;
+  bookId?: string;
 };
 
 /** 读出范围到会话 id 的映射。坏掉的条目丢掉。raw 为空或解析失败时返回空对象。 */
@@ -67,24 +68,27 @@ export function learnScopeSpec(input: {
       libraryId: input.libraryId || undefined,
     };
   }
-  if (input.bookId) return { scope: `book:${input.bookId}`, title: input.bookTitle || input.title };
+  if (input.bookId) {
+    return { scope: `book:${input.bookId}`, title: input.bookTitle || input.title, bookId: input.bookId, libraryId: input.libraryId || undefined };
+  }
   if (input.libraryId) return { scope: `library:${input.libraryId}`, title: input.libraryName || input.title, libraryId: input.libraryId };
   return { scope: "library", title: input.title };
 }
 
-/** 绑定对得上才算同一段对话。没有路径、材料和文库的范围，不能占用已经绑过的会话。thread 读取 pathId、materialId、libraryId。spec 读取 pathId、materialId、libraryId。 */
+/** 绑定对得上才算同一段对话。没有路径、材料、课本和文库的范围，不能占用已经绑过的会话。thread 和 spec 都读取 pathId、materialId、bookId、libraryId。 */
 export function learnBindingMatches(
-  thread: { pathId?: string; libraryId?: string; materialId?: string },
+  thread: { pathId?: string; libraryId?: string; materialId?: string; bookId?: string },
   spec: LearnScopeSpec,
 ): boolean {
   if (spec.pathId) return thread.pathId === spec.pathId;
   if (spec.materialId) return thread.materialId === spec.materialId;
-  if (spec.libraryId) return thread.libraryId === spec.libraryId && !thread.pathId && !thread.materialId;
-  return !thread.pathId && !thread.materialId && !thread.libraryId;
+  if (spec.bookId) return thread.bookId === spec.bookId;
+  if (spec.libraryId) return thread.libraryId === spec.libraryId && !thread.pathId && !thread.materialId && !thread.bookId;
+  return !thread.pathId && !thread.materialId && !thread.bookId && !thread.libraryId;
 }
 
-/** 先用记住的 id，对不上再按路径、材料或文库找。归档的跳过。list 做过滤。remembered 与 id 比较。 */
-export function matchLearnThread<T extends { id: string; pathId?: string; libraryId?: string; materialId?: string; archived?: boolean }>(
+/** 先用记住的 id，对不上再按路径、材料、课本或文库找。归档的跳过。list 做过滤。remembered 与 id 比较。 */
+export function matchLearnThread<T extends { id: string; pathId?: string; libraryId?: string; materialId?: string; bookId?: string; archived?: boolean }>(
   list: T[],
   spec: LearnScopeSpec,
   remembered: string,
@@ -96,6 +100,7 @@ export function matchLearnThread<T extends { id: string; pathId?: string; librar
   }
   if (spec.pathId) return live.find((t) => t.pathId === spec.pathId) || null;
   if (spec.materialId) return live.find((t) => t.materialId === spec.materialId) || null;
-  if (spec.libraryId) return live.find((t) => t.libraryId === spec.libraryId && !t.pathId && !t.materialId) || null;
+  if (spec.bookId) return live.find((t) => t.bookId === spec.bookId) || null;
+  if (spec.libraryId) return live.find((t) => t.libraryId === spec.libraryId && !t.pathId && !t.materialId && !t.bookId) || null;
   return null;
 }

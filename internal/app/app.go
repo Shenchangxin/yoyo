@@ -207,6 +207,8 @@ type App struct {
 	Personal   *personal.Engine
 	Pages      pages.Catalog
 	Learn      *learn.Store
+	// learnView 记着每段学习对话里学习者正在看的阅读位置：会话 id 对 learnViewport。只在内存里。
+	learnView  sync.Map
 	Profiles   *profile.Store
 	Browser    *browser.Host
 	Computer   *computeruse.Host

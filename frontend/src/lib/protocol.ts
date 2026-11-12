@@ -7,8 +7,8 @@
 export type Lab = "agent" | "harbor" | "evolve" | "harness";
 /** HarnessTab Harness 表面的四个页签。 */
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
-/** Surface 壳层当前打开的表面。会话是主循环，工单不另开一页。buddy 是本机 agent 应用的栏目。 */
-export type Surface = "agent" | "harness" | "settings" | "skills" | "video" | "pages" | "idol" | "buddy";
+/** Surface 壳层当前打开的表面。会话是主循环，工单不另开一页。本机的 agent 应用（Buddy）在会话的今天栏里，不是一个表面。 */
+export type Surface = "agent" | "harness" | "settings" | "skills" | "video" | "pages" | "idol";
 /** VideoMode 视频工作台的模式：剧集、画布或创作。 */
 export type VideoMode = "drama" | "canvas" | "creative";
 /** VideoPane 视频表面里的一块面板。 */
@@ -120,6 +120,7 @@ export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed"
 export type SettingsTab =
   | "general"
   | "appearance"
+  | "shortcuts"
   | "proactive"
   | "provider"
   | "generation"
@@ -128,7 +129,9 @@ export type SettingsTab =
   | "connectors"
   | "messaging"
   | "personal"
+  | "handheld"
   | "advanced"
+  | "about"
   | "idol";
 
 /** AuthMode 会话权限：默认、自动编辑、完全，或每次询问。 */
@@ -206,6 +209,8 @@ export type Thread = {
   pathId?: string;
   /** 这段对话绑定的阅读材料。 */
   materialId?: string;
+  /** 这段对话绑定的课本。 */
+  bookId?: string;
   /** 研究员档的最新简报。 */
   researchBrief?: string;
   /** 研究员档的最新截图。 */

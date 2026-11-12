@@ -41,6 +41,9 @@ type Turn struct {
 	Wake string
 	// WakeMeta 是那条注入载荷里另外带的字段，例如任务组编号和状态。
 	WakeMeta map[string]any
+	// HostLines 是最后一次检查点以来主机直接写进这条会话的行：工人回报、通知、简报。
+	// History 里已经带着它们。常驻的代理不重灌历史，所以这一轮开始前把还没见过的几行补成一条主机记录。
+	HostLines []runtime.HostLine
 }
 
 // Host 按会话保存正在跑的代理，供 Steer 和 Interrupt 找到它。
@@ -57,6 +60,24 @@ type live struct {
 	bridge     *Bridge
 	ready      bool
 	checkpoint string
+	// hostSeen 记着哪些主机代写的行已经在代理的日志里，按事件编号。
+	hostSeen map[string]bool
+}
+
+// noteHost 把 lines 都记成已经给代理看过，返回其中这次才见到的几行，顺序不变。
+func (l *live) noteHost(lines []runtime.HostLine) []runtime.HostLine {
+	if l.hostSeen == nil {
+		l.hostSeen = map[string]bool{}
+	}
+	var fresh []runtime.HostLine
+	for _, line := range lines {
+		if l.hostSeen[line.ID] {
+			continue
+		}
+		l.hostSeen[line.ID] = true
+		fresh = append(fresh, line)
+	}
+	return fresh
 }
 
 // New 返回空的宿主。
@@ -110,6 +131,12 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 			agent.ResetSession()
 			seedHistory(agent, turn.History)
 			cur.checkpoint = turn.Checkpoint
+			// 刚按历史重灌，主机代写的行都在里面了。
+			cur.hostSeen = nil
+			cur.noteHost(turn.HostLines)
+		} else if fresh := cur.noteHost(turn.HostLines); len(fresh) > 0 {
+			// 两轮之间写进会话的工人回报和通知，只追加在日志末尾，前面的字节不动。
+			agent.Session().Append(dsh.EventUser, 0, 0, dsh.UserMessage{Text: runtime.HostNote(fresh), Source: "history"})
 		}
 	} else {
 		box = &toolBox{note: make(chan struct{}, 1)}
@@ -134,6 +161,7 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 		h.mu.Unlock()
 		agent.ResumeTurn(recordedTurn(turn.Trace, sessionID))
 		seedHistory(agent, turn.History)
+		cur.noteHost(turn.HostLines)
 	}
 	agent.SetBeforeModel(func(context.Context) {
 		reg.Reset()

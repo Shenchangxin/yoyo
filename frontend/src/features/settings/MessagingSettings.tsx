@@ -317,14 +317,12 @@ export function MessagingSettings() {
   return (
     <div className="flex w-full min-w-0 flex-col">
       {error ? <p className="mb-3 text-ui-body text-danger" role="alert">{error}</p> : null}
-      <section className="mb-6 w-full min-w-0" data-setting-section-highlight-target="messaging-accounts">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div className="min-w-0">
-            <h2 id="messaging-accounts" className="text-ui-body font-medium text-foreground">{copy.settings.sections.messagingAccounts}</h2>
-            <p className="mt-1 max-w-2xl text-ui-footnote leading-[1.55] text-muted">{t.intro}</p>
-          </div>
+      <section className="mb-8 w-full min-w-0" data-setting-section-highlight-target="messaging-accounts">
+        <div className="mb-2.5 flex flex-col gap-0.5 px-1">
+          <h2 id="messaging-accounts" className="flex min-h-7 items-center text-ui-body-l font-semibold text-foreground">{copy.settings.sections.messagingAccounts}</h2>
+          <p className="text-ui-body leading-[1.55] text-muted">{t.intro}</p>
         </div>
-        <div className="flex h-[min(36rem,calc(100dvh-10rem))] min-h-[22rem] overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex h-[min(34rem,calc(100dvh-15rem))] min-h-[22rem] overflow-hidden rounded-lg border border-border bg-card">
           {showList ? (
             <aside className={cn("flex min-h-0 min-w-0 flex-col", showMain ? "w-[15.5rem] shrink-0 border-r border-border" : "flex-1")}>
               <div className="flex items-center justify-between gap-2 px-3 py-2.5">

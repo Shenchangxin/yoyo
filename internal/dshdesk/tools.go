@@ -187,6 +187,7 @@ func (b *toolBox) runShell(ctx context.Context, agent *dsh.Agent, name string, c
 }
 
 // resultOf 把 res 收成 dsh 结果。Err 非空时标成错误；正文为空时用错误文本。
+// res.Halt 为真且没有出错时，结果声明本回合到此结束，模型不再接着说。
 func resultOf(res runtime.ToolResult) dsh.Result {
 	text := res.Content
 	if res.Err != nil {
@@ -195,5 +196,5 @@ func resultOf(res runtime.ToolResult) dsh.Result {
 		}
 		return dsh.Result{Text: text, IsError: true}
 	}
-	return dsh.Result{Text: text}
+	return dsh.Result{Text: text, Concludes: res.Halt}
 }

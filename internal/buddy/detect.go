@@ -1,4 +1,5 @@
-// detect.go 拥有本机检测：依次看托管安装（buddies/<id>/install.json 且入口还在）、PATH 上的 ACP 命令、只有 CLI 没有适配器三种情况，
+// detect.go 拥有本机检测：依次看托管安装（buddies/<id>/install.json 且入口还在）、PATH 上的 ACP 命令、只有 CLI 没有适配器三种情况；
+// PATH 上没有的，再看厂商安装器和桌面应用常放的位置（host.go）。
 // 再用 --version 取系统版本（超时 10 秒、并发 8，文件没变就用缓存）。检测时不读任何凭证文件。
 
 package buddy
@@ -15,13 +16,14 @@ import (
 	"time"
 )
 
-// detection 是一项在本机的安装情况。
+// detection 是一项在本机的安装情况。Host 非 nil 表示有东西是在 PATH 之外的常见位置找到的（见 host.go）。
 type detection struct {
 	Managed       *InstallRecord
 	ManagedDir    string
 	SystemPath    string
 	SystemVersion string
 	CLIPath       string
+	Host          *hostHit
 }
 
 // InstallRecord 是 buddies/<id>/install.json：托管安装的启动方式和来历。
@@ -137,7 +139,16 @@ func (m *Manager) detectFast(e Entry) detection {
 			break
 		}
 	}
+	// PATH 上没有时，再看厂商安装器和桌面应用常放的位置。找到能直接连的命令，就和 PATH 上的系统版一样用。
 	if d.SystemPath == "" {
+		if hit, ok := m.hostFind(e, hostACP); ok {
+			d.SystemPath = hit.Path
+			d.Host = &hit
+		}
+	}
+	// 没有能直接连的命令时找 CLI，用来提示「装了 CLI，还缺适配器」。
+	// 适配器能改用本机 CLI 的（CLIEnv），不管适配器在不在都找，启动时把路径交给它。
+	if d.SystemPath == "" || e.CLIEnv != "" {
 		for _, bin := range e.CLIBins {
 			if slices.Contains(e.ACPBins, bin) {
 				continue
@@ -146,6 +157,20 @@ func (m *Manager) detectFast(e Entry) detection {
 				d.CLIPath = p
 				break
 			}
+		}
+		if d.CLIPath == "" {
+			if hit, ok := m.hostFind(e, hostCLI); ok {
+				d.CLIPath = hit.Path
+				if d.Host == nil {
+					d.Host = &hit
+				}
+			}
+		}
+	}
+	// 什么命令都没有、也没托管安装时，看有没有只装了桌面应用。它自己不是 agent，只用来告诉人还差什么。
+	if d.SystemPath == "" && d.CLIPath == "" && d.Managed == nil {
+		if hit, ok := m.hostFind(e, hostApp); ok {
+			d.Host = &hit
 		}
 	}
 	return d

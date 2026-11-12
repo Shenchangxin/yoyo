@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/button";
 import { orchestratorAct, orchestratorMode, orchestratorView } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
-import { SettingSection } from "../settings/SettingChrome";
+import { SettingActionRow, SettingRow, SettingSection, SettingSegmented } from "../settings/SettingChrome";
 import type { DeskView, Source } from "./desk-model";
 
 export type WorkSourceName = "github" | "feishu" | "prepare" | "allowed";
@@ -113,48 +113,49 @@ export function WorkSources(props: { openSource?: WorkSourceName | null; onOpenS
   );
 }
 
+/** Mode 是新工作到来时怎么办：关闭、观察、自动。和设置里别的行一个版式，左边是说明，右边是分段。 */
 function Mode(props: { mode: string; onMode: (mode: string) => Promise<void> }) {
   const copy = useCopy();
-  const modes = [
-    { id: "off", label: copy.work.modeOff },
-    { id: "observe", label: copy.work.modeObserve },
-    { id: "auto", label: copy.work.modeAuto },
-  ];
+  const value = props.mode === "off" || props.mode === "auto" ? props.mode : "observe";
   return (
-    <div className="mt-4">
-      <p className="text-ui-caption font-medium text-muted">{copy.work.mode}</p>
-      <div className="mt-1.5 flex max-w-md gap-1 rounded-xl bg-lift/50 p-1">
-        {modes.map((mode) => (
-          <button
-            key={mode.id}
-            type="button"
-            className={cn("h-7 flex-1 rounded-lg text-ui-footnote font-medium", props.mode === mode.id ? "bg-background text-foreground shadow-sm" : "text-muted")}
-            onClick={() => { void props.onMode(mode.id); }}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
-      <p className="mt-1.5 text-ui-footnote leading-5 text-muted">{copy.work.modeHint}</p>
-    </div>
+    <SettingRow title={copy.work.mode} description={copy.work.modeHint}>
+      <SettingSegmented
+        id="work-source-mode"
+        ariaLabel={copy.work.mode}
+        value={value}
+        options={[
+          { value: "off", label: copy.work.modeOff },
+          { value: "observe", label: copy.work.modeObserve },
+          { value: "auto", label: copy.work.modeAuto },
+        ]}
+        onChange={(next) => { void props.onMode(next); }}
+      />
+    </SettingRow>
   );
 }
 
+/** ConfigRow 是一条来源：名字、现在填了什么、接没接上，点开在弹框里改。 */
 function ConfigRow(props: { title: string; detail: string; state?: string; action: string; onOpen: () => void }) {
   const copy = useCopy();
   const state = props.state || "";
   const stateLabel = state === "ok" ? copy.work.ok : state === "error" ? copy.work.error : state ? copy.work.missing : "";
   return (
-    <button type="button" className="mt-3 flex w-full max-w-md items-center justify-between gap-3 border-t border-border/50 pt-3 text-left" onClick={props.onOpen}>
-      <span className="min-w-0">
-        <span className="block text-ui-body font-medium">{props.title}</span>
-        <span className="mt-0.5 block truncate text-ui-footnote text-muted">{props.detail}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {stateLabel ? <span className={cn("text-ui-caption", state === "error" ? "text-danger" : state === "ok" ? "text-foreground" : "text-warning")}>{stateLabel}</span> : null}
-        <span className="text-ui-footnote text-muted">{props.action}</span>
-      </span>
-    </button>
+    <SettingActionRow
+      title={props.title}
+      description={props.detail}
+      onClick={props.onOpen}
+      trailing={
+        <span className="flex items-center gap-2">
+          {stateLabel ? (
+            <span className={cn("inline-flex items-center gap-1.5 text-ui-footnote", state === "error" ? "text-danger" : state === "ok" ? "text-foreground" : "text-warning")}>
+              <span className={cn("size-1.5 rounded-full", state === "error" ? "bg-status-failed" : state === "ok" ? "bg-status-done" : "bg-status-needs")} aria-hidden />
+              {stateLabel}
+            </span>
+          ) : null}
+          <span>{props.action}</span>
+        </span>
+      }
+    />
   );
 }
 

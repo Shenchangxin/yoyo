@@ -1,5 +1,6 @@
 // Package learn 是 Yoyo 的学习模块。笔记、文库、阅读、掌握路径、练习、手记和课本都在一份 SQLite 里。
 // 桌面应用用 Open 打开它，并把它当作 pages.Catalog。Harbor 不调用 Open。
+// 分数、日程和下一步都在这个包里算。模型只经 Complete 和 Embed 两个注入口进来，拿不到库。
 package learn
 
 import (
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -15,14 +17,85 @@ import (
 // EmbedFunc 把一批文本变成向量。model 是库上配置的嵌入模型名。返回的条数必须和 texts 一样。
 type EmbedFunc func(model string, texts []string) ([][]float32, error)
 
+// Change 说明哪一块学习数据变了。Scope 是 path、practice、library、material、book、journal 或 notes。
+// ID 是那一块里的对象，可空。Kind 是变化的种类，例如 graded、indexed、compiled。
+type Change struct {
+	Scope string `json:"scope"`
+	ID    string `json:"id,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+}
+
 // Store 拥有 learn.sqlite。原文文件在 root/raw，不进库。
 type Store struct {
-	mu         sync.Mutex
-	db         *sql.DB
-	root       string
-	rebuilding map[string]bool
+	mu   sync.Mutex
+	db   *sql.DB
+	root string
+	// index 记着每个库的后台索引状态，vectors 是检索用的向量缓存。两者都由 s.mu 保护。
+	index   map[string]*indexJob
+	vectors map[string]*vectorSet
+	// books 记着每本课本正在跑的写作任务，由 s.mu 保护。
+	books map[string]*bookJob
 	// Embed 为空或库没配模型时，重建只写 FTS5。
 	Embed EmbedFunc
+	// Complete 是不带工具的一次模型补全。判分、起草大纲、出题和写课本用它。为空时这些功能返回 ErrNoModel。
+	Complete CompleteFunc
+	// OnChange 在一次写入提交之后调用，不在锁里。桌面用它通知界面重新读取。
+	OnChange func(Change)
+	// Now 返回当前时刻。测试换掉它来走日程。为空时用 time.Now。
+	Now func() time.Time
+
+	// closing 在 Close 时关掉，后台的索引和写书靠它收工。bg 等它们都退出。
+	closing   chan struct{}
+	closeOnce sync.Once
+	bg        sync.WaitGroup
+}
+
+// spawn 在后台跑 fn，并把它算进 Close 要等的活里。fn 应当在 stop 关掉后尽快返回。
+// 库已经在关时不启动，返回 false。
+func (s *Store) spawn(fn func(stop <-chan struct{})) bool {
+	if s == nil || s.closing == nil {
+		return false
+	}
+	select {
+	case <-s.closing:
+		return false
+	default:
+	}
+	s.bg.Add(1)
+	go func() {
+		defer s.bg.Done()
+		fn(s.closing)
+	}()
+	return true
+}
+
+// stopping 在库正在关闭时为真。后台的活在每一步之间看它。
+func (s *Store) stopping() bool {
+	if s == nil || s.closing == nil {
+		return true
+	}
+	select {
+	case <-s.closing:
+		return true
+	default:
+		return false
+	}
+}
+
+// clock 返回当前的 UTC 时刻。
+func (s *Store) clock() time.Time {
+	if s != nil && s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+// notify 把一次变化交给 OnChange。调用方必须已经放开 s.mu。
+func (s *Store) notify(scope, id, kind string) {
+	if s == nil || s.OnChange == nil {
+		return
+	}
+	s.OnChange(Change{Scope: scope, ID: id, Kind: kind})
 }
 
 const schema = `
@@ -316,7 +389,7 @@ func Open(root, pagesRoot string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db, root: root, rebuilding: map[string]bool{}}
+	s := &Store{db: db, root: root, index: map[string]*indexJob{}, vectors: map[string]*vectorSet{}, closing: make(chan struct{})}
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -324,6 +397,11 @@ func Open(root, pagesRoot string) (*Store, error) {
 	if _, err := db.Exec(ftsSchema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("fts5: %w", err)
+	}
+	// 建表语句停在第一版。之后的列和表都由迁移补上，新库和旧库走同一条路。
+	if err := s.runMigrations(); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	if err := s.migratePages(pagesRoot); err != nil {
 		_ = db.Close()
@@ -334,23 +412,20 @@ func Open(root, pagesRoot string) (*Store, error) {
 		return nil, err
 	}
 	_, _ = db.Exec(`INSERT INTO journal (id) SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM journal WHERE id = 1)`)
-	s.ensurePracticeStreak()
+	// 上次退出时还在后台跑的活不会自己接上，各个域在这里把状态收拾成人能继续的样子。
+	s.recoverLibraries()
+	s.recoverBooks()
 	return s, nil
 }
 
-// ensurePracticeStreak 给旧库补上连续答对次数。新库的建表语句里已经有这一列。
-func (s *Store) ensurePracticeStreak() {
-	var n int
-	_ = s.db.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('practice_state') WHERE name = 'streak'`).Scan(&n)
-	if n == 0 {
-		_, _ = s.db.Exec(`ALTER TABLE practice_state ADD COLUMN streak INTEGER NOT NULL DEFAULT 0`)
-	}
-}
-
-// Close 关闭数据库。root 下的原文文件留着。
+// Close 先让后台的索引和写书收工并等它们退出，再关闭数据库。root 下的原文文件留着。
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
+	}
+	if s.closing != nil {
+		s.closeOnce.Do(func() { close(s.closing) })
+		s.bg.Wait()
 	}
 	return s.db.Close()
 }

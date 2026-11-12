@@ -1,5 +1,5 @@
 /**
- * 拥有：Buddy 栏目里和画法无关的判断：状态的色调和说法、主按钮、更多菜单、四个分组、能不能派任务、安装进度怎么讲，以及表单文本的解析。
+ * 拥有：Buddy 页里和画法无关的判断：状态的色调和说法、主按钮、更多菜单、五个分组（含「在这台电脑上发现」）、能不能派任务、安装进度怎么讲，以及表单文本的解析。
  * 不拥有：取数和轮询（buddy-store.ts），也不拥有任何组件。文案由调用方传进来，这里不读当前语言。
  */
 
@@ -18,8 +18,11 @@ export type BuddyAction = "install" | "installSystem" | "cancel" | "login" | "co
 /** BuddyMenuItem 是更多菜单里的一项。 */
 export type BuddyMenuItem = "installSystem" | "useManaged" | "useSystem" | "update" | "recheck" | "openDir" | "logs" | "docs" | "uninstall" | "remove";
 
-/** BuddySections 是栏目的四个分组：在线、需要处理、可安装、更多。 */
-export type BuddySections = { online: BuddyView[]; needs: BuddyView[]; available: BuddyView[]; more: BuddyView[] };
+/**
+ * BuddySections 是栏目的五个分组：需要处理、在这台电脑上发现、在线、可安装、更多。
+ * found 是本机已经有它的东西、但还不能直接派的：只有命令行缺适配器，或者只装了桌面应用。
+ */
+export type BuddySections = { online: BuddyView[]; needs: BuddyView[]; found: BuddyView[]; available: BuddyView[]; more: BuddyView[] };
 
 /** BuddyBar 是安装进度细线的画法。indeterminate 为真时不画宽度。 */
 export type BuddyBar = { value: number; indeterminate: boolean };
@@ -34,6 +37,22 @@ export function fill(template: string, vars: Record<string, string | number>): s
 /** installed 表示这一项已经装好：托管、系统或自定义。内置的 yoyo 不算。 */
 export function installed(v: BuddyView): boolean {
   return !v.builtin && v.install.kind !== "none";
+}
+
+/**
+ * foundOnHost 表示这台电脑上已经有它的东西，但还不能直接派任务：只有命令行、缺 yoyo 对接用的适配器，
+ * 或者只装了桌面应用。已经能连的（装好的、厂商安装器放在别处的命令）不算，它们已经在别的分组里。
+ */
+export function foundOnHost(v: BuddyView): boolean {
+  if (v.builtin || installed(v) || v.state !== "not_installed") return false;
+  return !!v.cliOnly || v.host?.kind === "cli" || v.host?.kind === "app";
+}
+
+/** hostNote 说清在这台电脑上找到的是什么、还差什么：只装了桌面应用；桌面应用里带着命令行；或者 PATH 上有命令行。 */
+export function hostNote(v: BuddyView, c: BuddyCopy): string {
+  if (v.host?.kind === "app") return fill(c.appOnly, { app: v.host.app || v.name, name: v.name });
+  if (v.host?.kind === "cli" && v.host.app) return fill(c.cliOnlyApp, { app: v.host.app });
+  return c.cliOnly;
 }
 
 /** busy 表示正在安装或探测。这时界面每秒轮询一次。 */
@@ -186,11 +205,16 @@ export function buddyMenu(v: BuddyView): BuddyMenuItem[] {
   return out;
 }
 
-/** actionLabel 是主按钮或菜单项上的字。在线时的主按钮用短的「测试」，菜单里的更新带上版本号。 */
+/**
+ * actionLabel 是主按钮或菜单项上的字。在线时的主按钮用短的「测试」，菜单里的更新带上版本号。
+ * 本机已经装着它的命令行时，装适配器这一步叫「连接」：人要的是连上已有的，不是再装一个。
+ */
 export function actionLabel(action: BuddyAction | BuddyMenuItem, v: BuddyView, c: BuddyCopy): string {
   switch (action) {
     case "none":
       return "";
+    case "install":
+      return foundOnHost(v) && v.host?.kind !== "app" ? c.action.connect : c.action.install;
     case "test":
       return c.action.testShort;
     case "update":
@@ -212,20 +236,22 @@ export function sortBuddies(list: BuddyView[]): BuddyView[] {
 }
 
 /**
- * buddySections 把列表分成四组。
+ * buddySections 把列表分成五组。
  * 在线：内置的 yoyo 和装好且没出问题的（包括检查中、刚断开）。
  * 需要处理：装好了但要登录、要配置、出错或离线的。
+ * 在这台电脑上发现：本机有它的命令行或桌面应用，但还不能直接派的（见 foundOnHost）。
  * 可安装：精选里还没装的，以及正在安装的（安装中的项不能藏进折叠的「更多」）。
  * 更多：其余没装的，此系统不可用的排在最后。
  */
 export function buddySections(list: BuddyView[]): BuddySections {
-  const out: BuddySections = { online: [], needs: [], available: [], more: [] };
+  const out: BuddySections = { online: [], needs: [], found: [], available: [], more: [] };
   const unsupported: BuddyView[] = [];
   for (const v of sortBuddies(list)) {
     if (v.builtin) out.online.push(v);
     else if (v.state === "installing") out.available.push(v);
     else if (installed(v)) (NEEDS_YOU.has(v.state) && (v.working ?? 0) === 0 ? out.needs : out.online).push(v);
     else if (v.state === "unsupported") unsupported.push(v);
+    else if (foundOnHost(v)) out.found.push(v);
     else if (v.featured) out.available.push(v);
     else out.more.push(v);
   }
@@ -264,7 +290,7 @@ export function buddyStatusText(v: BuddyView, c: BuddyCopy): string {
   if (v.state === "installing") return progressText(v, c);
   if ((v.working ?? 0) > 0) return fill(c.state.working, { n: v.working ?? 0 });
   if (installed(v) && !v.config.enabled) return c.disabled;
-  if (v.state === "not_installed" && v.cliOnly) return c.cliOnly;
+  if (foundOnHost(v)) return hostNote(v, c);
   const label = c.state[v.state] ?? v.state;
   const explains = NEEDS_YOU.has(v.state) || v.state === "unsupported" || v.state === "not_installed";
   const why = v.detail && v.detail !== label && explains ? v.detail : "";

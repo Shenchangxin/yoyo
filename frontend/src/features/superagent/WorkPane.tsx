@@ -1,6 +1,7 @@
 /**
- * 拥有：会话左侧的一天。今天、任务、记忆。等人的事排在最前，计数等于它指向的那一列。晨间简报在这里审计资产，点选留在简报上。
+ * 拥有：会话左侧的一天。今天、任务、记忆、Buddy。等人的事排在最前，计数等于它指向的那一列。晨间简报在这里审计资产，点选留在简报上。
  * 点开任务留在这一栏，对话不换页，也可以放到中间去聊。记忆写错的在夹里改掉或忘掉。连接在设置里。
+ * Buddy 是这台电脑上能接任务的 agent 应用，页面本身在 features/buddy/BuddyPane.tsx，这里只管页签和它的数字。
  * 不拥有：工单怎么执行，也不拥有检查器里的差异。执行在 Go 的 superagent，审查页由 App 传入。开口门怎么算在 Go 的 initiative。
  */
 
@@ -9,7 +10,7 @@ import { Activity, ArrowRight, Brain, Calendar, Check, CheckCheck, ChevronDown, 
 import { toast } from "sonner";
 import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, inboxDismiss, inboxRead, memoryEdit, memoryForget, memoryList, memoryWrite, personalAnswer, personalDecide, type DeskMute } from "../../lib/client";
 import type { Attachment, FileHit, Notice, SkillInfo } from "../../lib/protocol";
-import { useCopy } from "../../lib/i18n";
+import { dateLocale, useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { triggerText, type Rule, type Ticket } from "./desk-model";
@@ -19,16 +20,22 @@ import { agoLabel, TaskRow } from "./TaskRow";
 import { GroupRow } from "./GroupRow";
 import { GroupPage } from "./GroupPage";
 import { useBuddy } from "../buddy/buddy-store";
+import { attentionCount } from "../buddy/buddy-model";
+import { BuddyPane } from "../buddy/BuddyPane";
+import { useUI } from "../../lib/store";
 import { onFocusBrief, onOpenDesk, refreshQueue, useNeeds, type BriefTarget, type DeskTarget } from "./needs";
 import { needItems, type NeedItem } from "./needs-model";
 import { actionLabel, briefLayout, briefProgress, cardHandled, checkedCount, itemKey, shortKicker } from "./brief-board";
 import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueDelta, filterItems, groupRows, itemSections, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, offerSlot, parseBriefPrefs, refStatus, serializeStoredBrief, tasksBadge, unseenSuggestions, wouldAccept, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief, type TaskItem, type TaskSection } from "./work-model";
 import { BRIEF_PREFS_EVENT, type ProactiveLevel } from "../../lib/proactive";
 
-type Tab = "now" | "tasks" | "memory";
+type Tab = "now" | "tasks" | "memory" | "buddy";
 
 /** 「需要你」先列这么多条，其余点开再看。 */
 const NEEDS_SHOWN = 5;
+
+/** seenBuddyPulse 是今天栏已经应过的那一次「打开 Buddy」。栏不在场时点的，等它挂上再翻过去。 */
+let seenBuddyPulse = 0;
 
 /** WorkPane 在会话桌面上常驻。reviewPulse 增加时切到审查。review 是检查器。 */
 export function WorkPane(props: {
@@ -153,6 +160,16 @@ export function WorkPane(props: {
     if (props.reviewPulse > 0) props.onReview(true);
   }, [props.reviewPulse]);
 
+  // 别处点了「去 Buddy」（@ 了一个还不能派的 agent、任务上的「去登录」、命令面板）：翻到 Buddy 页，审查先收起来。
+  const buddyPulse = useUI((s) => s.buddyPulse);
+  const buddyNeeds = useBuddy((s) => attentionCount(s.list));
+  useEffect(() => {
+    if (buddyPulse === seenBuddyPulse) return;
+    seenBuddyPulse = buddyPulse;
+    props.onReview(false);
+    setTab("buddy");
+  }, [buddyPulse]);
+
   function pick(next: Tab) {
     setTab(next);
     props.onReview(false);
@@ -172,6 +189,8 @@ export function WorkPane(props: {
     { id: "now", label: copy.work.now, count: needs.length, person: needs.length > 0 },
     { id: "tasks", label: copy.work.tasks, count: taskCount.count, person: taskCount.person },
     { id: "memory", label: copy.work.memory },
+    // Buddy 上的数字只数要人处理的：装好了却要登录、要配置、出错或离线的。
+    { id: "buddy", label: copy.work.buddy, count: buddyNeeds, person: buddyNeeds > 0 },
   ];
 
   if (props.reviewOpen) {
@@ -213,8 +232,9 @@ export function WorkPane(props: {
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden px-2 pb-2">
         <div className={cn("h-full min-w-0", reading ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden overscroll-contain")}>
-          {err ? <p className="px-3 py-2 text-[12px] text-danger">{err}</p> : null}
-          {!view && !err ? <p className="px-3 py-3 text-[13px] text-muted">{copy.work.loading}</p> : null}
+          {err && tab !== "buddy" ? <p className="px-3 py-2 text-[12px] text-danger">{err}</p> : null}
+          {!view && !err && tab !== "buddy" ? <p className="px-3 py-3 text-[13px] text-muted">{copy.work.loading}</p> : null}
+          {tab === "buddy" ? <BuddyPane /> : null}
           {view && tab === "now" ? (
             <Now
               needs={needs}
@@ -340,7 +360,7 @@ function Now(props: {
   const [picked, setPicked] = useState("");
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const busy = useRef(false);
-  const today = new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", weekday: "long" });
+  const today = new Date().toLocaleDateString(dateLocale(), { month: "long", day: "numeric", weekday: "long" });
   const dueSlot: BriefSlot | null = offerSlot(prefs);
   const dueMissing = !!dueSlot && !editions.some((row) => row.slot === dueSlot && row.day === briefDay());
   const heading = dueSlot === "evening" ? copy.work.briefEvening : copy.work.briefMorning;
@@ -804,14 +824,14 @@ function payloadBrief(raw: string): MorningBrief | null {
 function editionCaption(edition: BriefEdition, morning: string, evening: string, yesterday: string): { clock: string; title: string; when: string } {
   const title = edition.slot === "evening" ? evening : morning;
   const parsed = Date.parse(edition.at);
-  const clock = Number.isFinite(parsed) ? new Date(parsed).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+  const clock = Number.isFinite(parsed) ? new Date(parsed).toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" }) : "";
   const today = briefDay();
   if (edition.day === today) return { clock, title, when: "" };
   const prior = new Date();
   prior.setDate(prior.getDate() - 1);
   if (edition.day === briefDay(prior)) return { clock, title, when: yesterday };
   const day = new Date(`${edition.day}T00:00:00`);
-  const when = Number.isNaN(day.getTime()) ? edition.day : day.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const when = Number.isNaN(day.getTime()) ? edition.day : day.toLocaleDateString(dateLocale(), { month: "short", day: "numeric" });
   return { clock, title, when };
 }
 

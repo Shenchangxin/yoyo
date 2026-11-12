@@ -74,7 +74,39 @@ func (s SystemSpec) Command(goos string) string {
 	return ""
 }
 
+// HostSpot 是这台电脑上、PATH 之外的一处常见位置：厂商安装器或桌面应用把东西放在那里。检测只看文件在不在，不运行它。
+// Kind 为 acp 时，Dir 里找 acpBins，找到就是能直接连的系统版；为 cli 时，Dir 里找 cliBins，找到的只是 CLI，还缺适配器；
+// 为 app 时，File 在就说明装了桌面应用，它自己不是 agent，只用来告诉人还差什么。
+// Dir 和 File 里可以写 %NAME%、$NAME 和开头的 ~，路径的一段可以是 *（比如按版本号分的目录），取版本最高的那个。
+type HostSpot struct {
+	Kind string `json:"kind"`
+	Dir  string `json:"dir,omitempty"`
+	File string `json:"file,omitempty"`
+	App  string `json:"app,omitempty"`
+}
+
+// HostSpec 按系统列出 HostSpot。
+type HostSpec struct {
+	Windows []HostSpot `json:"windows,omitempty"`
+	Darwin  []HostSpot `json:"darwin,omitempty"`
+	Linux   []HostSpot `json:"linux,omitempty"`
+}
+
+// Spots 返回 goos 上要看的位置。
+func (h HostSpec) Spots(goos string) []HostSpot {
+	switch goos {
+	case "windows":
+		return h.Windows
+	case "darwin":
+		return h.Darwin
+	case "linux":
+		return h.Linux
+	}
+	return nil
+}
+
 // Curated 是精选表的一项，覆盖在注册表的同名项上。
+// CLIEnv 非空表示适配器认这个环境变量：填上本机 CLI 的路径，它就用人已经装好的那一个，不用自带的。
 type Curated struct {
 	ID          string       `json:"id"`
 	Registry    string       `json:"registry"`
@@ -84,6 +116,8 @@ type Curated struct {
 	Aliases     []string     `json:"aliases,omitempty"`
 	ACPBins     []string     `json:"acpBins,omitempty"`
 	CLIBins     []string     `json:"cliBins,omitempty"`
+	CLIEnv      string       `json:"cliEnv,omitempty"`
+	Host        HostSpec     `json:"host"`
 	Strengths   Localized    `json:"strengths"`
 	Secrets     []SecretSpec `json:"secrets,omitempty"`
 	Login       []LoginSpec  `json:"login,omitempty"`
@@ -152,6 +186,8 @@ type Entry struct {
 	Aliases     []string
 	ACPBins     []string
 	CLIBins     []string
+	CLIEnv      string
+	Host        HostSpec
 	Strengths   Localized
 	Secrets     []SecretSpec
 	Login       []LoginSpec
@@ -222,7 +258,8 @@ func buildCatalog(curated []Curated, reg Registry, custom []CustomAgent) []Entry
 		taken[c.ID] = true
 		e := Entry{
 			ID: c.ID, RegistryID: c.Registry, Name: c.Name, Vendor: c.Vendor, Order: c.Order, Featured: true,
-			Aliases: c.Aliases, ACPBins: c.ACPBins, CLIBins: c.CLIBins, Strengths: c.Strengths, Secrets: c.Secrets,
+			Aliases: c.Aliases, ACPBins: c.ACPBins, CLIBins: c.CLIBins, CLIEnv: c.CLIEnv, Host: c.Host,
+			Strengths: c.Strengths, Secrets: c.Secrets,
 			Login: c.Login, System: c.System, Unsupported: c.Unsupported, Docs: c.Docs,
 		}
 		if a, ok := byID[c.Registry]; ok {
