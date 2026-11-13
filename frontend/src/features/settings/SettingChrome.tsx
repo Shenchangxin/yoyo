@@ -101,7 +101,7 @@ export function SettingSection({
         <div
           id={title ? undefined : id}
           data-setting-section-id={id}
-          className={cn("setting-card w-full min-w-0 rounded-lg border border-border bg-card px-4", tight && "setting-card-tight")}
+          className={cn("setting-card w-full min-w-0 rounded-lg bg-card px-4", tight && "setting-card-tight")}
         >
           {children}
           {actions ? <div className="flex items-center justify-end gap-2">{actions}</div> : null}

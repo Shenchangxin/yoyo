@@ -26,10 +26,10 @@ export const LIGHT_PALETTES: readonly LightPalette[] = ["neutral", "paper", "mis
 
 /** PALETTE_WINDOW 原生窗口背景的 RGB，与 styles.css 里的画布令牌保持一致。 */
 export const PALETTE_WINDOW: Record<PaletteId, readonly [number, number, number]> = {
-  ink: [28, 28, 26],
+  ink: [18, 20, 28],
   dim: [36, 36, 34],
   slate: [18, 18, 18],
-  neutral: [251, 251, 250],
+  neutral: [247, 244, 238],
   paper: [246, 243, 236],
   mist: [246, 248, 250],
 };

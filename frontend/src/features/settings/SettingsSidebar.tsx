@@ -109,7 +109,7 @@ export function SettingsSidebar(props: {
               onClick={() => props.onTab(t.key)}
               className={cn(
                 "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-ui-body font-medium transition-colors",
-                on ? "bg-lift text-foreground" : "text-muted hover:text-foreground",
+                on ? "bg-accent/10 text-accent" : "text-muted hover:text-foreground",
               )}
             >
               <Icon className="size-3.5" aria-hidden />
@@ -222,20 +222,20 @@ function TabButton(props: {
       onClick={props.onClick}
       className={cn(
         "group relative mb-px flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-ui-body transition-colors",
-        props.active ? "font-medium text-foreground" : "text-foreground/75 hover:bg-lift/60 hover:text-foreground",
+        props.active ? "font-medium text-accent" : "text-foreground/75 hover:bg-lift/60 hover:text-foreground",
       )}
     >
       {props.active ? (
         <motion.span
           layoutId="settings-nav-pill"
-          className="absolute inset-0 rounded-md bg-lift"
+          className="absolute inset-0 rounded-md bg-accent/10"
           transition={motionTransition(reduced, DURATION)}
         />
       ) : null}
       <Icon
         className={cn(
           "relative z-10 size-4 shrink-0 transition-colors",
-          props.active ? "text-foreground" : "text-muted group-hover:text-foreground",
+          props.active ? "text-accent" : "text-muted group-hover:text-foreground",
         )}
         aria-hidden
         strokeWidth={1.75}

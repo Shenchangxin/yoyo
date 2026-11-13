@@ -67,25 +67,27 @@ Mode (`system | dark | light`) is orthogonal to named palettes. The document
 element carries `class="dark|light"` and `data-palette`. Accent, success,
 danger, and warning stay put so Harbor and diffs still mean the same thing.
 
-Default dark is quiet stone. Mist (cool daylight) is an opt-in light
-palette — not the brand.
+Default dark is indigo night with warm ivory type. Default light is warm
+linen with white cards. Accent is a saturated indigo in both, so live work,
+focus, and the send control read as color. Mist stays an opt-in cool light.
 
-| Token | Dark (stone) | Light | Use |
+| Token | Dark | Light | Use |
 |---|---|---|---|
-| `background` | `#1c1c1a` | `#fbfbfa` | app canvas, transcript |
-| `sidebar` | `#222220` | `#f1f1ee` | rail, review panel, code surfaces |
-| `card` | `#242422` | white | actionable cards, grouped Form |
-| `popover` | `#2c2c29` | white | menus, tooltips, jump pill |
-| `input-bar` | `#222220` | white | composer |
-| `lift` | `#32322e` | hover wash | hover, selected, chips, kbd |
-| `border` | foreground 9% | ink 8% | every hairline |
-| `foreground` | `#f4f4f0` | `#1c1c1a` | primary text, primary button fill |
-| `muted` | `#8c8b85` | `#6f6e68` | secondary text, icons |
-| `accent` | `#5c99d6` Codex blue | `#0169cc` | live, selected, focus |
-| `success` | `#74b48a` | green | diff add, healthy, iOS switch |
-| `warning` | `#d4b06a` | gold | interrupted, needs approval |
-| `danger` | `#e06b66` | red | failed, destructive |
-| `media-surface` | `#0c0c0b` | near-black | Drama viewer, canvas stage |
+| `background` | `#12141c` | `#f7f4ee` | app canvas, transcript |
+| `sidebar` | `#191d2b` | `#efe9df` | rail, review panel, code surfaces |
+| `card` | `#232a3d` | white | grouped surfaces. Fill only, no stroke |
+| `popover` | `#2c3450` | white | menus, tooltips, jump pill |
+| `input-bar` | `#1a1f30` | white | composer |
+| `lift` | `#353d58` | `#e7e0d4` | hover, chips, kbd |
+| `border` | foreground 10% | ink 9% | inset row hairlines and focus, not card outlines |
+| `foreground` | `#f6f3ec` | `#1c1917` | primary text, primary button fill |
+| `muted` | `#b0a89c` | `#6b645b` | secondary text, icons |
+| `accent` | `#8096ff` | `#3a4ff0` | live work, focus, send, selected nav |
+| `mark` | `#f0a06a` | `#d25e2c` | file tiles, deliverable marks |
+| `success` | `#6ed4a4` | `#0e8a5b` | diff add, healthy |
+| `warning` | `#f0c36a` | `#c47a10` | interrupted, needs approval |
+| `danger` | `#f09590` | `#d23b42` | failed, destructive |
+| `media-surface` | `#0c0e14` | near-black | Drama viewer, canvas stage |
 | `glass-bg` | sidebar 72% | sidebar 72% | chrome only (header, rail, inspector) |
 
 Opacity steps for text: `foreground` (primary) · `foreground/85` (labels) ·
@@ -128,9 +130,8 @@ Concentric radii (Apple): 5px segmented inset, 6px icon buttons / kbd / chips,
 
 ### Elevation & glass
 
-Depth comes from an inset top highlight (`--shadow-card`, `--shadow-composer`)
-on cards and the composer, and a single soft drop shadow (`--shadow-popover`)
-on floating layers. Glass (`backdrop-filter: blur(20px) saturate(160%)` on
+Cards are a fill step on the canvas. `--shadow-card` is none. Depth is the
+composer (`--shadow-composer`) and floating layers (`--shadow-popover`). Glass (`backdrop-filter: blur(20px) saturate(160%)` on
 `--glass-bg`) is for **chrome only**: PageHeader, SidebarCard, inspector,
 canvas dock, menus. The stage and media surface stay opaque. Honour
 `prefers-reduced-transparency` (solid `--sidebar` / `--popover`) and

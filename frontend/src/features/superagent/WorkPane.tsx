@@ -199,7 +199,7 @@ export function WorkPane(props: {
         <button type="button" className="mb-2 self-start rounded-full bg-card px-3 py-1.5 text-[12px] text-muted shadow-[var(--shadow-card)] hover:text-foreground" onClick={() => props.onReview(false)}>
           {copy.work.back}
         </button>
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-[28px] bg-background">{props.review}</div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl bg-background">{props.review}</div>
       </div>
     );
   }
@@ -608,7 +608,7 @@ function NeedsYou(props: {
   const shown = all ? props.items : props.items.slice(0, NEEDS_SHOWN);
   const rest = props.items.length - shown.length;
   return (
-    <section className="mt-4 rounded-[24px] bg-card px-4 py-3 shadow-[var(--shadow-card)]" data-testid="needs-you">
+    <section className="mt-4 rounded-xl bg-card px-4 py-3 shadow-[var(--shadow-card)]" data-testid="needs-you">
       <h2 className="flex items-center gap-1.5 text-[13px] font-medium">
         {copy.work.sectionPerson}
         <span className="tabular-nums text-[11px] text-warning">{props.items.length}</span>
@@ -898,7 +898,7 @@ function BriefMasthead(props: {
   const evening = props.edition.slot === "evening";
   const meta = [props.caption.when, props.caption.clock ? d.briefWrittenAt.replace("{time}", props.caption.clock) : "", d.briefFixed].filter(Boolean).join(" · ");
   return (
-    <section className="rounded-[28px] bg-card px-5 py-4 shadow-[var(--shadow-card)]" data-testid="brief-masthead">
+    <section className="rounded-xl bg-card px-5 py-4 shadow-[var(--shadow-card)]" data-testid="brief-masthead">
       <div className="flex items-center gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-full" style={tint(evening ? "var(--accent)" : "var(--warning)", 16)} aria-hidden>
           {evening ? <Moon className="size-[18px]" /> : <Sun className="size-[18px]" />}
@@ -1050,7 +1050,7 @@ function BriefCardView(props: {
   return (
     <article
       id={briefCardAnchor(card.id)}
-      className="min-w-0 scroll-mt-3 rounded-[24px] bg-card px-5 py-4 shadow-[var(--shadow-card)]"
+      className="min-w-0 scroll-mt-3 rounded-xl bg-card px-5 py-4 shadow-[var(--shadow-card)]"
       data-testid="brief-card"
       data-handled={props.handled ? "true" : undefined}
     >
@@ -1173,13 +1173,13 @@ function BriefCardView(props: {
                     key={choice.id}
                     type="button"
                     aria-pressed={on}
-                    className={cn("min-w-0 rounded-[16px] border px-3.5 py-3 text-left transition-colors", on ? "border-accent/60 bg-accent/10" : "border-border/60 bg-lift/30 hover:border-foreground/25")}
+                    className={cn("min-w-0 rounded-lg px-3.5 py-3 text-left transition-colors", on ? "bg-accent/10 text-foreground" : "bg-lift/40 hover:bg-lift")}
                     onClick={() => props.onUse(card, which)}
                   >
                     {body}
                   </button>
                 ) : (
-                  <div key={choice.id} className="min-w-0 rounded-[16px] border border-border/60 bg-lift/30 px-3.5 py-3">{body}</div>
+                  <div key={choice.id} className="min-w-0 rounded-lg bg-lift/40 px-3.5 py-3">{body}</div>
                 );
               })}
             </div>
@@ -1385,7 +1385,7 @@ function QuietPrefs() {
     setBusy(false);
   }
   return (
-    <section className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="quiet-prefs">
+    <section className="mt-4 rounded-xl bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="quiet-prefs">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[16px] font-semibold">{copy.work.reachSwitch}</h2>
@@ -1421,7 +1421,7 @@ function BriefPrefCard(props: {
 }) {
   const copy = useCopy();
   return (
-    <section className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]">
+    <section className="mt-4 rounded-xl bg-card px-5 py-5 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-[16px] font-semibold">{props.title}</h2>
         <PillSwitch on={props.on} label={copy.work.briefStatus} onChange={props.onToggle} />
@@ -1687,7 +1687,7 @@ function Tasks(props: {
   return (
     <div className="px-3 pb-8 pt-2">
       {props.held.length || props.notes.length ? (
-        <section className="mb-4 rounded-[28px] bg-card px-4 py-4 shadow-[var(--shadow-card)]">
+        <section className="mb-4 rounded-xl bg-card px-4 py-4 shadow-[var(--shadow-card)]">
           <h2 className="text-[13px] font-medium">{copy.work.heldTitle}</h2>
           <div className="mt-3 space-y-2">
             {props.held.map((signal) => (
@@ -1763,7 +1763,7 @@ function Tasks(props: {
                 <span className="tabular-nums text-[11px] font-normal text-muted">{props.observed.length}</span>
               </h2>
               <p className="mt-1 px-1 text-[12px] leading-5 text-muted">{copy.work.observedHint}</p>
-              <ul className="mt-2.5 divide-y divide-border/50 rounded-[20px] bg-card px-4 shadow-[var(--shadow-card)]">
+              <ul className="mt-2.5 divide-y divide-border/50 rounded-xl bg-card px-4 shadow-[var(--shadow-card)]">
                 {props.observed.map((row) => (
                   <li key={row.id} className="py-2.5">
                     <p className="line-clamp-2 text-[13px] leading-5">{row.text}</p>
@@ -1785,7 +1785,7 @@ function Tasks(props: {
                     <li key={id}>
                       <button
                         type="button"
-                        className="flex w-full items-center gap-3 rounded-[20px] bg-card px-4 py-3.5 text-left shadow-[var(--shadow-card)]"
+                        className="flex w-full items-center gap-3 rounded-xl bg-card px-4 py-3.5 text-left shadow-[var(--shadow-card)]"
                         onClick={() => setCompose({ kind: "schedule", text: item.text, ruleId: id })}
                       >
                         <Icon className="size-4 shrink-0 text-muted" />
@@ -2007,14 +2007,14 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
         </button>
       </div>
       {adding ? (
-        <form className="mt-4 rounded-[28px] bg-card px-5 py-4 shadow-[var(--shadow-card)]" onSubmit={(event) => { void add(event); }}>
+        <form className="mt-4 rounded-xl bg-card px-5 py-4 shadow-[var(--shadow-card)]" onSubmit={(event) => { void add(event); }}>
           <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={copy.work.memoryAddHint} className="h-10 w-full bg-transparent text-[14px] outline-none" />
           <div className="mt-2 flex justify-end">
             <button type="submit" disabled={!draft.trim() || saving} className="h-8 rounded-full bg-foreground px-3 text-[12px] font-medium text-background disabled:opacity-40">{copy.work.save}</button>
           </div>
         </form>
       ) : null}
-      <article className="mt-4 rounded-[28px] bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="memory-about">
+      <article className="mt-4 rounded-xl bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="memory-about">
         <h2 className="text-[18px] font-semibold leading-7 tracking-[-0.03em]">{title}</h2>
         <p className="mt-1 text-[12px] text-muted">{portrait.updated ? copy.work.memoryUpdated.replace("{when}", when) : copy.work.memoryNotYet}</p>
         <p className="mt-4 text-[12px] text-muted">{copy.work.memorySummary}</p>

@@ -14,30 +14,30 @@
 
 :root,
 html.dark {
-  /* Quiet stone (WorkBuddy) + Codex blue. Ink is chrome. Blue is evidence. */
-  --background: #1c1c1a;
-  --foreground: #f4f4f0;
-  --sidebar: #222220;
-  --panel: #1c1c1a;
-  --card: #242422;
-  --popover: #2c2c29;
-  --input-bar: #222220;
-  --lift: #32322e;
-  --border: color-mix(in srgb, #f4f4f0 9%, transparent);
-  --muted: #8c8b85;
+  /* Night: cool indigo ground, warm ivory type, a saturated periwinkle. */
+  --background: #12141c;
+  --foreground: #f6f3ec;
+  --sidebar: #191d2b;
+  --panel: #12141c;
+  --card: #232a3d;
+  --popover: #2c3450;
+  --input-bar: #1a1f30;
+  --lift: #353d58;
+  --border: color-mix(in srgb, #f6f3ec 10%, transparent);
+  --muted: #b0a89c;
   --muted-foreground: var(--muted);
   --primary: var(--foreground);
   --primary-foreground: var(--background);
   --card-foreground: var(--foreground);
   --input: var(--border);
-  --accent: #5c99d6;
-  --accent-fg: #0c1924;
-  --mark: #d4896a;
-  --mark-deep: #b56545;
-  --danger: #e06b66;
-  --success: #74b48a;
-  --warning: #d4b06a;
-  --ring: #5c99d6;
+  --accent: #8096ff;
+  --accent-fg: #12141c;
+  --mark: #f0a06a;
+  --mark-deep: #d4834a;
+  --danger: #f09590;
+  --success: #6ed4a4;
+  --warning: #f0c36a;
+  --ring: #8096ff;
   /* Status is evidence: needs-you, live, done, failed, idle. Palettes move the hues underneath. */
   --status-needs: var(--warning);
   --status-live: var(--accent);
@@ -51,8 +51,8 @@ html.dark {
   --radius-pane: 0.75rem;
   --radius-control: 0.5rem;
   --radius-chip: 0.375rem;
-  --media-surface: #0c0c0b;
-  --media-foreground: #f4f4f0;
+  --media-surface: #0c0e14;
+  --media-foreground: #f6f3ec;
   --glass-blur: 20px;
   --glass-bg: color-mix(in srgb, var(--sidebar) 72%, transparent);
   --glass-stroke: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -74,15 +74,15 @@ html.dark {
   --space-item: 0.5rem;
   /* Empty-home / boot hero only. Live transcript fills the remaining stage. */
   --thread-measure: 54rem;
-  --shadow-card: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
-  --shadow-composer: 0 12px 36px color-mix(in srgb, black 28%, transparent);
-  --shadow-popover: 0 18px 48px color-mix(in srgb, black 42%, transparent), 0 0 0 1px color-mix(in srgb, white 6%, transparent);
+  --shadow-card: none;
+  --shadow-composer: 0 18px 48px color-mix(in srgb, #070910 48%, transparent);
+  --shadow-popover: 0 22px 56px color-mix(in srgb, #070910 55%, transparent), 0 0 0 1px color-mix(in srgb, white 8%, transparent);
   --ctx-system: color-mix(in srgb, var(--foreground) 38%, #9a958c);
   --ctx-rules: color-mix(in srgb, var(--foreground) 62%, #c4a574);
   --ctx-catalog: color-mix(in srgb, var(--accent) 45%, #9a958c);
   --ctx-skills: color-mix(in srgb, var(--accent) 78%, white);
   --ctx-tools: color-mix(in srgb, var(--accent) 72%, var(--muted));
-  --ctx-memory: #c2663d;
+  --ctx-memory: #d4834a;
   --ctx-today: var(--success);
   --ctx-notes: var(--warning);
   --ctx-dynamic: var(--warning);
@@ -124,41 +124,41 @@ html.dark {
   color-scheme: dark;
 }
 
-/* Light default is Neutral — WorkBuddy paper, not Tailwind gray-100. */
+/* Light default is morning linen: a warm paper, white cards, a saturated indigo. */
 html.light,
 html.light[data-palette="neutral"] {
-  --background: #fbfbfa;
-  --foreground: #1c1c1a;
-  --sidebar: #f1f1ee;
-  --panel: #fbfbfa;
+  --background: #f7f4ee;
+  --foreground: #1c1917;
+  --sidebar: #efe9df;
+  --panel: #f7f4ee;
   --card: #ffffff;
   --popover: #ffffff;
   --input-bar: #ffffff;
-  --lift: #e8e8e4;
-  --border: color-mix(in srgb, #1c1c1a 8%, transparent);
-  --muted: #6f6e68;
+  --lift: #e7e0d4;
+  --border: color-mix(in srgb, #1c1917 9%, transparent);
+  --muted: #6b645b;
   --muted-foreground: var(--muted);
   --primary: var(--foreground);
   --primary-foreground: var(--background);
   --card-foreground: var(--foreground);
   --input: var(--border);
-  --accent: #0169cc;
-  --accent-fg: #f5faff;
-  --mark: #c2663d;
-  --mark-deep: #9a4e2e;
-  --danger: #c4453e;
-  --success: #1f7a45;
-  --warning: #a07a2a;
-  --ring: #0169cc;
-  --shadow-card: 0 1px 0 color-mix(in srgb, #1c1c1a 4%, transparent);
-  --shadow-composer: 0 12px 36px color-mix(in srgb, #1c1c1a 7%, transparent);
-  --shadow-popover: 0 18px 44px color-mix(in srgb, #1c1c1a 10%, transparent), 0 0 0 1px color-mix(in srgb, #1c1c1a 5%, transparent);
+  --accent: #3a4ff0;
+  --accent-fg: #f6f7ff;
+  --mark: #d25e2c;
+  --mark-deep: #a3461e;
+  --danger: #d23b42;
+  --success: #0e8a5b;
+  --warning: #c47a10;
+  --ring: #3a4ff0;
+  --shadow-card: none;
+  --shadow-composer: 0 18px 44px color-mix(in srgb, #3a2a14 12%, transparent);
+  --shadow-popover: 0 22px 50px color-mix(in srgb, #3a2a14 14%, transparent), 0 0 0 1px color-mix(in srgb, #1c1917 6%, transparent);
   --ctx-system: color-mix(in srgb, var(--foreground) 22%, #9a958c);
   --ctx-rules: color-mix(in srgb, var(--foreground) 40%, #8a6a3b);
   --ctx-catalog: color-mix(in srgb, var(--accent) 35%, #6d6a62);
   --ctx-skills: color-mix(in srgb, var(--accent) 70%, #1c1c1a);
   --ctx-tools: color-mix(in srgb, var(--accent) 55%, var(--muted));
-  --ctx-memory: #9a4e2e;
+  --ctx-memory: #a3461e;
   --ctx-today: var(--success);
   --ctx-notes: var(--warning);
   --ctx-dynamic: var(--warning);
@@ -326,7 +326,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 1rem;
-  letter-spacing: -0.006em;
+  letter-spacing: 0;
   -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: auto;
   overflow: hidden;
@@ -1039,11 +1039,11 @@ html.dark .code-hl span {
   min-height: 64px;
   margin: 0;
   padding: 10px 12px 10px 10px;
-  border: 0.5px solid var(--border);
+  border: 0;
   border-radius: 16px;
   background: var(--card);
   color: var(--foreground);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
   text-align: left;
 }
 .deliverable:hover { background: color-mix(in srgb, var(--lift) 70%, var(--card)); }
@@ -1055,19 +1055,19 @@ html.dark .code-hl span {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--foreground) 6%, var(--background));
-  color: var(--muted);
+  background: color-mix(in srgb, var(--mark) 18%, var(--card));
+  color: var(--mark);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
 .deliverable-mark.is-html {
-  background: color-mix(in srgb, #2f6fed 16%, var(--background));
-  color: #2f6fed;
+  background: color-mix(in srgb, var(--accent) 16%, var(--card));
+  color: var(--accent);
 }
 .deliverable-mark.is-csv {
-  background: color-mix(in srgb, #1f8a4c 16%, var(--background));
-  color: #1f8a4c;
+  background: color-mix(in srgb, var(--success) 18%, var(--card));
+  color: var(--success);
 }
 .file-bubble {
   display: flex;
@@ -1076,9 +1076,9 @@ html.dark .code-hl span {
   min-width: 0;
   margin-top: 4px;
   overflow: hidden;
-  border: 0.5px solid var(--dsw-alias-border-l1, var(--border));
-  border-radius: var(--dsw-radius-lg, 16px);
-  background: color-mix(in srgb, var(--lift) 55%, var(--background));
+  border: 0;
+  border-radius: 16px;
+  background: var(--card);
   color: var(--foreground);
 }
 .file-bubble-header {
@@ -1099,10 +1099,10 @@ html.dark .code-hl span {
   box-sizing: border-box;
   width: 40px;
   height: 40px;
-  border: 0.5px solid var(--dsw-alias-border-l1, var(--border));
+  border: 0;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--background) 50%, transparent);
-  color: var(--dsw-alias-link, var(--accent));
+  background: color-mix(in srgb, var(--mark) 18%, var(--card));
+  color: var(--mark);
 }
 .file-bubble-titles {
   display: flex;
@@ -1153,8 +1153,8 @@ html.dark .code-hl span {
 }
 .file-bubble-actions button {
   border-radius: 999px;
-  border: 0.5px solid var(--border);
-  background: transparent;
+  border: 0;
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
   padding: 1px 11px;
   font-size: 12px;
   line-height: 18px;
@@ -1164,7 +1164,7 @@ html.dark .code-hl span {
   background: var(--lift);
 }
 .file-bubble.is-pending {
-  border-color: color-mix(in srgb, var(--foreground) 15%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, var(--card));
 }
 [data-testid="process-group"],
 [data-testid="working-line"] {
@@ -1421,8 +1421,7 @@ html.dark .code-hl span {
     background-color var(--duration-fast) var(--ease-out);
 }
 .u-card-hover:hover {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
-  background-color: color-mix(in srgb, var(--sidebar) 78%, transparent);
+  background-color: color-mix(in srgb, var(--lift) 45%, var(--card));
 }
 .u-card-hover.is-warn:hover {
   border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
@@ -2079,11 +2078,11 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
 /* Miniature window used by the theme / palette picker cards. */
 [data-theme-preview="ink"],
 .theme-preview-dark {
-  background: #1c1c1a;
-  --tp-rail: #222220;
-  --tp-line: #4a4a44;
-  --tp-bubble: #32322e;
-  --tp-accent: #5c99d6;
+  background: #12141c;
+  --tp-rail: #191d2b;
+  --tp-line: #3d4768;
+  --tp-bubble: #2c3450;
+  --tp-accent: #8096ff;
   --tp-border: color-mix(in srgb, white 8%, transparent);
 }
 [data-theme-preview="dim"] {
@@ -2091,7 +2090,7 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   --tp-rail: #2a2a27;
   --tp-line: #54544e;
   --tp-bubble: #3c3c37;
-  --tp-accent: #5c99d6;
+  --tp-accent: #8096ff;
   --tp-border: color-mix(in srgb, white 8%, transparent);
 }
 [data-theme-preview="slate"] {
@@ -2099,24 +2098,24 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   --tp-rail: #1a1a1a;
   --tp-line: #3e3e3e;
   --tp-bubble: #2a2a2a;
-  --tp-accent: #5c99d6;
+  --tp-accent: #8096ff;
   --tp-border: color-mix(in srgb, white 8%, transparent);
 }
 [data-theme-preview="neutral"],
 .theme-preview-light {
-  background: #fbfbfa;
-  --tp-rail: #f1f1ee;
-  --tp-line: #d4d4ce;
+  background: #f7f4ee;
+  --tp-rail: #efe9df;
+  --tp-line: #ddd4c4;
   --tp-bubble: #ffffff;
-  --tp-accent: #0169cc;
-  --tp-border: color-mix(in srgb, #1c1c1a 8%, transparent);
+  --tp-accent: #3a4ff0;
+  --tp-border: color-mix(in srgb, #1c1917 9%, transparent);
 }
 [data-theme-preview="paper"] {
   background: #f6f3ec;
   --tp-rail: #eeeae2;
   --tp-line: #d4cfc4;
   --tp-bubble: #fffdf8;
-  --tp-accent: #0169cc;
+  --tp-accent: #3a4ff0;
   --tp-border: color-mix(in srgb, black 8%, transparent);
 }
 [data-theme-preview="mist"] {
@@ -2124,7 +2123,7 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   --tp-rail: #eef1f4;
   --tp-line: #cdd6dc;
   --tp-bubble: #ffffff;
-  --tp-accent: #0169cc;
+  --tp-accent: #3a4ff0;
   --tp-border: color-mix(in srgb, #1b1f24 7%, transparent);
 }
 .theme-preview-rail {
@@ -2134,7 +2133,7 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
 .theme-preview-line { background: var(--tp-line); }
 .theme-preview-bubble {
   background: var(--tp-bubble);
-  border: 1px solid var(--tp-border);
+  border: 0;
 }
 .theme-preview-accent {
   background: var(--tp-accent, var(--accent));
@@ -2311,22 +2310,22 @@ html[data-skin] .app-grain {
   z-index: 40;
 }
 .composer-bezel {
-  padding: 3px;
+  padding: 0;
   overflow: visible;
-  border-radius: calc(var(--radius-composer) + 3px);
-  background: color-mix(in srgb, var(--foreground) 4.5%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent);
+  border-radius: var(--radius-composer);
+  background: transparent;
+  box-shadow: none;
 }
 .composer-bezel[data-focused="true"] {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+  background: transparent;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .composer-core {
   position: relative;
   overflow: visible;
   border-radius: var(--radius-composer);
   background: var(--input-bar);
-  box-shadow: var(--shadow-composer), inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  box-shadow: var(--shadow-composer);
 }
 .composer-bezel[data-welded="true"] {
   border-top-left-radius: 0;
@@ -2357,9 +2356,9 @@ html[data-skin] .app-grain {
   transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .send-orb[data-live="true"] {
-  background: var(--foreground);
-  color: var(--background);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
 }
 .send-orb:hover[data-live="true"] {
   filter: brightness(1.05);
@@ -2369,9 +2368,9 @@ html[data-skin] .app-grain {
 }
 
 .user-bubble {
-  border-radius: 1.05rem 1.05rem 0.4rem 1.05rem;
-  background: var(--lift);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
+  border-radius: 18px 18px 6px 18px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--card));
+  box-shadow: none;
 }
 
 .process-tabs {
