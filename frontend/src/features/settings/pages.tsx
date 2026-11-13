@@ -165,7 +165,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                 aria-pressed={active}
                 className={cn(
                   "group cursor-pointer rounded-md border bg-card p-2 text-left transition-colors",
-                  active ? "border-accent/60 bg-lift" : "border-transparent hover:bg-lift/70",
+                  active ? "bg-lift" : "hover:bg-lift/70",
                 )}
                 onClick={() => {
                   setPref(m.id);
@@ -911,7 +911,7 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
               aria-label={`${meta.name}. ${meta.hint}`}
               className={cn(
                 "group cursor-pointer rounded-xl border bg-card p-2 text-left transition-[background-color,border-color,transform] duration-200 ease-[var(--ease-out)]",
-                active ? "border-accent/70 bg-lift" : "border-transparent hover:bg-lift/70",
+                active ? "bg-lift" : "hover:bg-lift/70",
               )}
               onClick={() => onPick(id)}
             >

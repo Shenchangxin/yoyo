@@ -8,7 +8,7 @@ import ElectricBorder from "./ElectricBorder";
 import { useTheme } from "../../lib/theme";
 
 const PAD = 3;
-const FALLBACK = { dark: "#5c99d6", light: "#0169cc" };
+const FALLBACK = { dark: "#8096ff", light: "#3a4ff0" };
 const IDLE_AFTER_BLUR_MS = 30_000;
 
 /** 窗口在前台，或者离开还不到 30 秒。 */
