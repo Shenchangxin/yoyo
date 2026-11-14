@@ -33,7 +33,7 @@ export function GroupRow(props: { group: Group; members: Ticket[]; onOpen: (id: 
   const mode = group.mode === "compare" ? t.groupCompare : t.groupSplit;
   return (
     <div data-testid="group-row" data-group={group.id}>
-      <div className="flex w-full items-center gap-1 rounded-[20px] bg-card py-1.5 pl-1.5 pr-4 shadow-[var(--shadow-card)]">
+      <div className="day-tile flex w-full items-center gap-1 py-1.5 pl-1.5 pr-4">
         <button
           type="button"
           aria-expanded={open}

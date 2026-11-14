@@ -159,7 +159,7 @@ export function SettingsSidebar(props: {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-2 pb-4">
+      <div className={cn("min-h-0 flex-1 overflow-auto px-2", rail ? "pb-16" : "pb-4")}>
         {q ? (
           results.length ? (
             <ul className="pt-1">

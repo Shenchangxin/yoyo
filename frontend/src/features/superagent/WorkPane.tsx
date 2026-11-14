@@ -6,7 +6,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { motion } from "motion/react";
 import { Activity, ArrowRight, Brain, Calendar, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Clock, Coffee, Compass, Folder, FolderOpen, GitBranch, Inbox, Info, ListChecks, Mail, MapPin, Megaphone, MessageCircle, Monitor, Moon, Plus, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Sun, type LucideIcon } from "lucide-react";
+import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import { toast } from "sonner";
 import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, inboxDismiss, inboxRead, memoryEdit, memoryForget, memoryList, memoryWrite, personalAnswer, personalDecide, type DeskMute } from "../../lib/client";
 import type { Attachment, FileHit, Notice, SkillInfo } from "../../lib/protocol";
@@ -193,21 +195,22 @@ export function WorkPane(props: {
     { id: "buddy", label: copy.work.buddy, count: buddyNeeds, person: buddyNeeds > 0 },
   ];
 
+  const reduced = useMotionReduced();
   if (props.reviewOpen) {
     return (
-      <div data-testid="work-pane" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-sidebar px-3 pb-3 pt-3 text-foreground">
-        <button type="button" className="mb-2 self-start rounded-full bg-card px-3 py-1.5 text-[12px] text-muted shadow-[var(--shadow-card)] hover:text-foreground" onClick={() => props.onReview(false)}>
+      <div data-testid="work-pane" className="rail-scroll-fade flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-3 pb-16 pt-2 text-foreground">
+        <button type="button" className="mb-2 self-start rounded-full border border-border bg-card px-3 py-1 text-ui-footnote text-muted shadow-[var(--shadow-card)] hover:bg-lift hover:text-foreground" onClick={() => props.onReview(false)}>
           {copy.work.back}
         </button>
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl bg-background">{props.review}</div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-background">{props.review}</div>
       </div>
     );
   }
 
   return (
-    <div data-testid="work-pane" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-sidebar text-foreground">
-      <div className="flex shrink-0 justify-center px-3 pb-1 pt-3">
-        <div role="tablist" aria-label={copy.work.title} className="flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full bg-lift/80 p-1">
+    <div data-testid="work-pane" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent text-foreground">
+      <div className="flex shrink-0 justify-center px-3 pb-1.5 pt-2">
+        <div role="tablist" aria-label={copy.work.title} className="flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full border border-border/60 bg-lift/75 p-1">
           {tabs.map((item) => {
             const on = tab === item.id;
             return (
@@ -218,22 +221,29 @@ export function WorkPane(props: {
                 aria-selected={on}
                 data-testid={`work-tab-${item.id}`}
                 className={cn(
-                  "flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-200 ease-[var(--ease-out)]",
-                  on ? "bg-card text-foreground shadow-[var(--shadow-card)]" : "text-muted hover:text-foreground",
+                  "relative flex h-7 items-center gap-1.5 rounded-full px-3 text-ui-body font-medium transition-colors duration-200 ease-[var(--ease-out)]",
+                  on ? "text-foreground" : "text-muted hover:text-foreground",
                 )}
                 onClick={() => pick(item.id)}
               >
-                <span>{item.label}</span>
-                {item.count ? <span className={cn("tabular-nums text-[11px]", item.person ? "text-warning" : "text-muted")}>{item.count}</span> : null}
+                {on ? (
+                  <motion.span
+                    layoutId="work-pane-tab-pill"
+                    className="absolute inset-0 rounded-full border border-border/70 bg-card shadow-[var(--shadow-card)]"
+                    transition={motionTransition(reduced, DURATION)}
+                  />
+                ) : null}
+                <span className="relative z-10">{item.label}</span>
+                {item.count ? <span className={cn("relative z-10 tabular-nums text-ui-caption", item.person ? "text-warning" : "text-muted")}>{item.count}</span> : null}
               </button>
             );
           })}
         </div>
       </div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden px-2 pb-2">
-        <div className={cn("h-full min-w-0", reading ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden overscroll-contain")}>
-          {err && tab !== "buddy" ? <p className="px-3 py-2 text-[12px] text-danger">{err}</p> : null}
-          {!view && !err && tab !== "buddy" ? <p className="px-3 py-3 text-[13px] text-muted">{copy.work.loading}</p> : null}
+      <div className="rail-scroll-fade min-h-0 min-w-0 flex-1 overflow-hidden px-2">
+        <div className={cn("h-full min-w-0", reading ? "overflow-hidden pb-14" : "overflow-y-auto overflow-x-hidden overscroll-contain pb-16")}>
+          {err && tab !== "buddy" ? <p className="px-3 py-2 text-ui-footnote text-danger">{err}</p> : null}
+          {!view && !err && tab !== "buddy" ? <p className="px-3 py-3 text-ui-body text-muted">{copy.work.loading}</p> : null}
           {tab === "buddy" ? <BuddyPane /> : null}
           {view && tab === "now" ? (
             <Now
@@ -320,7 +330,7 @@ export function WorkPane(props: {
                   return !!saved.id;
                 }}
               />
-              <p className="px-1 pb-4 text-[12px] leading-5 text-muted">
+              <p className="px-1 pb-4 text-ui-footnote leading-5 text-muted">
                 {copy.work.connectionsInSettings}{" "}
                 <button type="button" className="underline-offset-2 hover:underline" onClick={props.onOpenSettings}>{copy.work.openConnections}</button>
               </p>
@@ -472,7 +482,7 @@ function Now(props: {
         onClearNotices={props.onClearNotices}
         onPrefs={() => setPrefsOpen(true)}
       />
-      <p className="flex h-8 items-center justify-center text-[12px] text-muted">{today}</p>
+      <p className="flex h-8 items-center justify-center text-ui-footnote text-muted">{today}</p>
       {props.needs.length > 0 ? (
         <NeedsYou
           items={props.needs}
@@ -487,14 +497,14 @@ function Now(props: {
       {editions.length === 0 && !waiting ? (
         <div className="mt-8 flex flex-col items-center gap-3">
           {dueMissing ? (
-            <button type="button" className="h-10 rounded-full bg-foreground px-5 text-[13px] font-medium text-background" onClick={() => { void generate(); }}>
+            <button type="button" className="h-9 rounded-full bg-foreground px-5 text-ui-body font-medium text-background" onClick={() => { void generate(); }}>
               {heading}
             </button>
           ) : null}
-          <p className="max-w-64 text-center text-[12px] leading-5 text-muted">{dueMissing ? copy.work.briefReady : copy.work.briefStays}</p>
+          <p className="max-w-64 text-center text-ui-footnote leading-5 text-muted">{dueMissing ? copy.work.briefReady : copy.work.briefStays}</p>
         </div>
       ) : null}
-      {waiting ? <p className="py-10 text-center text-[14px] text-accent">{copy.work.briefRunning}</p> : null}
+      {waiting ? <p className="py-10 text-center text-ui-body-l text-accent">{copy.work.briefRunning}</p> : null}
       {shown && caption ? (
         <div className="mt-4 space-y-3" data-testid="brief-edition">
           <BriefMasthead
@@ -520,7 +530,7 @@ function Now(props: {
       ) : null}
       {dueMissing && editions.length > 0 && !waiting ? (
         <div className="mt-6 flex justify-center">
-          <button type="button" className="h-9 rounded-full bg-card px-4 text-[13px] font-medium shadow-[var(--shadow-card)]" onClick={() => { void generate(); }}>
+          <button type="button" className="h-9 rounded-full border border-border bg-card px-4 text-ui-body font-medium shadow-[var(--shadow-card)] hover:bg-lift" onClick={() => { void generate(); }}>
             {heading}
           </button>
         </div>
@@ -552,7 +562,7 @@ function DeskMenu(props: {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-card text-muted shadow-[var(--shadow-card)] hover:text-foreground"
+          className="absolute right-3 top-3 grid size-8 place-items-center rounded-full border border-border bg-card text-muted shadow-[var(--shadow-card)] transition-colors hover:bg-lift hover:text-foreground"
           aria-label={d.menu}
           data-testid="desk-menu"
         >
@@ -580,13 +590,13 @@ function DeskMenu(props: {
             {props.notices.slice(0, 6).map((n) => (
               <DropdownMenuItem key={n.id} onSelect={() => props.onNotice?.(n)} className="flex-col items-start gap-0">
                 <span className="w-full truncate">{n.title}</span>
-                {n.body ? <span className="w-full truncate text-[11px] text-muted">{n.body}</span> : null}
+                {n.body ? <span className="w-full truncate text-ui-caption text-muted">{n.body}</span> : null}
               </DropdownMenuItem>
             ))}
             {props.onClearNotices ? <DropdownMenuItem onSelect={() => props.onClearNotices?.()} className="text-muted">{d.activityClear}</DropdownMenuItem> : null}
           </>
         ) : (
-          <p className="px-2 py-1.5 text-[12px] text-muted">{d.activityEmpty}</p>
+          <p className="px-2 py-1.5 text-ui-footnote text-muted">{d.activityEmpty}</p>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -608,16 +618,16 @@ function NeedsYou(props: {
   const shown = all ? props.items : props.items.slice(0, NEEDS_SHOWN);
   const rest = props.items.length - shown.length;
   return (
-    <section className="mt-4 rounded-xl bg-card px-4 py-3 shadow-[var(--shadow-card)]" data-testid="needs-you">
-      <h2 className="flex items-center gap-1.5 text-[13px] font-medium">
+    <section className="day-card mt-4 px-4 py-3" data-testid="needs-you">
+      <h2 className="flex items-center gap-1.5 text-ui-body font-medium">
         {copy.work.sectionPerson}
-        <span className="tabular-nums text-[11px] text-warning">{props.items.length}</span>
+        <span className="tabular-nums text-ui-caption text-warning">{props.items.length}</span>
       </h2>
-      <ul className="mt-1 divide-y divide-border/50">
+      <ul className="mt-1 divide-y divide-border/60">
         {shown.map((item) => <NeedRow key={item.id} {...props} item={item} />)}
       </ul>
       {rest > 0 ? (
-        <button type="button" className="pt-1 text-[12px] text-muted hover:text-foreground" onClick={() => setAll(true)}>
+        <button type="button" className="pt-1 text-ui-footnote text-muted hover:text-foreground" onClick={() => setAll(true)}>
           {copy.desk.needsMore.replace("{n}", String(rest))}
         </button>
       ) : null}
@@ -647,8 +657,8 @@ function NeedRow(props: {
         <li className="flex items-start gap-3 py-2.5" data-testid="need-due">
           <Calendar className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 text-[13px] leading-5">{item.title}</p>
-            {label ? <p className={cn("mt-0.5 text-[12px]", delta !== null && delta < 0 ? "text-warning" : "text-muted")}>{label}</p> : null}
+            <p className="line-clamp-2 text-ui-body leading-5">{item.title}</p>
+            {label ? <p className={cn("mt-0.5 text-ui-footnote", delta !== null && delta < 0 ? "text-warning" : "text-muted")}>{label}</p> : null}
           </div>
           <TextButton quiet onClick={() => props.onDraft(copy.work.dueTask.replace("{title}", item.title).replace("{when}", label || item.due || ""))}>{copy.work.duePrepare}</TextButton>
         </li>
@@ -657,12 +667,12 @@ function NeedRow(props: {
     case "approval":
       return (
         <li className="py-2.5" data-testid="need-approval">
-          <p className="flex items-start gap-2 text-[13px] leading-5">
+          <p className="flex items-start gap-2 text-ui-body leading-5">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
             <span className="min-w-0">{d.needApproval.replace("{action}", item.title)}</span>
           </p>
-          {item.detail ? <p className="mt-1.5 truncate rounded-lg bg-lift/60 px-2.5 py-1 font-mono text-[12px] text-foreground/85 [font-variant-ligatures:none]">{item.detail}</p> : null}
-          {when ? <p className="mt-1 text-[12px] text-muted">{when}</p> : null}
+          {item.detail ? <p className="mt-1.5 truncate rounded-lg border border-border/60 bg-lift/55 px-2.5 py-1 font-mono text-ui-footnote text-foreground/85 [font-variant-ligatures:none]">{item.detail}</p> : null}
+          {when ? <p className="mt-1 text-ui-footnote text-muted">{when}</p> : null}
           <div className="mt-2 flex gap-2">
             <TextButton onClick={() => props.onResolve(item.offerId || "", "once")}>{d.allowOnce}</TextButton>
             <TextButton quiet onClick={() => props.onResolve(item.offerId || "", "deny")}>{d.deny}</TextButton>
@@ -677,8 +687,8 @@ function NeedRow(props: {
         <li className="flex items-start gap-3 py-2.5" data-testid="need-task">
           <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", item.kind === "failed" ? "bg-danger" : "bg-warning")} aria-hidden />
           <button type="button" className="min-w-0 flex-1 text-left" onClick={() => props.onOpenTask(item.ticketId || "")}>
-            <span className="block truncate text-[13px] font-medium leading-5">{item.title}</span>
-            <span className="mt-0.5 line-clamp-2 block text-[12px] leading-5 text-muted">
+            <span className="block truncate text-ui-body font-medium leading-5">{item.title}</span>
+            <span className="mt-0.5 line-clamp-2 block text-ui-footnote leading-5 text-muted">
               {item.detail || (item.kind === "review" ? d.needReview : item.kind === "failed" ? d.needFailed : d.needQuestion)}
             </span>
           </button>
@@ -690,8 +700,8 @@ function NeedRow(props: {
     case "incoming":
       return (
         <li className="py-2.5" data-testid="need-incoming">
-          <p className="line-clamp-2 text-[13px] leading-5">{item.title}</p>
-          {item.detail || when ? <p className="mt-0.5 text-[12px] text-muted">{[item.detail, when].filter(Boolean).join(" · ")}</p> : null}
+          <p className="line-clamp-2 text-ui-body leading-5">{item.title}</p>
+          {item.detail || when ? <p className="mt-0.5 text-ui-footnote text-muted">{[item.detail, when].filter(Boolean).join(" · ")}</p> : null}
           <div className="mt-2 flex gap-2">
             <TextButton onClick={() => { void props.onDecide(item.triggerId || "", "accept"); }}>{copy.work.accept}</TextButton>
             <TextButton quiet onClick={() => { void props.onDecide(item.triggerId || "", "ignore"); }}>{copy.work.ignore}</TextButton>
@@ -703,8 +713,8 @@ function NeedRow(props: {
         <li className="flex items-start gap-3 py-2.5" data-testid="need-draft">
           <Mail className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] leading-5">{item.title}</p>
-            <p className="mt-0.5 truncate text-[12px] text-muted">{[item.detail, d.needDraft].filter(Boolean).join(" · ")}</p>
+            <p className="truncate text-ui-body leading-5">{item.title}</p>
+            <p className="mt-0.5 truncate text-ui-footnote text-muted">{[item.detail, d.needDraft].filter(Boolean).join(" · ")}</p>
           </div>
           <TextButton
             quiet
@@ -717,11 +727,11 @@ function NeedRow(props: {
     case "proposal":
       return (
         <li className="py-2.5" data-testid="need-proposal">
-          <p className="flex items-start gap-2 text-[13px] leading-5">
+          <p className="flex items-start gap-2 text-ui-body leading-5">
             <Send className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
             <span className="min-w-0">{d.needProposal.replace("{title}", item.title)}</span>
           </p>
-          {item.detail || when ? <p className="mt-0.5 text-[12px] text-muted">{[item.detail, when].filter(Boolean).join(" · ")}</p> : null}
+          {item.detail || when ? <p className="mt-0.5 text-ui-footnote text-muted">{[item.detail, when].filter(Boolean).join(" · ")}</p> : null}
           <div className="mt-2 flex gap-2">
             <TextButton onClick={() => { void personalDecide(item.proposalId || "", item.hash || "", true).then(() => refreshQueue()).catch((e) => toast.error(String(e))); }}>{d.send}</TextButton>
             <TextButton quiet onClick={() => { void personalDecide(item.proposalId || "", item.hash || "", false).then(() => refreshQueue()).catch((e) => toast.error(String(e))); }}>{d.dontSend}</TextButton>
@@ -733,11 +743,11 @@ function NeedRow(props: {
     case "inbox":
       return (
         <li className="py-2.5" data-testid="need-inbox">
-          <p className="flex items-start gap-2 text-[13px] leading-5">
+          <p className="flex items-start gap-2 text-ui-body leading-5">
             <Inbox className="mt-0.5 size-3.5 shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 line-clamp-2">{item.title}</span>
           </p>
-          {item.detail ? <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-muted">{item.detail}</p> : null}
+          {item.detail ? <p className="mt-0.5 line-clamp-2 text-ui-footnote leading-5 text-muted">{item.detail}</p> : null}
           <div className="mt-2 flex gap-2">
             {item.sessionId && props.onOpenThread ? (
               <TextButton onClick={() => {
@@ -783,9 +793,9 @@ function PersonalNeedRow(props: { item: NeedItem; when: string; onOpenSettings: 
       <div className="flex items-start gap-3">
         <span className="mt-[7px] size-1.5 shrink-0 rounded-full bg-warning" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium leading-5">{item.title}</p>
-          <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-muted">{item.detail || d.needPersonal}</p>
-          <p className="mt-0.5 text-[11.5px] text-muted/80">{[d.personalTag, props.when].filter(Boolean).join(" · ")}</p>
+          <p className="truncate text-ui-body font-medium leading-5">{item.title}</p>
+          <p className="mt-0.5 line-clamp-2 text-ui-footnote leading-5 text-muted">{item.detail || d.needPersonal}</p>
+          <p className="mt-0.5 text-ui-caption text-muted/80">{[d.personalTag, props.when].filter(Boolean).join(" · ")}</p>
         </div>
         {answerable ? (
           <TextButton quiet={open} onClick={() => setOpen((on) => !on)}>{open ? copy.work.memoryEditCancel : d.answer}</TextButton>
@@ -801,9 +811,9 @@ function PersonalNeedRow(props: { item: NeedItem; when: string; onOpenSettings: 
             onChange={(event) => setText(event.target.value)}
             placeholder={d.answerPh}
             aria-label={d.answerPh}
-            className="h-8 min-w-0 flex-1 rounded-full bg-lift px-3 text-[13px] outline-none placeholder:text-muted"
+            className="h-8 min-w-0 flex-1 rounded-full border border-border bg-lift/75 px-3 text-ui-body outline-none placeholder:text-muted focus-visible:border-accent/50"
           />
-          <button type="submit" disabled={!text.trim() || busy} className="h-7 shrink-0 rounded-lg bg-foreground px-2.5 text-[12px] font-medium text-background disabled:opacity-40">{d.answer}</button>
+          <button type="submit" disabled={!text.trim() || busy} className="h-7 shrink-0 rounded-full bg-foreground px-3 text-ui-footnote font-medium text-background disabled:opacity-40">{d.answer}</button>
         </form>
       ) : null}
     </li>
@@ -898,7 +908,7 @@ function BriefMasthead(props: {
   const evening = props.edition.slot === "evening";
   const meta = [props.caption.when, props.caption.clock ? d.briefWrittenAt.replace("{time}", props.caption.clock) : "", d.briefFixed].filter(Boolean).join(" · ");
   return (
-    <section className="rounded-xl bg-card px-5 py-4 shadow-[var(--shadow-card)]" data-testid="brief-masthead">
+    <section className="day-card px-5 py-4" data-testid="brief-masthead">
       <div className="flex items-center gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-full" style={tint(evening ? "var(--accent)" : "var(--warning)", 16)} aria-hidden>
           {evening ? <Moon className="size-[18px]" /> : <Sun className="size-[18px]" />}
@@ -907,7 +917,7 @@ function BriefMasthead(props: {
           {props.editions.length > 1 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" className="-ml-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-1.5 text-[18px] font-semibold tracking-[-0.02em] hover:bg-lift/70" aria-label={d.briefPick} data-testid="brief-pick">
+                <button type="button" className="-ml-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-1.5 text-ui-title font-semibold tracking-[-0.02em] hover:bg-lift/70" aria-label={d.briefPick} data-testid="brief-pick">
                   <span className="truncate">{props.caption.title}</span>
                   <ChevronDown className="size-4 shrink-0 text-muted" />
                 </button>
@@ -918,7 +928,7 @@ function BriefMasthead(props: {
                   return (
                     <DropdownMenuItem key={edition.id} onSelect={() => props.onPick(edition.id)}>
                       <span className="flex-1 truncate">{[c.when, c.title].filter(Boolean).join(" ")}</span>
-                      <span className="tabular-nums text-[11px] text-muted">{c.clock}</span>
+                      <span className="tabular-nums text-ui-caption text-muted">{c.clock}</span>
                       {edition.id === props.edition.id ? <Check className="size-3.5 text-muted" /> : null}
                     </DropdownMenuItem>
                   );
@@ -926,14 +936,14 @@ function BriefMasthead(props: {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <h2 className="truncate text-[18px] font-semibold tracking-[-0.02em]">{props.caption.title}</h2>
+            <h2 className="truncate text-ui-title font-semibold tracking-[-0.02em]">{props.caption.title}</h2>
           )}
-          <p className="mt-0.5 truncate text-[12px] text-muted">{meta}</p>
+          <p className="mt-0.5 truncate text-ui-footnote text-muted">{meta}</p>
         </div>
       </div>
       {progress.total > 0 ? (
         <div className="mt-4" data-testid="brief-progress">
-          <div className="flex items-baseline justify-between text-[12px]">
+          <div className="flex items-baseline justify-between text-ui-footnote">
             <span className="text-muted">{d.briefHandled}</span>
             <span className="tabular-nums text-foreground/80">{progress.done}<span className="text-muted"> / {progress.total}</span></span>
           </div>
@@ -950,7 +960,7 @@ function BriefMasthead(props: {
               <button
                 key={card.id}
                 type="button"
-                className={cn("inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-lift/70 pl-2 pr-2.5 text-[12px] transition-colors hover:bg-lift", done ? "text-muted" : "text-foreground/85")}
+                className={cn("inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-lift/65 pl-2 pr-2.5 text-ui-footnote transition-colors hover:bg-lift", done ? "text-muted" : "text-foreground/85")}
                 onClick={() => props.onJump(card.id)}
               >
                 {done ? <Check className="size-3 shrink-0 text-success" /> : <span className="size-1.5 shrink-0 rounded-full" style={{ background: cardLook(card).color }} aria-hidden />}
@@ -1050,7 +1060,7 @@ function BriefCardView(props: {
   return (
     <article
       id={briefCardAnchor(card.id)}
-      className="min-w-0 scroll-mt-3 rounded-xl bg-card px-5 py-4 shadow-[var(--shadow-card)]"
+      className="day-card min-w-0 scroll-mt-3 px-5 py-4"
       data-testid="brief-card"
       data-handled={props.handled ? "true" : undefined}
     >
@@ -1059,11 +1069,11 @@ function BriefCardView(props: {
           <Icon className="size-4" />
         </span>
         <button type="button" className="min-w-0 flex-1 text-left" aria-expanded={!props.collapsed} onClick={() => props.onToggle(!props.collapsed)}>
-          {card.kicker ? <span className="block text-[11.5px] font-medium tracking-[0.04em] text-muted">{card.kicker}</span> : null}
-          <span className={cn("mt-0.5 block text-[17px] font-semibold leading-6 tracking-[-0.02em] [text-wrap:pretty]", props.collapsed && props.handled && "text-foreground/65")}>{card.title}</span>
+          {card.kicker ? <span className="block text-ui-caption font-medium tracking-[0.04em] text-muted">{card.kicker}</span> : null}
+          <span className={cn("mt-0.5 block text-ui-title font-semibold leading-6 tracking-[-0.02em] [text-wrap:pretty]", props.collapsed && props.handled && "text-foreground/65")}>{card.title}</span>
         </button>
         <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
-          {checks ? <span className="px-1 text-[11.5px] tabular-nums text-muted">{ticked}/{card.items.length}</span> : null}
+          {checks ? <span className="px-1 text-ui-caption tabular-nums text-muted">{ticked}/{card.items.length}</span> : null}
           {props.handled ? (
             <span className="grid size-6 place-items-center rounded-full" style={tint("var(--success)", 16)} title={d.briefHandled}>
               <Check className="size-3.5" />
@@ -1073,21 +1083,21 @@ function BriefCardView(props: {
         </div>
       </div>
       {props.collapsed ? (
-        <button type="button" className="mt-2 flex w-full items-center gap-1 text-left text-[12px] text-muted hover:text-foreground" onClick={() => props.onToggle(false)}>
+        <button type="button" className="mt-2 flex w-full items-center gap-1 text-left text-ui-footnote text-muted hover:text-foreground" onClick={() => props.onToggle(false)}>
           <span className="min-w-0 truncate">{props.handled ? (chosen ? props.filledLabel : d.briefAllTicked) : card.lede || d.briefExpand}</span>
           <ChevronDown className="size-3.5 shrink-0" />
         </button>
       ) : (
         <>
-          {card.lede ? <p className="mt-2 text-[13px] leading-6 text-muted">{card.lede}</p> : null}
-          {card.mark && (layout === "checks" || layout === "evidence" || layout === "rows") ? <p className="mt-3 text-[12px] tabular-nums text-muted">{card.mark}</p> : null}
+          {card.lede ? <p className="mt-2 text-ui-body leading-6 text-muted">{card.lede}</p> : null}
+          {card.mark && (layout === "checks" || layout === "evidence" || layout === "rows") ? <p className="mt-3 text-ui-footnote tabular-nums text-muted">{card.mark}</p> : null}
           {checks ? (
             <ul className="mt-2 space-y-0.5">
               {card.items.map((item, index) => {
                 const key = itemKey(card.id, index);
                 const done = !!props.picked[key];
                 return (
-                  <li key={`${item.title}-${index}`} className="group/item -mx-2 flex items-start gap-3 rounded-[14px] px-2 py-1.5 transition-colors hover:bg-lift/50">
+                  <li key={`${item.title}-${index}`} className="group/item -mx-2 flex items-start gap-3 rounded-xl px-2 py-1.5 transition-colors hover:bg-lift/50">
                     <button
                       type="button"
                       role="checkbox"
@@ -1103,8 +1113,8 @@ function BriefCardView(props: {
                       {done ? <Check className="size-3" strokeWidth={3} /> : null}
                     </button>
                     <div className={cn("min-w-0 flex-1 transition-opacity", done && "opacity-55")}>
-                      <p className={cn("text-[13px] font-medium leading-5", done && "line-through decoration-foreground/30")}>{item.title}</p>
-                      {item.detail ? <p className="mt-0.5 text-[12.5px] leading-5 text-muted">{item.detail}</p> : null}
+                      <p className={cn("text-ui-body font-medium leading-5", done && "line-through decoration-foreground/30")}>{item.title}</p>
+                      {item.detail ? <p className="mt-0.5 text-ui-footnote leading-5 text-muted">{item.detail}</p> : null}
                     </div>
                     {ask ? <AskButton onClick={() => ask(item.title, item.detail)} /> : null}
                   </li>
@@ -1119,8 +1129,8 @@ function BriefCardView(props: {
                 <li key={`${item.title}-${index}`} className="group/item relative flex items-start gap-2">
                   <span className="absolute -left-5 top-[5px] size-[11px] rounded-full border-2 border-card" style={{ background: look.color }} aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium leading-5">{item.title}</p>
-                    {item.detail ? <p className="mt-0.5 text-[12.5px] leading-5 text-muted">{item.detail}</p> : null}
+                    <p className="text-ui-body font-medium leading-5">{item.title}</p>
+                    {item.detail ? <p className="mt-0.5 text-ui-footnote leading-5 text-muted">{item.detail}</p> : null}
                   </div>
                   {ask ? <AskButton onClick={() => ask(item.title, item.detail)} /> : null}
                 </li>
@@ -1135,11 +1145,11 @@ function BriefCardView(props: {
                 return (
                   <li key={`${item.title}-${index}`} className="group/item flex items-center gap-3 py-2.5">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium leading-5">{item.title}</p>
-                      {item.detail ? <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-muted">{item.detail}</p> : null}
+                      <p className="truncate text-ui-body font-medium leading-5">{item.title}</p>
+                      {item.detail ? <p className="mt-0.5 line-clamp-2 text-ui-footnote leading-5 text-muted">{item.detail}</p> : null}
                     </div>
                     {ask ? <AskButton onClick={() => ask(item.title, item.detail)} /> : null}
-                    {label ? <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" style={tint(color, 14)}>{label}</span> : null}
+                    {label ? <span className="shrink-0 rounded-full px-2 py-0.5 text-ui-caption font-medium" style={tint(color, 14)}>{label}</span> : null}
                   </li>
                 );
               })}
@@ -1148,9 +1158,9 @@ function BriefCardView(props: {
           {layout === "stats" && card.stats && card.stats.length > 0 ? (
             <dl className="mt-3 grid grid-cols-2 gap-2">
               {card.stats.map((stat, index) => (
-                <div key={stat.label} className="min-w-0 rounded-[16px] bg-lift/50 px-3.5 py-3">
-                  <dd className="text-[24px] font-semibold leading-8 tabular-nums tracking-[-0.03em]" style={index === 0 ? { color: look.color } : undefined}>{stat.value}</dd>
-                  <dt className="mt-0.5 truncate text-[12px] text-muted">{stat.label}</dt>
+                <div key={stat.label} className="min-w-0 rounded-xl border border-border/60 bg-lift/45 px-3.5 py-3">
+                  <dd className="text-ui-display font-semibold leading-7 tabular-nums tracking-[-0.03em]" style={index === 0 ? { color: look.color } : undefined}>{stat.value}</dd>
+                  <dt className="mt-0.5 truncate text-ui-footnote text-muted">{stat.label}</dt>
                 </div>
               ))}
             </dl>
@@ -1163,9 +1173,9 @@ function BriefCardView(props: {
                 const on = selectable && chosen === which;
                 const body = (
                   <>
-                    <p className="text-[13px] font-semibold leading-5">{choice.title}</p>
-                    {choice.detail ? <p className="mt-1 whitespace-pre-line text-[12.5px] leading-5 text-muted">{choice.detail}</p> : null}
-                    {on ? <p className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-medium text-accent"><Check className="size-3" />{d.briefChosen}</p> : null}
+                    <p className="text-ui-body font-semibold leading-5">{choice.title}</p>
+                    {choice.detail ? <p className="mt-1 whitespace-pre-line text-ui-footnote leading-5 text-muted">{choice.detail}</p> : null}
+                    {on ? <p className="mt-2 inline-flex items-center gap-1 text-ui-caption font-medium text-accent"><Check className="size-3" />{d.briefChosen}</p> : null}
                   </>
                 );
                 return selectable ? (
@@ -1173,13 +1183,13 @@ function BriefCardView(props: {
                     key={choice.id}
                     type="button"
                     aria-pressed={on}
-                    className={cn("min-w-0 rounded-lg px-3.5 py-3 text-left transition-colors", on ? "bg-accent/10 text-foreground" : "bg-lift/40 hover:bg-lift")}
+                    className={cn("min-w-0 rounded-xl border px-3.5 py-3 text-left transition-colors", on ? "border-accent/45 bg-accent/10 text-foreground" : "border-border/60 bg-lift/40 hover:bg-lift")}
                     onClick={() => props.onUse(card, which)}
                   >
                     {body}
                   </button>
                 ) : (
-                  <div key={choice.id} className="min-w-0 rounded-lg bg-lift/40 px-3.5 py-3">{body}</div>
+                  <div key={choice.id} className="min-w-0 rounded-xl border border-border/60 bg-lift/40 px-3.5 py-3">{body}</div>
                 );
               })}
             </div>
@@ -1187,26 +1197,26 @@ function BriefCardView(props: {
           {layout === "letter" ? (
             <div className={cn("mt-3 grid gap-2", card.items.length > 0 && card.choices.length > 0 ? "grid-cols-2" : "grid-cols-1")}>
               {card.items.length > 0 || card.choices.length === 0 ? (
-                <div className="min-w-0 rounded-[16px] bg-lift/50 px-3.5 py-3">
-                  <p className="text-[11.5px] font-medium text-muted">{card.leftLabel}</p>
+                <div className="min-w-0 rounded-xl border border-border/60 bg-lift/45 px-3.5 py-3">
+                  <p className="text-ui-caption font-medium text-muted">{card.leftLabel}</p>
                   <div className="mt-2 space-y-2">
-                    {card.items.length === 0 ? <p className="text-[13px] text-muted">—</p> : card.items.map((item, index) => (
+                    {card.items.length === 0 ? <p className="text-ui-body text-muted">—</p> : card.items.map((item, index) => (
                       <div key={`${item.title}-${index}`}>
-                        <p className="text-[12px] text-muted">{item.title}</p>
-                        {item.detail ? <p className="text-[13px] font-medium leading-5">{item.detail}</p> : null}
+                        <p className="text-ui-footnote text-muted">{item.title}</p>
+                        {item.detail ? <p className="text-ui-body font-medium leading-5">{item.detail}</p> : null}
                       </div>
                     ))}
                   </div>
                 </div>
               ) : null}
               {card.choices.length > 0 ? (
-                <div className="min-w-0 rounded-[16px] border border-dashed px-3.5 py-3" style={{ borderColor: "color-mix(in srgb, var(--warning) 45%, transparent)" }}>
-                  <p className="text-[11.5px] font-medium text-warning">{card.rightLabel}</p>
+                <div className="min-w-0 rounded-xl border border-dashed px-3.5 py-3" style={{ borderColor: "color-mix(in srgb, var(--warning) 45%, transparent)" }}>
+                  <p className="text-ui-caption font-medium text-warning">{card.rightLabel}</p>
                   <div className="mt-2 space-y-2">
                     {card.choices.map((choice) => (
                       <div key={choice.id}>
-                        <p className="text-[12px] text-muted">{choice.title}</p>
-                        {choice.detail ? <p className="whitespace-pre-line text-[13px] font-medium leading-5">{choice.detail}</p> : null}
+                        <p className="text-ui-footnote text-muted">{choice.title}</p>
+                        {choice.detail ? <p className="whitespace-pre-line text-ui-body font-medium leading-5">{choice.detail}</p> : null}
                       </div>
                     ))}
                   </div>
@@ -1217,28 +1227,28 @@ function BriefCardView(props: {
           {layout === "chips" && card.items.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {card.items.map((item) => ask ? (
-                <button key={item.title} type="button" className="rounded-full bg-lift/70 px-3 py-1 text-[12.5px] transition-colors hover:bg-lift" title={d.briefAsk} onClick={() => ask(item.title, item.detail)}>
+                <button key={item.title} type="button" className="rounded-full border border-border/60 bg-lift/65 px-3 py-1 text-ui-footnote transition-colors hover:bg-lift" title={d.briefAsk} onClick={() => ask(item.title, item.detail)}>
                   {item.title}
                 </button>
               ) : (
-                <span key={item.title} className="rounded-full bg-lift/70 px-3 py-1 text-[12.5px]">{item.title}</span>
+                <span key={item.title} className="rounded-full border border-border/60 bg-lift/65 px-3 py-1 text-ui-footnote">{item.title}</span>
               ))}
             </div>
           ) : null}
-          {card.note ? <p className="mt-3 rounded-[14px] bg-lift/50 px-3 py-2 text-[12px] leading-5 text-muted">{card.note}</p> : null}
+          {card.note ? <p className="mt-3 rounded-xl border border-border/50 bg-lift/45 px-3 py-2 text-ui-footnote leading-5 text-muted">{card.note}</p> : null}
           {refs.length > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-1.5" data-testid="brief-refs">
-              <span className="text-[11.5px] text-muted/80">{copy.work.briefRefs}</span>
+              <span className="text-ui-caption text-muted/80">{copy.work.briefRefs}</span>
               {refs.map((ref) => {
                 const ended = refStatus(ref, props.tickets ?? []) === "ended";
                 const label = `${kinds[ref.kind] || ref.kind} · ${ref.label}${ended ? ` · ${copy.work.refEnded}` : ""}`;
                 const open = ref.kind === "ticket" && ref.target && props.onOpenTicket ? () => props.onOpenTicket?.(ref.target || "") : null;
                 return open ? (
-                  <button key={ref.id} type="button" className={cn("h-6 max-w-full truncate rounded-full bg-lift/70 px-2 text-[11.5px] hover:bg-lift hover:text-foreground", ended ? "text-muted" : "text-foreground/85")} onClick={open}>
+                  <button key={ref.id} type="button" className={cn("h-6 max-w-full truncate rounded-full border border-border/60 bg-lift/65 px-2.5 text-ui-caption hover:bg-lift hover:text-foreground", ended ? "text-muted" : "text-foreground/85")} onClick={open}>
                     {label}
                   </button>
                 ) : (
-                  <span key={ref.id} className="inline-flex h-6 max-w-full items-center truncate rounded-full bg-lift/50 px-2 text-[11.5px] text-muted">{label}</span>
+                  <span key={ref.id} className="inline-flex h-6 max-w-full items-center truncate rounded-full border border-border/50 bg-lift/45 px-2.5 text-ui-caption text-muted">{label}</span>
                 );
               })}
             </div>
@@ -1246,17 +1256,17 @@ function BriefCardView(props: {
           {primaryLabel || secondaryLabel ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {primaryLabel ? (
-                <button type="button" className={cn("h-9 rounded-full px-4 text-[13px] font-medium", chosen === "secondary" ? "bg-lift text-foreground" : "bg-foreground text-background")} onClick={() => props.onUse(card, "primary")}>
+                <button type="button" className={cn("h-8 rounded-full px-3.5 text-ui-body font-medium transition-colors", chosen === "secondary" ? "border border-border bg-lift/75 text-foreground hover:bg-lift" : "bg-foreground text-background hover:opacity-[0.92]")} onClick={() => props.onUse(card, "primary")}>
                   {primaryLabel}
                 </button>
               ) : null}
               {secondaryLabel ? (
-                <button type="button" className={cn("h-9 rounded-full px-4 text-[13px] font-medium", chosen === "secondary" ? "bg-foreground text-background" : "bg-lift text-foreground")} onClick={() => props.onUse(card, "secondary")}>
+                <button type="button" className={cn("h-8 rounded-full px-3.5 text-ui-body font-medium transition-colors", chosen === "secondary" ? "bg-foreground text-background hover:opacity-[0.92]" : "border border-border bg-lift/75 text-foreground hover:bg-lift")} onClick={() => props.onUse(card, "secondary")}>
                   {secondaryLabel}
                 </button>
               ) : null}
               {chosen ? (
-                <span className="ml-1 inline-flex items-center gap-1.5 text-[12px] text-muted">
+                <span className="ml-1 inline-flex items-center gap-1.5 text-ui-footnote text-muted">
                   <Check className="size-3.5 text-success" />
                   {props.filledLabel}
                   {props.onMark ? <button type="button" className="text-foreground/80 underline-offset-2 hover:underline" onClick={() => props.onMark?.(card.id, "")}>{d.briefUndo}</button> : null}
@@ -1276,7 +1286,7 @@ function AskButton(props: { onClick: () => void }) {
   return (
     <button
       type="button"
-      className="h-6 shrink-0 rounded-full px-2 text-[11.5px] text-muted opacity-0 transition-opacity duration-[var(--duration-fast)] hover:bg-lift hover:text-foreground focus-visible:opacity-100 group-hover/item:opacity-100 [@media(hover:none)]:opacity-100"
+      className="h-6 shrink-0 rounded-full px-2 text-ui-caption text-muted opacity-0 transition-opacity duration-[var(--duration-fast)] hover:bg-lift hover:text-foreground focus-visible:opacity-100 group-hover/item:opacity-100 [@media(hover:none)]:opacity-100"
       onClick={props.onClick}
     >
       {copy.desk.briefAsk}
@@ -1302,7 +1312,7 @@ function CardWhy(props: { card: BriefCard; basis: string; source: string }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
         <DropdownMenuLabel>{d.why}</DropdownMenuLabel>
-        <div className="space-y-1 px-2 pb-2 text-[12px] leading-5">
+        <div className="space-y-1 px-2 pb-2 text-ui-footnote leading-5">
           {props.basis ? (
             <p className="flex gap-2"><span className="w-10 shrink-0 text-muted">{d.whyBasis}</span><span className="min-w-0 text-foreground/85">{props.basis}</span></p>
           ) : null}
@@ -1331,8 +1341,8 @@ function BriefPrefsView(props: {
       <button type="button" className="grid size-8 place-items-center rounded-full text-muted hover:bg-lift hover:text-foreground" onClick={props.onBack} aria-label={copy.work.taskBack}>
         <ChevronLeft className="size-4" />
       </button>
-      <h1 className="mt-3 text-[20px] font-semibold tracking-[-0.03em]">{copy.work.briefPrefs}</h1>
-      <p className="mt-2 text-[13px] leading-6 text-muted">{copy.work.briefPrefsHint}</p>
+      <h1 className="mt-3 text-ui-display font-semibold tracking-[-0.03em]">{copy.work.briefPrefs}</h1>
+      <p className="mt-2 text-ui-body leading-6 text-muted">{copy.work.briefPrefsHint}</p>
       <BriefPrefCard
         title={copy.work.briefMorning}
         on={props.prefs.morningOn}
@@ -1348,7 +1358,7 @@ function BriefPrefsView(props: {
         onTime={(eveningAt) => props.onChange({ ...props.prefs, eveningAt })}
       />
       <QuietPrefs />
-      <p className="mt-4 px-1 text-[12px] leading-5 text-muted">
+      <p className="mt-4 px-1 text-ui-footnote leading-5 text-muted">
         <button type="button" className="underline-offset-2 hover:underline" onClick={props.onOpenSettings}>{copy.desk.prefsMore}</button>
       </p>
     </div>
@@ -1385,23 +1395,23 @@ function QuietPrefs() {
     setBusy(false);
   }
   return (
-    <section className="mt-4 rounded-xl bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="quiet-prefs">
+    <section className="day-card mt-4 px-5 py-5" data-testid="quiet-prefs">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[16px] font-semibold">{copy.work.reachSwitch}</h2>
-          <p className="mt-1 text-[12px] leading-5 text-muted">{copy.work.reachSwitchHint}</p>
+          <h2 className="text-ui-title-s font-semibold">{copy.work.reachSwitch}</h2>
+          <p className="mt-1 text-ui-footnote leading-5 text-muted">{copy.work.reachSwitchHint}</p>
         </div>
         <PillSwitch on={!reachOff} label={copy.work.reachSwitch} disabled={busy} onChange={() => { void send("reach", reachOff ? "unmute" : "mute"); }} />
       </div>
-      <h2 className="mt-5 text-[13px] font-medium">{copy.work.quietTitle}</h2>
-      <p className="mt-1 text-[12px] leading-5 text-muted">{others.length ? copy.work.quietLede : copy.work.quietEmpty}</p>
+      <h2 className="mt-5 text-ui-body font-medium">{copy.work.quietTitle}</h2>
+      <p className="mt-1 text-ui-footnote leading-5 text-muted">{others.length ? copy.work.quietLede : copy.work.quietEmpty}</p>
       {others.length ? (
         <ul className="mt-2 divide-y divide-border/50">
           {others.map((row) => (
             <li key={row.class} className="flex items-center justify-between gap-3 py-2">
               <div className="min-w-0">
-                <p className="truncate text-[13px]">{labels[row.class] || row.class}</p>
-                <p className="text-[12px] text-muted">{row.until === "9999-12-31" ? copy.work.quietOff : copy.work.quietToday}</p>
+                <p className="truncate text-ui-body">{labels[row.class] || row.class}</p>
+                <p className="text-ui-footnote text-muted">{row.until === "9999-12-31" ? copy.work.quietOff : copy.work.quietToday}</p>
               </div>
               <TextButton quiet onClick={() => { void send(row.class, "unmute"); }}>{copy.work.quietOn}</TextButton>
             </li>
@@ -1421,14 +1431,14 @@ function BriefPrefCard(props: {
 }) {
   const copy = useCopy();
   return (
-    <section className="mt-4 rounded-xl bg-card px-5 py-5 shadow-[var(--shadow-card)]">
+    <section className="day-card mt-4 px-5 py-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-[16px] font-semibold">{props.title}</h2>
+        <h2 className="text-ui-title-s font-semibold">{props.title}</h2>
         <PillSwitch on={props.on} label={copy.work.briefStatus} onChange={props.onToggle} />
       </div>
       <label className={cn("mt-4 flex items-center justify-between gap-3", !props.on && "opacity-50")}>
-        <span className="text-[13px] text-muted">{copy.work.briefSchedule}</span>
-        <input type="time" value={props.at} disabled={!props.on} className="h-10 rounded-full bg-lift px-4 text-[14px] outline-none" onChange={(event) => props.onTime(event.target.value)} />
+        <span className="text-ui-body text-muted">{copy.work.briefSchedule}</span>
+        <input type="time" value={props.at} disabled={!props.on} className="h-9 rounded-full border border-border bg-lift/75 px-4 text-ui-body outline-none" onChange={(event) => props.onTime(event.target.value)} />
       </label>
     </section>
   );
@@ -1687,33 +1697,33 @@ function Tasks(props: {
   return (
     <div className="px-3 pb-8 pt-2">
       {props.held.length || props.notes.length ? (
-        <section className="mb-4 rounded-xl bg-card px-4 py-4 shadow-[var(--shadow-card)]">
-          <h2 className="text-[13px] font-medium">{copy.work.heldTitle}</h2>
+        <section className="day-card mb-4 px-4 py-4">
+          <h2 className="text-ui-body font-medium">{copy.work.heldTitle}</h2>
           <div className="mt-3 space-y-2">
             {props.held.map((signal) => (
-              <p key={signal.id} className="text-[13px] leading-5">{signal.name}{signal.detail ? <span className="text-muted"> · {signal.detail}</span> : null}</p>
+              <p key={signal.id} className="text-ui-body leading-5">{signal.name}{signal.detail ? <span className="text-muted"> · {signal.detail}</span> : null}</p>
             ))}
             {props.notes.map((note) => (
-              <p key={note.id} className="text-[13px] leading-5">{note.title}</p>
+              <p key={note.id} className="text-ui-body leading-5">{note.title}</p>
             ))}
           </div>
         </section>
       ) : null}
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-[17px] font-semibold tracking-[-0.03em]">{copy.work.tasks}</h1>
+        <h1 className="text-ui-title font-semibold tracking-[-0.025em]">{copy.work.tasks}</h1>
         <button
           type="button"
-          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-card px-3 text-[13px] shadow-[var(--shadow-card)]"
+          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-border bg-card px-3 text-ui-body font-medium shadow-[var(--shadow-card)] transition-colors hover:bg-lift"
           onClick={() => setCompose(scheduled ? { kind: "schedule", text: "" } : { kind: "task", text: "" })}
         >
           <Plus className="size-3.5" />
           {scheduled ? copy.work.ruleAdd : copy.work.createTask}
         </button>
       </div>
-      <div className="mt-4 grid h-10 grid-cols-2 gap-2">
+      <div className="mt-4 grid h-9 grid-cols-2 gap-2">
         <label className={cn(
-          "flex min-w-0 items-center gap-2 rounded-full px-3.5",
-          scheduled ? "bg-lift/80 text-muted" : "bg-card text-foreground shadow-[var(--shadow-card)]",
+          "flex min-w-0 items-center gap-2 rounded-full border px-3.5 transition-colors",
+          scheduled ? "border-transparent bg-lift/75 text-muted" : "border-border bg-card text-foreground shadow-[var(--shadow-card)]",
         )}>
           <Search className="size-3.5 shrink-0 text-muted" />
           <input
@@ -1722,21 +1732,21 @@ function Tasks(props: {
             onFocus={() => setScheduled(false)}
             placeholder={copy.work.taskSearch}
             aria-label={copy.work.taskSearch}
-            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted"
+            className="min-w-0 flex-1 bg-transparent text-ui-body outline-none placeholder:text-muted"
           />
         </label>
         <button
           type="button"
           aria-pressed={scheduled}
           className={cn(
-            "flex items-center justify-center gap-1.5 rounded-full text-[13px] transition-colors duration-200",
-            scheduled ? "bg-card text-foreground shadow-[var(--shadow-card)]" : "bg-lift/80 text-muted",
+            "flex items-center justify-center gap-1.5 rounded-full border text-ui-body font-medium transition-colors duration-200",
+            scheduled ? "border-border bg-card text-foreground shadow-[var(--shadow-card)]" : "border-transparent bg-lift/75 text-muted hover:text-foreground",
           )}
           onClick={() => setScheduled(true)}
         >
           <ListChecks className="size-3.5" />
           {copy.work.rules}
-          {props.rules.length ? <span className="tabular-nums text-[11px] text-muted">{props.rules.filter((rule) => rule.enabled).length}</span> : null}
+          {props.rules.length ? <span className="tabular-nums text-ui-caption text-muted">{props.rules.filter((rule) => rule.enabled).length}</span> : null}
         </button>
       </div>
       {scheduled ? (
@@ -1758,16 +1768,16 @@ function Tasks(props: {
           ) : null}
           {props.observed.length > 0 ? (
             <section className={rules.length > 0 ? "mt-6" : ""} data-testid="would-accept">
-              <h2 className="flex items-center gap-1.5 px-1 text-[15px] font-medium">
+              <h2 className="flex items-center gap-1.5 px-1 text-ui-title-s font-medium">
                 {copy.work.wouldAccept}
-                <span className="tabular-nums text-[11px] font-normal text-muted">{props.observed.length}</span>
+                <span className="tabular-nums text-ui-caption font-normal text-muted">{props.observed.length}</span>
               </h2>
-              <p className="mt-1 px-1 text-[12px] leading-5 text-muted">{copy.work.observedHint}</p>
-              <ul className="mt-2.5 divide-y divide-border/50 rounded-xl bg-card px-4 shadow-[var(--shadow-card)]">
+              <p className="mt-1 px-1 text-ui-footnote leading-5 text-muted">{copy.work.observedHint}</p>
+              <ul className="day-card mt-2.5 divide-y divide-border/60 px-4">
                 {props.observed.map((row) => (
                   <li key={row.id} className="py-2.5">
-                    <p className="line-clamp-2 text-[13px] leading-5">{row.text}</p>
-                    {row.at ? <p className="mt-0.5 text-[12px] text-muted">{agoLabel(row.at, copy.work)}</p> : null}
+                    <p className="line-clamp-2 text-ui-body leading-5">{row.text}</p>
+                    {row.at ? <p className="mt-0.5 text-ui-footnote text-muted">{agoLabel(row.at, copy.work)}</p> : null}
                   </li>
                 ))}
               </ul>
@@ -1775,7 +1785,7 @@ function Tasks(props: {
           ) : null}
           {missing.length > 0 ? (
             <section className={rules.length > 0 || props.observed.length > 0 ? "mt-6" : ""}>
-              <h2 className="px-1 text-[15px] font-medium">{copy.work.recommended}</h2>
+              <h2 className="px-1 text-ui-title-s font-medium">{copy.work.recommended}</h2>
               <ul className="mt-2.5 space-y-2">
                 {missing.map((id) => {
                   const item = suggestions[id];
@@ -1785,13 +1795,13 @@ function Tasks(props: {
                     <li key={id}>
                       <button
                         type="button"
-                        className="flex w-full items-center gap-3 rounded-xl bg-card px-4 py-3.5 text-left shadow-[var(--shadow-card)]"
+                        className="day-tile flex w-full items-center gap-3 px-4 py-3.5 text-left"
                         onClick={() => setCompose({ kind: "schedule", text: item.text, ruleId: id })}
                       >
                         <Icon className="size-4 shrink-0 text-muted" />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[14px] font-medium">{item.title}</span>
-                          <span className="mt-0.5 block truncate text-[12px] leading-5 text-muted">{item.text}</span>
+                          <span className="block truncate text-ui-body-l font-medium">{item.title}</span>
+                          <span className="mt-0.5 block truncate text-ui-footnote leading-5 text-muted">{item.text}</span>
                         </span>
                         <Plus className="size-4 shrink-0 text-muted" />
                       </button>
@@ -1803,7 +1813,7 @@ function Tasks(props: {
           ) : null}
           {rules.length === 0 && missing.length === 0 && props.observed.length === 0 ? <Empty title={copy.work.tasksEmpty} hint={copy.work.tasksHint} /> : null}
           {props.onMoreSchedules ? (
-            <button type="button" className="mt-5 w-full rounded-full py-2 text-[12px] text-muted hover:bg-lift hover:text-foreground" onClick={props.onMoreSchedules}>
+            <button type="button" className="mt-5 w-full rounded-full py-2 text-ui-footnote text-muted hover:bg-lift hover:text-foreground" onClick={props.onMoreSchedules}>
               {d.moreSchedules}
             </button>
           ) : null}
@@ -1841,14 +1851,14 @@ function TaskCompose(props: {
         <button type="button" className="grid size-8 place-items-center rounded-full text-muted hover:bg-lift hover:text-foreground" onClick={props.onBack} aria-label={props.title}>
           <ChevronLeft className="size-4" />
         </button>
-        <h1 className="text-[16px] font-semibold">{props.title}</h1>
+        <h1 className="text-ui-title-s font-semibold">{props.title}</h1>
       </div>
       <div className="grid flex-1 place-items-center px-6 py-16">
-        <p className="text-[14px] text-muted">{props.empty}</p>
+        <p className="text-ui-body-l text-muted">{props.empty}</p>
       </div>
       <div className="space-y-1">
         {props.suggestions.map((item) => (
-          <button key={item.id} type="button" className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-[13px] text-muted hover:bg-lift hover:text-foreground" onClick={() => setText(item.text)}>
+          <button key={item.id} type="button" className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-ui-body text-muted hover:bg-lift hover:text-foreground" onClick={() => setText(item.text)}>
             <ChevronRight className="size-3.5 shrink-0" />
             <span className="truncate">{item.title}</span>
           </button>
@@ -1860,14 +1870,14 @@ function TaskCompose(props: {
           onChange={(event) => setText(event.target.value)}
           placeholder={props.placeholder}
           rows={3}
-          className="w-full resize-none rounded-2xl bg-card px-3 py-3 text-[13px] leading-6 shadow-[var(--shadow-card)] outline-none placeholder:text-muted"
+          className="day-card w-full resize-none px-3.5 py-3 text-ui-body leading-6 outline-none placeholder:text-muted"
         />
       </label>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="min-w-0 text-[12px] leading-5 text-muted">{props.hint}</p>
+        <p className="min-w-0 text-ui-footnote leading-5 text-muted">{props.hint}</p>
         <button
           type="button"
-          className="h-8 shrink-0 rounded-full bg-foreground px-3 text-[12px] font-medium text-background disabled:opacity-40"
+          className="h-8 shrink-0 rounded-full bg-foreground px-3.5 text-ui-footnote font-medium text-background disabled:opacity-40"
           disabled={!text.trim()}
           onClick={() => props.onSubmit(text.trim())}
         >
@@ -1904,18 +1914,18 @@ function TicketList(props: {
   const head = (
     <>
       {props.title}
-      <span className={cn("tabular-nums text-[11px] font-normal", props.person ? "text-warning" : "text-muted")}>{props.count}</span>
+      <span className={cn("tabular-nums text-ui-caption font-normal", props.person ? "text-warning" : "text-muted")}>{props.count}</span>
     </>
   );
   return (
     <section className="mt-6" data-testid="task-section">
       {props.folded ? (
-        <button type="button" aria-expanded={open} className="flex items-center gap-1.5 px-1 text-[15px] font-medium hover:text-foreground/80" onClick={() => setOpen((on) => !on)}>
+        <button type="button" aria-expanded={open} className="flex items-center gap-1.5 px-1 text-ui-title-s font-medium hover:text-foreground/80" onClick={() => setOpen((on) => !on)}>
           {head}
           <ChevronDown className={cn("size-3.5 text-muted transition-transform duration-200", !open && "-rotate-90")} />
         </button>
       ) : (
-        <h2 className="flex items-center gap-1.5 px-1 text-[15px] font-medium">{head}</h2>
+        <h2 className="flex items-center gap-1.5 px-1 text-ui-title-s font-medium">{head}</h2>
       )}
       {open ? (
         <ul className="mt-2.5 space-y-2">
@@ -1939,10 +1949,10 @@ function TicketList(props: {
 /** RulePill 是一条定时：点名字改写，右边的开关就地开关。 */
 function RulePill(props: { label: string; meta: string; on: boolean; onOpen: () => void; onToggle: (on: boolean) => void }) {
   return (
-    <div className="flex h-11 w-full items-center gap-2 rounded-full bg-card pl-4 pr-2.5 shadow-[var(--shadow-card)]">
+    <div className="day-tile flex h-11 w-full items-center gap-2 rounded-full pl-4 pr-2.5">
       <button type="button" className={cn("flex min-w-0 flex-1 items-baseline gap-2 text-left", !props.on && "text-muted")} onClick={props.onOpen}>
-        <span className="truncate text-[14px]">{props.label}</span>
-        <span className="shrink-0 text-[11.5px] text-muted">{props.meta}</span>
+        <span className="truncate text-ui-body-l">{props.label}</span>
+        <span className="shrink-0 text-ui-caption text-muted">{props.meta}</span>
       </button>
       <PillSwitch small on={props.on} label={props.label} onChange={props.onToggle} />
     </div>
@@ -1999,40 +2009,40 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
     }
   }
   return (
-    <div className="px-1 pb-2 pt-2">
+    <div className="px-2 pb-2 pt-2">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-[22px] font-semibold tracking-[-0.03em]">{copy.work.memory}</h1>
-        <button type="button" className="grid size-8 place-items-center rounded-full bg-card text-foreground shadow-[var(--shadow-card)]" aria-label={copy.work.memoryAdd} onClick={() => setAdding((on) => !on)}>
+        <h1 className="text-ui-display font-semibold tracking-[-0.03em]">{copy.work.memory}</h1>
+        <button type="button" className="grid size-8 place-items-center rounded-full border border-border bg-card text-foreground shadow-[var(--shadow-card)] transition-colors hover:bg-lift" aria-label={copy.work.memoryAdd} onClick={() => setAdding((on) => !on)}>
           <Plus className="size-4" />
         </button>
       </div>
       {adding ? (
-        <form className="mt-4 rounded-xl bg-card px-5 py-4 shadow-[var(--shadow-card)]" onSubmit={(event) => { void add(event); }}>
-          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={copy.work.memoryAddHint} className="h-10 w-full bg-transparent text-[14px] outline-none" />
+        <form className="day-card mt-4 px-5 py-4" onSubmit={(event) => { void add(event); }}>
+          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={copy.work.memoryAddHint} className="h-10 w-full bg-transparent text-ui-body-l outline-none" />
           <div className="mt-2 flex justify-end">
-            <button type="submit" disabled={!draft.trim() || saving} className="h-8 rounded-full bg-foreground px-3 text-[12px] font-medium text-background disabled:opacity-40">{copy.work.save}</button>
+            <button type="submit" disabled={!draft.trim() || saving} className="h-8 rounded-full bg-foreground px-3.5 text-ui-footnote font-medium text-background disabled:opacity-40">{copy.work.save}</button>
           </div>
         </form>
       ) : null}
-      <article className="mt-4 rounded-xl bg-card px-5 py-5 shadow-[var(--shadow-card)]" data-testid="memory-about">
-        <h2 className="text-[18px] font-semibold leading-7 tracking-[-0.03em]">{title}</h2>
-        <p className="mt-1 text-[12px] text-muted">{portrait.updated ? copy.work.memoryUpdated.replace("{when}", when) : copy.work.memoryNotYet}</p>
-        <p className="mt-4 text-[12px] text-muted">{copy.work.memorySummary}</p>
-        <p className="mt-1 text-[14px] leading-7">{lead}</p>
-        {portrait.device ? <p className="mt-3 text-[14px] leading-7">{copy.work.memoryDeviceLine.replace("{name}", portrait.device)}</p> : null}
-        {portrait.host ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryHostLine.replace("{name}", portrait.host)}</p> : null}
-        {portrait.os ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryOsLine.replace("{name}", portrait.os)}</p> : null}
-        {portrait.zone ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryZoneLine.replace("{name}", portrait.zone)}</p> : null}
-        {portrait.git ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryGitLine.replace("{name}", portrait.git)}</p> : null}
-        {portrait.hours ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryHoursLine.replace("{hours}", portrait.hours)}</p> : null}
-        {portrait.lines.length ? <p className="mt-2 text-[14px] leading-7">{copy.work.memoryProjectsLine.replace("{names}", portrait.lines.map((line) => line.name).join(sep))}</p> : null}
-        {portrait.device || portrait.host || portrait.os || portrait.zone || portrait.git || portrait.hours || portrait.lines.length ? <p className="mt-3 text-[13px] leading-6 text-muted">{copy.work.memoryHardFact}</p> : null}
+      <article className="day-card mt-4 px-5 py-5" data-testid="memory-about">
+        <h2 className="text-ui-title font-semibold leading-6 tracking-[-0.025em]">{title}</h2>
+        <p className="mt-1 text-ui-footnote text-muted">{portrait.updated ? copy.work.memoryUpdated.replace("{when}", when) : copy.work.memoryNotYet}</p>
+        <p className="mt-4 text-ui-footnote text-muted">{copy.work.memorySummary}</p>
+        <p className="mt-1 text-ui-body-l leading-6">{lead}</p>
+        {portrait.device ? <p className="mt-3 text-ui-body-l leading-6">{copy.work.memoryDeviceLine.replace("{name}", portrait.device)}</p> : null}
+        {portrait.host ? <p className="mt-2 text-ui-body-l leading-6">{copy.work.memoryHostLine.replace("{name}", portrait.host)}</p> : null}
+        {portrait.os ? <p className="mt-2 text-ui-body-l leading-6">{copy.work.memoryOsLine.replace("{name}", portrait.os)}</p> : null}
+        {portrait.zone ? <p className="mt-2 text-ui-body-l leading-6">{copy.work.memoryZoneLine.replace("{name}", portrait.zone)}</p> : null}
+        {portrait.git ? <p className="mt-2 text-ui-body-l leading-6">{copy.work.memoryGitLine.replace("{name}", portrait.git)}</p> : null}
+        {portrait.hours ? <p className="mt-2 text-ui-body-l leading-6">{copy.work.memoryHoursLine.replace("{hours}", portrait.hours)}</p> : null}
+        {portrait.lines.length ? <p className="mt-2 text-ui-body-l leading-6">{copy.work.memoryProjectsLine.replace("{names}", portrait.lines.map((line) => line.name).join(sep))}</p> : null}
+        {portrait.device || portrait.host || portrait.os || portrait.zone || portrait.git || portrait.hours || portrait.lines.length ? <p className="mt-3 text-ui-body leading-6 text-muted">{copy.work.memoryHardFact}</p> : null}
         {said.length ? <MemoryLines label={copy.work.memorySaid} lines={said} /> : null}
         {portrait.noted.length ? <MemoryLines label={copy.work.memoryNoted} lines={portrait.noted} /> : null}
         {portrait.preferences.length ? <MemoryLines label={copy.work.memoryPrefs} lines={portrait.preferences} /> : null}
       </article>
-      <h2 className="mt-6 px-1 text-[15px] font-medium">{copy.work.folderAll}</h2>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <h2 className="mt-6 px-1 text-ui-title-s font-medium">{copy.work.folderAll}</h2>
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
         {folders.map((item) => {
           const count = memoryFolderRows(props.rows, item.id).length;
           const on = folder === item.id;
@@ -2041,18 +2051,18 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
             <button
               key={item.id}
               type="button"
-              className={cn("rounded-2xl bg-card px-4 py-4 text-left shadow-[var(--shadow-card)]", on && "ring-1 ring-accent")}
+              className={cn("day-tile px-4 py-3.5 text-left", on && "border-accent/50 bg-accent/6 ring-1 ring-accent/40")}
               onClick={() => { setFolder(on ? "" : item.id); setAll(false); }}
             >
-              <Icon className="size-4 text-muted" />
-              <p className="mt-3 text-[14px] font-medium">{item.label}</p>
-              <p className="mt-1 text-[12px] text-muted">{copy.work.itemCount.replace("{n}", String(count))}</p>
+              <Icon className={cn("size-4", on ? "text-accent" : "text-muted")} />
+              <p className="mt-2.5 text-ui-body-l font-medium">{item.label}</p>
+              <p className="mt-0.5 tabular-nums text-ui-footnote text-muted">{copy.work.itemCount.replace("{n}", String(count))}</p>
             </button>
           );
         })}
       </div>
       {folder ? (
-        shown.length === 0 ? <p className="mt-4 px-1 text-[13px] text-muted">{copy.work.memoryFolderEmpty}</p> : (
+        shown.length === 0 ? <p className="mt-4 px-1 text-ui-body text-muted">{copy.work.memoryFolderEmpty}</p> : (
           <>
             <ul className="mt-4 space-y-2">
               {shown.map((row) => {
@@ -2070,7 +2080,7 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
                 ];
                 const open = editing?.id === row.id;
                 return (
-                  <li key={row.id} className="group/memory rounded-2xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid="memory-row">
+                  <li key={row.id} className="day-tile group/memory px-4 py-3.5" data-testid="memory-row">
                     {open ? (
                       <form
                         onSubmit={async (event) => {
@@ -2089,24 +2099,24 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
                           value={editing.text}
                           onChange={(event) => setEditing({ id: row.id, text: event.target.value })}
                           onKeyDown={(event) => { if (event.key === "Escape") setEditing(null); }}
-                          className="w-full resize-none rounded-lg bg-lift/60 px-2.5 py-2 text-[14px] leading-6 outline-none"
+                          className="w-full resize-none rounded-lg border border-border bg-lift/60 px-2.5 py-2 text-ui-body-l leading-6 outline-none focus-visible:border-accent/50"
                         />
                         <div className="mt-1.5 flex justify-end gap-1.5">
                           <TextButton quiet onClick={() => setEditing(null)}>{copy.work.memoryEditCancel}</TextButton>
-                          <button type="submit" disabled={!editing.text.trim()} className="h-7 rounded-lg bg-foreground px-2.5 text-[12px] font-medium text-background disabled:opacity-40">{copy.work.save}</button>
+                          <button type="submit" disabled={!editing.text.trim()} className="h-7 rounded-lg bg-foreground px-2.5 text-ui-footnote font-medium text-background disabled:opacity-40">{copy.work.save}</button>
                         </div>
                       </form>
                     ) : (
                       <>
-                        <p className={cn("text-[14px] leading-6", past && "text-muted")}>{memoryRowTitle(row, copy.work)}</p>
-                        {memoryRowDetail(row, copy.work) ? <p className="mt-1 text-[12px] leading-5 text-muted">{memoryRowDetail(row, copy.work)}</p> : null}
+                        <p className={cn("text-ui-body-l leading-6", past && "text-muted")}>{memoryRowTitle(row, copy.work)}</p>
+                        {memoryRowDetail(row, copy.work) ? <p className="mt-1 text-ui-footnote leading-5 text-muted">{memoryRowDetail(row, copy.work)}</p> : null}
                         <div className="mt-1.5 flex min-h-6 items-center justify-between gap-2">
-                          <p className="min-w-0 truncate text-[11.5px] text-muted/80" data-testid="memory-meta" title={before.length ? before.join("\n") : undefined}>{meta.filter(Boolean).join(" · ")}</p>
+                          <p className="min-w-0 truncate text-ui-caption text-muted/80" data-testid="memory-meta" title={before.length ? before.join("\n") : undefined}>{meta.filter(Boolean).join(" · ")}</p>
                           {memoryForgettable(row) ? (
                             <span className="flex shrink-0 items-center gap-0.5">
                               <button
                                 type="button"
-                                className="h-6 rounded-md px-2 text-[11px] font-medium text-muted opacity-0 transition-colors duration-[var(--duration-fast)] hover:bg-lift hover:text-foreground focus-visible:opacity-100 group-hover/memory:opacity-100 [@media(hover:none)]:opacity-100"
+                                className="h-6 rounded-md px-2 text-ui-caption font-medium text-muted opacity-0 transition-colors duration-[var(--duration-fast)] hover:bg-lift hover:text-foreground focus-visible:opacity-100 group-hover/memory:opacity-100 [@media(hover:none)]:opacity-100"
                                 onClick={() => setEditing({ id: row.id, text: row.text })}
                               >
                                 {copy.work.memoryEdit}
@@ -2122,7 +2132,7 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
               })}
             </ul>
             {!all && inFolder.length > shown.length ? (
-              <button type="button" className="mt-2 w-full rounded-full py-2 text-[12px] text-muted hover:bg-lift hover:text-foreground" onClick={() => setAll(true)}>
+              <button type="button" className="mt-2 w-full rounded-full py-2 text-ui-footnote text-muted hover:bg-lift hover:text-foreground" onClick={() => setAll(true)}>
                 {copy.work.memoryMore.replace("{n}", String(inFolder.length - shown.length))}
               </button>
             ) : null}
@@ -2148,7 +2158,7 @@ function ForgetButton(props: { onForget: () => Promise<void> }) {
       type="button"
       disabled={busy}
       className={cn(
-        "h-6 shrink-0 rounded-md px-2 text-[11px] font-medium transition-colors duration-[var(--duration-fast)] disabled:opacity-50",
+        "h-6 shrink-0 rounded-md px-2 text-ui-caption font-medium transition-colors duration-[var(--duration-fast)] disabled:opacity-50",
         armed ? "bg-danger/10 text-danger" : "text-muted opacity-0 hover:bg-lift hover:text-danger focus-visible:opacity-100 group-hover/memory:opacity-100 [@media(hover:none)]:opacity-100",
       )}
       onClick={async () => {
@@ -2173,8 +2183,8 @@ function ForgetButton(props: { onForget: () => Promise<void> }) {
 function MemoryLines(props: { label: string; lines: string[] }) {
   return (
     <div className="mt-4">
-      <p className="text-[12px] text-muted">{props.label}</p>
-      {props.lines.map((line) => <p key={line} className="mt-1 text-[14px] leading-7">{line}</p>)}
+      <p className="text-ui-footnote text-muted">{props.label}</p>
+      {props.lines.map((line) => <p key={line} className="mt-1 text-ui-body-l leading-6">{line}</p>)}
     </div>
   );
 }
@@ -2198,8 +2208,8 @@ function memoryRowDetail(row: MemoryRow, work: ReturnType<typeof useCopy>["work"
 function Empty(props: { title: string; hint: string }) {
   return (
     <div className="px-3 py-6">
-      <p className="text-[13px]">{props.title}</p>
-      <p className="mt-1 text-[12px] leading-5 text-muted">{props.hint}</p>
+      <p className="text-ui-body">{props.title}</p>
+      <p className="mt-1 text-ui-footnote leading-5 text-muted">{props.hint}</p>
     </div>
   );
 }
@@ -2209,8 +2219,10 @@ function TextButton(props: { children: string; onClick: () => void; quiet?: bool
     <button
       type="button"
       className={cn(
-        "h-7 shrink-0 rounded-lg px-2.5 text-[12px] font-medium",
-        props.quiet ? "text-muted hover:bg-lift hover:text-foreground" : "bg-foreground text-background",
+        "h-7 shrink-0 rounded-full px-3 text-ui-footnote font-medium transition-colors duration-[var(--duration-fast)]",
+        props.quiet
+          ? "text-muted hover:bg-lift hover:text-foreground"
+          : "border border-accent/25 bg-accent/14 text-accent hover:bg-accent/22",
       )}
       onClick={props.onClick}
     >

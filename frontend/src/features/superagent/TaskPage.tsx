@@ -89,7 +89,7 @@ export function TaskRead(props: {
   if (!ticket) {
     return (
       <div data-testid="task-read" className="px-3 pt-8">
-        <p className="text-[14px] text-muted">{copy.work.noSubtasks}</p>
+        <p className="text-ui-body-l text-muted">{copy.work.noSubtasks}</p>
       </div>
     );
   }
@@ -114,7 +114,7 @@ export function TaskRead(props: {
     }
   }
   return (
-    <div data-testid={props.stage ? "task-stage" : "task-read"} className={cn("flex h-full min-h-0 flex-col bg-background", props.stage && "mx-auto w-full max-w-[880px]")}>
+    <div data-testid={props.stage ? "task-stage" : "task-read"} className={cn("flex h-full min-h-0 flex-col", props.stage ? "mx-auto w-full max-w-[880px] bg-background" : "bg-transparent")}>
       <div className={cn("flex shrink-0 items-center gap-1 pt-1", props.stage ? "px-3" : "px-1")}>
         <button type="button" className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-lift hover:text-foreground" onClick={props.onBack} aria-label={props.stage ? copy.desk.taskBackMain : copy.work.taskBack}>
           <ChevronLeft className="size-4" />
@@ -127,8 +127,8 @@ export function TaskRead(props: {
           ) : crumb ? (
             <p data-testid="task-group-crumb" className="truncate text-ui-caption text-muted">{crumb}</p>
           ) : null}
-          <h1 className="truncate text-[16px] font-semibold">{ticket.title || copy.work.taskEmpty}</h1>
-          <p className={cn("truncate text-[12px]", ticket.person && open ? "text-warning" : "text-muted")} data-testid="task-status">{status}</p>
+          <h1 className="truncate text-ui-title-s font-semibold">{ticket.title || copy.work.taskEmpty}</h1>
+          <p className={cn("truncate text-ui-footnote", ticket.person && open ? "text-warning" : "text-muted")} data-testid="task-status">{status}</p>
           <TaskAgentRow ticket={ticket} onSent={props.onSent} />
         </div>
         <div className="flex shrink-0 items-center">
@@ -162,7 +162,7 @@ export function TaskRead(props: {
           ) : null}
           {open ? (
             stopArmed ? (
-              <button type="button" className="h-7 rounded-md bg-danger/10 px-2 text-[11.5px] font-medium text-danger" onClick={() => { setStopArmed(false); void act("stop"); }}>
+              <button type="button" className="h-7 rounded-md bg-danger/10 px-2 text-ui-caption font-medium text-danger" onClick={() => { setStopArmed(false); void act("stop"); }}>
                 {copy.work.confirmStop}
               </button>
             ) : (
@@ -177,9 +177,9 @@ export function TaskRead(props: {
       </div>
       <TaskApprovals ticket={ticket} className={props.stage ? "mx-3" : "mx-2"} />
       {ask ? (
-        <div className={cn("mt-2 shrink-0 rounded-[16px] border-l-2 border-warning bg-card px-3 py-2.5", props.stage ? "mx-3" : "mx-2")} data-testid="task-ask">
-          <p className="text-[12.5px] font-medium text-foreground/85">{ask.title}</p>
-          {ask.detail ? <p className="mt-1 line-clamp-4 whitespace-pre-line text-[13px] leading-5">{ask.detail}</p> : null}
+        <div className={cn("mt-2 shrink-0 rounded-xl border border-border border-l-2 border-l-warning bg-card px-3 py-2.5 shadow-[var(--shadow-card)]", props.stage ? "mx-3" : "mx-2")} data-testid="task-ask">
+          <p className="text-ui-footnote font-medium text-foreground/85">{ask.title}</p>
+          {ask.detail ? <p className="mt-1 line-clamp-4 whitespace-pre-line text-ui-body leading-5">{ask.detail}</p> : null}
           {ticketNeed(ticket) === "login" ? (
             <Button size="sm" variant="outline" className="mt-2" data-testid="task-go-login" onClick={() => useUI.getState().openBuddy(ticketAgent(ticket))}>
               {copy.tasks.goLogin}
@@ -189,7 +189,7 @@ export function TaskRead(props: {
         </div>
       ) : null}
       {items.length === 0 ? (
-        <p className="min-h-0 flex-1 px-4 py-8 text-center text-[13px] leading-5 text-muted">{copy.work.taskEmptyHint}</p>
+        <p className="min-h-0 flex-1 px-4 py-8 text-center text-ui-body leading-5 text-muted">{copy.work.taskEmptyHint}</p>
       ) : (
         <Transcript
           compact
@@ -205,7 +205,7 @@ export function TaskRead(props: {
       )}
       <div className={cn("shrink-0 pb-2", props.stage ? "px-3" : "px-2")}>
         {props.stage ? (
-          <p className="mb-1 truncate px-1 text-[11.5px] text-muted" data-testid="task-target">{copy.desk.taskTarget.replace("{title}", ticket.title || copy.work.taskEmpty)}</p>
+          <p className="mb-1 truncate px-1 text-ui-caption text-muted" data-testid="task-target">{copy.desk.taskTarget.replace("{title}", ticket.title || copy.work.taskEmpty)}</p>
         ) : null}
         <Composer
           plain

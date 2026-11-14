@@ -22,7 +22,7 @@ export function BrowserShotCard(props: { call?: Item; result?: Item }) {
   return (
     <button
       type="button"
-      className="block overflow-hidden rounded-xl border border-border/70 bg-lift/30 text-left"
+      className="block overflow-hidden rounded-xl border border-border bg-card text-left shadow-[var(--shadow-card)] transition-colors hover:border-foreground/18"
       data-testid="browser-shot-card"
       onClick={() => {
         useUI.getState().setInspTab("browser");

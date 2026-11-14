@@ -475,7 +475,7 @@ function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
   return (
     <pre
       data-testid="shell-terminal"
-      className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background px-2.5 py-2 font-mono text-ui-caption leading-[1.55] text-foreground/90"
+      className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-sidebar/80 px-3 py-2 font-mono text-ui-caption leading-[1.55] text-foreground/90"
     >
       {text}
       {live ? <span className="ml-px inline-block h-[1.1em] w-[0.45em] translate-y-px bg-foreground/70" aria-hidden /> : null}

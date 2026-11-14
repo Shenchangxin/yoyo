@@ -73,8 +73,8 @@ export function DayRound(props: ButtonHTMLAttributes<HTMLButtonElement> & { labe
       aria-label={label}
       title={label}
       className={cn(
-        "grid size-8 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-40",
-        quiet ? "text-muted hover:bg-lift hover:text-foreground" : "bg-card text-foreground shadow-[var(--shadow-card)]",
+        "grid size-8 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-40",
+        quiet ? "text-muted hover:bg-lift hover:text-foreground" : "border border-border bg-card text-foreground shadow-[var(--shadow-card)] hover:bg-lift",
         className,
       )}
       {...rest}
@@ -85,8 +85,8 @@ export function DayRound(props: ButtonHTMLAttributes<HTMLButtonElement> & { labe
 }
 
 /**
- * DayPill 是胶囊按钮。tone 为 solid 是一页里最要紧的那一个动作（深底），soft 是次要动作（浅底），
- * danger 是要人再想一下的动作。small 用在一行里。
+ * DayPill 是胶囊按钮。tone 为 solid 是一页里最要紧的那一个动作（强调色微透或深底），soft 是次要动作（浅底描边），
+ * danger 是要人再想一下的动作。small 用在一行里，避免纯白实心斑点过曝。
  */
 export function DayPill(props: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "solid" | "soft" | "danger"; small?: boolean; busy?: boolean }) {
   const { tone = "solid", small, busy, className, children, disabled, ...rest } = props;
@@ -98,9 +98,9 @@ export function DayPill(props: ButtonHTMLAttributes<HTMLButtonElement> & { tone?
       className={cn(
         "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-40",
         small ? "h-7 px-3 text-ui-footnote" : "h-9 px-4 text-ui-body",
-        tone === "solid" && "bg-foreground text-background",
-        tone === "soft" && "bg-lift text-foreground hover:bg-lift/70",
-        tone === "danger" && "bg-danger/10 text-danger hover:bg-danger/15",
+        tone === "solid" && (small ? "border border-accent/25 bg-accent/14 text-accent hover:bg-accent/22" : "bg-foreground text-background hover:opacity-[0.92]"),
+        tone === "soft" && "border border-border bg-lift/75 text-foreground hover:bg-lift",
+        tone === "danger" && "border border-danger/20 bg-danger/10 text-danger hover:bg-danger/15",
         className,
       )}
       {...rest}
@@ -174,7 +174,7 @@ export function DayField(props: { label: string; htmlFor?: string; hint?: string
 }
 
 /** DAY_INPUT 是栏里单行输入的样子，下拉的触发器也用它。 */
-export const DAY_INPUT = "h-10 w-full rounded-full border-0 bg-lift px-4 text-ui-body-l text-foreground shadow-none outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent/30 disabled:opacity-50";
+export const DAY_INPUT = "h-9 w-full rounded-xl border border-border bg-lift/75 px-3.5 text-ui-body text-foreground shadow-none outline-none placeholder:text-muted focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20 disabled:opacity-50";
 
 /** DayInput 是栏里的单行输入。mono 为真时用等宽字。 */
 export function DayInput(props: InputHTMLAttributes<HTMLInputElement> & { mono?: boolean }) {

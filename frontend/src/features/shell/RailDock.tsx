@@ -12,24 +12,24 @@ import type { Surface } from "../../lib/protocol";
 
 const FALLBACK = {
   light: {
-    accent: "#0169cc",
-    mark: "#c2663d",
-    warning: "#a07a2a",
-    success: "#1f7a45",
-    muted: "#6f6e68",
-    markDeep: "#9a4e2e",
-    ink: "#1c1c1a",
-    glass: "#f1f1ee",
+    accent: "#3b5bff",
+    mark: "#d25e2c",
+    warning: "#c87a0a",
+    success: "#108956",
+    muted: "#646b78",
+    markDeep: "#a3461e",
+    ink: "#111318",
+    glass: "#ffffff",
   },
   dark: {
-    accent: "#5c99d6",
-    mark: "#d4896a",
-    warning: "#d4b06a",
-    success: "#74b48a",
-    muted: "#8c8b85",
-    markDeep: "#b56545",
-    ink: "#f4f4f0",
-    glass: "#222220",
+    accent: "#6e85ff",
+    mark: "#f2965c",
+    warning: "#f5b851",
+    success: "#3dd68c",
+    muted: "#8e95a5",
+    markDeep: "#d47b44",
+    ink: "#f2f4f8",
+    glass: "#1a1d24",
   },
 };
 
@@ -50,7 +50,7 @@ function useDockTokens() {
       muted: read("--muted", base.muted),
       markDeep: read("--mark-deep", base.markDeep),
       ink: read("--foreground", base.ink),
-      glass: read("--sidebar", base.glass),
+      glass: read("--card", base.glass),
     });
   }, [light, palette, skinId]);
   return { light, tokens };
@@ -145,10 +145,10 @@ export function RailDock(props: {
         refraction={0.45}
         bevel={0.45}
         dispersion={0}
-        frost={0.08}
-        shine={light ? 0.5 : 0.72}
+        frost={0.09}
+        shine={light ? 0.58 : 0.78}
         tint={tokens.glass}
-        tintOpacity={light ? 0.55 : 0.28}
+        tintOpacity={light ? 0.34 : 0.2}
         iconColor={tokens.ink}
         plate="tilt"
         tilt={8}

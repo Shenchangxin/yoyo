@@ -374,9 +374,9 @@ export function ThreadRail(props: {
     return <ThreadRow key={e.thread.id} thread={e.thread} nested={!!e.thread.parentId || (!q && !e.thread.pinned && !videoOn)} {...props} />;
   }
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-    <SidebarCard className="h-auto min-h-0 flex-1">
-      <div className={cn("chrome drag flex h-12 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
+    <div className="rail-shell relative flex h-full min-h-0 flex-col overflow-hidden">
+    <SidebarCard className="rail-scroll-host h-full min-h-0 flex-1 bg-transparent">
+      <div className={cn("chrome drag flex h-11 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
         <YoyoMark live />
         {props.isolated ? <span className="rounded-full bg-lift px-1.5 py-0.5 text-ui-badge text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
           <span className="rounded-full bg-lift px-1.5 py-0.5 text-ui-badge text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
@@ -427,43 +427,43 @@ export function ThreadRail(props: {
       </div>
       ) : null}
       {showSessions ? (
-      <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
+      <nav aria-label={copy.rail.chats} className="rail-scroll-fade min-h-0 flex-1 overflow-hidden px-1.5">
         {empty ? (
           <EmptyState icon={<YoyoMark compact />} title={copy.rail.noChats} />
         ) : virtual ? (
-          <VList className="h-full">
+          <VList className="h-full pb-16">
             {entries.map(renderEntry)}
           </VList>
         ) : (
-          <div className="h-full overflow-auto">
+          <div className="h-full overflow-auto pb-16">
             {entries.map(renderEntry)}
           </div>
         )}
       </nav>
       ) : null}
       {settingsOn ? (
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="rail-scroll-fade min-h-0 flex-1 overflow-hidden">
           <SettingsRailNav />
         </div>
       ) : null}
       {body === "learn" ? (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="rail-scroll-fade min-h-0 flex-1 overflow-auto pb-16">
           <LearnRailNav />
         </div>
       ) : null}
       {body === "skills" ? (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="rail-scroll-fade min-h-0 flex-1 overflow-auto pb-16">
           <SkillsRailNav />
         </div>
       ) : null}
       {body === "harness" ? (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="rail-scroll-fade min-h-0 flex-1 overflow-auto pb-16">
           <HarnessRailNav />
         </div>
       ) : null}
-      {body === "idol" ? <div ref={props.onIdolSlot} className="flex min-h-0 flex-1 flex-col overflow-hidden" /> : null}
+      {body === "idol" ? <div ref={props.onIdolSlot} className="rail-scroll-fade flex min-h-0 flex-1 flex-col overflow-hidden pb-16" /> : null}
       {videoOn ? (
-        <nav aria-label={copy.video.shellTasks} data-testid="video-rail-history" className="flex min-h-0 flex-1 flex-col overflow-hidden px-1.5 pb-1">
+        <nav aria-label={copy.video.shellTasks} data-testid="video-rail-history" className="rail-scroll-fade flex min-h-0 flex-1 flex-col overflow-hidden px-1.5">
           <SpaceHeader
             label={copy.video.shellTasks}
             path="creation-history"
@@ -475,7 +475,7 @@ export function ThreadRail(props: {
             onOpen={() => openVideoPane("tasks")}
           />
           {collapsed["creation-history"] ? null : (
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="min-h-0 flex-1 overflow-auto pb-16">
               {entries.length === 0 ? (
                 <p className="px-2.5 py-2 text-ui-footnote text-muted">{copy.video.historyEmptyCuts}</p>
               ) : entries.map(renderEntry)}

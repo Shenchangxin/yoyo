@@ -3,7 +3,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-/** AppFrame 铺壁纸和颗粒，overlay 叠在内容之前。内容区标成 data-app-frame="content"，并带窗口拖拽。children 作为子节点渲染。className 传给 cn。props 展开到 div。 */
+/** AppFrame 铺壁纸和颗粒，overlay 叠在内容之前。外层窗口壳底色为 --sidebar，内容区标成 data-app-frame="content"，并带窗口拖拽。children 作为子节点渲染。className 传给 cn。props 展开到 div。 */
 export function AppFrame({
   children,
   overlay,
@@ -12,7 +12,7 @@ export function AppFrame({
 }: ComponentProps<"div"> & { overlay?: ReactNode }) {
   return (
     <div
-      className={cn("relative isolate flex h-full w-full flex-col overflow-hidden bg-background text-foreground", className)}
+      className={cn("app-shell-root relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-foreground", className)}
       {...props}
     >
       <div className="app-wallpaper" aria-hidden />
@@ -41,7 +41,7 @@ export function MainColumn({ children, className }: { children: ReactNode; class
   );
 }
 
-/** SidebarCard 是一条玻璃侧栏，高度撑满，本身不参与窗口拖拽。children 作为子节点渲染。className 传给 cn。 */
+/** SidebarCard 是一条通透侧栏壳，高度撑满，本身不参与窗口拖拽。children 作为子节点渲染。className 传给 cn。 */
 export function SidebarCard({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div

@@ -22,10 +22,10 @@ import { DEFAULT_MODEL, type KeyDraft } from "./buddy-fields";
 import { actionLabel, buddyMenu, buddyPrimary, fill, type BuddyAction, type BuddyCopy } from "./buddy-model";
 import { useBuddy } from "./buddy-store";
 
-/** AgentAvatar 是一枚浅底的圆，里面是 agent 的字形。large 用在详情页的头部。 */
+/** AgentAvatar 是一枚浅底微描边的圆，里面是 agent 的字形。large 用在详情页的头部。 */
 export function AgentAvatar({ v, large, quiet }: { v: Pick<BuddyView, "name" | "icon">; large?: boolean; quiet?: boolean }) {
   return (
-    <span className={cn("grid shrink-0 place-items-center rounded-full bg-lift", large ? "size-11" : "size-9", quiet ? "text-muted" : "text-foreground/85")} aria-hidden>
+    <span className={cn("grid shrink-0 place-items-center rounded-full border border-border bg-lift/75", large ? "size-11" : "size-9", quiet ? "text-muted" : "text-foreground/90")} aria-hidden>
       <BuddyMark v={v} className={cn("border-0", large ? "size-5 text-ui-title-s" : "size-4 text-ui-footnote")} />
     </span>
   );

@@ -119,7 +119,7 @@ export function LearnQuestionCard(props: {
   const tone = state.result === "correct" ? "text-success" : state.result === "partial" ? "text-warning" : "text-danger";
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/60 p-4" data-testid="learn-question-card" data-status={gone ? "gone" : state.status}>
+    <div className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]" data-testid="learn-question-card" data-status={gone ? "gone" : state.status}>
       <p className="text-ui-caption font-medium uppercase tracking-[0.08em] text-muted/80">{L.cardEyebrow}</p>
       <div className="mt-1.5 text-ui-body-l leading-[1.6]">
         <Markdown text={q.prompt} rich={false} />

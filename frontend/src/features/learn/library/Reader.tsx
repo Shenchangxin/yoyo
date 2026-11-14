@@ -454,7 +454,7 @@ export function Reader(props: {
         </div>
         {picked ? (
           <div
-            className="absolute z-10 flex w-[292px] flex-col gap-2 rounded-xl border border-border/70 bg-card p-2"
+            className="absolute z-10 flex w-[296px] flex-col gap-2 rounded-xl border border-border bg-popover p-2.5 shadow-[var(--shadow-popover)]"
             style={{ top: picked.top, left: picked.left }}
             data-testid="learn-selection-bar"
             onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== "TEXTAREA") e.preventDefault(); }}

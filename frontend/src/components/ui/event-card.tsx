@@ -21,8 +21,8 @@ export function EventCard(props: {
       tabIndex={clickable ? 0 : undefined}
       data-testid={props.testId}
       className={cn(
-        "flex w-full min-w-0 items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-left shadow-[var(--shadow-card)]",
-        clickable && "cursor-pointer transition-colors duration-[var(--duration-fast)] hover:bg-lift/40",
+        "flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left shadow-[var(--shadow-card)]",
+        clickable && "cursor-pointer transition-[border-color,background-color] duration-[var(--duration-fast)] hover:border-foreground/18 hover:bg-lift/40",
         props.className,
       )}
       onClick={props.onClick}
@@ -34,7 +34,7 @@ export function EventCard(props: {
         }
       } : undefined}
     >
-      <span className="grid size-7 shrink-0 place-items-center rounded-md bg-lift text-foreground/85 [&_svg]:size-3.5">{props.icon}</span>
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-border/70 bg-lift/70 text-foreground/90 [&_svg]:size-4">{props.icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-ui-body font-medium text-foreground">{props.title}</span>
         {props.detail ? <span className="block truncate text-ui-footnote text-muted">{props.detail}</span> : null}

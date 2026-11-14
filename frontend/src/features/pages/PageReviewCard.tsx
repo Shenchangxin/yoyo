@@ -29,7 +29,7 @@ export function PageReviewCard(props: { item?: Item; result?: Item; onDone?: () 
   const [err, setErr] = useState("");
   if (!parsed?.id) return null;
   return (
-    <div className="rounded-xl border border-border/70 bg-lift/40 p-3" data-testid="page-review-card">
+    <div className="rounded-xl border border-border bg-card p-3.5 shadow-[var(--shadow-card)]" data-testid="page-review-card">
       <div className="text-ui-body font-medium">{copy.pages.reviewTitle}: {parsed.title}</div>
       <p className="mt-1 text-ui-footnote text-muted">{copy.pages.reviewHint}</p>
       {done ? (

@@ -80,7 +80,7 @@ func TestAdmitRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Tokens["--background"] != "#1c1c1a" {
+	if res.Tokens["--background"] != "#13151a" {
 		t.Fatalf("bg %s", res.Tokens["--background"])
 	}
 	if res.WallpaperURL == "" {

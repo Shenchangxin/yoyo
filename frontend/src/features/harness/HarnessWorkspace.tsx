@@ -157,8 +157,8 @@ function HarnessOverview(props: {
       <div data-testid="harness-overview">
         <div
           className={cn(
-            "mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md bg-sidebar/40 px-4 py-3",
-            props.next.action === "blocked" ? "border-danger/30" : "border-border/80",
+            "mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]",
+            props.next.action === "blocked" ? "border-danger/35" : "border-border",
           )}
         >
           <div className="min-w-0">
@@ -170,7 +170,7 @@ function HarnessOverview(props: {
         {pointers.length === 0 ? (
           <FirstRun onTab={props.onTab} />
         ) : (
-          <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40" data-testid="harness-versions">
+          <div className="mb-6 overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]" data-testid="harness-versions">
             {pointers.map((c, i) => (
               <div key={c.name + c.hash} className={cn("grid grid-cols-1 items-start gap-1.5 px-4 py-2.5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto] sm:items-center sm:gap-3", i > 0 && "border-t border-border/70")}>
                 <div className="text-ui-body font-medium">{c.name}</div>
@@ -211,7 +211,7 @@ function HarnessOverview(props: {
         {lineage.length === 0 ? (
           <p className="mb-6 text-ui-body text-muted">{copy.rsi.noLineage}</p>
         ) : (
-          <div className="lineage-rail mb-6 overflow-hidden rounded-md bg-sidebar/40 pl-1" data-testid="harness-lineage">
+          <div className="lineage-rail mb-6 overflow-hidden rounded-xl border border-border bg-card pl-1 shadow-[var(--shadow-card)]" data-testid="harness-lineage">
             {lineage.map((n, i) => (
               <LineageRow key={n.hash} node={n} first={i === 0} onReveal={lab ? props.onReveal : undefined} showIds={lab} />
             ))}
@@ -220,7 +220,7 @@ function HarnessOverview(props: {
         {metrics ? (
           <>
             <h3 className="mb-3 text-ui-body font-medium">{copy.rsi.lastEval} · {checkHeadline(copy, metrics)}</h3>
-            <div className="overflow-hidden rounded-md bg-sidebar/40">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
               <StoryRow
                 step="1"
                 label={copy.harbor.heldIn}
@@ -266,7 +266,7 @@ function FirstRun({ onTab }: { onTab: (tab: HarnessTab) => void }) {
     promote: copy.rsi.promote,
   };
   return (
-    <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40" data-testid="harness-first-run">
+    <div className="mb-6 overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]" data-testid="harness-first-run">
       <div className="px-4 py-3">
         <h3 className="text-ui-body font-medium">{copy.rsi.firstTitle}</h3>
         <p className="mt-1 max-w-[52ch] text-ui-footnote text-muted">{copy.rsi.firstLead}</p>
