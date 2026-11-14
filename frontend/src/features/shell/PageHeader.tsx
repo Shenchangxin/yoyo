@@ -5,7 +5,7 @@ import { browserSurface, chrome } from "../../lib/chrome";
 import { cn } from "../../lib/utils";
 import { WindowControls } from "./WindowControls";
 
-/** PageHeader 高 12。macPad 为真时左侧留出 76px。双击时，若不是浏览器面，调用 chrome.toggleMaximise。右侧始终挂 WindowControls。props 读取 macPad、className、left、title、right。 */
+/** PageHeader 高 11（44px）至 12（48px），与主舞台融为同一底色。macPad 为真时左侧留出 76px。双击时，若不是浏览器面，调用 chrome.toggleMaximise。右侧始终挂 WindowControls。props 读取 macPad、className、left、title、right。 */
 export function PageHeader(props: {
   left?: ReactNode;
   title?: ReactNode;
@@ -16,7 +16,7 @@ export function PageHeader(props: {
   return (
     <header
       className={cn(
-        "glass-chrome chrome drag relative z-20 flex h-12 min-h-12 min-w-0 shrink-0 items-center gap-2 px-3",
+        "stage-header chrome drag relative z-20 flex h-11 min-h-11 min-w-0 shrink-0 items-center gap-2 px-3.5",
         props.macPad && "pl-[76px]",
         props.className,
       )}

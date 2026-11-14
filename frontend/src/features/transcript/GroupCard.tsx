@@ -97,7 +97,7 @@ export function GroupCard({ item }: { item: Item }) {
     return (
       <button
         type="button"
-        className="flex w-full max-w-[40rem] min-w-0 items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5 text-left text-ui-footnote shadow-[var(--shadow-card)] hover:bg-lift/40"
+        className="flex w-full max-w-[40rem] min-w-0 items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-left text-ui-footnote shadow-[var(--shadow-card)] transition-[border-color,background-color] duration-[var(--duration-fast)] hover:border-foreground/18 hover:bg-lift/40"
         data-testid="group-card"
         data-group={gid}
         data-state={live.state}
@@ -121,7 +121,7 @@ export function GroupCard({ item }: { item: Item }) {
   const now = Date.now();
   return (
     <div
-      className="w-full max-w-[40rem] rounded-lg border border-border bg-card px-3.5 py-3 shadow-[var(--shadow-card)]"
+      className="w-full max-w-[40rem] rounded-xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
       data-testid="group-card"
       data-group={gid}
       data-state={live?.state || ""}

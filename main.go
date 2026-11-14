@@ -185,7 +185,7 @@ func main() {
 		Height:             geom.H,
 		MinWidth:           1080,
 		MinHeight:          680,
-		BackgroundColour:   application.NewRGB(28, 29, 31),
+		BackgroundColour:   application.NewRGB(13, 15, 19),
 		URL:                "/",
 		Frameless:          runtime.GOOS != "darwin",
 		AlwaysOnTop:        cfg.AlwaysOnTop,
@@ -199,6 +199,24 @@ func main() {
 			DisableMenu:                       true,
 			DisableFramelessWindowDecorations: false,
 			NonClientRegionSupport:            true,
+			CustomTheme: application.ThemeSettings{
+				DarkModeActive: &application.WindowTheme{
+					BorderColour:   application.NewRGBPtr(34, 38, 46),
+					TitleBarColour: application.NewRGBPtr(13, 15, 19),
+				},
+				DarkModeInactive: &application.WindowTheme{
+					BorderColour:   application.NewRGBPtr(24, 27, 34),
+					TitleBarColour: application.NewRGBPtr(13, 15, 19),
+				},
+				LightModeActive: &application.WindowTheme{
+					BorderColour:   application.NewRGBPtr(220, 223, 228),
+					TitleBarColour: application.NewRGBPtr(243, 244, 246),
+				},
+				LightModeInactive: &application.WindowTheme{
+					BorderColour:   application.NewRGBPtr(228, 231, 236),
+					TitleBarColour: application.NewRGBPtr(243, 244, 246),
+				},
+			},
 		},
 		Linux: application.LinuxWindow{
 			Icon: desktop.AppIcon,

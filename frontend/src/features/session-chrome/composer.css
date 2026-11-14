@@ -299,11 +299,11 @@
   min-width: 0;
   align-self: stretch;
   padding-top: 8px;
-  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--foreground) 11%, transparent);
   border-radius: var(--radius-composer);
   background: var(--input-bar);
   box-shadow: var(--shadow-composer);
-  font-size: 14px;
+  font-size: 14.5px;
   line-height: 24px;
 }
 
@@ -312,12 +312,12 @@
 }
 
 .sc-root[data-focused="true"] .sc-card {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
 }
 
 /* 主输入框聚焦时一圈静态柔光；电流只在 Agent 干活时出现（ChatBorder）。 */
 .sc-root[data-primary="true"][data-focused="true"] .sc-card {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent), var(--shadow-composer);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 13%, transparent), var(--shadow-composer);
 }
 
 /* 有审批在等时，边线变成静态琥珀色。 */
@@ -754,7 +754,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--popover, var(--input-bar));
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-popover);
 }
 
 .sc-popup-viewport {

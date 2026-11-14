@@ -388,14 +388,14 @@ function InstalledList(props: {
             <h3 className="text-ui-body font-medium text-foreground">{sourceLabel(source, copy)}</h3>
             <span className="text-ui-caption tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
           </div>
-          <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
             {items.map((s) => {
               const isLoaded = props.loaded.has(s.name);
               const expanded = props.open === s.name;
               const slug = packSlug(s);
               const fileCount = s.files ? s.files.split(",").filter(Boolean).length : 0;
               return (
-                <div key={s.name} className="u-row-hover rounded-xl px-3 py-2.5">
+                <div key={s.name} className="u-card-hover rounded-xl border border-border bg-card px-3.5 py-2.5 shadow-[var(--shadow-card)]">
                   <div className="flex min-h-10 items-center gap-3">
                     <SkillAvatar name={s.displayName || s.name} icon={s.icon} />
                     <div className="min-w-0 flex-1">
@@ -505,7 +505,7 @@ function MarketList(props: {
                 <h3 className="text-ui-body font-medium">{copy.skills.featured}</h3>
                 <span className="text-ui-caption tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
               </div>
-              <div className="overflow-hidden rounded-xl bg-card shadow-[var(--shadow-card)]">
+              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
                 {props.featured.map((it, i) => (
                   <MarketRow
                     key={itemInstallID(it)}
@@ -526,7 +526,7 @@ function MarketList(props: {
                 <h3 className="text-ui-body font-medium">{category}</h3>
                 <span className="text-ui-caption tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
               </div>
-              <div className="overflow-hidden rounded-xl bg-card shadow-[var(--shadow-card)]">
+              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
                 {items.map((it, i) => (
                   <MarketRow
                     key={itemInstallID(it)}
@@ -724,7 +724,7 @@ function PacksList(props: {
         const togglingGlobal = props.busy === p.id + ":global";
         const togglingInherit = props.busy === p.id + ":inherit";
         return (
-          <section key={p.id} className="rounded-xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid={`pack-${p.id}`}>
+          <section key={p.id} className="rounded-xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid={`pack-${p.id}`}>
             <div className="flex items-start gap-3">
               <SkillAvatar name={p.name} />
               <div className="min-w-0 flex-1">

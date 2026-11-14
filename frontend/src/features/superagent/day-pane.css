@@ -6,20 +6,27 @@
 
 /* 大卡片：一段完整的内容，比如一个 agent 的概况、一组设置。 */
 .day-card {
-  border-radius: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: none;
+  box-shadow: var(--shadow-card);
 }
 
 /* 小卡片：列表里的一行，或者一组用细线分开的行。 */
 .day-tile {
   border-radius: 12px;
+  border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: none;
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+.day-tile:hover {
+  border-color: color-mix(in srgb, var(--foreground) 16%, transparent);
 }
 
 /* 卡片里的输入区：多行文字、命令、日志。 */
 .day-well {
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--lift) 60%, transparent);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--lift) 55%, transparent);
 }

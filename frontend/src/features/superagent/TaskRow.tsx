@@ -35,7 +35,7 @@ export function TaskRow(props: { ticket: Ticket; onClick: () => void; hint?: str
     <button
       type="button"
       data-testid="task-row"
-      className="flex w-full items-start gap-3 rounded-[20px] bg-card px-4 py-3 text-left shadow-[var(--shadow-card)]"
+      className="day-tile flex w-full items-start gap-3 px-4 py-3 text-left"
       onClick={props.onClick}
     >
       {section === "working" && !ticket.held ? (

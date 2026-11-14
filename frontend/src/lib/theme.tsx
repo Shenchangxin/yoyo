@@ -24,14 +24,14 @@ export const DARK_PALETTES: readonly DarkPalette[] = ["ink", "dim", "slate"];
 /** LIGHT_PALETTES 亮色调色板的固定顺序。 */
 export const LIGHT_PALETTES: readonly LightPalette[] = ["neutral", "paper", "mist"];
 
-/** PALETTE_WINDOW 原生窗口背景的 RGB，与 styles.css 里的画布令牌保持一致。 */
+/** PALETTE_WINDOW 原生窗口背景的 RGB，与 styles.css 里的外框壳令牌 --sidebar 保持一致。 */
 export const PALETTE_WINDOW: Record<PaletteId, readonly [number, number, number]> = {
-  ink: [18, 20, 28],
-  dim: [36, 36, 34],
-  slate: [18, 18, 18],
-  neutral: [247, 244, 238],
-  paper: [246, 243, 236],
-  mist: [246, 248, 250],
+  ink: [13, 15, 19],
+  dim: [24, 26, 30],
+  slate: [11, 11, 12],
+  neutral: [243, 244, 246],
+  paper: [238, 234, 226],
+  mist: [238, 241, 244],
 };
 
 const KEY = "yoyo-theme";

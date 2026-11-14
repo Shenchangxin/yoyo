@@ -84,12 +84,15 @@ func parseRGB(s string) ([3]float64, bool) {
 	return [3]float64{float64(r) / 255, float64(g) / 255, float64(b) / 255}, true
 }
 
-// WindowRGB 把 --background 收成 0 到 255 的三个整数。解析失败时返回 28, 28, 26。
-// tokens 取出 --background 交给 parseRGB。失败时返回 28、28、26。
+// WindowRGB 把 --sidebar（缺失时回落 --background）收成 0 到 255 的三个整数。解析失败时返回 13, 15, 19。
+// tokens 优先取 --sidebar，否则取 --background 交给 parseRGB。
 func WindowRGB(tokens TokenMap) []int {
-	rgb, ok := parseRGB(tokens["--background"])
+	rgb, ok := parseRGB(tokens["--sidebar"])
 	if !ok {
-		return []int{28, 28, 26}
+		rgb, ok = parseRGB(tokens["--background"])
+	}
+	if !ok {
+		return []int{13, 15, 19}
 	}
 	return []int{int(math.Round(rgb[0] * 255)), int(math.Round(rgb[1] * 255)), int(math.Round(rgb[2] * 255))}
 }

@@ -5,7 +5,7 @@
 
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, Moon, RotateCcw, ShieldAlert, Sun } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, CircleDashed, Copy, FileCode2, FileSpreadsheet, FileText, Folder, GitFork, Globe, Image as ImageIcon, MessageSquare, Moon, RotateCcw, ShieldAlert, Sun } from "lucide-react";
 import { SendSling } from "../components/SendSling";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
@@ -467,8 +467,22 @@ export function Transcript(props: {
   );
 }
 
+function deliverableTone(kind: string): { cls: string; icon: ReactNode } {
+  if (kind === "HTML") return { cls: "is-html", icon: <Globe className="size-4" strokeWidth={1.75} /> };
+  if (kind === "CSV" || kind === "TSV" || kind === "Excel") {
+    return { cls: "is-csv", icon: <FileSpreadsheet className="size-4" strokeWidth={1.75} /> };
+  }
+  if (kind === "PNG" || kind === "JPEG" || kind === "GIF" || kind === "WebP" || kind === "SVG") {
+    return { cls: "is-media", icon: <ImageIcon className="size-4" strokeWidth={1.75} /> };
+  }
+  if (kind === "JSON") return { cls: "is-code", icon: <FileCode2 className="size-4" strokeWidth={1.75} /> };
+  return { cls: "", icon: <FileText className="size-4" strokeWidth={1.75} /> };
+}
+
 function DeliverableBubble(props: { path: string; pending?: boolean; onOpen?: () => void }) {
+  const copy = useCopy();
   const kind = fileKind(props.path);
+  const badge = deliverableTone(kind);
   return (
     <button
       type="button"
@@ -477,12 +491,15 @@ function DeliverableBubble(props: { path: string; pending?: boolean; onOpen?: ()
       disabled={props.pending}
       onClick={props.onOpen}
     >
-      <span className={cn("deliverable-mark", kind === "CSV" && "is-csv", kind === "HTML" && "is-html")} aria-hidden>{kind.slice(0, 4)}</span>
+      <span className={cn("deliverable-mark", badge.cls)} aria-hidden>{badge.icon}</span>
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-ui-body-l font-medium leading-5">{fileBase(props.path)}</span>
-        <span className="block truncate text-ui-footnote leading-5 text-muted">{kind}</span>
+        <span className="block truncate text-ui-body font-medium leading-5 text-foreground">{fileBase(props.path)}</span>
+        <span className="block truncate text-ui-caption leading-4 text-muted">{kind}</span>
       </span>
-      <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+      <span className="deliverable-open shrink-0" aria-hidden>
+        {copy.transcript.preview}
+        <ChevronRight className="size-3.5 text-muted" />
+      </span>
     </button>
   );
 }
@@ -1139,22 +1156,25 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   if (ask) {
     return (
       <div
-        className="u-card-hover is-warn relative overflow-hidden rounded-xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
+        className="u-card-hover is-warn relative overflow-hidden rounded-xl border border-warning/25 bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
         role="status"
         data-testid="ask-user-card"
       >
-        <span className="pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full bg-warning/80" aria-hidden />
-        <div className="text-ui-caption font-medium text-muted">{copy.transcript.askQuestion}</div>
-        <div className="mt-0.5 text-ui-body-l font-medium tracking-tight text-foreground">{subject || copy.transcript.askQuestion}</div>
+        <span className="pointer-events-none absolute inset-y-3 left-0 w-[2.5px] rounded-full bg-warning" aria-hidden />
+        <div className="flex items-center gap-1.5 text-ui-caption font-medium text-warning">
+          <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+          {copy.transcript.askQuestion}
+        </div>
+        <div className="mt-1 text-ui-body-l font-medium tracking-tight text-foreground">{subject || copy.transcript.askQuestion}</div>
         <textarea
-          className="mt-2 min-h-[4.5rem] w-full resize-y rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 text-ui-body leading-[1.5] text-foreground outline-none focus:border-foreground/30"
+          className="mt-2.5 min-h-[4.5rem] w-full resize-y rounded-lg border border-border bg-sidebar/80 px-3 py-2 text-ui-body leading-[1.55] text-foreground outline-none transition-colors focus:border-accent/55"
           value={answer}
           placeholder={copy.transcript.answerPlaceholder}
           autoComplete="off"
           spellCheck={false}
           onChange={(e) => setAnswer(e.target.value)}
         />
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2">
             <span className="text-ui-footnote font-medium text-foreground">{copy.transcript.sendAnswer}</span>
             <SendSling
@@ -1169,7 +1189,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           </span>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-footnote text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-ui-footnote text-muted transition-colors hover:bg-danger/10 hover:text-danger"
             onClick={() => onResolve(item.id, "deny")}
           >
             {copy.transcript.reject}
@@ -1180,37 +1200,37 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   }
   return (
     <div
-      className="u-card-hover is-warn relative overflow-hidden rounded-xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
+      className="u-card-hover is-warn relative overflow-hidden rounded-xl border border-warning/25 bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
       role="status"
       data-testid="approval-card"
     >
-      <span className="pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full bg-warning/80" aria-hidden />
+      <span className="pointer-events-none absolute inset-y-3 left-0 w-[2.5px] rounded-full bg-warning" aria-hidden />
       <div className="flex items-start gap-3">
-        <span className="mt-px grid size-7 shrink-0 place-items-center rounded-lg bg-warning/12 text-warning" aria-hidden>
-          <ShieldAlert className="size-3.5" />
+        <span className="mt-px grid size-8 shrink-0 place-items-center rounded-lg border border-warning/20 bg-warning/12 text-warning" aria-hidden>
+          <ShieldAlert className="size-4" strokeWidth={1.75} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-ui-caption font-medium text-muted">
+          <div className="flex items-center gap-2 text-ui-caption font-medium text-warning">
             {copy.transcript.needsApproval}
           </div>
           <div className="mt-0.5 text-ui-body-l font-medium tracking-tight text-foreground">{item.action || "action"}</div>
           {subject ? (
-            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-ui-footnote leading-[1.5] text-foreground/85">
+            <pre className="mt-2.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-sidebar/85 px-3 py-2 font-mono text-ui-footnote leading-[1.55] text-foreground/90">
               {subject}
             </pre>
           ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-ui-footnote font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-foreground px-3 text-ui-footnote font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
               onClick={() => onResolve(item.id, "once")}
             >
               {copy.transcript.allow}
-              <kbd className="border-background/20 bg-background/15 text-background/80" aria-hidden>1</kbd>
+              <kbd className="border-background/20 bg-background/15 text-background/85" aria-hidden>1</kbd>
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-ui-footnote text-foreground transition-colors hover:bg-lift"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-lift/50 px-2.5 text-ui-footnote font-medium text-foreground transition-colors hover:bg-lift"
               onClick={() => onResolve(item.id, "session")}
             >
               {copy.transcript.allowSession}
@@ -1218,7 +1238,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-footnote text-muted transition-colors hover:bg-lift hover:text-foreground"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-ui-footnote text-muted transition-colors hover:bg-lift hover:text-foreground"
               onClick={() => onResolve(item.id, "always")}
             >
               {copy.transcript.allowAlways}
@@ -1227,7 +1247,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
             <span className="flex-1" />
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-footnote text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-ui-footnote text-muted transition-colors hover:bg-danger/10 hover:text-danger"
               onClick={() => onResolve(item.id, "deny")}
             >
               {copy.transcript.reject}
@@ -1524,12 +1544,12 @@ function UserPrompt({
         </div>
       ) : null}
       {chips.length ? (
-        <div className={cn("flex flex-wrap items-center gap-1", prose && "mb-1.5")}>
+        <div className={cn("flex flex-wrap items-center gap-1.5", prose && "mb-1.5")}>
           {chips.map((c, i) => (
             <span
               key={`${c.token}-${i}`}
               data-testid={c.kind === "file" ? "user-attach-chip" : "user-mention-chip"}
-              className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-background/55 px-1.5 py-0.5 text-ui-caption"
+              className="inline-flex h-6 max-w-[13rem] items-center gap-1.5 rounded-md border border-border bg-card/85 px-2 text-ui-caption font-medium text-foreground/90"
               title={c.detail || c.token}
             >
               {c.kind === "agent" ? <AgentMention pin={c} /> : (
@@ -1807,8 +1827,11 @@ function ArtifactCard({
     return <DeliverableBubble path={path} onOpen={() => actions.openBrowser?.(path)} />;
   }
   if ((isArtifactTool(name) || isCodeChangeTool(name)) && path && !view.diff && !mcp && actions.linkFiles) return null;
-  const title = view.path
-    ? view.path.replace(/\\/g, "/").split("/").pop() || view.path
+  const normPath = (view.path || path).replace(/\\/g, "/");
+  const slashAt = normPath.lastIndexOf("/");
+  const parentDir = slashAt > 0 ? normPath.slice(0, slashAt + 1) : "";
+  const title = normPath
+    ? normPath.split("/").pop() || normPath
     : name === "apply_patch"
       ? copy.transcript.patch
       : name === "cite_sources"
@@ -1824,30 +1847,56 @@ function ArtifactCard({
     view.created ? copy.transcript.created : "",
     name === "apply_patch" && files > 0 ? copy.transcript.filesCount.replace("{n}", String(files)) : "",
   ].filter(Boolean);
+  const tileTone = htmlish ? "is-html" : codeChange ? "is-code" : "";
   return (
     <div
       className={cn("file-bubble u-card-hover", pending && "is-pending")}
       data-testid="artifact-card"
     >
       <div className="file-bubble-header">
-        <span className="file-bubble-tile" aria-hidden>
-          {pending ? <span className="pulse-dot" /> : interrupted ? <CircleDashed className="size-3.5 text-warning" /> : <FileText className="size-5" />}
+        <span className={cn("file-bubble-tile", tileTone)} aria-hidden>
+          {pending ? (
+            <span className="pulse-dot" />
+          ) : interrupted ? (
+            <CircleDashed className="size-3.5 text-warning" />
+          ) : htmlish ? (
+            <Globe className="size-4" strokeWidth={1.75} />
+          ) : codeChange ? (
+            <FileCode2 className="size-4" strokeWidth={1.75} />
+          ) : (
+            <FileText className="size-4" strokeWidth={1.75} />
+          )}
         </span>
         <div className="file-bubble-titles">
           <div className="file-bubble-title">
-            <button type="button" className={cn("max-w-full truncate bg-transparent text-left font-[inherit]", pending && "shimmer-text")} onClick={() => setOpen((v) => !v)}>{title}</button>
+            <button
+              type="button"
+              className={cn("inline-flex max-w-full items-center gap-1.5 truncate bg-transparent text-left font-[inherit]", pending && "shimmer-text")}
+              onClick={() => setOpen((v) => !v)}
+            >
+              {htmlish && !pending && !interrupted ? (
+                <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden />
+              ) : null}
+              {parentDir && codeChange ? (
+                <span className="truncate font-mono text-ui-footnote font-normal text-muted">{parentDir}</span>
+              ) : null}
+              <span className="truncate">{title}</span>
+            </button>
+            {added || removed ? (
+              <span className="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-sm bg-lift/70 px-1.5 py-px font-mono text-ui-caption tabular-nums">
+                {added ? <span className="file-bubble-added">+{added}</span> : null}
+                {removed ? <span className="file-bubble-deleted">−{removed}</span> : null}
+              </span>
+            ) : null}
             {interrupted ? (
-              <span className="ml-2 rounded-md bg-warning/12 px-1.5 py-px text-ui-caption font-medium text-warning">{copy.transcript.toolInterrupted}</span>
+              <span className="ml-1 rounded-md bg-warning/12 px-1.5 py-px text-ui-caption font-medium text-warning">{copy.transcript.toolInterrupted}</span>
             ) : null}
           </div>
           <div className="file-bubble-stat">
             <span className="file-bubble-stat-counts">
               {counts.length ? <span>{counts.join(" · ")}</span> : null}
-              {added ? <span className="file-bubble-added">+{added}</span> : null}
-              {removed ? <span className="file-bubble-deleted">−{removed}</span> : null}
-              {!added && !removed && !counts.length ? <span className="truncate">{fileKind(path) || detail || name}</span> : null}
+              {detail && detail !== title ? <span className="truncate">{detail}</span> : !counts.length ? <span className="truncate">{fileKind(path) || name}</span> : null}
             </span>
-            <span className="file-bubble-hint">{copy.transcript.preview}</span>
           </div>
         </div>
         <div className="file-bubble-actions">

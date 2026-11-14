@@ -8,7 +8,7 @@ import ElectricBorder from "./ElectricBorder";
 import { useTheme } from "../../lib/theme";
 
 const PAD = 3;
-const FALLBACK = { dark: "#8096ff", light: "#3a4ff0" };
+const FALLBACK = { dark: "#6e85ff", light: "#3b5bff" };
 const IDLE_AFTER_BLUR_MS = 30_000;
 
 /** 窗口在前台，或者离开还不到 30 秒。 */
@@ -104,16 +104,16 @@ export function ChatBorder(props: {
       color={color}
       theme={light ? "light" : "dark"}
       borderRadius={radius + PAD}
-      speed={0.75}
-      chaos={0.28}
-      spread={0.26}
+      speed={0.62}
+      chaos={0.16}
+      spread={0.22}
       strands={2}
-      thickness={1.35}
-      glow={light ? 0.28 : 0.5}
-      intensity={light ? 0.7 : 0.85}
-      arcs={0.35}
-      flicker={0.25}
-      offset={2}
+      thickness={1.08}
+      glow={light ? 0.18 : 0.34}
+      intensity={light ? 0.62 : 0.78}
+      arcs={0.22}
+      flicker={0.14}
+      offset={1.5}
       active={!!props.active && attentive}
       intro
       interactive

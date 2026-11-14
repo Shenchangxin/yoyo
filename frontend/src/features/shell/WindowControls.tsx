@@ -11,15 +11,15 @@ export function WindowControls() {
   const copy = useCopy();
   if (isMac() || !showCaptionButtons()) return null;
   return (
-    <div className="ml-1 flex items-center gap-0.5 pr-0.5">
+    <div className="ml-1.5 flex items-center gap-0.5 pr-0.5">
       <Cap aria-label={copy.window.minimise} title={copy.window.minimise} onClick={() => chrome.minimise()}>
-        <Minus className="size-3.5" />
+        <Minus className="size-3.5" strokeWidth={1.6} />
       </Cap>
       <Cap aria-label={copy.window.maximise} title={copy.window.maximise} onClick={() => chrome.toggleMaximise()}>
-        <Square className="size-3" />
+        <Square className="size-3" strokeWidth={1.6} />
       </Cap>
       <Cap aria-label={copy.window.close} title={copy.window.close} onClick={() => chrome.close()} danger>
-        <X className="size-3.5" />
+        <X className="size-3.5" strokeWidth={1.6} />
       </Cap>
     </div>
   );
@@ -35,7 +35,7 @@ function Cap({
     <button
       type="button"
       className={cn(
-        "grid size-8 place-items-center rounded-lg text-muted transition-[background-color,color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground active:scale-[0.96]",
+        "grid h-7 w-8 place-items-center rounded-md text-muted/80 transition-[background-color,color,transform] duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:bg-lift hover:text-foreground active:scale-[0.96]",
         danger && "hover:bg-danger hover:text-white",
       )}
       {...props}

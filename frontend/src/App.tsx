@@ -1357,8 +1357,8 @@ function WorkstationApp() {
           </Panel>
         ) : null}
         {showRail ? <ResizeHandle /> : null}
-        <Panel id="stage" minSize="42" className="h-full min-h-0 min-w-0" style={{ overflow: "hidden" }}>
-          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <Panel id="stage" minSize="42" className="stage-panel h-full min-h-0 min-w-0" data-rail={showRail ? "open" : "closed"} style={{ overflow: "hidden" }}>
+          <div className="stage-island flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
               <div data-testid="app-error" className="mx-4 mb-1 flex items-start gap-3 rounded-xl bg-danger/10 px-3.5 py-2.5 text-ui-body text-danger">
@@ -1473,7 +1473,7 @@ function WorkstationApp() {
                 aria-label={copy.rail.collapse}
                 onClick={() => ws.setSidebarHover(false)}
               />
-              <div className="absolute inset-y-0 left-0 z-30 w-[min(20.5rem,92%)] pt-[env(safe-area-inset-top)]">
+              <div className="absolute inset-y-0 left-0 z-30 w-[min(20.5rem,92%)] bg-sidebar pt-[env(safe-area-inset-top)] shadow-[var(--shadow-popover)]">
                 <div className="h-full">{rail}</div>
               </div>
             </>
@@ -1481,7 +1481,7 @@ function WorkstationApp() {
         ) : (
           <div
             className={overlayRail
-              ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)]"
+              ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)] border-r border-border bg-sidebar shadow-[var(--shadow-popover)]"
               : "absolute inset-y-0 left-0 z-20 w-2"}
             onMouseEnter={() => ws.setSidebarHover(true)}
             onMouseLeave={() => ws.setSidebarHover(false)}
