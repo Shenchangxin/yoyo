@@ -160,9 +160,10 @@ func (m *Manager) probe(ctx context.Context, id string, full bool) error {
 	sess, err := c.NewSession(ctx, acp.NewSessionRequest{Cwd: dir, McpServers: []acp.McpServer{}})
 	if err != nil {
 		if errors.Is(err, acp.ErrAuthRequired) {
+			detail := m.cursorNote(id)
 			m.update(id, func(r *record) {
 				r.State = StateNeedsAuth
-				r.Detail = ""
+				r.Detail = detail
 				r.CheckedAt = now
 				r.Probe = mergeInfo(r.Probe, infoFrom(init, nil, false, now))
 			})

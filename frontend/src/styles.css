@@ -473,32 +473,55 @@ html[data-browser="1"] .drag {
 }
 
 [data-separator] {
-  flex: 0 0 6px !important;
-  width: 6px !important;
+  flex: 0 0 0px !important;
+  width: 0 !important;
+  overflow: visible;
   background: transparent;
 }
 
 .resize-glow {
   position: relative;
+  z-index: 30;
+  cursor: col-resize;
+  touch-action: none;
+}
+.resize-glow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  width: 12px;
+  cursor: col-resize;
 }
 .resize-glow::after {
   content: "";
   position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 50%;
-  width: 1.5px;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
   border-radius: 999px;
-  background: transparent;
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
   transform: translateX(-50%);
-  transition: background var(--duration-fast) var(--ease-out), width var(--duration-fast) var(--ease-out);
+  pointer-events: none;
+  transition:
+    background 180ms var(--ease-out),
+    width 180ms var(--ease-out),
+    top 220ms var(--ease-out),
+    bottom 220ms var(--ease-out);
 }
 .resize-glow:hover::after,
-.resize-glow:focus-visible::after,
+.resize-glow:focus-visible::after {
+  width: 2px;
+  background: color-mix(in srgb, var(--foreground) 36%, transparent);
+}
 .resize-glow[data-separator="active"]::after,
 .resize-glow[data-separator="focus"]::after {
-  width: 2px;
-  background: color-mix(in srgb, var(--accent) 72%, transparent);
+  top: 28%;
+  bottom: 28%;
+  width: 3px;
+  background: color-mix(in srgb, var(--accent) 82%, transparent);
 }
 
 kbd,
@@ -623,6 +646,56 @@ kbd,
 }
 .overlay-scroll::-webkit-scrollbar-thumb:active {
   background-color: color-mix(in srgb, var(--muted) 62%, transparent);
+}
+
+/* 今天栏的滚动条：原生的藏起来。胶囊大小和颜色都不变，悬停只改变整段的透明度。 */
+.day-scroll {
+  scrollbar-width: none;
+}
+.day-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.day-scroll-thumb {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  width: 14px;
+  height: 72px;
+  border-radius: 999px;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transform: none;
+  touch-action: none;
+  transition: opacity 520ms linear;
+}
+.day-scroll-thumb::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 3px;
+  bottom: 0;
+  width: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 38%, transparent);
+}
+.day-scroll-thumb[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: grab;
+}
+.day-scroll-thumb[data-drag="true"] {
+  cursor: grabbing;
+}
+.day-scroll-thumb[data-drag="true"]::before {
+  background: color-mix(in srgb, var(--foreground) 55%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .day-scroll-thumb {
+    transition: none;
+  }
 }
 
 .assistant-prose {
@@ -1896,25 +1969,22 @@ html.dark .code-hl span {
 }
 
 .stage-panel {
-  padding: 6px 6px 6px 0;
+  padding: 0;
   background: transparent;
-}
-.stage-panel[data-rail="closed"] {
-  padding-left: 6px;
 }
 
 .stage-island {
-  border-radius: var(--radius-window);
-  border: 1px solid var(--border);
+  border: 0;
+  border-radius: 0;
   background: var(--background);
-  box-shadow: var(--shadow-stage, none);
+  box-shadow: none;
 }
 
 .stage-header {
-  background: color-mix(in srgb, var(--background) 88%, transparent);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: transparent;
+  border-bottom: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 @media (prefers-reduced-transparency: reduce) {

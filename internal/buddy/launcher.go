@@ -98,6 +98,9 @@ func (m *Manager) launchFor(e Entry, item ItemConfig, d detection) (acp.Launch, 
 	for k, v := range secrets {
 		extraEnv[k] = v
 	}
+	if e.ID == "cursor" {
+		extraEnv = m.vetCursorKey(e.ID, extraEnv)
+	}
 	l.Env = m.baseEnv(pathPrefix)
 	for k, v := range extraEnv {
 		l.Env = setEnv(l.Env, k, v)

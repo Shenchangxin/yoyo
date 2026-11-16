@@ -54,6 +54,9 @@ type Options struct {
 	YoyoKey func(provider string) (string, bool)
 	// YoyoChat 返回 yoyo 当前聊天用的模型、提供商、钥匙和端点。安装完成且这项还没自己配过时用来填默认。
 	YoyoChat func() (model, provider, key, endpoint string)
+	// CursorKeyCheck 校验 Cursor 的 API key。ok 为假且 err 为空表示钥匙被拒绝；err 非空表示没问成。
+	// nil 时向 Cursor 的兑换接口问一次。测试用它换掉网络。
+	CursorKeyCheck func(ctx context.Context, key string) (ok bool, err error)
 	// Working 返回每个 agent 正在做的工单数。
 	Working func() map[string]int
 	// BaseEnv 是清洗前的环境，nil 时用 os.Environ。
@@ -115,9 +118,12 @@ type Manager struct {
 	logMu      sync.Mutex
 
 	// keyMu 管 keyCache（每把密钥有没有保存）和 yoyoKeys（yoyo 有没有某提供商的钥匙）。可以在持有 mu 时拿。
-	keyMu    sync.Mutex
-	keyCache map[string]bool
-	yoyoKeys map[string]yoyoKeyHit
+	// cursorVerdicts 和 cursorNotes 也归它：前者是 Cursor API key 的校验缓存，后者是最近一次没通过时给界面的那句话。
+	keyMu          sync.Mutex
+	keyCache       map[string]bool
+	yoyoKeys       map[string]yoyoKeyHit
+	cursorVerdicts map[string]cursorVerdict
+	cursorNotes    map[string]string
 
 	ctx    context.Context
 	cancel context.CancelFunc

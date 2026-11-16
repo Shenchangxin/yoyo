@@ -2,7 +2,7 @@
 
 import { Separator } from "react-resizable-panels";
 
-// ResizeHandle 是一条 1.5 单位宽的发光分隔。
+// ResizeHandle 平时是一条发丝分界，热区比线宽，拖动时中间收成一截短把手。
 export function ResizeHandle() {
-  return <Separator className="resize-glow relative z-10 w-1.5" />;
+  return <Separator className="resize-glow" />;
 }
