@@ -802,6 +802,7 @@ export const en = {
     allowAlways: "Always",
     reject: "Reject",
     jumpLatest: "Jump to latest",
+    opening: "Opening where you left off",
     outline: "Turns",
     outlineShow: "Show turn directory",
     outlineHide: "Hide turn directory",

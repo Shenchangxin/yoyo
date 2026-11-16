@@ -803,6 +803,7 @@ export const zhCN = {
     allowAlways: "总是允许",
     reject: "拒绝",
     jumpLatest: "跳到最新",
+    opening: "正在回到上次的位置",
     outline: "快捷目录",
     outlineShow: "显示快捷目录",
     outlineHide: "隐藏快捷目录",

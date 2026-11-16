@@ -30,6 +30,7 @@ import { needItems, type NeedItem } from "./needs-model";
 import { actionLabel, briefLayout, briefProgress, cardHandled, checkedCount, itemKey, shortKicker } from "./brief-board";
 import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueDelta, filterItems, groupRows, itemSections, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, offerSlot, parseBriefPrefs, refStatus, serializeStoredBrief, tasksBadge, unseenSuggestions, wouldAccept, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief, type TaskItem, type TaskSection } from "./work-model";
 import { BRIEF_PREFS_EVENT, type ProactiveLevel } from "../../lib/proactive";
+import { DayScroll } from "./DayScroll";
 
 type Tab = "now" | "tasks" | "memory" | "buddy";
 
@@ -240,8 +241,7 @@ export function WorkPane(props: {
           })}
         </div>
       </div>
-      <div className="rail-scroll-fade min-h-0 min-w-0 flex-1 overflow-hidden px-2">
-        <div className={cn("h-full min-w-0", reading ? "overflow-hidden pb-14" : "overflow-y-auto overflow-x-hidden overscroll-contain pb-16")}>
+      <DayScroll reading={reading}>
           {err && tab !== "buddy" ? <p className="px-3 py-2 text-ui-footnote text-danger">{err}</p> : null}
           {!view && !err && tab !== "buddy" ? <p className="px-3 py-3 text-ui-body text-muted">{copy.work.loading}</p> : null}
           {tab === "buddy" ? <BuddyPane /> : null}
@@ -336,8 +336,7 @@ export function WorkPane(props: {
               </p>
             </>
           ) : null}
-        </div>
-      </div>
+      </DayScroll>
     </div>
   );
 }

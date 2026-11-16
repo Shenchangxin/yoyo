@@ -11,7 +11,8 @@ import { noticeFromItem } from "../../lib/notices";
 import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, foldTurnErrors, lastUserTurns, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeState, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
 import { ConversationFold } from "../../lib/conversation-fold";
 import { deriveTurnStatus } from "../../lib/turn-status";
-import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
+import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, isOutlineActive, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
+import { writeSessionPlace, type SessionPlace } from "../../lib/session-place";
 import { deriveSessionStats } from "../../lib/session-stats";
 import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
@@ -306,6 +307,7 @@ export function useWorkstation() {
   activeRef.current = active;
   const sendToCutRef = useRef<(detail: SendToCutRequest) => Promise<void>>(async () => {});
   const [items, setItems] = useState<Item[]>([]);
+  const [opening, setOpening] = useState(false);
   const itemsAcc = useRef<Item[]>([]);
   const hotItemsRef = useRef<Item[]>([]);
   const foldRef = useRef(new ConversationFold());
@@ -480,6 +482,20 @@ export function useWorkstation() {
     setLatestNonce(Date.now());
   }, [activeId]);
 
+  /** 主会话离开时记下读到哪。锚点能对上目录时带上序号，下次才能把那一页拉回来。 */
+  const rememberPlace = useCallback((info: { following: boolean; anchor: string }) => {
+    const id = mainIdRef.current;
+    if (!id || activeIdRef.current !== id) return;
+    const turn = outlineRef.current.find((t) => isOutlineActive(t, info.anchor));
+    writeSessionPlace({
+      sessionId: id,
+      following: info.following,
+      anchor: info.anchor,
+      seq: turn?.seq || 0,
+      aliases: turn ? turnJumpAliases(turn) : (info.anchor ? [info.anchor] : []),
+    });
+  }, []);
+
   /** 没有会话或没有回合就返回。这条还没挂上且 seq 大于 0 时，按该 seq 取一页并进入回看。turn 读取 seq，为假时走另一支，传给 outlineTurnKey，传给 turnJumpAliases，传给 itemMatchesTurn。 */
   const jumpToTurn = useCallback(async (turn: OutlineTurn) => {
     if (!activeId || !turn) return;
@@ -499,6 +515,13 @@ export function useWorkstation() {
     }
     setJumpTo({ key, aliases, nonce: Date.now() });
   }, [activeId]);
+
+  /** 上次的位置不在已经加载的这一窗里时，按序号把那一页拉回来再跳。 */
+  const restorePlace = useCallback((place: SessionPlace) => {
+    if (!place.seq && !place.anchor) return;
+    const id = place.aliases.find((a) => a && !a.startsWith("seq:")) || "";
+    void jumpToTurn({ seq: place.seq, title: "", id, key: place.anchor || id });
+  }, [jumpToTurn]);
 
   /** 用横幅文案同时写入 err 并弹出提示。e 传给 api.errMessage。 */
   const fail = (e: unknown) => {
@@ -821,6 +844,7 @@ export function useWorkstation() {
       setActiveTurn("");
       setCtx(emptyCtx);
       setFiles([]);
+      setOpening(false);
       return;
     }
     itemsAcc.current = [];
@@ -837,6 +861,7 @@ export function useWorkstation() {
     setOutline([]);
     setActiveTurn("");
     setFiles([]);
+    setOpening(true);
     /** 正在回看时把热尾接到回看列表上。否则直接用热列表的副本。 */
     const flushItems = () => {
       itemsRaf.current = 0;
@@ -940,6 +965,7 @@ export function useWorkstation() {
         }
       },
       (seed, page, opts) => {
+        setOpening(false);
         if (opts.resync) {
           /** 实时尾上有洞时补一次。座位折叠里已经有流式正文，所以回看位置和审查面板不动。 */
           hotItemsRef.current = commitHot(foldRef.current, foldLiveIntoSeed(seed, hotItemsRef.current));
@@ -2539,11 +2565,11 @@ export function useWorkstation() {
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, dismissNotice, clearNotices, renameTick,
     health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, turnStatus, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, sessionStats, err, setErr,
-    outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
+    outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce, rememberPlace, restorePlace,
     searchHits, showArchived, setShowArchived,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, overlay, overlayK, setOverlayK, overlayMode, setOverlayMode, overlayLibrary, overlayReuseTurn, setOverlayReuseTurn, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
-    booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
+    booted, opening, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     /** mainId 是那条常驻主会话的 id。还没取到时为空串。 */

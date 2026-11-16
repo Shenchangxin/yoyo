@@ -60,6 +60,7 @@ import { displayWorkspace } from "../lib/display-title";
 import { formatMessageClock } from "../lib/session-stats";
 import { mergeMentionPins, peelCompletedMentions, pinsFromAttachments, type MentionKind, type MentionPin } from "../lib/mentions";
 import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
+import { readSessionPlace, type SessionPlace } from "../lib/session-place";
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
 import { useStudioSelection } from "./video/workshop-store";
 
@@ -246,6 +247,12 @@ export function Transcript(props: {
   onForkFrom?: (from: string) => void | Promise<void>;
   /** main 是那条常驻的主会话：内容收成一列阅读宽度，换了一天放一条日期，检查点写成人话。 */
   main?: boolean;
+  /** placeId 有值时记住读到哪，下次打开回到那里。 */
+  placeId?: string;
+  /** live 为假时人离开了这一页，立刻把位置写下。 */
+  live?: boolean;
+  onPlace?: (info: { following: boolean; anchor: string }) => void;
+  onMissPlace?: (place: SessionPlace) => void;
 }) {
   const copy = useCopy();
   const linkFiles = props.linkFiles ?? !!props.workspace;
@@ -460,6 +467,10 @@ export function Transcript(props: {
           latestNonce={props.latestNonce}
           onActiveTurn={props.onActiveTurn}
           onJumpLatest={props.onJumpLatest}
+          placeId={props.placeId}
+          live={props.live}
+          onPlace={props.onPlace}
+          onMissPlace={props.onMissPlace}
         />
       )}
     </div>
@@ -829,6 +840,10 @@ function TranscriptLane({
   latestNonce,
   onActiveTurn,
   onJumpLatest,
+  placeId,
+  live,
+  onPlace,
+  onMissPlace,
 }: {
   className?: string;
   compact?: boolean;
@@ -845,12 +860,26 @@ function TranscriptLane({
   latestNonce?: number;
   onActiveTurn?: (key: string) => void;
   onJumpLatest?: () => void | Promise<void>;
+  placeId?: string;
+  live?: boolean;
+  onPlace?: (info: { following: boolean; anchor: string }) => void;
+  onMissPlace?: (place: SessionPlace) => void;
 }) {
   const copy = useCopy();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const savedPlace = useRef<SessionPlace | null>(null);
+  const restore = useRef<"wait" | "done">("done");
+  const askedPlace = useRef(false);
   const followCtl = useRef<ScrollFollow | null>(null);
-  if (!followCtl.current) followCtl.current = new ScrollFollow(true, 80);
+  if (!followCtl.current) {
+    const place = placeId ? readSessionPlace(placeId) : null;
+    const wait = !!(place && !place.following && (place.anchor || place.seq));
+    savedPlace.current = place;
+    restore.current = wait ? "wait" : "done";
+    followCtl.current = new ScrollFollow(!wait, 80);
+  }
   const [escaped, setEscaped] = useState(false);
+  const [restoring, setRestoring] = useState(() => restore.current === "wait");
   const loadingRef = useRef(false);
   const appliedJump = useRef(0);
   const appliedLatest = useRef(0);
@@ -906,7 +935,7 @@ function TranscriptLane({
   useLayoutEffect(() => {
     const el = scrollRef.current;
     const ctl = followCtl.current;
-    if (!el || !ctl || !ctl.active) return;
+    if (!el || !ctl || !ctl.active || restore.current === "wait") return;
     ctl.toBottom(el, scrollMetrics(el), follow ? "smooth" : "instant");
     setEscaped(!ctl.active);
   }, [rows.length, follow, followNonce]);
@@ -947,6 +976,10 @@ function TranscriptLane({
     lastActive.current = key;
     if (idx < 0) return;
     appliedJump.current = nonce;
+    if (restore.current === "wait") {
+      restore.current = "done";
+      setRestoring(false);
+    }
     jumpHeld.current = true;
     /** 跳转已经被松开就不再滚动。否则把这一行对齐到列表开头。 */
     const align = () => {
@@ -956,6 +989,68 @@ function TranscriptLane({
     align();
     requestAnimationFrame(align);
   }, [jumpTo, rows.length, rows[0]?.key, rows[rows.length - 1]?.key, virtualizer]);
+  useLayoutEffect(() => {
+    if (restore.current !== "wait") return;
+    const place = savedPlace.current;
+    if (!place) {
+      restore.current = "done";
+      setRestoring(false);
+      return;
+    }
+    const aliases = place.aliases.length ? place.aliases : place.anchor ? [place.anchor] : [];
+    const idx = aliases.length
+      ? rows.findIndex((r) => rowMatchesJump(r.turnKey, aliases) || rowMatchesJump(r.key, aliases))
+      : -1;
+    if (idx < 0) {
+      if (rows.length && !askedPlace.current) {
+        askedPlace.current = true;
+        onMissPlace?.(place);
+      }
+      return;
+    }
+    restore.current = "done";
+    followCtl.current?.setFollowing(false);
+    setEscaped(true);
+    setRestoring(false);
+    virtualizer.scrollToIndex(idx, { align: "start" });
+    const id = requestAnimationFrame(() => virtualizer.scrollToIndex(idx, { align: "start" }));
+    return () => cancelAnimationFrame(id);
+  }, [rows, virtualizer, onMissPlace]);
+  useEffect(() => {
+    if (restore.current !== "wait") return;
+    const timer = window.setTimeout(() => {
+      if (restore.current !== "wait") return;
+      restore.current = "done";
+      setRestoring(false);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [placeId]);
+  const savePlace = useCallback(() => {
+    if (!placeId || !onPlace) return;
+    const el = scrollRef.current;
+    if (!el || restore.current === "wait") return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const following = !!followCtl.current?.active && gap < 120;
+    onPlace({ following, anchor: following ? "" : lastActive.current });
+  }, [placeId, onPlace]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !placeId) return;
+    let timer = 0;
+    const queued = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(savePlace, 400);
+    };
+    el.addEventListener("scroll", queued, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      savePlace();
+      el.removeEventListener("scroll", queued);
+    };
+  }, [placeId, savePlace]);
+  useEffect(() => {
+    if (live === false) savePlace();
+  }, [live, savePlace]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -1049,7 +1144,7 @@ function TranscriptLane({
     <>
       <div
         ref={scrollRef}
-        className={cn('transcript-scroll relative min-h-0 flex-1', compact ? 'overflow-y-scroll overflow-x-hidden' : 'overflow-y-auto', className)}
+        className={cn('transcript-scroll relative min-h-0 flex-1', restoring && 'invisible', compact ? 'overflow-y-scroll overflow-x-hidden' : 'overflow-y-auto', className)}
         onScroll={onScroll}
       >
         {older ? (
@@ -1088,6 +1183,11 @@ function TranscriptLane({
           })}
         </div>
       </div>
+      {restoring ? (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background" data-testid="session-opening">
+          <p className="text-ui-footnote text-muted">{copy.transcript.opening}</p>
+        </div>
+      ) : null}
       {escaped ? (
         <button
           type='button'

@@ -34,6 +34,7 @@ import { useBuddyFeed } from "./features/buddy/buddy-store";
 import { applyProactiveLevel, briefDeskOf, briefTimesOf, cacheBriefTimes, cachedBriefTimes, parseProactiveLevel } from "./lib/proactive";
 import { copy as liveCopy } from "./lib/i18n";
 import { TurnOutline } from "./features/TurnOutline";
+import { SessionIndex } from "./features/SessionIndex";
 import { HomeHero, HomeStarters } from "./features/HomeStage";
 import { ChatNotWorking, lastTurnFailed } from "./features/harness/ChatNotWorking";
 import { Composer } from "./features/Composer";
@@ -238,6 +239,8 @@ function WorkstationApp() {
   const agentLoop = ws.surface === "agent";
   // 主会话是那一条常驻的对话。人在今天栏点开别的代理对话时，表面还是 agent，但那不是主会话。
   const mainChat = agentLoop && !popout && (!ws.activeId || !ws.mainId || ws.activeId === ws.mainId);
+  const sessionShown = !staged && !finishDesk && !talkDesk && !settings && !skills && !paging && !idling && !harnessing && !(agent && focusTicket) && !(agent && focusGroup);
+  const keepSession = !finishDesk && !talkDesk && !studioDesk;
   const detailView = ["detailed", "verbose"].includes(coerceTranscriptView(ws.savedCfg.transcriptView));
   const home = !agentLoop && !staged && (agent || videoing) && (createEntrance || ((ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0));
   const copilotItems = paneMismatch ? [] : ws.items;
@@ -601,6 +604,13 @@ function WorkstationApp() {
         className="@container relative flex min-h-0 min-w-0 flex-1 flex-col"
         data-testid={home && !(agent && !videoing) ? "conversation-column" : undefined}
       >
+        {mainChat && !home ? (
+          <SessionIndex
+            turns={ws.outlineTurns}
+            activeKey={ws.activeTurn}
+            onJump={(turn) => { void ws.jumpToTurn(turn); }}
+          />
+        ) : null}
         {home || agent || studioDesk || talkDesk || paging ? null : (
           <SessionHeader
             view={ws.inspector ? "trajectory" : "chat"}
@@ -672,6 +682,10 @@ function WorkstationApp() {
           </div>
         ) : home && !(agent && !videoing) ? (
           <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
+        ) : ws.opening && copilotItems.length === 0 ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center" data-testid="session-opening">
+            <p className="text-ui-footnote text-muted">{copy.transcript.opening}</p>
+          </div>
         ) : (
           <Transcript
             items={copilotItems}
@@ -710,6 +724,10 @@ function WorkstationApp() {
             onForkFrom={mainChat ? undefined : (from) => { void ws.onForkFrom(from); }}
             onJumpLatest={ws.jumpToLatest}
             main={mainChat}
+            placeId={mainChat ? ws.activeId : ""}
+            live={sessionShown}
+            onPlace={ws.rememberPlace}
+            onMissPlace={ws.restorePlace}
           />
         )}
         {home && !railNarrow && filmSurface ? homeStarters : null}
@@ -1454,10 +1472,17 @@ function WorkstationApp() {
                   </div>
                 </Panel>
               </Group>
-            ) : staged ? (
-              videoBoard
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{workspace}</div>
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                {keepSession ? (
+                  <div className={cn("min-h-0 min-w-0 flex-col overflow-hidden", sessionShown ? "flex flex-1" : "pointer-events-none invisible absolute inset-0")} aria-hidden={!sessionShown}>
+                    {agentPane}
+                  </div>
+                ) : null}
+                {sessionShown ? null : staged ? videoBoard : (
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{workspace}</div>
+                )}
+              </div>
             )}
             </MainColumn>
           </div>
