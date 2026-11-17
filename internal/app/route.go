@@ -64,12 +64,14 @@ var errNeedsBrief = fmt.Errorf("需要 brief。新开的工单要写清背景、
 var errNeedsHandoff = fmt.Errorf("继续这张工单需要给工人一句交代。正在做就只写变化，在等回答就只写答案，上下文断了再写完整说明。不要把人的原话原样送去")
 
 // beginRoute 在智能体主会话上换成路由工具。视频、学习、短片和即时消息会话保持原来的工具。
-func (a *App) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID string) bool {
+// tools 是这一轮的工具表，meta 是会话元数据。不是路由会话时不改 tools。
+// sessionID 是这条会话，turnID 是正在跑的这一轮。路由没写 trigger 时，用这一轮已经记下的桌面消息。
+func (a *App) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID, turnID string) bool {
 	if a == nil || tools == nil || !a.routeSession(meta, sessionID) {
 		return false
 	}
 	tools.RouteOnly = true
-	tools.Extra = a.routerExtrasFor(sessionID)
+	tools.Extra = a.routerExtrasFor(sessionID, turnID)
 	return true
 }
 
@@ -168,7 +170,7 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	if rt == nil {
 		return ""
 	}
-	id := "desk:" + sessionID + ":" + turnID
+	id := deskTriggerID(sessionID, turnID)
 	agents, agentNote := a.agentIntake(text)
 	_, reached := rt.Receive(superagent.Trigger{
 		ID: id, Source: "desk", Threads: []string{"desk:" + sessionID}, Primary: "desk:" + sessionID,
@@ -177,7 +179,7 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	if len(reached) > 0 {
 		return "这条消息已经交给工单 " + strings.Join(reached, ", ") + "。不要再接受。只有人明确要求停止时才用 task_stop。"
 	}
-	line := "这条桌面消息的触发编号是 " + id + "。先看最近的工单和它现在的阶段。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 要写完整 brief。continue 的 brief 看阶段：正在做就只写变化，在等回答就只写答案，停着就写下一步，上下文断了才写完整说明。人的原话不要原样送去，brief 留空会被拒绝。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
+	line := "这条桌面消息的触发编号是 " + id + "。task_route 和 task_split 的 trigger 不填就是这一条，不必把编号抄回去。先看最近的工单和它现在的阶段。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 要写完整 brief。continue 的 brief 看阶段：正在做就只写变化，在等回答就只写答案，停着就写下一步，上下文断了才写完整说明。人的原话不要原样送去，brief 留空会被拒绝。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
 	if roster := a.taskRoster(rt); roster != "" {
 		line += "\n最近工单：\n" + roster
 	}
@@ -227,16 +229,19 @@ func ruleParam(raw any) []string {
 }
 
 // routerExtras 是不属于哪条会话时的十一件路由工具。记下的记忆都算路由的推断，开出的任务组唤醒触发所在的桌面会话。
+// 没有会话和轮次，task_route 不补 trigger。
 func (a *App) routerExtras() map[string]runtime.ExtraTool {
-	return a.routerExtrasFor("")
+	return a.routerExtrasFor("", "")
 }
 
 // routerExtrasFor 是主会话仅有的十一件工具。写记忆时拿 sessionID 这条会话里当事人最近写的话核对出处；
-// 在这里开出的任务组有了结果时唤醒 sessionID。
-func (a *App) routerExtrasFor(sessionID string) map[string]runtime.ExtraTool {
+// 在这里开出的任务组有了结果时唤醒 sessionID。turnID 是这一轮的编号。
+// task_route 和 task_split 没写 trigger 时，用 desk:sessionID:turnID 那条已经记下的桌面消息。
+// sessionID 或 turnID 为空时不补，调用方必须自己带 trigger。
+func (a *App) routerExtrasFor(sessionID, turnID string) map[string]runtime.ExtraTool {
 	return map[string]runtime.ExtraTool{
-		"task_route":     a.routeTool(),
-		"task_split":     a.splitTool(sessionID),
+		"task_route":     a.routeTool(sessionID, turnID),
+		"task_split":     a.splitTool(sessionID, turnID),
 		"task_recommend": a.recommendTool(),
 		"task_pick":      a.pickTool(),
 		"task_read":      a.readTool(),
@@ -286,14 +291,15 @@ func (a *App) heardIn(sessionID string) []string {
 }
 
 // routeTool 接受、忽略、停止或挂接触发。一次可以有多项。
-func (a *App) routeTool() runtime.ExtraTool {
-	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 trigger、action、ticket、title、brief、reason、rules、agent。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 不能空，人的原话不会另送。accept 要写完整说明。continue 按工单阶段写：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。agent 是交给谁：accept 时用它开单，continue 时和工单现在的不同就改派。", map[string]any{
+// sessionID 和 turnID 是正在跑的这一轮。某项没写 trigger 时，用这一轮的桌面消息。
+func (a *App) routeTool(sessionID, turnID string) runtime.ExtraTool {
+	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 action、ticket、title、brief、reason、rules、agent，trigger 不填就是这一轮这条桌面消息。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 不能空，人的原话不会另送。accept 要写完整说明。continue 按工单阶段写：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。agent 是交给谁：accept 时用它开单，continue 时和工单现在的不同就改派。", map[string]any{
 		"items": map[string]any{
 			"type": "array",
 			"items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"trigger": map[string]any{"type": "string"},
+					"trigger": map[string]any{"type": "string", "description": "不填就是这一轮这条桌面消息。要处理别的触发时才填材料里给的编号。"},
 					"action":  map[string]any{"type": "string", "enum": []string{"accept", "continue", "ignore", "stop", "attach"}},
 					"ticket":  map[string]any{"type": "string"},
 					"title":   map[string]any{"type": "string", "description": "只在 accept 时填写的短名。不要写成任务说明。"},
@@ -302,7 +308,7 @@ func (a *App) routeTool() runtime.ExtraTool {
 					"rules":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 					"agent":   map[string]any{"type": "string", "description": "交给哪个 agent 的编号。只能填人在这条消息里 @ 过的，或 yoyo；材料里说了默认 agent 或自动挑选时按材料来。留空按材料里的缺省。"},
 				},
-				"required": []string{"trigger", "action"},
+				"required": []string{"action"},
 			},
 		},
 	}, false, func(args map[string]any) (string, error) {
@@ -317,7 +323,7 @@ func (a *App) routeTool() runtime.ExtraTool {
 		}
 		var b strings.Builder
 		for _, item := range items {
-			line, err := a.routeOne(rt, item)
+			line, err := a.routeOne(rt, sessionID, turnID, item)
 			if err != nil {
 				fmt.Fprintf(&b, "%s\n", err.Error())
 				continue
@@ -329,8 +335,9 @@ func (a *App) routeTool() runtime.ExtraTool {
 	})
 }
 
-// routeOne 执行一项路由。rt 是编排运行时。
-func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, error) {
+// routeOne 执行一项路由。rt 是编排运行时，item 是这一项的参数。
+// sessionID 和 turnID 是正在跑的这一轮。item 没写 trigger、而这一项又要落到一条触发上时，用它们对应的那条桌面消息。
+func (a *App) routeOne(rt *superagent.Runtime, sessionID, turnID string, item map[string]any) (string, error) {
 	trigger := strParam(item, "trigger")
 	action := strParam(item, "action")
 	title := strParam(item, "title")
@@ -341,6 +348,13 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 	}
 	brief := strings.TrimSpace(strParam(item, "brief"))
 	agent := strParam(item, "agent")
+	if routeNeedsTrigger(action, ticket) {
+		var err error
+		trigger, err = a.bindRouteTrigger(rt, sessionID, turnID, trigger)
+		if err != nil {
+			return "", err
+		}
+	}
 	switch action {
 	case "accept":
 		if brief == "" {
@@ -405,6 +419,50 @@ func (a *App) routeOne(rt *superagent.Runtime, item map[string]any) (string, err
 	default:
 		return "", fmt.Errorf("bad action %s", action)
 	}
+}
+
+// routeNeedsTrigger 在这一项要落到一条触发上时为真。
+// action 是 stop 且 ticket 已经指到工单时，停的是工单，不看触发。
+// 认不出的 action 为假，好让后面报 bad action，而不是先报缺 trigger。
+func routeNeedsTrigger(action, ticket string) bool {
+	switch action {
+	case "accept", "continue", "attach", "ignore":
+		return true
+	case "stop":
+		return strings.TrimSpace(ticket) == ""
+	default:
+		return false
+	}
+}
+
+// bindRouteTrigger 定下这一项用哪条触发。rt 是编排运行时。given 是路由填的编号，非空就原样用它。
+// given 为空时，用这一轮桌面消息 desk:sessionID:turnID。这条编号在 intakeDesk 时已经记下，模型不必再抄回来。
+// sessionID 或 turnID 为空、这条触发不存在、或已经路由过时，返回路由能照着改的说明。
+func (a *App) bindRouteTrigger(rt *superagent.Runtime, sessionID, turnID, given string) (string, error) {
+	if given = strings.TrimSpace(given); given != "" {
+		return given, nil
+	}
+	id := deskTriggerID(sessionID, turnID)
+	if id == "" {
+		return "", fmt.Errorf("缺 trigger。trigger 要填这一轮材料里给的编号")
+	}
+	exists, settled := rt.TriggerState(id)
+	if !exists {
+		return "", fmt.Errorf("缺 trigger。这一轮没有待路由的桌面消息")
+	}
+	if settled {
+		return "", fmt.Errorf("这条消息已经路由过了。要改就对那张工单用 task_route continue")
+	}
+	return id, nil
+}
+
+// deskTriggerID 是 sessionID 这一轮 turnID 的桌面触发编号，和 intakeDesk 收下消息时用的是同一个。
+// sessionID 或 turnID 去掉空白后为空时返回空串，不拼出半条编号。
+func deskTriggerID(sessionID, turnID string) string {
+	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(turnID) == "" {
+		return ""
+	}
+	return "desk:" + sessionID + ":" + turnID
 }
 
 // waitsForAnswer 在 ticketID 停在等人回答一个问题时为真。

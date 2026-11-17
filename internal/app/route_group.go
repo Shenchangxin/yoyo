@@ -18,9 +18,10 @@ import (
 )
 
 // splitTool 把一条触发开成任务组。sessionID 是路由所在的会话，任务组有了结果时唤醒它。
-func (a *App) splitTool(sessionID string) runtime.ExtraTool {
-	return routeExtra("task_split", "把一条触发开成任务组，交给几个 agent 一起做。mode 取 split 或 compare。split：parts 填 2 到 6 份，每份有 title、agent、role、brief、depends_on；brief 要能独立读懂，写清交付物和放在哪；几份会改同一个目录时划开互不重叠的区域，做不到就用 depends_on 让后面的等前面的。compare：人要几个 agent 分别做同一件事再比较时用，agents 填 2 到 4 个不同的 agent，brief 写同一份完整说明，不能有 depends_on。agent 能填什么和 task_route 一样。title 是任务组的短名。推断接受时 rules 是启用的规则编号。", map[string]any{
-		"trigger": map[string]any{"type": "string"},
+// turnID 是这一轮的编号。args 没写 trigger 时，用这一轮的桌面消息。
+func (a *App) splitTool(sessionID, turnID string) runtime.ExtraTool {
+	return routeExtra("task_split", "把一条触发开成任务组，交给几个 agent 一起做。trigger 不填就是这一轮这条桌面消息。mode 取 split 或 compare。split：parts 填 2 到 6 份，每份有 title、agent、role、brief、depends_on；brief 要能独立读懂，写清交付物和放在哪；几份会改同一个目录时划开互不重叠的区域，做不到就用 depends_on 让后面的等前面的。compare：人要几个 agent 分别做同一件事再比较时用，agents 填 2 到 4 个不同的 agent，brief 写同一份完整说明，不能有 depends_on。agent 能填什么和 task_route 一样。title 是任务组的短名。推断接受时 rules 是启用的规则编号。", map[string]any{
+		"trigger": map[string]any{"type": "string", "description": "不填就是这一轮这条桌面消息。要处理别的触发时才填材料里给的编号。"},
 		"mode":    map[string]any{"type": "string", "enum": []string{superagent.GroupSplit, superagent.GroupCompare}},
 		"title":   map[string]any{"type": "string", "description": "任务组的短名。"},
 		"reason":  map[string]any{"type": "string"},
@@ -47,13 +48,17 @@ func (a *App) splitTool(sessionID string) runtime.ExtraTool {
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
-		return a.splitOne(rt, sessionID, args)
+		return a.splitOne(rt, sessionID, turnID, args)
 	})
 }
 
 // splitOne 校验 args 里的每一份交给谁，开出任务组，写一次任务组卡片，再把回执交给路由。违反时返回路由能照着改的说明。
-func (a *App) splitOne(rt *superagent.Runtime, sessionID string, args map[string]any) (string, error) {
-	trigger := strParam(args, "trigger")
+// rt 是编排运行时。sessionID 是任务组要唤醒的会话，turnID 是这一轮。args 没写 trigger 时用这一轮的桌面消息。
+func (a *App) splitOne(rt *superagent.Runtime, sessionID, turnID string, args map[string]any) (string, error) {
+	trigger, err := a.bindRouteTrigger(rt, sessionID, turnID, strParam(args, "trigger"))
+	if err != nil {
+		return "", err
+	}
 	mode := strings.ToLower(strParam(args, "mode"))
 	req := superagent.SplitRequest{
 		Trigger: trigger, Mode: mode, Title: strParam(args, "title"), Reason: strParam(args, "reason"),

@@ -19,7 +19,7 @@ import (
 // split 在会话 s1 上调一次 task_split，返回回执和错误。
 func split(a *App, args map[string]any) (string, error) {
 	raw, _ := json.Marshal(args)
-	res := a.routerExtrasFor("s1")["task_split"].Call(string(raw))
+	res := a.routerExtrasFor("s1", "")["task_split"].Call(string(raw))
 	return res.Content, res.Err
 }
 
@@ -45,6 +45,20 @@ func groupCards(t *testing.T, a *App, sessionID string) []trace.Event {
 		}
 	}
 	return out
+}
+
+// TestSplitBindsOmittedTrigger 锁住 task_split 没写 trigger 时，任务组开在这一轮的桌面消息上，不要求模型把编号抄回来。
+func TestSplitBindsOmittedTrigger(t *testing.T) {
+	a, _ := openAgentsApp(t, acptest.Script{Caps: fakeCaps, OnPrompt: quietTurn}, "fake")
+	a.intakeDesk("s1", "t1", "@agent:fake 做个 todo 应用，前后端分开")
+	raw, _ := json.Marshal(todoSplit("", "todo"))
+	res := a.routerExtrasFor("s1", "t1")["task_split"].Call(string(raw))
+	if res.Err != nil || !strings.Contains(res.Content, "开了任务组") {
+		t.Fatalf("split %q %v", res.Content, res.Err)
+	}
+	if _, ok := ticketFor(a.orchestrator(), "desk:s1:t1"); !ok {
+		t.Fatal("split did not open on this turn's trigger")
+	}
 }
 
 // TestTaskSplitValidation 锁住 task_split 的校验：没点名的 agent、坏的前置、份数、模式、对比写了前置或重复 agent、不认得的触发都被拒，

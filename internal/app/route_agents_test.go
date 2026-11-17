@@ -1,5 +1,7 @@
 // route_agents_test.go 锁住路由这一侧的 agent 选择：@ 过的 agent 核对后记进触发、写进说明；task_route 按它开单；
-// 没点名的 agent 被拒并说清能填什么；continue 换 agent 时改派，新工人从交接开始。也锁住应用关掉后编排不再被回调打开。
+// 没点名的 agent 被拒并说清能填什么；continue 换 agent 时改派，新工人从交接开始。
+// 也锁住模型没把触发编号抄回来时，用这一轮已经记下的桌面消息，不另开更早的一条。
+// 也锁住应用关掉后编排不再被回调打开。
 
 package app
 
@@ -98,6 +100,62 @@ func TestIntakeDeskNotesAgents(t *testing.T) {
 
 	if note = a.intakeDesk("s1", "t3", "随便聊聊"); strings.Contains(note, "agent") {
 		t.Fatalf("no mention adds no agent lines:\n%s", note)
+	}
+}
+
+// TestRouteBindsOmittedTrigger 锁住 task_route 没写 trigger 时用这一轮的桌面消息：
+// @ 过的 agent 仍算点名并开单；更早一条还没路由的消息不会被误开；同一条再接一次会拒绝。
+// 写了别的编号就用写的那个。没有轮次时不猜，也不开单。
+func TestRouteBindsOmittedTrigger(t *testing.T) {
+	a, _ := openAgentsApp(t, acptest.Script{Caps: fakeCaps, OnPrompt: quietTurn}, "fake")
+	rt := a.orchestrator()
+	a.intakeDesk("s1", "old", "先记下一句还没做的")
+	note := a.intakeDesk("s1", "t1", "@agent:fake 写个 hello.txt")
+	if !strings.Contains(note, "trigger 不填就是这一条") {
+		t.Fatalf("note lacks the bind hint:\n%s", note)
+	}
+
+	raw, _ := json.Marshal(map[string]any{"items": []any{map[string]any{
+		"action": "accept", "agent": "fake", "title": "hello", "brief": "在工单目录写 hello.txt。",
+	}}})
+	res := a.routerExtrasFor("s1", "t1")["task_route"].Call(string(raw))
+	if res.Err != nil || res.Content != "accepted desk:s1:t1 for fake" {
+		t.Fatalf("route %q %v", res.Content, res.Err)
+	}
+	row, ok := ticketFor(rt, "desk:s1:t1")
+	if !ok || row.Agent != "fake" || !row.AgentPinned {
+		t.Fatalf("row %+v ok=%v", row, ok)
+	}
+	if _, ok := ticketFor(rt, "desk:s1:old"); ok {
+		t.Fatal("an older unsettled trigger was opened")
+	}
+
+	again := a.routerExtrasFor("s1", "t1")["task_route"].Call(string(raw))
+	if again.Err != nil || !strings.Contains(again.Content, "已经路由过了") {
+		t.Fatalf("second %q %v", again.Content, again.Err)
+	}
+
+	a.intakeDesk("s1", "t2", "不要交给 fake")
+	rawOther, _ := json.Marshal(map[string]any{"items": []any{map[string]any{
+		"trigger": "desk:s1:t2", "action": "accept", "agent": "fake", "title": "no", "brief": "写 hello.txt。",
+	}}})
+	denied := a.routerExtrasFor("s1", "t1")["task_route"].Call(string(rawOther))
+	if !strings.Contains(denied.Content, "人没有点名 fake") {
+		t.Fatalf("explicit trigger = %q", denied.Content)
+	}
+	if _, ok := ticketFor(rt, "desk:s1:t2"); ok {
+		t.Fatal("a rejected item opened a ticket")
+	}
+
+	miss, _ := json.Marshal(map[string]any{"items": []any{map[string]any{
+		"action": "accept", "title": "hello", "brief": "在工单目录写 hello.txt。",
+	}}})
+	bare := a.routerExtras()["task_route"].Call(string(miss))
+	if !strings.Contains(bare.Content, "缺 trigger") {
+		t.Fatalf("no turn = %q %v", bare.Content, bare.Err)
+	}
+	if _, ok := ticketFor(rt, "desk:s1:t2"); ok {
+		t.Fatal("a turn-less call opened a ticket")
 	}
 }
 

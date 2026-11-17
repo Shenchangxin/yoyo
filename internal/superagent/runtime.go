@@ -231,6 +231,19 @@ func (rt *Runtime) TicketLabel(id string) string {
 	return strings.TrimSpace(t.Name)
 }
 
+// TriggerState 报告 id 这条触发还在不在、以及已经路由过没有。
+// id 为空、运行时没有引擎、触发不存在或被滤掉时，exists 为假。settled 在 exists 为真且已经有决定时为真。
+func (rt *Runtime) TriggerState(id string) (exists, settled bool) {
+	if rt == nil || rt.eng == nil || strings.TrimSpace(id) == "" {
+		return false, false
+	}
+	tr, ok := rt.eng.Trigger(id)
+	if !ok || tr.Filtered != "" {
+		return false, false
+	}
+	return true, tr.DecisionID != ""
+}
+
 // TriggerAgents 返回人在 id 这条触发里 @ 过的 agent，按出现顺序。没有这条触发时为空。
 func (rt *Runtime) TriggerAgents(id string) []string {
 	if rt == nil || rt.eng == nil {
