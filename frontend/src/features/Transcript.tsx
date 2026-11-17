@@ -51,8 +51,9 @@ import { ScrollFollow, scrollMetrics } from "../lib/scroll-follow";
 import { ProcessGroup, ToolLine } from "./transcript/ProcessGroup";
 import { SubagentCard } from "./transcript/SubagentCard";
 import { ArtifactBody } from "./transcript/FilePreview";
-import { openFilePreview, presentFiles } from "../lib/client";
-import { deliverablePaths, fileBase, fileKind, hidePaths, joinedPath, previewTarget } from "../lib/file-paths";
+import { openFilePreview, orchestratorTranscript, presentFiles } from "../lib/client";
+import { deliverablePaths, fileBase, fileKind, hidePaths, joinedPath, keyDeliverables, previewTarget } from "../lib/file-paths";
+import { taskFiles } from "./superagent/task-session";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
@@ -251,7 +252,7 @@ export function Transcript(props: {
   placeId?: string;
   /** live 为假时人离开了这一页，立刻把位置写下。 */
   live?: boolean;
-  onPlace?: (info: { following: boolean; anchor: string }) => void;
+  onPlace?: (info: { following: boolean; anchor: string; top: number }) => void;
   onMissPlace?: (place: SessionPlace) => void;
 }) {
   const copy = useCopy();
@@ -453,8 +454,8 @@ export function Transcript(props: {
         <CompactCopilotEmpty className={col} />
       ) : (
         <TranscriptLane
-          className={cn(col, props.compact ? "min-h-0 flex-1 py-2" : "min-h-0 flex-1 pb-4 pt-5")}
-          compact={props.compact}
+          key={props.placeId || "lane"}
+          className={cn(col, props.compact ? "min-h-0 flex-1 pb-3 pt-3" : "min-h-0 flex-1 pb-4 pt-5")}
           read={main}
           rows={rows}
           older={!!props.older}
@@ -479,15 +480,15 @@ export function Transcript(props: {
 }
 
 function deliverableTone(kind: string): { cls: string; icon: ReactNode } {
-  if (kind === "HTML") return { cls: "is-html", icon: <Globe className="size-4" strokeWidth={1.75} /> };
+  if (kind === "HTML") return { cls: "is-html", icon: <Globe className="size-3.5" strokeWidth={1.75} /> };
   if (kind === "CSV" || kind === "TSV" || kind === "Excel") {
-    return { cls: "is-csv", icon: <FileSpreadsheet className="size-4" strokeWidth={1.75} /> };
+    return { cls: "is-csv", icon: <FileSpreadsheet className="size-3.5" strokeWidth={1.75} /> };
   }
   if (kind === "PNG" || kind === "JPEG" || kind === "GIF" || kind === "WebP" || kind === "SVG") {
-    return { cls: "is-media", icon: <ImageIcon className="size-4" strokeWidth={1.75} /> };
+    return { cls: "is-media", icon: <ImageIcon className="size-3.5" strokeWidth={1.75} /> };
   }
-  if (kind === "JSON") return { cls: "is-code", icon: <FileCode2 className="size-4" strokeWidth={1.75} /> };
-  return { cls: "", icon: <FileText className="size-4" strokeWidth={1.75} /> };
+  if (kind === "JSON") return { cls: "is-code", icon: <FileCode2 className="size-3.5" strokeWidth={1.75} /> };
+  return { cls: "", icon: <FileText className="size-3.5" strokeWidth={1.75} /> };
 }
 
 function DeliverableBubble(props: { path: string; pending?: boolean; onOpen?: () => void }) {
@@ -504,8 +505,8 @@ function DeliverableBubble(props: { path: string; pending?: boolean; onOpen?: ()
     >
       <span className={cn("deliverable-mark", badge.cls)} aria-hidden>{badge.icon}</span>
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-ui-body font-medium leading-5 text-foreground">{fileBase(props.path)}</span>
-        <span className="block truncate text-ui-caption leading-4 text-muted">{kind}</span>
+        <span className="block truncate text-ui-footnote font-medium leading-4 text-foreground">{fileBase(props.path)}</span>
+        <span className="block truncate text-ui-caption leading-3 text-muted">{kind}</span>
       </span>
       <span className="deliverable-open shrink-0" aria-hidden>
         {copy.transcript.preview}
@@ -551,13 +552,40 @@ function usePresentPaths(workspace: string | undefined, paths: string[]): string
   return hit;
 }
 
-function FilePathList({ text }: { text: string }) {
+function stringList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(String).map((path) => path.trim()).filter(Boolean);
+}
+
+/** FilePathList 把这一轮点名的文件和工单实际写成的成品收成可预览的气泡。正文里没有路径时，按工单编号去工人日志里补。 */
+function FilePathList({ text, files, ticket }: { text: string; files?: string[]; ticket?: string }) {
   const actions = useContext(FileActions);
-  const paths = actions.linkFiles ? deliverablePaths(text) : [];
-  const produced = usePresentPaths(actions.workspace, paths);
+  const named = [...keyDeliverables(files || []), ...deliverablePaths(text)];
+  const seeded = named.filter((path, index) => named.indexOf(path) === index);
+  const [fetched, setFetched] = useState<string[]>([]);
+  const seedKey = seeded.join("\n");
+  useEffect(() => {
+    if (!actions.linkFiles || seedKey || !ticket) {
+      setFetched([]);
+      return;
+    }
+    let stop = false;
+    orchestratorTranscript(ticket).then((rows) => {
+      if (stop || !Array.isArray(rows)) return;
+      setFetched(keyDeliverables(taskFiles(rows.map((row) => ({
+        id: row.id,
+        role: row.role,
+        text: row.text || "",
+        name: row.name,
+      })))));
+    }).catch(() => {});
+    return () => { stop = true; };
+  }, [actions.linkFiles, seedKey, ticket]);
+  const paths = seeded.length ? seeded : fetched;
+  const produced = usePresentPaths(actions.workspace, actions.linkFiles ? paths : []);
   if (!actions.linkFiles || !produced.length) return null;
   return (
-    <div className="mt-3 flex flex-col gap-2" data-testid="file-path-list">
+    <div className="mt-2 flex flex-wrap gap-1.5" data-testid="file-path-list">
       {produced.map((path) => (
         <DeliverableBubble key={path} path={path} onOpen={() => actions.openBrowser?.(path)} />
       ))}
@@ -812,7 +840,6 @@ function agentEstimate(copyText: string): number {
 /**
  * 跟底阈值是 80。跳转序号变了就先停止跟随。锚在列表末尾。
  * className 传给 cn。
- * compact 为真时才继续。
  * rows 取第一段，读取 length、key，为空时不读，调用 findIndex，按下标读取，展开传递。
  * older 为真时才继续。
  * loadingOlder 写到 button 的 disabled。
@@ -827,7 +854,6 @@ function agentEstimate(copyText: string): number {
  */
 function TranscriptLane({
   className,
-  compact,
   read,
   rows,
   older,
@@ -846,7 +872,6 @@ function TranscriptLane({
   onMissPlace,
 }: {
   className?: string;
-  compact?: boolean;
   /** read 为真时把内容收成一列阅读宽度并居中。滚动容器不变，滚动条照旧贴着窗格边缘。 */
   read?: boolean;
   rows: TranscriptRow[];
@@ -862,7 +887,7 @@ function TranscriptLane({
   onJumpLatest?: () => void | Promise<void>;
   placeId?: string;
   live?: boolean;
-  onPlace?: (info: { following: boolean; anchor: string }) => void;
+  onPlace?: (info: { following: boolean; anchor: string; top: number }) => void;
   onMissPlace?: (place: SessionPlace) => void;
 }) {
   const copy = useCopy();
@@ -870,10 +895,12 @@ function TranscriptLane({
   const savedPlace = useRef<SessionPlace | null>(null);
   const restore = useRef<"wait" | "done">("done");
   const askedPlace = useRef(false);
+  const held = useRef<{ top: number; following: boolean } | null>(null);
+  const wasLive = useRef(live !== false);
   const followCtl = useRef<ScrollFollow | null>(null);
   if (!followCtl.current) {
     const place = placeId ? readSessionPlace(placeId) : null;
-    const wait = !!(place && !place.following && (place.anchor || place.seq));
+    const wait = !!(place && !place.following && (place.anchor || place.seq || place.top > 0));
     savedPlace.current = place;
     restore.current = wait ? "wait" : "done";
     followCtl.current = new ScrollFollow(!wait, 80);
@@ -1001,17 +1028,41 @@ function TranscriptLane({
     const idx = aliases.length
       ? rows.findIndex((r) => rowMatchesJump(r.turnKey, aliases) || rowMatchesJump(r.key, aliases))
       : -1;
+    const el = scrollRef.current;
+    const pinTop = () => {
+      const node = scrollRef.current;
+      if (!node || place.top <= 0) return;
+      const max = Math.max(0, node.scrollHeight - node.clientHeight);
+      node.scrollTop = Math.min(place.top, max);
+    };
     if (idx < 0) {
-      if (rows.length && !askedPlace.current) {
-        askedPlace.current = true;
-        onMissPlace?.(place);
+      if (place.seq > 0) {
+        if (rows.length && !askedPlace.current) {
+          askedPlace.current = true;
+          onMissPlace?.(place);
+        }
+        return;
       }
-      return;
+      if (!rows.length || !el || place.top <= 0) return;
+      restore.current = "done";
+      held.current = { top: place.top, following: false };
+      followCtl.current?.setFollowing(false);
+      setEscaped(true);
+      setRestoring(false);
+      pinTop();
+      const id = requestAnimationFrame(pinTop);
+      return () => cancelAnimationFrame(id);
     }
     restore.current = "done";
     followCtl.current?.setFollowing(false);
     setEscaped(true);
     setRestoring(false);
+    if (place.top > 0) {
+      held.current = { top: place.top, following: false };
+      pinTop();
+      const id = requestAnimationFrame(pinTop);
+      return () => cancelAnimationFrame(id);
+    }
     virtualizer.scrollToIndex(idx, { align: "start" });
     const id = requestAnimationFrame(() => virtualizer.scrollToIndex(idx, { align: "start" }));
     return () => cancelAnimationFrame(id);
@@ -1027,17 +1078,20 @@ function TranscriptLane({
   }, [placeId]);
   const savePlace = useCallback(() => {
     if (!placeId || !onPlace) return;
-    const el = scrollRef.current;
-    if (!el || restore.current === "wait") return;
-    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const following = !!followCtl.current?.active && gap < 120;
-    onPlace({ following, anchor: following ? "" : lastActive.current });
+    const spot = held.current;
+    if (!spot) return;
+    onPlace({ following: spot.following, anchor: spot.following ? "" : lastActive.current, top: spot.top });
   }, [placeId, onPlace]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !placeId) return;
     let timer = 0;
     const queued = () => {
+      const node = scrollRef.current;
+      if (node && node.clientHeight >= 48 && restore.current !== "wait") {
+        const gap = node.scrollHeight - node.scrollTop - node.clientHeight;
+        held.current = { top: node.scrollTop, following: gap < 120 };
+      }
       window.clearTimeout(timer);
       timer = window.setTimeout(savePlace, 400);
     };
@@ -1051,6 +1105,32 @@ function TranscriptLane({
   useEffect(() => {
     if (live === false) savePlace();
   }, [live, savePlace]);
+  useLayoutEffect(() => {
+    const now = live !== false;
+    const prev = wasLive.current;
+    wasLive.current = now;
+    if (!prev && now) {
+      const spot = held.current;
+      const put = () => {
+        const el = scrollRef.current;
+        const ctl = followCtl.current;
+        if (!el || !ctl || !spot || restore.current === "wait" || el.clientHeight < 48) return;
+        if (spot.following) {
+          ctl.setFollowing(true);
+          ctl.toBottom(el, scrollMetrics(el), "instant");
+          setEscaped(false);
+          return;
+        }
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        el.scrollTop = Math.min(spot.top, max);
+        ctl.setFollowing(false);
+        setEscaped(true);
+      };
+      put();
+      const id = requestAnimationFrame(put);
+      return () => cancelAnimationFrame(id);
+    }
+  }, [live]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -1122,7 +1202,7 @@ function TranscriptLane({
   const onScroll = () => {
     const el = scrollRef.current;
     const ctl = followCtl.current;
-    if (!el || !ctl) return;
+    if (!el || !ctl || el.clientHeight < 48) return;
     if (!jumpHeld.current) {
       ctl.sample(scrollMetrics(el));
       setEscaped(!ctl.active);
@@ -1144,7 +1224,7 @@ function TranscriptLane({
     <>
       <div
         ref={scrollRef}
-        className={cn('transcript-scroll relative min-h-0 flex-1', restoring && 'invisible', compact ? 'overflow-y-scroll overflow-x-hidden' : 'overflow-y-auto', className)}
+        className={cn('transcript-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden', restoring && 'invisible', className)}
         onScroll={onScroll}
       >
         {older ? (
@@ -1752,7 +1832,9 @@ const ItemRow = memo(function ItemRow({
         />
         <div className="mt-1.5">
           <Markdown text={body} streaming={streaming} rich={!!rich && !streaming} />
-          {streaming ? null : <FilePathList text={shown.text} />}
+          {streaming ? null : (
+            <FilePathList text={shown.text} files={stringList(shown.payload?.files)} ticket={String(shown.payload?.ticket || "")} />
+          )}
         </div>
         {handoff ? <p className="mt-2 text-ui-footnote text-muted">{copy.transcript.needsYouHint}</p> : null}
       </div>

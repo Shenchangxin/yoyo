@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { filePathsIn, hidePaths, isBrowserPreviewPath, previewTarget } from "./file-paths.ts";
+import { filePathsIn, hidePaths, isBrowserPreviewPath, keyDeliverables, previewTarget } from "./file-paths.ts";
 
 describe("file paths", () => {
   it("keeps a windows path inside backticks and drops the following words", () => {
@@ -37,5 +37,17 @@ describe("file paths", () => {
     assert.equal(target.workspace, "C:\\game\\build\\app");
     assert.equal(target.path, "index.html");
     assert.equal(isBrowserPreviewPath(target.path), true);
+  });
+
+  it("keeps the page and the checklist, not the qa shots or assets", () => {
+    assert.deepEqual(keyDeliverables([
+      "C:/work/chaofan-marketing/qa/cover.png",
+      "C:/work/chaofan-marketing/assets/app.css",
+      "C:/work/chaofan-marketing/待填占位清单.md",
+      "C:/work/chaofan-marketing/index.html",
+    ]), [
+      "C:/work/chaofan-marketing/index.html",
+      "C:/work/chaofan-marketing/待填占位清单.md",
+    ]);
   });
 });

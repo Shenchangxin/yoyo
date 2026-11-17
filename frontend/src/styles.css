@@ -649,6 +649,31 @@ kbd,
 }
 
 /* 今天栏的滚动条：原生的藏起来。胶囊大小和颜色都不变，悬停只改变整段的透明度。 */
+/* 主会话左侧目录收起时不露滚动条。悬停展开后才出现那条细胶囊。 */
+.session-index-scroll {
+  scrollbar-width: none;
+}
+.session-index-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.group:hover .session-index-scroll,
+.group:focus-within .session-index-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 40%, transparent) transparent;
+}
+.group:hover .session-index-scroll::-webkit-scrollbar,
+.group:focus-within .session-index-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.group:hover .session-index-scroll::-webkit-scrollbar-thumb,
+.group:focus-within .session-index-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted) 40%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
 .day-scroll {
   scrollbar-width: none;
 }
@@ -1119,16 +1144,16 @@ html.dark .code-hl span {
 .deliverable {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: min(100%, 30rem);
-  min-height: 58px;
+  gap: 8px;
+  width: min(100%, 18.5rem);
+  min-height: 36px;
   margin: 0;
-  padding: 9px 12px 9px 10px;
+  padding: 4px 8px 4px 4px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--card);
   color: var(--foreground);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
   text-align: left;
   transition:
     border-color var(--duration-fast) var(--ease-out),
@@ -1143,9 +1168,9 @@ html.dark .code-hl span {
   display: grid;
   flex: none;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 9px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
   border: 1px solid color-mix(in srgb, var(--mark) 24%, transparent);
   background: color-mix(in srgb, var(--mark) 14%, var(--card));
   color: var(--mark);
@@ -1176,19 +1201,26 @@ html.dark .code-hl span {
 .deliverable-open {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  height: 24px;
-  padding: 0 9px;
+  gap: 2px;
+  height: 20px;
+  padding: 0 7px;
   border-radius: 999px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.deliverable:hover .deliverable-open,
+.deliverable:focus-visible .deliverable-open {
+  opacity: 1;
+  border-color: var(--border);
   background: color-mix(in srgb, var(--lift) 65%, transparent);
   color: var(--foreground);
-  font-size: 11.5px;
-  font-weight: 500;
-  transition: background-color var(--duration-fast) var(--ease-out);
-}
-.deliverable:hover .deliverable-open {
-  background: var(--lift);
 }
 
 .file-bubble {

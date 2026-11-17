@@ -224,6 +224,21 @@ export function peelCompletedMentions(text: string, caret = text.length): { text
   return { text: collapsed, chips, caret: caretNext };
 }
 
+/** mentionSegments 按出现顺序拆开粘贴的正文。完整的 @file、@skill、@agent 等变成芯片，其余留下原文。 */
+export function mentionSegments(text: string): Array<{ kind: "text"; text: string } | { kind: "chip"; pin: MentionPin }> {
+  const out: Array<{ kind: "text"; text: string } | { kind: "chip"; pin: MentionPin }> = [];
+  const re = new RegExp(COMPLETE_RE.source, "g");
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push({ kind: "text", text: text.slice(last, m.index) });
+    out.push({ kind: "chip", pin: pinFromToken(m[0]) });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ kind: "text", text: text.slice(last) });
+  return out;
+}
+
 /** composeDraft 标记在前，正文在后。会话钉的标签收成一行 sessions，给模型看标题。pins 做映射，做过滤。prose 去掉首尾空白。 */
 export function composeDraft(pins: MentionPin[], prose: string): string {
   const head = pins.map((p) => p.token).join(" ");

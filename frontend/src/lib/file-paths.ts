@@ -57,6 +57,24 @@ export function deliverablePaths(text: string): string[] {
   return filePathsIn(text).filter((path) => DELIVERABLE.test(path));
 }
 
+const KEY_DELIVERABLE = /\.(html?|xhtml|md|markdown|pdf|pptx|docx|xlsx|csv|txt)$/i;
+const SKIP_DELIVERABLE_DIR = /(^|[\\/])(qa|node_modules|assets|\.git)([\\/]|$)/i;
+
+/** keyDeliverables 从工人写过的路径里留下能打开的成品。截图目录、样式目录和依赖不算。最多 6 个，网页和文稿排在前面。 */
+export function keyDeliverables(paths: string[]): string[] {
+  const html: string[] = [];
+  const docs: string[] = [];
+  const rest: string[] = [];
+  for (const path of paths) {
+    const clean = path.trim();
+    if (!clean || !KEY_DELIVERABLE.test(clean) || SKIP_DELIVERABLE_DIR.test(clean.replace(/\\/g, "/"))) continue;
+    if (/\.(html?|xhtml)$/i.test(clean)) html.push(clean);
+    else if (/\.(md|markdown|txt|pdf|docx)$/i.test(clean)) docs.push(clean);
+    else rest.push(clean);
+  }
+  return [...html, ...docs, ...rest].slice(0, 6);
+}
+
 /** filePathsIn 收下绝对路径、带斜杠的相对路径和单独的文件名。更长的路径已经包含的文件名不再单独列出。 */
 export function filePathsIn(text: string): string[] {
   WIN_PATH.lastIndex = 0;

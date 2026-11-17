@@ -482,17 +482,19 @@ export function useWorkstation() {
     setLatestNonce(Date.now());
   }, [activeId]);
 
-  /** 主会话离开时记下读到哪。锚点能对上目录时带上序号，下次才能把那一页拉回来。 */
-  const rememberPlace = useCallback((info: { following: boolean; anchor: string }) => {
+  /** 主会话离开时记下读到哪。锚点能对上目录时带上序号，下次才能把那一页拉回来。top 是离开时的 scrollTop。 */
+  const rememberPlace = useCallback((info: { following: boolean; anchor: string; top: number }) => {
     const id = mainIdRef.current;
     if (!id || activeIdRef.current !== id) return;
     const turn = outlineRef.current.find((t) => isOutlineActive(t, info.anchor));
+    const fromKey = /^seq:(\d+)$/.exec(info.anchor);
     writeSessionPlace({
       sessionId: id,
       following: info.following,
       anchor: info.anchor,
-      seq: turn?.seq || 0,
+      seq: turn?.seq || (fromKey ? Number(fromKey[1]) : 0),
       aliases: turn ? turnJumpAliases(turn) : (info.anchor ? [info.anchor] : []),
+      top: info.top,
     });
   }, []);
 

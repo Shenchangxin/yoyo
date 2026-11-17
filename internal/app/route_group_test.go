@@ -296,3 +296,20 @@ func TestIntakeSuggestsSplit(t *testing.T) {
 		t.Fatal("compare words")
 	}
 }
+
+// TestKeyDeliverables 锁住回报里的成品清单：网页和文稿留下，qa 截图和 assets 去掉，网页排在前面。
+func TestKeyDeliverables(t *testing.T) {
+	got := keyDeliverables([]string{
+		`C:\work\chaofan-marketing\qa\cover.png`,
+		`C:\work\chaofan-marketing\assets\app.css`,
+		`C:\work\chaofan-marketing\待填占位清单.md`,
+		`C:\work\chaofan-marketing\index.html`,
+	})
+	want := []string{
+		`C:\work\chaofan-marketing\index.html`,
+		`C:\work\chaofan-marketing\待填占位清单.md`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("deliverables %q", got)
+	}
+}

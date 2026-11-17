@@ -15,6 +15,7 @@ import {
   mentionCrumbs,
   mentionLabel,
   mentionQueryOf,
+  mentionSegments,
   mentionTokenAt,
   mergeMentionPins,
   peelCompletedMentions,
@@ -37,6 +38,17 @@ test("agent mentions peel where the router reads them", () => {
   assert.equal(mentionLabel("@agent:qwen"), "qwen");
   assert.equal(withoutMentions("@agent:codex 修登录页").trim(), "修登录页");
   assert.equal(composeDraft([peeled.chips[0]], "修一下"), "@agent:codex\n修一下");
+});
+
+/** 粘贴整段话时，@agent 和 @skill 按出现顺序收成芯片，夹在中间的字还留在原文里。 */
+test("pasted mentions stay in order as chips", () => {
+  const parts = mentionSegments("@agent:opencode\n帮我做 @skill:yoyo-conduct 这一页");
+  assert.deepEqual(parts.map((part) => part.kind === "chip" ? part.pin.token : part.text), [
+    "@agent:opencode",
+    "\n帮我做 ",
+    "@skill:yoyo-conduct",
+    " 这一页",
+  ]);
 });
 
 /** 只有写法合格的编号才算完整的 @agent；正好是 `@agent:` 时菜单留着，只查 agent。裸路径改写不碰它。 */

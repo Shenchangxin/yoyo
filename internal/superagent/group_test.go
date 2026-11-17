@@ -1042,9 +1042,10 @@ func TestTicketFilesMatchesTaskPage(t *testing.T) {
 		{Role: "tool_result", Name: "write_file", Text: "wrote D:\\proj\\out.html\nThis overwrote an existing page."},
 		{Role: "assistant", Text: "wrote nothing.md"},
 		{Role: "tool_result", Name: "write_file", Text: "wrote report.md"},
+		{Role: "tool_result", Name: "write_file", Text: "Created file successfully: 待填占位清单.md"},
 	}
 	got := strings.Join(TicketFiles(lines), ",")
-	if got != `report.md,D:\proj\out.html,b.txt,log.txt,notes.md` {
+	if got != `待填占位清单.md,report.md,D:\proj\out.html,b.txt,log.txt,notes.md` {
 		t.Fatal(got)
 	}
 }

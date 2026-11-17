@@ -15,8 +15,9 @@ describe("task files", () => {
       { id: "6", role: "tool_result", name: "write_file", text: "wrote D:\\proj\\out.html\nThis overwrote an existing page." },
       { id: "7", role: "tool_result", name: "apply_patch", text: "updated report.md" },
       { id: "8", role: "tool_call", name: "write_file", text: "{\"path\":\"draft.md\"}" },
+      { id: "9", role: "tool_result", name: "write_file", text: "Created file successfully: 待填占位清单.md" },
     ];
-    assert.deepEqual(taskFiles(lines), ["report.md", "D:\\proj\\out.html", "src/app.ts"]);
+    assert.deepEqual(taskFiles(lines), ["待填占位清单.md", "report.md", "D:\\proj\\out.html", "src/app.ts"]);
   });
 });
 

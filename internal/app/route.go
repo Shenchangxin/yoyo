@@ -950,6 +950,9 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 			extra["role"] = role
 		}
 	}
+	if files := keyDeliverables(superagent.TicketFiles(rt.WorkerTranscript(ticketID))); len(files) > 0 {
+		extra["files"] = files
+	}
 	for _, sid := range sids {
 		if sid == "" || a.traceHasID(sid, id) {
 			continue
@@ -1006,6 +1009,54 @@ func handoffAsk(row superagent.TicketRow) (state, summary, question string, ok b
 		state = "blocked"
 	}
 	return state, summary, question, true
+}
+
+// keyDeliverables 从工人写过的路径里留下能打开的成品。qa 截图、assets 和依赖不算。网页和文稿排在前面，最多 6 个。
+func keyDeliverables(paths []string) []string {
+	var pages, docs, rest []string
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" || skippedDeliverable(path) || !keptDeliverable(path) {
+			continue
+		}
+		switch {
+		case deliverableKind(path, ".html", ".htm", ".xhtml"):
+			pages = append(pages, path)
+		case deliverableKind(path, ".md", ".markdown", ".txt", ".pdf", ".docx"):
+			docs = append(docs, path)
+		default:
+			rest = append(rest, path)
+		}
+	}
+	out := append(append(pages, docs...), rest...)
+	if len(out) > 6 {
+		out = out[:6]
+	}
+	return out
+}
+
+func keptDeliverable(path string) bool {
+	return deliverableKind(path, ".html", ".htm", ".xhtml", ".md", ".markdown", ".txt", ".pdf", ".docx", ".pptx", ".xlsx", ".csv")
+}
+
+func deliverableKind(path string, exts ...string) bool {
+	low := strings.ToLower(path)
+	for _, ext := range exts {
+		if strings.HasSuffix(low, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+func skippedDeliverable(path string) bool {
+	slash := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	for _, dir := range []string{"/qa/", "/node_modules/", "/assets/", "/.git/"} {
+		if strings.Contains(slash, dir) {
+			return true
+		}
+	}
+	return false
 }
 
 // taskEndedState 在这份结果该留下记忆时为真。卡住和普通进度都不算结束。

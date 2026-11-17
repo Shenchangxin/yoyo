@@ -125,12 +125,13 @@ export function DayScroll({ reading, children }: { reading: boolean; children: R
         bar.style.transform = "none";
       }}
     >
-      <div className="rail-scroll-fade h-full min-h-0 overflow-hidden px-2">
+      <div className={cn("h-full min-h-0 overflow-hidden px-2", reading ? "" : "rail-scroll-fade")}>
         <div
           ref={scroller}
           className={cn(
             "day-scroll h-full min-w-0",
-            reading ? "overflow-hidden pb-14" : "overflow-y-auto overflow-x-hidden overscroll-contain pb-16",
+            // 读任务时不再用底部渐隐去裁输入框。pb-16 把整页抬到侧栏菜单坞的上面。
+            reading ? "flex min-h-0 flex-col overflow-hidden pb-16" : "overflow-y-auto overflow-x-hidden overscroll-contain pb-16",
           )}
         >
           {children}
