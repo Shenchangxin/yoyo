@@ -78,7 +78,7 @@ func TestWakeCarriesGroupTitle(t *testing.T) {
 	}
 	a.intakeDesk(sess.ID, "t1", "@agent:fake 做个 todo 应用")
 	raw, _ := json.Marshal(todoSplit("desk:"+sess.ID+":t1", "todo"))
-	if res := a.routerExtrasFor(sess.ID)["task_split"].Call(string(raw)); res.Err != nil {
+	if res := a.routerExtrasFor(sess.ID, "")["task_split"].Call(string(raw)); res.Err != nil {
 		t.Fatal(res.Err)
 	}
 	g := a.orchestrator().View().Groups[0]

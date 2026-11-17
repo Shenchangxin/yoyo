@@ -797,7 +797,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	a.attachCutTools(tools, sessionID)
 	a.attachStudioTools(tools, sessionID)
 	a.attachConductorTools(tools, sessionID)
-	routing := a.beginRoute(tools, meta, sessionID)
+	routing := a.beginRoute(tools, meta, sessionID, turnID)
 	tools.Sessions = func(id string) []runtime.Message {
 		evs, err := a.Traces.ReadFromCheckpoint(id)
 		if err != nil {
