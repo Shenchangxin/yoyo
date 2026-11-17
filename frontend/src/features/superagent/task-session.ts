@@ -192,6 +192,7 @@ const WROTE = [
   /^appended \d+ bytes to (.+?) \(file is now \d+ bytes\)$/,
   /^moved .+ -> (.+)$/,
   /^(?:wrote|edited|updated|downloaded) (.+)$/,
+  /^Created file successfully: (.+)$/,
 ];
 
 /** taskFiles 是工人在这张工单里改过的文件，最近改的在前。路径照工具回报的写：相对工作目录，或绝对路径。没写成的和命令行输出都不算。 */

@@ -29,7 +29,7 @@ export function SessionIndex(props: {
         data-testid="session-index"
         className="group pointer-events-auto flex max-h-[min(52vh,24rem)] w-7 flex-col overflow-hidden rounded-xl py-1.5 transition-[width,background-color,box-shadow,border-color] duration-300 ease-[var(--ease-out)] hover:w-56 hover:border hover:border-border/70 hover:bg-background/88 hover:shadow-[var(--shadow-popover)] hover:backdrop-blur-md"
       >
-        <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 [scrollbar-width:none]">
+        <ol className="session-index-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-1">
           {turns.map((t, i) => {
             const key = outlineTurnKey(t);
             const active = isOutlineActive(t, props.activeKey);

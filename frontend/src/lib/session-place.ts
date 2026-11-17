@@ -5,13 +5,14 @@
 
 const KEY = "yoyo.session.place.v1";
 
-/** SessionPlace 是一次离开时记下的阅读位置。following 为真表示人停在最新。 */
+/** SessionPlace 是一次离开时记下的阅读位置。following 为真表示人停在最新。top 是当时的 scrollTop，锚点对不上时用它回到同一处。 */
 export type SessionPlace = {
   sessionId: string;
   following: boolean;
   anchor: string;
   seq: number;
   aliases: string[];
+  top: number;
 };
 
 type PlaceStore = {
@@ -62,6 +63,7 @@ export function readSessionPlace(sessionId: string, store?: PlaceStore): Session
     anchor: String(row.anchor || ""),
     seq: Number(row.seq) || 0,
     aliases: Array.isArray(row.aliases) ? row.aliases.map(String).filter(Boolean) : [],
+    top: Number(row.top) || 0,
   };
 }
 
@@ -78,6 +80,7 @@ export function writeSessionPlace(place: SessionPlace, store?: PlaceStore): void
     anchor: place.anchor || "",
     seq: place.seq || 0,
     aliases: place.aliases || [],
+    top: place.following ? 0 : (place.top || 0),
   };
   try {
     box.setItem(KEY, JSON.stringify(all));

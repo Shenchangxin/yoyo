@@ -9,7 +9,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import type { Editor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { MentionChip } from "./mention-chip";
-import { activeAtTail, pinFromToken, type MentionPin } from "../../lib/mentions";
+import { activeAtTail, mentionSegments, pinFromToken, type MentionPin } from "../../lib/mentions";
 import { cn } from "../../lib/utils";
 
 /** DraftSnapshot 是某一刻的纯文本、芯片、光标和光标前文本。 */
@@ -130,14 +130,21 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
     editable: !props.disabled,
     editorProps: {
       attributes: editorAttrs(props),
-      /** 剪贴板里有文件就交给粘贴回调，并拦住默认粘贴。_view 函数体内没有读取。event 传给 filesFromClipboard。 */
+      /** 剪贴板里有文件就交给粘贴回调。正文里的 @agent、@skill 等收成芯片，不再留成一串记号。 */
       handlePaste: (_view, event) => {
         const files = filesFromClipboard(event);
         if (files.length && onPasteRef.current) {
           onPasteRef.current(files);
           return true;
         }
-        return false;
+        const text = event.clipboardData?.getData("text/plain") || "";
+        const parts = mentionSegments(text);
+        if (!parts.some((part) => part.kind === "chip")) return false;
+        const ed = editorHolder.current;
+        if (!liveEditor(ed)) return false;
+        event.preventDefault();
+        ed.chain().focus().insertContent(pastedMentionContent(parts)).run();
+        return true;
       },
       /** 先交给外面的按键回调，再处理芯片上的选择键。_view 函数体内没有读取。event 传给 onKeyDownRef.current，传给 handleChipSelection。 */
       handleKeyDown: (_view, event) => {
@@ -349,6 +356,26 @@ function handleChipSelection(editor: Editor, event: KeyboardEvent): boolean {
 function clearChipSelected(editor: Editor) {
   editor.view.dom.removeAttribute("data-composer-chip-selected");
   editor.view.dom.querySelectorAll("[data-mention-chip][data-selected]").forEach((n) => n.removeAttribute("data-selected"));
+}
+
+/** pastedMentionContent 把拆开的粘贴收成编辑器节点。芯片是原子节点，换行写成 hardBreak。 */
+function pastedMentionContent(parts: ReturnType<typeof mentionSegments>) {
+  const content: Record<string, unknown>[] = [];
+  for (const part of parts) {
+    if (part.kind === "chip") {
+      content.push({
+        type: "mentionChip",
+        attrs: { token: part.pin.token, label: part.pin.label, kind: part.pin.kind, icon: part.pin.icon || "" },
+      });
+      continue;
+    }
+    const lines = part.text.split("\n");
+    lines.forEach((line, index) => {
+      if (index > 0) content.push({ type: "hardBreak" });
+      if (line) content.push({ type: "text", text: line });
+    });
+  }
+  return content;
 }
 
 /** 从剪贴板里取出文件。e 读取 clipboardData。 */

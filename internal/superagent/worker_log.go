@@ -402,6 +402,7 @@ var wrotePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^appended \d+ bytes to (.+?) \(file is now \d+ bytes\)$`),
 	regexp.MustCompile(`^moved .+ -> (.+)$`),
 	regexp.MustCompile(`^(?:wrote|edited|updated|downloaded) (.+)$`),
+	regexp.MustCompile(`^Created file successfully: (.+)$`),
 }
 
 // shellTool 认出命令行工具。命令输出里的 wrote 不算写过文件。
