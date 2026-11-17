@@ -165,7 +165,32 @@ jobs:
         run: |
           set -euo pipefail
           wails3 task darwin:package:universal "VERSION=${VERSION}"
-          wails3 task darwin:create:dmg "VERSION=${VERSION}"
+          # Spotlight and DiskArbitration often hold the fresh volume. hdiutil
+          # then gives up with "detach failed - No such file or directory"
+          # after five short retries, before the compressed DMG is written.
+          sudo mdutil -a -i off || true
+          detach_yoyo() {
+            if [[ -d /Volumes/Yoyo ]]; then
+              hdiutil detach /Volumes/Yoyo -force || true
+            fi
+            local info dev
+            info="$(hdiutil info 2>/dev/null || true)"
+            while read -r dev; do
+              [[ -n "${dev}" ]] || continue
+              hdiutil detach "${dev}" -force || true
+            done < <(printf '%s\n' "${info}" | awk '/\/Volumes\/Yoyo/ {print $1}')
+          }
+          for attempt in 1 2 3; do
+            detach_yoyo
+            rm -f bin/Yoyo.dmg bin/Yoyo.dmg.writable.dmg
+            if wails3 task darwin:create:dmg "VERSION=${VERSION}"; then
+              exit 0
+            fi
+            echo "dmg attempt ${attempt} failed" >&2
+            hdiutil info >&2 || true
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Build Linux packages
         if: matrix.goos == 'linux'
