@@ -78,6 +78,16 @@ func (s *Store) scheduleIndex(libraryID string) {
 		return
 	}
 	s.mu.Lock()
+	job := s.armIndex(libraryID)
+	s.mu.Unlock()
+	if job != nil {
+		s.launchIndex(libraryID, job)
+	}
+}
+
+// armIndex 把 libraryID 排进这一轮索引。已经在建时只把 dirty 置上并返回 nil。
+// 调用方持有 s.mu。返回的 job 要在放开锁之后交给 launchIndex。
+func (s *Store) armIndex(libraryID string) *indexJob {
 	if s.index == nil {
 		s.index = map[string]*indexJob{}
 	}
@@ -88,18 +98,24 @@ func (s *Store) scheduleIndex(libraryID string) {
 	}
 	job.dirty = true
 	if job.running {
-		s.mu.Unlock()
-		return
+		return nil
 	}
 	job.running = true
 	job.idle = make(chan struct{})
 	_, _ = s.db.Exec(`UPDATE libraries SET status = ?, last_error = '', progress_json = '' WHERE id = ?`, LibraryIndexing, libraryID)
-	s.mu.Unlock()
+	return job
+}
+
+// launchIndex 启动 job 的索引循环，并通知界面这一轮开始了。调用方不能持有 s.mu。
+// 库正在关闭时把 running 收回，免得 WaitIndex 等一个不会再来的结束信号。
+func (s *Store) launchIndex(libraryID string, job *indexJob) {
 	started := s.spawn(func(<-chan struct{}) { s.indexLoop(libraryID, job) })
 	if !started {
 		s.mu.Lock()
-		job.running = false
-		close(job.idle)
+		if job.running {
+			job.running = false
+			close(job.idle)
+		}
 		s.mu.Unlock()
 		return
 	}
@@ -215,9 +231,22 @@ func (s *Store) ResumeIndexing() {
 	}
 }
 
-// markNotesStale 在笔记有改动之后叫醒笔记库的索引。调用方持有 s.mu，所以这里只起一个后台协程去排队。
+// markNotesStale 在笔记有改动之后叫醒笔记库的索引。调用方持有 s.mu。
+// 排队在锁里完成：保存一返回，这一轮就已经标成在建，WaitIndex 会等到它建完。
+// 真正开工的协程先等锁放开，避免界面回调在保存还没结束时再来抢这把锁。
 func (s *Store) markNotesStale() error {
-	s.spawn(func(<-chan struct{}) { s.scheduleIndex(NotesLibrary) })
+	job := s.armIndex(NotesLibrary)
+	if job == nil {
+		return nil
+	}
+	if !s.spawn(func(<-chan struct{}) {
+		s.mu.Lock()
+		s.mu.Unlock()
+		s.launchIndex(NotesLibrary, job)
+	}) {
+		job.running = false
+		close(job.idle)
+	}
 	return nil
 }
 
