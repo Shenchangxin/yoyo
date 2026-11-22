@@ -60,7 +60,7 @@ type Mute struct {
 // Forever 是一直按住的那一天。要人在偏好里打开。
 const Forever = "9999-12-31"
 
-// ReachQuota 记下公开检索一天说了几次、上次是什么时候。一天最多三次，两次至少隔三小时。
+// ReachQuota 记下公开检索一天说了几次、上次是什么时候。一天几条、两条隔多久由这一轮的 Input 决定。
 type ReachQuota struct {
 	Day string `json:"day,omitempty"`
 	N   int    `json:"n,omitempty"`
@@ -88,12 +88,17 @@ type Briefing struct {
 }
 
 // Input 是一轮判断的材料。Idle 超过二十分钟时，工程线和仓库变化先按住。
+// ReachDaily 和 ReachEvery 是公开检索当天的条数和两条之间的间隔。都为零时按空闲额度：一天 12 条，隔 35 分钟。
+// ReachHold 为真时这一轮先不说检索，例如回合还在跑，或用户刚说完还没过十分钟。
 type Input struct {
-	Now     time.Time
-	Welcome bool
-	Idle    time.Duration
-	Facts   []Fact
-	Book    Book
+	Now        time.Time
+	Welcome    bool
+	Idle       time.Duration
+	Facts      []Fact
+	Book       Book
+	ReachDaily int
+	ReachEvery time.Duration
+	ReachHold  bool
 }
 
 // Assess 写出这一轮该说什么。它不记账：同一条在 Deliver 之前，每一轮都还会开口。
@@ -156,7 +161,7 @@ func Assess(in Input) (Briefing, Book) {
 			speak = false
 			held = true
 		}
-		if speak && fact.Class == "reach" && (reachClaimed || !reachRoom(book.Reach, now)) {
+		if speak && fact.Class == "reach" && (in.ReachHold || reachClaimed || !reachRoom(book.Reach, now, in.ReachDaily, in.ReachEvery)) {
 			speak = false
 			held = true
 		}
@@ -344,9 +349,15 @@ func cloneBook(in Book) Book {
 	return out
 }
 
-func reachRoom(q ReachQuota, now time.Time) bool {
+func reachRoom(q ReachQuota, now time.Time, daily int, every time.Duration) bool {
+	if daily < 1 {
+		daily = 12
+	}
+	if every <= 0 {
+		every = 35 * time.Minute
+	}
 	day := now.Format("2006-01-02")
-	if q.Day == day && q.N >= 3 {
+	if q.Day == day && q.N >= daily {
 		return false
 	}
 	if q.At == "" {
@@ -356,7 +367,7 @@ func reachRoom(q ReachQuota, now time.Time) bool {
 	if err != nil {
 		return true
 	}
-	return now.Sub(at) >= 3*time.Hour
+	return now.Sub(at) >= every
 }
 
 func markReach(q ReachQuota, now time.Time) ReachQuota {

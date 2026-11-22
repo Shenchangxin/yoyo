@@ -44,27 +44,93 @@ func TestParseEnvelopeAndChooseSkipsSeen(t *testing.T) {
 	}
 }
 
-func TestNextRotatesNewsAndHot(t *testing.T) {
+func TestNextRotatesSourcesAndKeepsTheDefaultTopic(t *testing.T) {
 	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
 	lines := []string{"开源模型", "短剧"}
 	got, ok := Next(Log{}, lines, now)
-	if !ok || got.Channel != "web" || got.Query != "开源模型" {
+	if !ok || got.Kind != KindHN || !strings.Contains(got.Query, "AI") || !strings.Contains(got.Query, "开源模型") {
 		t.Fatalf("%#v %v", got, ok)
 	}
 	if _, ok := Next(Log{Next: now.Add(time.Hour).Format(time.RFC3339)}, lines, now); ok {
 		t.Fatal("not due")
 	}
-	hot, ok := Next(Log{Cursor: 1}, nil, now)
-	if !ok || hot.Channel != "bilibili" || hot.Action != "hot" {
-		t.Fatalf("hot %#v", hot)
+	if _, ok := Next(Log{Pending: &Item{Title: "待说", URL: "https://example.com"}}, lines, now); ok {
+		t.Fatal("pending blocks")
 	}
-	news, ok := Next(Log{Cursor: 3}, lines, now)
-	if !ok || news.Query != "短剧 新闻" {
-		t.Fatalf("news %#v", news)
+	cat := Catalog()
+	bili := -1
+	seen := map[string]bool{}
+	for i, src := range cat {
+		if src.ID == "" || src.Name == "" || src.Kind == "" || seen[src.ID] {
+			t.Fatalf("source %#v", src)
+		}
+		seen[src.ID] = true
+		if src.Kind == KindFeed && !strings.HasPrefix(src.URL, "https://") {
+			t.Fatalf("feed url %#v", src)
+		}
+		if src.ID == "bilibili" {
+			bili = i
+		}
 	}
-	social := Command(Probe{Channel: "twitter", Action: "search", Query: "热点"})
-	if !strings.Contains(strings.Join(social, " "), "public-web") {
-		t.Fatalf("%#v", social)
+	if len(cat) < 12 || bili < 0 {
+		t.Fatalf("catalog %d bili %d", len(cat), bili)
+	}
+	video, ok := Next(Log{Cursor: bili}, nil, now)
+	topic := DefaultTopics[bili%len(DefaultTopics)]
+	if !ok || video.Kind != KindWeb || !strings.Contains(video.Query, "site:bilibili.com") || !strings.Contains(video.Query, topic) {
+		t.Fatalf("bilibili %#v", video)
+	}
+}
+
+func TestPaceAndAllowanceFollowHowRecentlyTheUserSpoke(t *testing.T) {
+	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	if PaceOf(time.Time{}, false, now) != PaceQuiet || PaceOf(now.Add(-5*time.Hour), false, now) != PaceQuiet {
+		t.Fatal("quiet")
+	}
+	if PaceOf(now.Add(-time.Hour), false, now) != PaceSteady {
+		t.Fatal("steady")
+	}
+	if PaceOf(now.Add(-5*time.Minute), false, now) != PaceBusy || PaceOf(time.Time{}, true, now) != PaceBusy {
+		t.Fatal("busy")
+	}
+	if !Hold(now.Add(-time.Minute), false, now) || Hold(now.Add(-30*time.Minute), false, now) || !Hold(time.Time{}, true, now) {
+		t.Fatal("hold")
+	}
+	quiet, busy := AllowanceFor(PaceQuiet), AllowanceFor(PaceBusy)
+	if quiet.Daily != 12 || quiet.Speak != 35*time.Minute || busy.Daily != 6 || busy.Speak != 90*time.Minute || busy.Probe <= quiet.Probe {
+		t.Fatalf("quiet %#v busy %#v", quiet, busy)
+	}
+	if ProbeAfter(PaceQuiet, now) < quiet.Probe || ProbeAfter(PaceBusy, now) < busy.Probe {
+		t.Fatal("probe gap")
+	}
+}
+
+func TestPreferDropsOffTopicAndRememberCapsSkips(t *testing.T) {
+	items := []Item{
+		{Title: "周末市集", URL: "https://example.com/a", Snippet: "手作"},
+		{Title: "新的智能体框架", URL: "https://example.com/b", Snippet: "Agent"},
+	}
+	got := Prefer(items, false, "AI", "")
+	if len(got) != 1 || got[0].URL != "https://example.com/b" {
+		t.Fatalf("%#v", got)
+	}
+	if mail := Prefer([]Item{{Title: "email weekly", URL: "https://example.com/m"}}, false, "AI", ""); len(mail) != 0 {
+		t.Fatalf("email is not AI: %#v", mail)
+	}
+	kept := Prefer(items, true, "AI", "周末")
+	if len(kept) != 2 || kept[0].URL != "https://example.com/a" {
+		t.Fatalf("%#v", kept)
+	}
+	ids := Remember(nil, "reach:a")
+	ids = Remember(ids, "reach:a")
+	if len(ids) != 1 {
+		t.Fatalf("%#v", ids)
+	}
+	for i := 0; i < 205; i++ {
+		ids = Remember(ids, "reach:"+strings.Repeat("n", i+1))
+	}
+	if len(ids) != 200 || ids[0] == "reach:n" {
+		t.Fatalf("len %d first %s", len(ids), ids[0])
 	}
 }
 

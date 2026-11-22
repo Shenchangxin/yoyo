@@ -1,6 +1,6 @@
-// Package reach 准备一次只读的公开检索：画像相关的网页，以及新闻和社交热榜。
-// 拥有：这一轮该问哪个渠道、一条结果怎么变成开口材料、同一条链接不重复。
-// 不拥有：发请求、开工单、改写检索里的数字。
+// Package reach 准备一次只读的公开检索。来源表、默认话题和忙闲额度在 sources.go。
+// 拥有：这一轮该问哪个来源、一条结果怎么变成开口材料、同一条链接不重复。
+// 不拥有：发请求、开工单、改写检索里的数字。进程内检索不调用外部命令。
 package reach
 
 import (
@@ -15,20 +15,27 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/initiative"
 )
 
-// Item 是一条公开检索结果。Line 是它要对上的那句画像。Note 是写给人看的便条，有它时不再把标题和摘要原样倒出来。
+// Item 是一条公开检索结果。Line 是它要对上的那句画像。Topic 是这一轮的默认话题。
+// Source 是来源名。Note 是写给人看的便条，有它时不再把标题和摘要原样倒出来。
 type Item struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet,omitempty"`
 	Line    string `json:"line,omitempty"`
+	Topic   string `json:"topic,omitempty"`
+	Source  string `json:"source,omitempty"`
 	Note    string `json:"note,omitempty"`
 }
 
-// Log 记下下次检索时间和还没说出口的那一条。
+// Log 记下下次检索时间、轮到哪个来源，以及还没说出口的那一条。
+// UserAt 是用户最近一次在会话里说话的时间，忙闲用它，检索写入时要保留。
+// Skip 是模型判定不值得开口的链接编号，避免同一条反复送去改写。
 type Log struct {
-	Next    string `json:"next,omitempty"`
-	Cursor  int    `json:"cursor,omitempty"`
-	Pending *Item  `json:"pending,omitempty"`
+	Next    string   `json:"next,omitempty"`
+	Cursor  int      `json:"cursor,omitempty"`
+	UserAt  string   `json:"userAt,omitempty"`
+	Skip    []string `json:"skip,omitempty"`
+	Pending *Item    `json:"pending,omitempty"`
 }
 
 // Lines 留下能拿去检索的短句。密钥、链接和过长的句子丢掉。
@@ -72,82 +79,22 @@ func Due(log Log, now time.Time) bool {
 	return !now.Before(at)
 }
 
-// Gap 是两次检索之间的间隔。三小时再加上当天里固定的几分钟，避免卡在整点。
-func Gap(now time.Time) time.Duration {
-	return 3*time.Hour + time.Duration(now.YearDay()%40)*time.Minute
-}
-
-// Probe 是一轮只读检索。Channel 和 Action 对应 agent-reach 的渠道动作。
-// Query 只在 search 时使用。Line 是它对上的画像，热榜可以空着。
-// Fallback 是 agent-reach 没有结果时交给其他公开检索的词。
-type Probe struct {
-	Channel  string
-	Action   string
-	Query    string
-	Line     string
-	Fallback string
-}
-
-// Next 到点且没有待说结果时，轮流查画像、新闻和热榜。没有画像时仍然查热榜和新闻。
-func Next(log Log, lines []string, now time.Time) (Probe, bool) {
-	if log.Pending != nil || !Due(log, now) {
-		return Probe{}, false
+// Remember 记下一条不值得再改写的链接编号。空编号和已经记下的不追加。超过 200 条时丢掉最旧的。
+func Remember(ids []string, id string) []string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ids
 	}
-	slot := log.Cursor % 5
-	if slot < 0 {
-		slot = 0
-	}
-	line := ""
-	if len(lines) > 0 {
-		i := log.Cursor % len(lines)
-		if i < 0 {
-			i = 0
+	for _, have := range ids {
+		if have == id {
+			return ids
 		}
-		line = lines[i]
 	}
-	switch slot {
-	case 1:
-		return Probe{Channel: "bilibili", Action: "hot", Fallback: "B站 热门"}, true
-	case 2:
-		return Probe{Channel: "v2ex", Action: "hot", Fallback: "V2EX 今日热门"}, true
-	case 4:
-		q := line
-		if q == "" {
-			q = "热点"
-		}
-		return Probe{Channel: "twitter", Action: "search", Query: q, Line: line, Fallback: "社交媒体 热点 " + q}, true
-	default:
-		q := line
-		if slot == 3 {
-			if line != "" {
-				q = line + " 新闻"
-			} else {
-				q = "今日新闻"
-			}
-		}
-		if q == "" {
-			q = "今日新闻"
-		}
-		return Probe{Channel: "web", Action: "search", Query: q, Line: line, Fallback: q}, true
+	ids = append(ids, id)
+	if len(ids) > 200 {
+		ids = ids[len(ids)-200:]
 	}
-}
-
-// Command 是 agent-reach 的参数。社交搜索限定公开网页，不打开浏览器。
-func Command(p Probe) []string {
-	args := []string{p.Channel, p.Action}
-	switch p.Action {
-	case "search":
-		if q := strings.TrimSpace(p.Query); q != "" {
-			args = append(args, q, "--limit", "5")
-		}
-	case "hot":
-		args = append(args, "--limit", "5")
-	}
-	if p.Channel == "twitter" || p.Channel == "reddit" {
-		args = append(args, "--backend", "public-web")
-	}
-	args = append(args, "--timeout", "20")
-	return args
+	return ids
 }
 
 // ID 用链接的摘要当稳定编号。
@@ -185,7 +132,7 @@ func Choose(items []Item, seen map[string]bool) *Item {
 	return nil
 }
 
-// ParseEnvelope 读取 agent-reach 的一行 JSON。ok 不为真时返回空。
+// ParseEnvelope 读取一行 JSON 结果。ok 不为真时返回空。主动检索不调用外部命令。
 func ParseEnvelope(raw string) []Item {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

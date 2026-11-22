@@ -202,16 +202,52 @@ func TestAssessReachSpacesNotesAndKeepsTheLink(t *testing.T) {
 	next.ID = "reach:b"
 	next.Sig = "https://example.com/other"
 	next.Detail = "开源模型\nhttps://example.com/other\n另一条"
-	held, book := Assess(Input{Now: now.Add(2 * time.Hour), Facts: []Fact{next}, Book: book})
+	held, book := Assess(Input{Now: now.Add(20 * time.Minute), Facts: []Fact{next}, Book: book})
 	if held.Speak || len(held.Signals) != 1 || !held.Signals[0].Held {
 		t.Fatalf("spacing = %#v", held)
 	}
-	later, book := Assess(Input{Now: now.Add(4 * time.Hour), Facts: []Fact{next}, Book: book})
+	later, book := Assess(Input{Now: now.Add(40 * time.Minute), Facts: []Fact{next}, Book: book})
 	if !later.Speak {
 		t.Fatalf("second note = %#v", later)
 	}
-	book = Deliver(book, later.Signals, now.Add(4*time.Hour))
+	book = Deliver(book, later.Signals, now.Add(40*time.Minute))
 	if book.Reach.N != 2 {
 		t.Fatalf("quota n = %d", book.Reach.N)
+	}
+}
+
+func TestAssessReachHoldsDuringATurnAndCapsTheDay(t *testing.T) {
+	now := time.Date(2026, 11, 3, 12, 49, 0, 0, time.Local)
+	item := Fact{
+		ID: "reach:a", Code: "reach", Class: "reach", Name: "Step 5 Preview",
+		Detail: "https://example.com/step", State: "match", Sig: "https://example.com/step", Eligible: true,
+	}
+	held, _ := Assess(Input{Now: now, Facts: []Fact{item}, ReachHold: true, ReachDaily: 6, ReachEvery: time.Minute})
+	if held.Speak || len(held.Signals) != 1 || !held.Signals[0].Held {
+		t.Fatalf("hold = %#v", held)
+	}
+	book := Book{}
+	for i := 0; i < 2; i++ {
+		one := item
+		one.ID = "reach:" + string(rune('a'+i))
+		one.Sig = "https://example.com/" + string(rune('a'+i))
+		at := now.Add(time.Duration(i) * time.Hour)
+		brief, next := Assess(Input{Now: at, Facts: []Fact{one}, Book: book, ReachDaily: 2, ReachEvery: 30 * time.Minute})
+		if !brief.Speak {
+			t.Fatalf("speak %d %#v", i, brief)
+		}
+		book = Deliver(next, brief.Signals, at)
+	}
+	extra := item
+	extra.ID = "reach:c"
+	extra.Sig = "https://example.com/c"
+	capped, _ := Assess(Input{Now: now.Add(3 * time.Hour), Facts: []Fact{extra}, Book: book, ReachDaily: 2, ReachEvery: 30 * time.Minute})
+	if capped.Speak {
+		t.Fatal("daily cap")
+	}
+	full := Book{Reach: ReachQuota{Day: now.Format("2006-01-02"), N: 12, At: now.Add(-time.Hour).Format(time.RFC3339)}}
+	quiet, _ := Assess(Input{Now: now, Facts: []Fact{extra}, Book: full})
+	if quiet.Speak {
+		t.Fatal("quiet default is 12")
 	}
 }
