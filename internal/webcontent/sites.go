@@ -319,19 +319,32 @@ func BilibiliPopular(ctx context.Context, client *http.Client, limit int) ([]Hit
 }
 
 // V2EXHot 读取今日热门主题。limit 小于 1 时按 5，大于 20 时按 20。
+// ctx 传给 get。client 传给 get。
 func V2EXHot(ctx context.Context, client *http.Client, limit int) ([]Hit, error) {
-	limit = clampLimit(limit)
 	api := strings.TrimRight(V2EXAPIBase, "/") + "/topics/hot.json"
+	return v2exTopics(ctx, client, api, limit, "v2ex hot")
+}
+
+// V2EXNode 读取一个节点下的主题。node 只保留字母、数字和下划线，空的或不合法时用 ai。
+// limit 小于 1 时按 5，大于 20 时按 20。ctx 传给 get。client 传给 get。
+func V2EXNode(ctx context.Context, client *http.Client, node string, limit int) ([]Hit, error) {
+	node = v2exNode(node)
+	api := strings.TrimRight(V2EXAPIBase, "/") + "/topics/show.json?node_name=" + url.QueryEscape(node)
+	return v2exTopics(ctx, client, api, limit, "v2ex node")
+}
+
+func v2exTopics(ctx context.Context, client *http.Client, api string, limit int, label string) ([]Hit, error) {
+	limit = clampLimit(limit)
 	status, _, _, body, err := get(ctx, client, api, "application/json")
 	if err != nil {
 		return nil, err
 	}
 	if status >= 300 {
-		return nil, fmt.Errorf("v2ex hot %d", status)
+		return nil, fmt.Errorf("%s %d", label, status)
 	}
 	var arr []map[string]any
 	if json.Unmarshal([]byte(body), &arr) != nil || len(arr) == 0 {
-		return nil, fmt.Errorf("v2ex hot: bad json")
+		return nil, fmt.Errorf("%s: bad json", label)
 	}
 	var hits []Hit
 	for _, m := range arr {
@@ -347,9 +360,22 @@ func V2EXHot(ctx context.Context, client *http.Client, limit int) ([]Hit, error)
 		}
 	}
 	if len(hits) == 0 {
-		return nil, fmt.Errorf("v2ex hot: empty")
+		return nil, fmt.Errorf("%s: empty", label)
 	}
 	return hits, nil
+}
+
+func v2exNode(node string) string {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return "ai"
+	}
+	for _, r := range node {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
+			return "ai"
+		}
+	}
+	return node
 }
 
 func clampLimit(limit int) int {

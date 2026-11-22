@@ -1132,6 +1132,7 @@ func (a *App) commitUser(sessionID, message string, atts []Attachment, turnID st
 		a.Hub.Publish(ev)
 	}
 	a.touchSessionMeta(meta, text)
+	a.touchReachUser(time.Now())
 	return nil
 }
 

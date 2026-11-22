@@ -19,7 +19,7 @@ Yoyo already searches and fetches. This skill is the routing table, not a second
 2. Public web: `web_search` then `web_fetch` primary URLs. Cite with `cite_sources`.
 3. A query that is already a URL: `web_search` (it fetches) or `web_fetch` directly.
 4. Login walls: isolated `browser_takeover` + named `browser_profile`. Never the daily Chrome. Never CDP 9222 unless the operator asked for `lane=attached`.
-5. Optional `agent-reach` CLI appears only in `reach_status`. Use those CLIs via `shell` only for the named platform. Still never curl, never mcporter for generic search.
+5. Proactive desk notes never call `agent-reach`. Optional CLI output appears only in `reach_status` when the operator already installed it. Use those CLIs via `shell` only for the named platform. Still never curl, never mcporter for generic search.
 
 ## Route
 

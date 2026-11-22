@@ -41,7 +41,11 @@ func (a *App) assessDesk(snap poi.Snapshot) (initiative.Briefing, bool) {
 	facts = append(facts, poiFacts(snap)...)
 	facts = append(facts, a.connectorFacts()...)
 	facts = append(facts, a.orchestratorFacts(now)...)
-	briefing := store.Assess(initiative.Input{Now: now, Idle: idle, Facts: facts})
+	allow, hold := a.reachBudget(now)
+	briefing := store.Assess(initiative.Input{
+		Now: now, Idle: idle, Facts: facts,
+		ReachDaily: allow.Daily, ReachEvery: allow.Speak, ReachHold: hold,
+	})
 	a.keepBriefing(briefing, now)
 	return briefing, true
 }
