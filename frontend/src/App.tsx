@@ -558,8 +558,6 @@ function WorkstationApp() {
         if (t) ws.openThread(t);
       }}
       onClearNotices={ws.clearNotices}
-      paused={!!ws.health.paused}
-      onPause={() => { void api.setPaused(!ws.health.paused).then(() => ws.refresh()); }}
       level={parseProactiveLevel(deskCfg?.level)}
       onLevel={(level) => {
         void applyProactiveLevel(level);
