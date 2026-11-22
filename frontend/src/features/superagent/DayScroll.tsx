@@ -6,14 +6,16 @@
 
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { usePaneScroll } from "./pane-scroll";
 
 /** 胶囊的固定长度。比一截短点更长一些，仍不跟内容比例拉满整条轨道。 */
 const OPEN_PX = 72;
 
-/** DayScroll 是今天、任务、记忆、Buddy 共用的滚动层。reading 时不滚动，胶囊也不出现。 */
-export function DayScroll({ reading, children }: { reading: boolean; children: ReactNode }) {
+/** DayScroll 是今天、任务、记忆、Buddy 共用的滚动层。reading 时不滚动，胶囊也不出现。route 是这一屏的位置键，空字符串表示现在不记位置。 */
+export function DayScroll({ reading, route, children }: { reading: boolean; route: string; children: ReactNode }) {
   const host = useRef<HTMLDivElement>(null);
-  const scroller = useRef<HTMLDivElement>(null);
+  const pane = usePaneScroll(route);
+  const scroller = pane.ref;
   const thumb = useRef<HTMLDivElement>(null);
   const open = useRef(false);
   const dragging = useRef(false);
@@ -142,7 +144,10 @@ export function DayScroll({ reading, children }: { reading: boolean; children: R
         className="day-scroll-thumb"
         role="scrollbar"
         aria-orientation="vertical"
-        onPointerDown={onThumbDown}
+        onPointerDown={(event) => {
+          pane.noteGesture();
+          onThumbDown(event);
+        }}
       />
     </div>
   );

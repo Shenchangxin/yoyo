@@ -61,7 +61,7 @@ import { displayWorkspace } from "../lib/display-title";
 import { formatMessageClock } from "../lib/session-stats";
 import { mergeMentionPins, peelCompletedMentions, pinsFromAttachments, type MentionKind, type MentionPin } from "../lib/mentions";
 import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
-import { readSessionPlace, type SessionPlace } from "../lib/session-place";
+import { isReadingPlace, readSessionPlace, scrollTopForAnchor, type SessionPlace } from "../lib/session-place";
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
 import { useStudioSelection } from "./video/workshop-store";
 
@@ -248,11 +248,11 @@ export function Transcript(props: {
   onForkFrom?: (from: string) => void | Promise<void>;
   /** main 是那条常驻的主会话：内容收成一列阅读宽度，换了一天放一条日期，检查点写成人话。 */
   main?: boolean;
-  /** placeId 有值时记住读到哪，下次打开回到那里。 */
+  /** placeId 有值时，在这一次打开里记住读到哪。重启后没有记录，回到最新。 */
   placeId?: string;
-  /** live 为假时人离开了这一页，立刻把位置写下。 */
+  /** live 为假时人离开了这一页。位置留在内存里，回来时按锚点放回去。 */
   live?: boolean;
-  onPlace?: (info: { following: boolean; anchor: string; top: number }) => void;
+  onPlace?: (info: { following: boolean; anchor: string; turn: string; offset: number }) => void;
   onMissPlace?: (place: SessionPlace) => void;
 }) {
   const copy = useCopy();
@@ -837,8 +837,35 @@ function agentEstimate(copyText: string): number {
   return Math.max(72, Math.min(360, 56 + Math.round(n * 0.2)));
 }
 
+/** ReadingSpot 是主会话这次打开里的阅读点。anchor 是视口顶那一行自己的键，turn 用来对目录。 */
+type ReadingSpot = {
+  following: boolean;
+  anchor: string;
+  turn: string;
+  offset: number;
+  seq: number;
+  aliases: string[];
+};
+
+/** emptySpot 停在最新，没有锚点。 */
+function emptySpot(): ReadingSpot {
+  return { following: true, anchor: "", turn: "", offset: 0, seq: 0, aliases: [] };
+}
+
+/** spotFromPlace 把内存里的位置收成阅读点。锚点优先用那一行自己的键。 */
+function spotFromPlace(place: SessionPlace): ReadingSpot {
+  return {
+    following: false,
+    anchor: place.anchor,
+    turn: place.aliases.find((alias) => alias && alias !== place.anchor) || "",
+    offset: place.offset,
+    seq: place.seq,
+    aliases: place.aliases.length ? place.aliases : place.anchor ? [place.anchor] : [],
+  };
+}
+
 /**
- * 跟底阈值是 80。跳转序号变了就先停止跟随。锚在列表末尾。
+ * 跟底阈值是 80。跳转序号变了就先停止跟随。没有记下的位置时锚在列表末尾；记下的位置用那一行的起点加偏移，不用绝对 scrollTop。
  * className 传给 cn。
  * rows 取第一段，读取 length、key，为空时不读，调用 findIndex，按下标读取，展开传递。
  * older 为真时才继续。
@@ -887,26 +914,32 @@ function TranscriptLane({
   onJumpLatest?: () => void | Promise<void>;
   placeId?: string;
   live?: boolean;
-  onPlace?: (info: { following: boolean; anchor: string; top: number }) => void;
+  onPlace?: (info: { following: boolean; anchor: string; turn: string; offset: number }) => void;
   onMissPlace?: (place: SessionPlace) => void;
 }) {
   const copy = useCopy();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const savedPlace = useRef<SessionPlace | null>(null);
-  const restore = useRef<"wait" | "done">("done");
+  const mode = useRef<"end" | "anchor" | "free">("end");
+  const spot = useRef<ReadingSpot>(emptySpot());
   const askedPlace = useRef(false);
-  const held = useRef<{ top: number; following: boolean } | null>(null);
-  const wasLive = useRef(live !== false);
+  const pinning = useRef(false);
+  const hold = useRef(false);
+  const wheel = useRef(false);
+  const arrive = useRef(true);
+  const anchorPinned = useRef("");
+  const wasLiveRender = useRef(live !== false);
+  const liveRef = useRef(live !== false);
   const followCtl = useRef<ScrollFollow | null>(null);
   if (!followCtl.current) {
     const place = placeId ? readSessionPlace(placeId) : null;
-    const wait = !!(place && !place.following && (place.anchor || place.seq || place.top > 0));
-    savedPlace.current = place;
-    restore.current = wait ? "wait" : "done";
-    followCtl.current = new ScrollFollow(!wait, 80);
+    if (isReadingPlace(place)) {
+      mode.current = "anchor";
+      spot.current = spotFromPlace(place);
+    }
+    followCtl.current = new ScrollFollow(mode.current === "end", 80);
   }
   const [escaped, setEscaped] = useState(false);
-  const [restoring, setRestoring] = useState(() => restore.current === "wait");
+  const [restoring, setRestoring] = useState(() => mode.current === "anchor");
   const loadingRef = useRef(false);
   const appliedJump = useRef(0);
   const appliedLatest = useRef(0);
@@ -914,8 +947,23 @@ function TranscriptLane({
   const spyRaf = useRef(0);
   const jumpHeld = useRef(false);
   const jumpNonce = jumpTo?.nonce || 0;
+  const liveNow = live !== false;
+  if (wasLiveRender.current !== liveNow) {
+    anchorPinned.current = "";
+    arrive.current = true;
+    if (liveNow && !spot.current.following && (spot.current.anchor || spot.current.seq)) mode.current = "anchor";
+    else if (liveNow) mode.current = "end";
+    wasLiveRender.current = liveNow;
+  }
+  liveRef.current = liveNow;
   if (jumpNonce && jumpNonce !== appliedJump.current) {
     followCtl.current.setFollowing(false);
+    mode.current = "free";
+  }
+  if (latestNonce && latestNonce !== appliedLatest.current) {
+    mode.current = "end";
+    followCtl.current?.setFollowing(true);
+    spot.current = emptySpot();
   }
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -932,16 +980,22 @@ function TranscriptLane({
     followOnAppend: follow && following,
     scrollEndThreshold: 80,
     scrollMargin,
+    // 第一次画就停在末尾。绝对的大数会被夹到真正的底部，避免先闪到顶上。
+    initialOffset: mode.current === "end" ? 1_000_000_000 : 0,
   });
-  /** 没在跟随且这次是瞬间滚动、调用方也不要求跟随时，直接返回。behavior 与 instant 比较是否相等，传给 ctl.toBottom。 */
+  /** 回到最新。程序滚动期间不把位移当成读者自己在滚。 */
   const followEnd = useCallback((behavior: "instant" | "smooth" = "instant") => {
     const el = scrollRef.current;
     const ctl = followCtl.current;
     if (!el || !ctl) return;
-    if (!ctl.active && behavior === "instant" && !follow) return;
+    mode.current = "end";
+    spot.current = emptySpot();
+    ctl.setFollowing(true);
+    pinning.current = true;
     ctl.toBottom(el, scrollMetrics(el), behavior);
-    setEscaped(!ctl.active);
-  }, [follow]);
+    pinning.current = false;
+    setEscaped(false);
+  }, []);
   /** 滚轮、按下或触摸开始后，不再按跳转目标锁住当前回合。 */
   const releaseJump = useCallback(() => {
     jumpHeld.current = false;
@@ -961,17 +1015,30 @@ function TranscriptLane({
   }, []);
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    const ctl = followCtl.current;
-    if (!el || !ctl || !ctl.active || restore.current === "wait") return;
-    ctl.toBottom(el, scrollMetrics(el), follow ? "smooth" : "instant");
-    setEscaped(!ctl.active);
-  }, [rows.length, follow, followNonce]);
+    if (!el) return;
+    // 窗格从没有高度变成有高度时，跟底的那一次补上。内容变高不改变这个元素的尺寸。
+    const ro = new ResizeObserver(() => {
+      if (!liveRef.current || hold.current || wheel.current || mode.current !== "end") return;
+      const node = scrollRef.current;
+      const ctl = followCtl.current;
+      if (!node || !ctl || node.clientHeight < 48) return;
+      if (node.scrollHeight - node.scrollTop - node.clientHeight <= 1) return;
+      pinning.current = true;
+      ctl.setFollowing(true);
+      ctl.toBottom(node, scrollMetrics(node), "instant");
+      pinning.current = false;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useLayoutEffect(() => {
     if (!latestNonce || latestNonce === appliedLatest.current) return;
     appliedLatest.current = latestNonce;
     jumpHeld.current = false;
+    mode.current = "end";
+    spot.current = emptySpot();
     followCtl.current?.setFollowing(true);
-    followEnd("smooth");
+    followEnd("instant");
   }, [latestNonce, followEnd]);
   // 跟底时虚拟列表会跳过一部分测量。占位一旦比内容高出一截，空白就留在这条和下一跳之间，而且会随着字数变大。只把明显偏高的行收回内容高度。
   useLayoutEffect(() => {
@@ -999,14 +1066,20 @@ function TranscriptLane({
     const aliases = jumpTo?.aliases?.length ? jumpTo.aliases : [key];
     const idx = rows.findIndex((r) => rowMatchesJump(r.turnKey, aliases) || rowMatchesJump(r.key, aliases));
     followCtl.current?.setFollowing(false);
+    mode.current = "free";
     setEscaped(true);
+    setRestoring(false);
     lastActive.current = key;
     if (idx < 0) return;
     appliedJump.current = nonce;
-    if (restore.current === "wait") {
-      restore.current = "done";
-      setRestoring(false);
-    }
+    spot.current = {
+      following: false,
+      anchor: rows[idx]?.key || key,
+      turn: key,
+      offset: 0,
+      seq: 0,
+      aliases,
+    };
     jumpHeld.current = true;
     /** 跳转已经被松开就不再滚动。否则把这一行对齐到列表开头。 */
     const align = () => {
@@ -1016,140 +1089,223 @@ function TranscriptLane({
     align();
     requestAnimationFrame(align);
   }, [jumpTo, rows.length, rows[0]?.key, rows[rows.length - 1]?.key, virtualizer]);
-  useLayoutEffect(() => {
-    if (restore.current !== "wait") return;
-    const place = savedPlace.current;
-    if (!place) {
-      restore.current = "done";
-      setRestoring(false);
-      return;
-    }
-    const aliases = place.aliases.length ? place.aliases : place.anchor ? [place.anchor] : [];
-    const idx = aliases.length
-      ? rows.findIndex((r) => rowMatchesJump(r.turnKey, aliases) || rowMatchesJump(r.key, aliases))
-      : -1;
-    const el = scrollRef.current;
-    const pinTop = () => {
-      const node = scrollRef.current;
-      if (!node || place.top <= 0) return;
-      const max = Math.max(0, node.scrollHeight - node.clientHeight);
-      node.scrollTop = Math.min(place.top, max);
-    };
-    if (idx < 0) {
-      if (place.seq > 0) {
-        if (rows.length && !askedPlace.current) {
-          askedPlace.current = true;
-          onMissPlace?.(place);
-        }
-        return;
-      }
-      if (!rows.length || !el || place.top <= 0) return;
-      restore.current = "done";
-      held.current = { top: place.top, following: false };
-      followCtl.current?.setFollowing(false);
-      setEscaped(true);
-      setRestoring(false);
-      pinTop();
-      const id = requestAnimationFrame(pinTop);
-      return () => cancelAnimationFrame(id);
-    }
-    restore.current = "done";
-    followCtl.current?.setFollowing(false);
-    setEscaped(true);
-    setRestoring(false);
-    if (place.top > 0) {
-      held.current = { top: place.top, following: false };
-      pinTop();
-      const id = requestAnimationFrame(pinTop);
-      return () => cancelAnimationFrame(id);
-    }
-    virtualizer.scrollToIndex(idx, { align: "start" });
-    const id = requestAnimationFrame(() => virtualizer.scrollToIndex(idx, { align: "start" }));
-    return () => cancelAnimationFrame(id);
-  }, [rows, virtualizer, onMissPlace]);
-  useEffect(() => {
-    if (restore.current !== "wait") return;
-    const timer = window.setTimeout(() => {
-      if (restore.current !== "wait") return;
-      restore.current = "done";
-      setRestoring(false);
-    }, 4000);
-    return () => window.clearTimeout(timer);
-  }, [placeId]);
+  const saveTimer = useRef(0);
   const savePlace = useCallback(() => {
     if (!placeId || !onPlace) return;
-    const spot = held.current;
-    if (!spot) return;
-    onPlace({ following: spot.following, anchor: spot.following ? "" : lastActive.current, top: spot.top });
+    const here = spot.current;
+    onPlace({
+      following: here.following,
+      anchor: here.following ? "" : here.anchor,
+      turn: here.following ? "" : here.turn,
+      offset: here.following ? 0 : here.offset,
+    });
+    if (here.following) return;
+    // 序号和别名是目录算出来的。写完读回来，藏起来再显示时才知道该把哪一页拉回来。
+    const saved = readSessionPlace(placeId);
+    if (!saved || saved.following) return;
+    spot.current = {
+      ...spot.current,
+      seq: saved.seq || spot.current.seq,
+      aliases: saved.aliases.length ? saved.aliases : spot.current.aliases,
+    };
   }, [placeId, onPlace]);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !placeId) return;
-    let timer = 0;
-    const queued = () => {
-      const node = scrollRef.current;
-      if (node && node.clientHeight >= 48 && restore.current !== "wait") {
-        const gap = node.scrollHeight - node.scrollTop - node.clientHeight;
-        held.current = { top: node.scrollTop, following: gap < 120 };
-      }
-      window.clearTimeout(timer);
-      timer = window.setTimeout(savePlace, 400);
-    };
-    el.addEventListener("scroll", queued, { passive: true });
-    return () => {
-      window.clearTimeout(timer);
-      savePlace();
-      el.removeEventListener("scroll", queued);
-    };
-  }, [placeId, savePlace]);
+  const queueSave = useCallback(() => {
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => savePlace(), 400);
+  }, [savePlace]);
+  useEffect(() => () => {
+    window.clearTimeout(saveTimer.current);
+    savePlace();
+  }, [savePlace]);
   useEffect(() => {
     if (live === false) savePlace();
   }, [live, savePlace]);
+  useEffect(() => {
+    if (mode.current !== "anchor") return;
+    const timer = window.setTimeout(() => {
+      if (mode.current !== "anchor") return;
+      setRestoring(false);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [placeId, live]);
   useLayoutEffect(() => {
-    const now = live !== false;
-    const prev = wasLive.current;
-    wasLive.current = now;
-    if (!prev && now) {
-      const spot = held.current;
-      const put = () => {
-        const el = scrollRef.current;
-        const ctl = followCtl.current;
-        if (!el || !ctl || !spot || restore.current === "wait" || el.clientHeight < 48) return;
-        if (spot.following) {
-          ctl.setFollowing(true);
-          ctl.toBottom(el, scrollMetrics(el), "instant");
-          setEscaped(false);
-          return;
-        }
-        const max = Math.max(0, el.scrollHeight - el.clientHeight);
-        el.scrollTop = Math.min(spot.top, max);
-        ctl.setFollowing(false);
-        setEscaped(true);
-      };
-      put();
-      const id = requestAnimationFrame(put);
-      return () => cancelAnimationFrame(id);
+    if (live === false) return;
+    const place = spot.current;
+    /** 按锚点行现在的起点放回视口。对上同一行才用偏移；只对上回合时贴着那一行的顶。 */
+    const applyAnchor = (): "done" | "miss" | "wait" => {
+      const el = scrollRef.current;
+      const ctl = followCtl.current;
+      if (!el || !ctl || el.clientHeight < 48 || !rows.length) return "wait";
+      const exact = place.anchor ? rows.findIndex((r) => r.key === place.anchor) : -1;
+      let idx = exact;
+      let useOffset = exact >= 0;
+      if (idx < 0) {
+        const aliases = place.aliases.length ? place.aliases : place.turn ? [place.turn] : [];
+        idx = aliases.length ? rows.findIndex((r) => rowMatchesJump(r.turnKey, aliases) || rowMatchesJump(r.key, aliases)) : -1;
+        useOffset = false;
+      }
+      if (idx < 0) return place.seq > 0 ? "miss" : "wait";
+      const item = virtualizer.measurementsCache[idx];
+      if (!item) return "wait";
+      pinning.current = true;
+      if (!virtualizer.itemSizeCache.has(item.key)) {
+        virtualizer.scrollToIndex(idx, { align: "start" });
+        pinning.current = false;
+        return "wait";
+      }
+      const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      const target = scrollTopForAnchor(item.start, useOffset ? place.offset : 0, max);
+      if (Math.abs(el.scrollTop - target) > 1) el.scrollTop = target;
+      pinning.current = false;
+      ctl.setFollowing(false);
+      return "done";
+    };
+    if (mode.current === "end") {
+      if (hold.current || wheel.current) return;
+      const el = scrollRef.current;
+      const ctl = followCtl.current;
+      if (!el || !ctl || el.clientHeight < 48) return;
+      const behavior = arrive.current || !follow ? "instant" : "smooth";
+      arrive.current = false;
+      pinning.current = true;
+      ctl.setFollowing(true);
+      ctl.toBottom(el, scrollMetrics(el), behavior);
+      pinning.current = false;
+      setEscaped(false);
+      return;
     }
-  }, [live]);
+    if (mode.current !== "anchor") return;
+    const pinKey = place.anchor || (place.seq ? `seq:${place.seq}` : "");
+    if (pinKey && anchorPinned.current === pinKey) return;
+    let frames = 0;
+    let raf = 0;
+    const tick = () => {
+      if (!liveRef.current || mode.current !== "anchor") return;
+      const result = applyAnchor();
+      if (result === "done") {
+        anchorPinned.current = pinKey || "-";
+        const el = scrollRef.current;
+        const gap = el ? el.scrollHeight - el.scrollTop - el.clientHeight : 999;
+        if (gap <= 80) {
+          mode.current = "end";
+          spot.current = emptySpot();
+          followCtl.current?.setFollowing(true);
+          setEscaped(false);
+        } else {
+          mode.current = "free";
+          setEscaped(true);
+        }
+        setRestoring(false);
+        return;
+      }
+      if (result === "miss") {
+        if (!askedPlace.current && place.seq > 0) {
+          askedPlace.current = true;
+          onMissPlace?.({
+            sessionId: placeId || "",
+            following: false,
+            anchor: place.anchor,
+            seq: place.seq,
+            aliases: place.aliases,
+            offset: place.offset,
+          });
+        }
+        return;
+      }
+      frames += 1;
+      if (frames < 24) raf = requestAnimationFrame(tick);
+      else setRestoring(false);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [live, rows.length, rows[0]?.key, rows[rows.length - 1]?.key, follow, followNonce, latestNonce, virtualizer, onMissPlace, placeId]);
+  const armGestureEnd = useRef<() => void>(() => {});
+  const readUserSpotRef = useRef<() => void>(() => {});
+  const queueSaveRef = useRef(queueSave);
+  queueSaveRef.current = queueSave;
+  /** 按当前视口记下阅读点。靠近底部就是停在最新，否则是视口顶那一行加上偏移。 */
+  readUserSpotRef.current = () => {
+    const el = scrollRef.current;
+    const ctl = followCtl.current;
+    if (!el || !ctl || el.clientHeight < 48) return;
+    if (ctl.active) {
+      mode.current = "end";
+      spot.current = emptySpot();
+      setEscaped(false);
+      return;
+    }
+    mode.current = "free";
+    setEscaped(true);
+    const item = virtualizer.getVirtualItemForOffset(el.scrollTop);
+    const row = item ? rows[item.index] : undefined;
+    const anchor = row?.key || "";
+    if (!item || !anchor) return;
+    const turn = row?.turnKey || "";
+    const fromAnchor = /^seq:(\d+)$/.exec(anchor);
+    const fromTurn = /^seq:(\d+)$/.exec(turn);
+    const aliases = [anchor, turn].filter((key, i, all) => key && all.indexOf(key) === i);
+    spot.current = {
+      following: false,
+      anchor,
+      turn,
+      offset: el.scrollTop - item.start,
+      seq: fromAnchor ? Number(fromAnchor[1]) : fromTurn ? Number(fromTurn[1]) : 0,
+      aliases,
+    };
+  };
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    /** 滚动停稳后按当前位置决定还跟不跟底。 */
+    let idle = 0;
+    /** 滚动停稳后，只有读者自己滚过才改跟随。程序滚到底不清掉「停在最新」。 */
     const onEnd = () => {
+      window.clearTimeout(idle);
       const ctl = followCtl.current;
-      if (!ctl) return;
+      if (!ctl || pinning.current) return;
+      const user = hold.current || wheel.current;
+      if (!hold.current) wheel.current = false;
+      if (!user || !liveRef.current || mode.current === "anchor" || jumpHeld.current) {
+        if (!user && ctl.animating) ctl.settle(scrollMetrics(el));
+        return;
+      }
       ctl.settle(scrollMetrics(el));
-      setEscaped(!ctl.active);
+      readUserSpotRef.current();
+      queueSaveRef.current();
     };
-    el.addEventListener('wheel', releaseJump, { passive: true });
-    el.addEventListener('pointerdown', releaseJump);
-    el.addEventListener('touchstart', releaseJump, { passive: true });
-    el.addEventListener('scrollend', onEnd);
+    armGestureEnd.current = () => {
+      window.clearTimeout(idle);
+      idle = window.setTimeout(onEnd, 180);
+    };
+    const onDown = () => { hold.current = true; releaseJump(); };
+    const onUp = () => { hold.current = false; };
+    const onWheel = () => {
+      wheel.current = true;
+      releaseJump();
+      armGestureEnd.current();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (!el.contains(event.target as Node)) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "PageDown" || event.key === "PageUp" || event.key === "Home" || event.key === "End" || event.key === " ") {
+        wheel.current = true;
+        armGestureEnd.current();
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+    el.addEventListener("touchstart", onWheel, { passive: true });
+    el.addEventListener("scrollend", onEnd);
+    window.addEventListener("keydown", onKey);
     return () => {
-      el.removeEventListener('wheel', releaseJump);
-      el.removeEventListener('pointerdown', releaseJump);
-      el.removeEventListener('touchstart', releaseJump);
-      el.removeEventListener('scrollend', onEnd);
+      window.clearTimeout(idle);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      el.removeEventListener("touchstart", onWheel);
+      el.removeEventListener("scrollend", onEnd);
+      window.removeEventListener("keydown", onKey);
     };
   }, [releaseJump]);
   /** 同一个 key 不重复上报。 */
@@ -1203,18 +1359,30 @@ function TranscriptLane({
     const el = scrollRef.current;
     const ctl = followCtl.current;
     if (!el || !ctl || el.clientHeight < 48) return;
-    if (!jumpHeld.current) {
+    const user = (hold.current || wheel.current) && !pinning.current && liveRef.current;
+    if (user && !jumpHeld.current) {
+      if (mode.current === "anchor") {
+        mode.current = "free";
+        setRestoring(false);
+      }
       ctl.sample(scrollMetrics(el));
-      setEscaped(!ctl.active);
+      readUserSpotRef.current();
+      queueSave();
+      armGestureEnd.current();
     }
     queueSpy();
+    if (pinning.current) return;
     if (el.scrollTop < 48 && older && onLoadOlder && !loadingRef.current) {
       loadingRef.current = true;
       const prev = el.scrollHeight;
       Promise.resolve(onLoadOlder()).finally(() => {
         requestAnimationFrame(() => {
           const node = scrollRef.current;
-          if (node) node.scrollTop += node.scrollHeight - prev;
+          if (node) {
+            pinning.current = true;
+            node.scrollTop += node.scrollHeight - prev;
+            requestAnimationFrame(() => { pinning.current = false; });
+          }
           loadingRef.current = false;
         });
       });
@@ -1273,8 +1441,11 @@ function TranscriptLane({
           type='button'
           className='absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover py-1.5 pl-2.5 pr-3 text-ui-footnote text-foreground shadow-[var(--shadow-popover)] transition-[background-color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift active:scale-[0.98]'
           onClick={() => {
+            mode.current = "end";
+            spot.current = emptySpot();
             followCtl.current?.setFollowing(true);
             setEscaped(false);
+            queueSave();
             if (onJumpLatest) void onJumpLatest();
             else followEnd("smooth");
           }}

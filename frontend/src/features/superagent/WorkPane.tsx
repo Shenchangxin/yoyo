@@ -1,5 +1,5 @@
 /**
- * 拥有：会话左侧的一天。今天、任务、记忆、Buddy。等人的事排在最前，计数等于它指向的那一列。晨间简报在这里审计资产，点选留在简报上。
+ * 拥有：会话左侧的一天。今天、任务、记忆、Buddy。到点的晨间或晚间简报按钮在日期下面，等人的事紧随其后，计数等于它指向的那一列。晨间简报在这里审计资产，点选留在简报上。
  * 点开任务留在这一栏，对话不换页，也可以放到中间去聊。记忆写错的在夹里改掉或忘掉。连接在设置里。
  * Buddy 是这台电脑上能接任务的 agent 应用，页面本身在 features/buddy/BuddyPane.tsx，这里只管页签和它的数字。
  * 不拥有：工单怎么执行，也不拥有检查器里的差异。执行在 Go 的 superagent，审查页由 App 传入。开口门怎么算在 Go 的 initiative。
@@ -31,6 +31,7 @@ import { actionLabel, briefLayout, briefProgress, cardHandled, checkedCount, ite
 import { briefDay, briefPrompt, briefStorageKey, BRIEF_PREFS_KEY, defaultBriefPrefs, dueDelta, filterItems, groupRows, itemSections, memoryFolderRows, memoryForgettable, memoryOrigin, memoryPast, memoryPortrait, memoryTouched, offerSlot, parseBriefPrefs, refStatus, serializeStoredBrief, tasksBadge, unseenSuggestions, wouldAccept, type BriefCard, type BriefPhrases, type BriefSlot, type BriefPrefs, type MemoryFolder, type MemoryRow, type MorningBrief, type TaskItem, type TaskSection } from "./work-model";
 import { BRIEF_PREFS_EVENT, type ProactiveLevel } from "../../lib/proactive";
 import { DayScroll } from "./DayScroll";
+import { buddyScrollKey, readPaneRoute, writePaneRoute } from "../../lib/pane-place";
 
 type Tab = "now" | "tasks" | "memory" | "buddy";
 
@@ -59,8 +60,6 @@ export function WorkPane(props: {
   notices?: Notice[];
   onNotice?: (n: Notice) => void;
   onClearNotices?: () => void;
-  paused?: boolean;
-  onPause?: () => void;
   level?: ProactiveLevel;
   onLevel?: (level: ProactiveLevel) => void;
   onBriefTimes?: (times: BriefPrefs) => void;
@@ -73,9 +72,13 @@ export function WorkPane(props: {
   onScreenshot?: () => Promise<string>;
 }) {
   const copy = useCopy();
-  const [tab, setTab] = useState<Tab>("now");
-  // groupId 是任务栏里打开的任务组。从任务组点进成员时留着，读完工单返回时回到任务组。
-  const [groupId, setGroupId] = useState("");
+  const remembered = readPaneRoute();
+  const [tab, setTab] = useState<Tab>(remembered.tab);
+  // groupId 是任务栏里打开的任务组。从任务组点进成员时留着，读完工单返回时回到任务组。离开会话再回来也留在这次打开的内存里。
+  const [groupId, setGroupId] = useState(remembered.groupId);
+  useEffect(() => {
+    writePaneRoute(tab, groupId);
+  }, [tab, groupId]);
   const view = useNeeds((s) => s.view);
   const queue = useNeeds((s) => s.queue);
   const [err, setErr] = useState("");
@@ -165,6 +168,8 @@ export function WorkPane(props: {
 
   // 别处点了「去 Buddy」（@ 了一个还不能派的 agent、任务上的「去登录」、命令面板）：翻到 Buddy 页，审查先收起来。
   const buddyPulse = useUI((s) => s.buddyPulse);
+  const buddyFocus = useUI((s) => s.buddyFocus);
+  const buddyDialog = useBuddy((s) => s.dialog);
   const buddyNeeds = useBuddy((s) => attentionCount(s.list));
   useEffect(() => {
     if (buddyPulse === seenBuddyPulse) return;
@@ -187,6 +192,8 @@ export function WorkPane(props: {
     ? wouldAccept(view.decisions ?? []).map((row) => ({ id: row.id, text: triggerText(view, row.triggerId) || row.thread || row.triggerId, at: row.at || "" }))
     : [];
   const reading = tab === "tasks" && (!!props.openTaskId || !!groupId);
+  // 读工单或任务组时，这一层不滚动，位置留给里面那一屏。四个列表都从顶部记。
+  const scrollRoute = reading ? "" : tab === "buddy" ? buddyScrollKey(buddyDialog, buddyFocus) : tab;
   const openGroup = groupId ? (view?.groups ?? []).find((row) => row.id === groupId) ?? null : null;
   const tabs: { id: Tab; label: string; count?: number; person?: boolean }[] = [
     { id: "now", label: copy.work.now, count: needs.length, person: needs.length > 0 },
@@ -241,7 +248,7 @@ export function WorkPane(props: {
           })}
         </div>
       </div>
-      <DayScroll reading={reading}>
+      <DayScroll reading={reading} route={scrollRoute}>
           {err && tab !== "buddy" ? <p className="px-3 py-2 text-ui-footnote text-danger">{err}</p> : null}
           {!view && !err && tab !== "buddy" ? <p className="px-3 py-3 text-ui-body text-muted">{copy.work.loading}</p> : null}
           {tab === "buddy" ? <BuddyPane /> : null}
@@ -250,8 +257,6 @@ export function WorkPane(props: {
               needs={needs}
               tickets={tickets}
               focusEdition={focusEdition}
-              paused={!!props.paused}
-              onPause={props.onPause}
               level={props.level || "normal"}
               onLevel={props.onLevel}
               notices={props.notices || []}
@@ -345,8 +350,6 @@ function Now(props: {
   needs: NeedItem[];
   tickets: Ticket[];
   focusEdition: { target: BriefTarget | null; nonce: number };
-  paused: boolean;
-  onPause?: () => void;
   level: ProactiveLevel;
   onLevel?: (level: ProactiveLevel) => void;
   notices: Notice[];
@@ -472,8 +475,6 @@ function Now(props: {
   return (
     <div className="relative min-w-0 px-3 pb-8 pt-3">
       <DeskMenu
-        paused={props.paused}
-        onPause={props.onPause}
         level={props.level}
         onLevel={props.onLevel}
         notices={props.notices}
@@ -482,6 +483,17 @@ function Now(props: {
         onPrefs={() => setPrefsOpen(true)}
       />
       <p className="flex h-8 items-center justify-center text-ui-footnote text-muted">{today}</p>
+      {dueMissing && !waiting ? (
+        <div className="mt-3 flex justify-center">
+          <button
+            type="button"
+            className={cn("h-9 rounded-full px-5 text-ui-body font-medium", editions.length ? "border border-border bg-card shadow-[var(--shadow-card)] hover:bg-lift" : "bg-foreground text-background")}
+            onClick={() => { void generate(); }}
+          >
+            {heading}
+          </button>
+        </div>
+      ) : null}
       {props.needs.length > 0 ? (
         <NeedsYou
           items={props.needs}
@@ -494,14 +506,7 @@ function Now(props: {
         />
       ) : null}
       {editions.length === 0 && !waiting ? (
-        <div className="mt-8 flex flex-col items-center gap-3">
-          {dueMissing ? (
-            <button type="button" className="h-9 rounded-full bg-foreground px-5 text-ui-body font-medium text-background" onClick={() => { void generate(); }}>
-              {heading}
-            </button>
-          ) : null}
-          <p className="max-w-64 text-center text-ui-footnote leading-5 text-muted">{dueMissing ? copy.work.briefReady : copy.work.briefStays}</p>
-        </div>
+        <p className="mx-auto mt-8 max-w-64 text-center text-ui-footnote leading-5 text-muted">{dueMissing ? copy.work.briefReady : copy.work.briefStays}</p>
       ) : null}
       {waiting ? <p className="py-10 text-center text-ui-body-l text-accent">{copy.work.briefRunning}</p> : null}
       {shown && caption ? (
@@ -527,21 +532,12 @@ function Now(props: {
           />
         </div>
       ) : null}
-      {dueMissing && editions.length > 0 && !waiting ? (
-        <div className="mt-6 flex justify-center">
-          <button type="button" className="h-9 rounded-full border border-border bg-card px-4 text-ui-body font-medium shadow-[var(--shadow-card)] hover:bg-lift" onClick={() => { void generate(); }}>
-            {heading}
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
 
-/** DeskMenu 是今天右上角那颗圆钮：主动程度、暂停、简报时间和安静时段，以及最近动态。 */
+/** DeskMenu 是今天右上角那颗圆钮：主动程度、简报时间和安静时段，以及最近动态。 */
 function DeskMenu(props: {
-  paused: boolean;
-  onPause?: () => void;
   level: ProactiveLevel;
   onLevel?: (level: ProactiveLevel) => void;
   notices: Notice[];
@@ -578,9 +574,6 @@ function DeskMenu(props: {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        {props.onPause ? (
-          <DropdownMenuItem onSelect={() => props.onPause?.()}>{props.paused ? d.resume : d.pause}</DropdownMenuItem>
-        ) : null}
         <DropdownMenuItem onSelect={props.onPrefs}>{d.prefs}</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>{d.activity}</DropdownMenuLabel>
@@ -602,7 +595,7 @@ function DeskMenu(props: {
   );
 }
 
-/** NeedsYou 把所有要人决定的事排在今天最上面：日程、审批、任务提问、来信、待发送、个人事务、收件。数字等于这里的条数。 */
+/** NeedsYou 把要人决定的事排在简报按钮下面：日程、审批、任务提问、来信、待发送、个人事务、收件。数字等于这里的条数。 */
 function NeedsYou(props: {
   items: NeedItem[];
   onDecide: (id: string, kind: string) => Promise<void>;

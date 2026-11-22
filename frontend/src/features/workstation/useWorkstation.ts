@@ -482,28 +482,39 @@ export function useWorkstation() {
     setLatestNonce(Date.now());
   }, [activeId]);
 
-  /** 主会话离开时记下读到哪。锚点能对上目录时带上序号，下次才能把那一页拉回来。top 是离开时的 scrollTop。 */
-  const rememberPlace = useCallback((info: { following: boolean; anchor: string; top: number }) => {
+  /** 主会话离开时记下读到哪。anchor 是视口顶那一行，turn 用来对目录。offset 是离开这一行起点的距离，不记绝对 scrollTop。 */
+  const rememberPlace = useCallback((info: { following: boolean; anchor: string; turn: string; offset: number }) => {
     const id = mainIdRef.current;
     if (!id || activeIdRef.current !== id) return;
-    const turn = outlineRef.current.find((t) => isOutlineActive(t, info.anchor));
-    const fromKey = /^seq:(\d+)$/.exec(info.anchor);
+    const lookup = info.turn || info.anchor;
+    const turn = outlineRef.current.find((t) => isOutlineActive(t, lookup));
+    const fromKey = /^seq:(\d+)$/.exec(lookup);
+    const aliases: string[] = [];
+    const add = (k: string) => {
+      const v = (k || "").trim();
+      if (v && !aliases.includes(v)) aliases.push(v);
+    };
+    if (!info.following) {
+      add(info.anchor);
+      add(info.turn);
+      if (turn) for (const alias of turnJumpAliases(turn)) add(alias);
+    }
     writeSessionPlace({
       sessionId: id,
       following: info.following,
-      anchor: info.anchor,
+      anchor: info.following ? "" : info.anchor,
       seq: turn?.seq || (fromKey ? Number(fromKey[1]) : 0),
-      aliases: turn ? turnJumpAliases(turn) : (info.anchor ? [info.anchor] : []),
-      top: info.top,
+      aliases,
+      offset: info.following ? 0 : info.offset,
     });
   }, []);
 
-  /** 没有会话或没有回合就返回。这条还没挂上且 seq 大于 0 时，按该 seq 取一页并进入回看。turn 读取 seq，为假时走另一支，传给 outlineTurnKey，传给 turnJumpAliases，传给 itemMatchesTurn。 */
-  const jumpToTurn = useCallback(async (turn: OutlineTurn) => {
+  /** 没有会话或没有回合就返回。这条还没挂上且 seq 大于 0 时，按该 seq 取一页并进入回看。loadOnly 只把那一页拉回来，不改高亮，也不把视口拽到行首。 */
+  const jumpToTurn = useCallback(async (turn: OutlineTurn, opts?: { loadOnly?: boolean }) => {
     if (!activeId || !turn) return;
     const key = outlineTurnKey(turn);
     const aliases = turnJumpAliases(turn);
-    setActiveTurn(key);
+    if (!opts?.loadOnly) setActiveTurn(key);
     const mounted = itemsAcc.current.some((it) => itemMatchesTurn(it, turn) || aliases.includes(itemTurnKey(it)));
     if (!mounted && turn.seq > 0) {
       const page = await api.trajectoryAround(activeId, turn.seq, HOT_TRANSCRIPT_TURNS);
@@ -515,14 +526,15 @@ export function useWorkstation() {
       setOlder(!!page.older);
       setItems(withLiveTail(itemsAcc.current, hotItemsRef.current));
     }
+    if (opts?.loadOnly) return;
     setJumpTo({ key, aliases, nonce: Date.now() });
   }, [activeId]);
 
-  /** 上次的位置不在已经加载的这一窗里时，按序号把那一页拉回来再跳。 */
+  /** 上次的位置不在已经加载的这一窗里时，按序号把那一页拉回来。对齐留给转录按偏移做。 */
   const restorePlace = useCallback((place: SessionPlace) => {
     if (!place.seq && !place.anchor) return;
     const id = place.aliases.find((a) => a && !a.startsWith("seq:")) || "";
-    void jumpToTurn({ seq: place.seq, title: "", id, key: place.anchor || id });
+    void jumpToTurn({ seq: place.seq, title: "", id, key: place.anchor || id }, { loadOnly: true });
   }, [jumpToTurn]);
 
   /** 用横幅文案同时写入 err 并弹出提示。e 传给 api.errMessage。 */

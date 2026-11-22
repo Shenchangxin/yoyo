@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { usePaneScroll } from "./pane-scroll";
 import { Check, ChevronLeft, FileText, FolderOpen, Maximize2, MessageSquare, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -62,6 +63,7 @@ export function GroupPage(props: {
   const group = props.group;
   const members = group ? group.tickets.map((id) => props.tickets.find((ticket) => ticket.id === id)).filter((ticket): ticket is Ticket => !!ticket) : [];
   const files = useMemberFiles(members.map((member) => member.id));
+  const pane = usePaneScroll(!props.stage && group ? `tasks:group:${group.id}` : "");
   const [now, setNow] = useState(() => Date.now());
   const [stopArmed, setStopArmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -145,7 +147,7 @@ export function GroupPage(props: {
           ) : null}
         </div>
       </div>
-      <div className={cn("min-h-0 flex-1 overflow-y-auto pb-6 pt-3", props.stage ? "px-3" : "px-1")}>
+      <div ref={pane.ref} className={cn("min-h-0 flex-1 overflow-y-auto pb-6 pt-3", props.stage ? "px-3" : "px-1")}>
         {group.mode === "compare" ? (
           <CompareView group={group} members={members} files={files} now={now} busy={busy} onOpen={props.onOpenTask} onPick={(id) => { void act("pick", [id]); }} />
         ) : (
