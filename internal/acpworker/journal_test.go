@@ -90,6 +90,43 @@ func TestJournalEditBecomesEditFileWithWrotePath(t *testing.T) {
 	}
 }
 
+func TestJournalDraftShowsBeforeTheTurnEnds(t *testing.T) {
+	j, sess, _ := newTestJournal(t)
+	j.begin(1)
+	j.update(wire(t, chunk("先")), false)
+	j.update(wire(t, chunk("看一下。")), false)
+	wantLines(t, transcript(sess), [3]string{"assistant", "", "先看一下。"})
+	j.finish(true)
+	wantLines(t, transcript(sess), [3]string{"assistant", "", "先看一下。"})
+}
+
+func TestJournalToolShowsWhileItRuns(t *testing.T) {
+	j, sess, dir := newTestJournal(t)
+	path := filepath.Join(dir, "a.txt")
+	j.begin(1)
+	j.update(wire(t, map[string]any{"sessionUpdate": acp.UpdateToolCall, "toolCallId": "t1", "title": "Edit a.txt", "kind": "edit", "status": "pending"}), false)
+	lines := transcript(sess)
+	if len(lines) != 1 || lines[0].Role != "tool_call" || lines[0].Name != "edit_file" {
+		t.Fatalf("pending call = %+v", lines)
+	}
+	j.update(wire(t, map[string]any{"sessionUpdate": acp.UpdateToolUpdate, "toolCallId": "t1", "status": "in_progress", "locations": []map[string]any{{"path": path}}}), false)
+	lines = transcript(sess)
+	var args map[string]string
+	if len(lines) != 1 || json.Unmarshal([]byte(lines[0].Text), &args) != nil || args["path"] != path {
+		t.Fatalf("args should fill in place: %+v", lines)
+	}
+	j.update(wire(t, map[string]any{"sessionUpdate": acp.UpdateToolUpdate, "toolCallId": "t1", "status": "completed", "content": []map[string]any{{"type": "diff", "path": path, "oldText": "a", "newText": "b"}}}), false)
+	j.finish(true)
+	lines = transcript(sess)
+	wantLines(t, lines,
+		[3]string{"tool_call", "edit_file", "*"},
+		[3]string{"tool_result", "edit_file", "wrote " + path + "*"},
+	)
+	if lines[0].ID != lines[1].ID {
+		t.Fatalf("call and result ids = %q, %q", lines[0].ID, lines[1].ID)
+	}
+}
+
 func TestJournalPlanMatchesUpdatePlan(t *testing.T) {
 	j, sess, _ := newTestJournal(t)
 	j.begin(2)
@@ -118,8 +155,8 @@ func TestJournalControlToolKeepsBareName(t *testing.T) {
 
 	wantLines(t, transcript(sess),
 		[3]string{"tool_call", "orchestrator_report", `{"state":"completed","summary":"做完了"}`},
-		[3]string{"tool_result", "orchestrator_report", "ok"},
 		[3]string{"assistant", "", "报告了。"},
+		[3]string{"tool_result", "orchestrator_report", "ok"},
 	)
 	if got := lastReportSummary(sess.Events()); got != "做完了" {
 		t.Fatalf("lastReportSummary = %q", got)

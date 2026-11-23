@@ -59,6 +59,9 @@ func approvalOf(c toolCall, dir string) Approval {
 
 // onPermission 处理 session/request_permission。Approve 为 nil、出错或拒绝时选拒绝；对方没给允许选项时也拒绝。
 func (w *Worker) onPermission(ctx context.Context, req acp.PermissionRequest) (acp.PermissionOutcome, error) {
+	w.holding.Add(1)
+	defer w.holding.Add(-1)
+	w.touchHeard()
 	ap := approvalOf(w.jr.merge(req.ToolCall), w.spec.Dir)
 	stop := w.waitNote(ap.Label())
 	ok := false

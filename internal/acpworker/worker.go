@@ -1,7 +1,7 @@
 // Package acpworker 让任何讲 ACP 的 agent 当 yoyo 工单的工人。
 //
 // worker.go 拥有一个外部工人：实现 superagent.Worker，第一次有活时才连接（先 resume，再 load，都不行就新建），
-// 一个后台循环一轮一轮地发提示，处理取消、单轮超时、空闲回收、崩溃和要求登录。
+// 一个后台循环一轮一轮地发提示，处理取消、单轮超时、长时间没有新动静、空闲回收、崩溃和要求登录。
 // 日志归一化在 journal.go，权限在 perm.go，文件读写在 fs.go，会话参数在 prompt.go，进程上限在 pool.go。
 // 不拥有 agent 的安装、检测和启动方式（buddy），也不拥有控制面（mcpserve）和工单状态（superagent）。
 package acpworker
@@ -27,8 +27,16 @@ const defaultIdle = 10 * time.Minute
 var (
 	// errTurnTimeout 是一轮超过 TurnTimeout 时取消的原因。
 	errTurnTimeout = errors.New("turn timeout")
+	// errStalled 是一轮里 agent 不再发更新，提示也不会自己结束。
+	errStalled = errors.New("agent stalled")
 	// errWorkerClosed 是工人已经关掉后还要连接。
 	errWorkerClosed = errors.New("acp worker is closed")
+	// quietModel 是没有未完成工具时，多久没有更新就认定模型请求停了。
+	quietModel = 3 * time.Minute
+	// quietTool 是还有工具没返回时的静默上限。长命令可以没有输出，但不能一直占着工单。
+	quietTool = 12 * time.Minute
+	// quietTick 是检查静默的间隔。
+	quietTick = 2 * time.Second
 )
 
 // Config 是打开一个外部工人需要的全部输入。Spec 来自执行器，其余由 app 填。
@@ -72,8 +80,11 @@ type Worker struct {
 	jr   *journal
 	pool *pool
 
-	busy   atomic.Bool
-	usedAt atomic.Int64
+	busy     atomic.Bool
+	usedAt   atomic.Int64
+	activity atomic.Int64
+	heard    atomic.Int64
+	holding  atomic.Int32
 
 	mu      sync.Mutex
 	idle    *sync.Cond
@@ -251,13 +262,20 @@ func (w *Worker) runTurn(ctx context.Context, turn int, msgs []dsh.UserMessage) 
 	w.sess.Append(dsh.EventTurnEnd, turn, 0, end)
 }
 
-// prompt 连上 agent 并发这一轮，返回回合结束。超过 TurnTimeout 时取消。
+// prompt 连上 agent 并发这一轮，返回回合结束。超过 TurnTimeout，或静默超过上限时取消。
 func (w *Worker) prompt(ctx context.Context, turn int, msgs []dsh.UserMessage) dsh.TurnEnd {
+	w.heard.Store(0)
+	w.touch()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(context.Canceled)
 	if w.cfg.TurnTimeout > 0 {
 		var stop context.CancelFunc
 		ctx, stop = context.WithTimeoutCause(ctx, w.cfg.TurnTimeout, errTurnTimeout)
 		defer stop()
 	}
+	done := make(chan struct{})
+	defer close(done)
+	go w.watchQuiet(ctx, cancel, done)
 	c, sid, preface, err := w.ensure(ctx, turn)
 	if err != nil {
 		return w.endFor(ctx, err)
@@ -269,12 +287,64 @@ func (w *Worker) prompt(ctx context.Context, turn int, msgs []dsh.UserMessage) d
 	return stopEnd(stop)
 }
 
-// endFor 把失败换成回合结束：取消和超时记 aborted；要求登录记 auth_required 并通知 Buddy；进程断开记 agent exited，下一轮重连。
+// watchQuiet 在这一轮不再有更新时取消 ctx。done 关上或 ctx 已取消就退出。
+func (w *Worker) watchQuiet(ctx context.Context, cancel context.CancelCauseFunc, done <-chan struct{}) {
+	tick := time.NewTicker(quietTick)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			return
+		case <-tick.C:
+			if w.stalled() {
+				cancel(errStalled)
+				return
+			}
+		}
+	}
+}
+
+// stalled 在静默超过这一轮该等的上限时为真。等人批准或正在替 agent 读写文件时为假。
+func (w *Worker) stalled() bool {
+	if w.holding.Load() > 0 {
+		return false
+	}
+	last := w.activity.Load()
+	if last == 0 {
+		return false
+	}
+	limit := quietModel
+	if w.jr.unfinished() > 0 {
+		limit = quietTool
+	}
+	return time.Since(time.Unix(0, last)) >= limit
+}
+
+// touch 记下最近一次动静。回放和本轮开始也算，免得刚连上就被当成停住。
+func (w *Worker) touch() { w.activity.Store(time.Now().UnixNano()) }
+
+// touchHeard 记下 agent 这一轮确实说过话。只有全程没说过话的静默才丢掉会话编号。
+func (w *Worker) touchHeard() {
+	w.touch()
+	w.heard.Add(1)
+}
+
+// endFor 把失败换成回合结束：取消和超时记 aborted；静默记 agent stalled 并丢掉连接；要求登录记 auth_required 并通知 Buddy；进程断开记 agent exited，下一轮重连。
 func (w *Worker) endFor(ctx context.Context, err error) dsh.TurnEnd {
 	if ctx.Err() != nil {
 		cause := context.Cause(ctx)
 		if errors.Is(cause, errTurnTimeout) {
 			return dsh.TurnEnd{Kind: "aborted", Reason: superagent.ReasonTurnTimeout}
+		}
+		if errors.Is(cause, errStalled) {
+			fresh := w.heard.Load() == 0
+			w.drop()
+			if fresh {
+				w.forgetSession()
+			}
+			return dsh.TurnEnd{Kind: "error", Reason: errStalled.Error()}
 		}
 		var cc dsh.CancelCause
 		if errors.As(cause, &cc) {
@@ -342,7 +412,7 @@ func (w *Worker) connect(ctx context.Context, turn int) (*acp.Client, string, st
 	opts.Version = w.cfg.Version
 	opts.Name = w.spec.Agent
 	opts.Log = w.cfg.Log
-	opts.Handler = acp.Handler{Update: w.jr.update, Permission: w.onPermission, ReadFile: w.readFile, WriteFile: w.writeFile}
+	opts.Handler = acp.Handler{Update: w.onUpdate, Permission: w.onPermission, ReadFile: w.readFile, WriteFile: w.writeFile}
 	dial := w.cfg.Dial
 	if dial == nil {
 		dial = acp.Dial
@@ -390,6 +460,27 @@ func (w *Worker) connect(ctx context.Context, turn int) (*acp.Client, string, st
 	w.noteRun(nil)
 	diaglog.Info("acp worker connected", "component", "acp", "ticket", w.spec.TicketID, "agent", w.spec.Agent, "session", how)
 	return c, sid, preface, nil
+}
+
+// onUpdate 把会话更新写进日志，并记下这一轮还有动静。回放只刷新计时，不算 agent 回应了这次提示。
+func (w *Worker) onUpdate(n acp.SessionNotification, replay bool) {
+	if replay {
+		w.touch()
+	} else {
+		w.touchHeard()
+	}
+	w.jr.update(n, replay)
+}
+
+// forgetSession 丢掉外部会话编号。下一轮新建，而不是再续接一个已经不回话的会话。
+func (w *Worker) forgetSession() {
+	w.mu.Lock()
+	had := w.pointer != ""
+	w.pointer = ""
+	w.mu.Unlock()
+	if had && w.spec.OnPointer != nil {
+		w.spec.OnPointer("")
+	}
 }
 
 // open 先 resume、再 load（都要对方声明了才试），都不行就新建。连接断了、要求登录或已经取消时不再往下试。

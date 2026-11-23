@@ -1368,11 +1368,6 @@ html.dark .code-hl span {
   font-family: var(--dsw-font-family);
   font-size: var(--dsh-content-font-size-secondary, 13px);
 }
-.step-rail-live {
-  max-height: min(400px, 50vh);
-  overflow-y: auto;
-  mask-image: linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 10px), transparent);
-}
 
 @keyframes yoyo-caret {
   0%, 40% { opacity: 1; }
@@ -2219,7 +2214,7 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
 .step-rail::before {
   content: "";
   position: absolute;
-  left: 6.25px;
+  left: calc(0.8125rem - 0.75px);
   top: 10px;
   bottom: 10px;
   width: 1.5px;

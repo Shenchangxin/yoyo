@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/initiative"
+	"github.com/Shenchangxin/yoyo/internal/reach"
 )
 
 // deskEvery 是送达循环的间隔。开口门本身按天限次，这里只决定多久看一次。
@@ -98,7 +99,7 @@ func (a *App) deskTick(now time.Time) {
 		return
 	}
 	snap := a.PoiRefresh()
-	if snap.Initiative == nil || !snap.Initiative.Speak {
+	if snap.Initiative == nil || !briefingDelivers(*snap.Initiative) {
 		return
 	}
 	meta, err := a.MainSession()
@@ -108,8 +109,22 @@ func (a *App) deskTick(now time.Time) {
 	a.deliverSpeaks(meta.ID, *snap.Initiative, now)
 }
 
+// briefingDelivers 在这一轮有话要写进主会话时为真。开口的条目要送，按住的资讯也要送，不留在任务栏。
+func briefingDelivers(b initiative.Briefing) bool {
+	for _, signal := range b.Signals {
+		if signal.Class == "ticket" || signal.Code == "welcome" {
+			continue
+		}
+		if signal.Speak || (signal.Held && signal.Code == "reach") {
+			return true
+		}
+	}
+	return false
+}
+
 // deliverSpeaks 把 b 里该开口的写进 sessionID，再把真正写进去的记成已经说过。返回写进去的条目。
 // 工单走交接，欢迎信走简报，都不在这里重复。写不进去的留到下一轮，不会被记成说过。
+// 按住的资讯同样写进主会话：人在忙、或还没到下一条的间隔，都不再改放到任务栏。人按住的类别不送。当天额度用完后不再追加。
 func (a *App) deliverSpeaks(sessionID string, b initiative.Briefing, now time.Time) []initiative.Signal {
 	store, err := a.deskBook()
 	if err != nil || strings.TrimSpace(sessionID) == "" {
@@ -119,23 +134,53 @@ func (a *App) deliverSpeaks(sessionID string, b initiative.Briefing, now time.Ti
 	if day == "" {
 		day = now.Format("2006-01-02")
 	}
+	quiet := store.Quiet(day)
+	daily := reach.AllowanceFor(a.reachPace(now)).Daily
+	if daily < 1 {
+		daily = 12
+	}
+	sentCount := store.ReachSent(day)
 	var sent []initiative.Signal
 	for _, signal := range b.Signals {
-		if !signal.Speak || signal.Class == "ticket" || signal.Code == "welcome" {
+		if signal.Class == "ticket" || signal.Code == "welcome" || !deliverable(signal, quiet) {
+			continue
+		}
+		if !signal.Speak && sentCount >= daily {
 			continue
 		}
 		note := speakNote(sessionID, day, signal)
 		if note.Text == "" {
 			continue
 		}
-		if a.DeskPush(note) {
-			sent = append(sent, signal)
+		if !a.DeskPush(note) {
+			continue
 		}
+		if !signal.Speak {
+			signal.Speak = true
+		}
+		if signal.Code == "reach" {
+			sentCount++
+		}
+		sent = append(sent, signal)
 	}
 	if len(sent) > 0 {
 		store.Deliver(sent, now)
 	}
 	return sent
+}
+
+// deliverable 在这条信号该写进主会话时为真。开口的都送。按住的只送资讯，并且人按住的类别或这一条不送。
+func deliverable(signal initiative.Signal, quiet map[string]initiative.Mute) bool {
+	if _, muted := quiet[signal.Class]; muted {
+		return false
+	}
+	if _, muted := quiet[signal.ID]; muted {
+		return false
+	}
+	if signal.Speak {
+		return true
+	}
+	return signal.Held && signal.Code == "reach"
 }
 
 // speakNote 把一条信号收成主会话里的短讯。一条信号一天只有一个编号，重复写会被 DeskPush 挡住。

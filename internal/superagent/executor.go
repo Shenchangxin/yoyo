@@ -146,7 +146,9 @@ type Executor struct {
 	agentRun  map[string]int
 	liveAgent map[string]string
 	live      map[string]bool
-	held      map[string]bool
+	// liveGen 是每张工单当前这一轮的代号。结束时代号对不上就不动，避免旧一轮把新一轮的在跑标记清掉。
+	liveGen map[string]int
+	held    map[string]bool
 	// prefix 是最后一次交接之前的日志，只有 owner 那个会话写盘时拼在前面。新工人读不到它，任务页仍然完整。
 	prefix map[string]logPrefix
 	bgMu   sync.Mutex
@@ -353,13 +355,15 @@ func (e *Executor) Interrupt(ticketID string) {
 const pausedSummary = "人让它先停下，在等下一条消息"
 
 // Pause 停下 ticketID 正在跑的这一轮，工单留着。这一轮不再催工人做下去，记成在等下一条消息。
-// 还没送进去的话留在收件箱里，下一轮一起读。没有在跑时返回假。
+// 还没送进去的话留在收件箱里，点停止不会把这句记成停下。工人还在跑时取消它，等循环自己记下。
+// 代号已经换过时不再取消，免得停的是上一轮、取消的是下一句。派工仍标着在做、工人却已经不在、也没有新的话时，直接记下停下。已经停下时返回假。
 func (e *Executor) Pause(ticketID string) bool {
 	if e == nil {
 		return false
 	}
 	e.mu.Lock()
 	w := e.workerLocked(ticketID)
+	gen := e.liveGen[ticketID]
 	running := w != nil && e.live[ticketID]
 	if running {
 		if e.held == nil {
@@ -368,11 +372,86 @@ func (e *Executor) Pause(ticketID string) bool {
 		e.held[ticketID] = true
 	}
 	e.mu.Unlock()
-	if !running {
+	if running {
+		e.mu.Lock()
+		still := e.live[ticketID] && e.liveGen[ticketID] == gen
+		e.mu.Unlock()
+		if still {
+			w.Cancel(dsh.CancelCause{Kind: "steer", Reason: "paused"}, true)
+		}
+		return true
+	}
+	if e.Engine == nil || !e.workingNow(ticketID) {
 		return false
 	}
-	w.Cancel(dsh.CancelCause{Kind: "steer", Reason: "paused"}, true)
-	return true
+	if e.chatWaiting(ticketID) {
+		return false
+	}
+	e.park(ticketID, pausedSummary)
+	if w != nil {
+		w.Cancel(dsh.CancelCause{Kind: "steer", Reason: "paused"}, true)
+	}
+	return !e.workingNow(ticketID)
+}
+
+// chatWaiting 在上一份已经停下的报告之后，还有没送进工人的话时为真。
+// 阶段会显示成正在做，其实下一句还在收件箱里。这时点停止不该把这句记成停下。
+func (e *Executor) chatWaiting(ticketID string) bool {
+	if e == nil || e.Engine == nil {
+		return false
+	}
+	texts, _ := e.Engine.PendingInputs(ticketID)
+	if len(texts) == 0 {
+		return false
+	}
+	ticket, ok := e.Engine.Ticket(ticketID)
+	if !ok || len(ticket.Assignments) == 0 {
+		return false
+	}
+	asg := ticket.Assignments[len(ticket.Assignments)-1]
+	if len(asg.Reports) == 0 {
+		return false
+	}
+	last := asg.Reports[len(asg.Reports)-1]
+	switch last.State {
+	case "waiting", "ready", "blocked", "failed", "dropped":
+		return inputAfter(&ticket, last.Seq)
+	default:
+		return false
+	}
+}
+
+// workingNow 在 ticketID 还开着、阶段仍是正在做、而且不是在排队时为真。
+func (e *Executor) workingNow(ticketID string) bool {
+	ticket, ok := e.Engine.Ticket(ticketID)
+	if !ok || ticket.Ended != nil {
+		return false
+	}
+	stage := TicketStage(&ticket)
+	return stage.Name == "working" && stage.Action != "queued"
+}
+
+// startLiveLocked 把 ticketID 标成正在跑，并返回这一轮的代号。调用时要已持有 mu。
+func (e *Executor) startLiveLocked(ticketID string) int {
+	if e.liveGen == nil {
+		e.liveGen = map[string]int{}
+	}
+	e.liveGen[ticketID]++
+	e.live[ticketID] = true
+	return e.liveGen[ticketID]
+}
+
+// endLive 在 gen 仍是 ticketID 当前这一轮时清掉在跑标记。旧一轮结束时代号已经变过，不能把新一轮清掉。
+func (e *Executor) endLive(ticketID string, gen int) {
+	if e == nil || gen == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.liveGen[ticketID] != gen {
+		return
+	}
+	delete(e.live, ticketID)
 }
 
 // takeHeld 在人让 ticketID 先停下时为真，并清掉这个记号。
@@ -530,12 +609,11 @@ func (e *Executor) retire(ticketID string, w Worker) {
 
 // runAssignment 准备目录、选工人，再跑这一轮。准备失败就结束工单，不自动重试。
 func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
+	var liveToken int
 	defer e.Slots.Free(ticketID)
 	defer e.dropAgent(ticketID)
 	defer func() {
-		e.mu.Lock()
-		delete(e.live, ticketID)
-		e.mu.Unlock()
+		e.endLive(ticketID, liveToken)
 		e.closeIfEnded(ticketID)
 	}()
 	dir, err := e.ensureWorkDir(ticketID)
@@ -568,7 +646,7 @@ func (e *Executor) runAssignment(ticketID, asgID string, ticket Ticket) {
 	e.Slots.Running(ticketID)
 	e.mu.Lock()
 	old := e.swapWorkerLocked(ticketID, agent, w)
-	e.live[ticketID] = true
+	liveToken = e.startLiveLocked(ticketID)
 	delete(e.held, ticketID)
 	e.mu.Unlock()
 	if old != nil {
@@ -934,29 +1012,131 @@ func (e *Executor) Deliver(ticketID, text string) bool {
 	return true
 }
 
-// wake 在已经占好的人的额外槽里，把 text 送进停过一轮的工人 w，跑到这一轮停下。
-// 中途改派时关掉 w，不再催它。
-func (e *Executor) wake(ticketID string, w Worker, text string) {
-	asgID := e.Engine.LatestAssignment(ticketID)
+// continueDelivery 在工人进程已经不在、当前派工还停在对话里时，把没送到的话送回去接着说。
+// 接管了这次投递时返回真。槽满时返回 ErrBusy。派工不是正在进行、或没有新的话时返回假，调用方再决定要不要重开一轮。
+// 工人正在启动或还在表里时返回 ErrLater，让下一次投递走原来的工人，避免同一句开出两轮。
+func (e *Executor) continueDelivery(ticketID string) (bool, error) {
+	if e == nil || e.Engine == nil {
+		return false, nil
+	}
+	texts, _ := e.Engine.PendingInputs(ticketID)
+	if len(texts) == 0 {
+		return false, nil
+	}
+	ticket, ok := e.Engine.Ticket(ticketID)
+	if !ok || ticket.Ended != nil || len(ticket.Assignments) == 0 {
+		return false, nil
+	}
+	asg := ticket.Assignments[len(ticket.Assignments)-1]
+	if asg.State != "running" {
+		return false, nil
+	}
 	e.mu.Lock()
-	e.live[ticketID] = true
-	delete(e.held, ticketID)
+	busy := e.live[ticketID] || e.workerLocked(ticketID) != nil
 	e.mu.Unlock()
-	e.Slots.Running(ticketID)
-	stopSave := make(chan struct{})
-	defer close(stopSave)
-	go e.watchLog(w, ticketID, stopSave)
+	if busy {
+		return false, ErrLater
+	}
+	fresh, err := e.Slots.Reserve(ticketID, "person")
+	if err != nil {
+		return false, err
+	}
+	if !fresh {
+		return false, ErrLater
+	}
+	agent := assignmentAgent(ticket, asg.ID)
+	if !e.holdAgent(ticketID, agent, e.limitFor(agent)) {
+		e.Slots.Free(ticketID)
+		return false, ErrBusy
+	}
+	go e.runContinuation(ticketID, asg.ID)
+	return true, nil
+}
+
+// runContinuation 打开原来的工人，只送还没送到的话。日志还在时不重发整段任务说明。
+// 这一轮说完就停下等下一句，不再催它把任务做完。人要它继续，会再发一句。
+func (e *Executor) runContinuation(ticketID, asgID string) {
+	var liveToken int
 	defer e.Slots.Free(ticketID)
 	defer e.dropAgent(ticketID)
 	defer func() {
-		e.mu.Lock()
-		delete(e.live, ticketID)
-		e.mu.Unlock()
+		e.endLive(ticketID, liveToken)
+		e.closeIfEnded(ticketID)
+	}()
+	if e.Engine.LatestAssignment(ticketID) != asgID {
+		return
+	}
+	dir, err := e.ensureWorkDir(ticketID)
+	if err != nil {
+		return
+	}
+	ticket, ok := e.Engine.Ticket(ticketID)
+	if !ok || ticket.Ended != nil {
+		return
+	}
+	agent := assignmentAgent(ticket, asgID)
+	w, _, _, err := e.openWorker(ticketID, asgID, agent, ticket, dir)
+	if err != nil {
+		e.failOpen(ticketID, agent, err)
+		return
+	}
+	e.Slots.Running(ticketID)
+	e.mu.Lock()
+	old := e.swapWorkerLocked(ticketID, agent, w)
+	liveToken = e.startLiveLocked(ticketID)
+	delete(e.held, ticketID)
+	e.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	restored := e.restoreAgent(w, ticketID, nil)
+	if restored {
+		texts, ids := e.Engine.PendingInputs(ticketID)
+		for _, text := range texts {
+			w.Followup(dsh.UserMessage{Text: text, Source: "human"})
+		}
+		e.Engine.AckInputs(ticketID, ids)
+	} else {
+		cur, ok := e.Engine.Ticket(ticketID)
+		if !ok {
+			return
+		}
+		w.Followup(dsh.UserMessage{Text: assignmentText(cur, dir, e.mandateLine(cur), e.groupLine(cur)), Source: "assignment"})
+		e.ackSnapshot(ticketID, cur)
+	}
+	e.drive(ticketID, asgID, w, true)
+}
+
+// wake 在已经占好的人的额外槽里，把 text 送进停过一轮的工人 w。
+// 这句话说完就等下一句，不再催它把整件任务做完。中途改派时关掉 w。
+func (e *Executor) wake(ticketID string, w Worker, text string) {
+	asgID := e.Engine.LatestAssignment(ticketID)
+	e.mu.Lock()
+	liveToken := e.startLiveLocked(ticketID)
+	delete(e.held, ticketID)
+	e.mu.Unlock()
+	e.Slots.Running(ticketID)
+	defer e.Slots.Free(ticketID)
+	defer e.dropAgent(ticketID)
+	defer func() {
+		e.endLive(ticketID, liveToken)
 		e.closeIfEnded(ticketID)
 	}()
 	steerOrFollow(w, dsh.UserMessage{Text: text, Source: "human"})
+	e.drive(ticketID, asgID, w, true)
+}
+
+// drive 等到 w 这一轮停下。chat 为真时人的这句话说完就等下一句，不再追加催促。
+// 中途改派时关掉 w。人在这一轮里点了停下，就记成在等下一条消息。
+func (e *Executor) drive(ticketID, asgID string, w Worker, chat bool) {
+	stopSave := make(chan struct{})
+	defer close(stopSave)
+	go e.watchLog(w, ticketID, stopSave)
 	caps := w.Caps()
 	var tries, nudges int
+	if chat {
+		nudges = caps.Nudges
+	}
 	for {
 		w.WhenIdle()
 		e.storeAgent(w, ticketID)

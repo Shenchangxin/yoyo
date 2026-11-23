@@ -67,20 +67,28 @@ export function TaskRead(props: {
       orchestratorTranscript(ticket.id).then((rows) => {
         if (stop || !Array.isArray(rows)) return;
         const last = rows[rows.length - 1];
-        const sig = `${rows.length}:${last?.id ?? ""}:${last?.text?.length ?? 0}`;
-        if (seen.current && seen.current !== sig) setMoved(Date.now());
+        let size = 0;
+        for (const row of rows) size += row.text?.length ?? 0;
+        const sig = `${rows.length}:${last?.id ?? ""}:${size}`;
+        if (seen.current === sig) return;
+        if (seen.current) setMoved(Date.now());
         seen.current = sig;
         setLines(rows);
       }).catch(() => {});
-      setNow(Date.now());
     };
     pull();
-    const timer = window.setInterval(pull, running ? 1500 : 4000);
+    const timer = window.setInterval(pull, running ? 500 : 4000);
     return () => {
       stop = true;
       window.clearInterval(timer);
     };
   }, [ticket?.id, running]);
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
   useEffect(() => {
     if (!stopArmed) return;
     const timer = window.setTimeout(() => setStopArmed(false), 3000);
@@ -99,23 +107,27 @@ export function TaskRead(props: {
   const canRetry = open && (ticket.action === "blocked" || ticket.action === "failed" || ticket.action === "delivery");
   const updated = Date.parse(ticket.updatedAt || "");
   const since = Math.max(Number.isFinite(updated) ? updated : 0, moved);
-  const quiet = running && since > 0 ? Math.floor((now - since) / 60000) : 0;
-  const status = [taskStatus(ticket, copy.work), quiet >= 2 ? copy.work.taskStale.replace("{n}", String(quiet)) : ""].filter(Boolean).join(" · ");
+  const quietSec = running && since > 0 ? Math.max(0, Math.floor((now - since) / 1000)) : 0;
+  const pace = quietSec >= 60
+    ? copy.work.taskStale.replace("{n}", String(Math.floor(quietSec / 60)))
+    : quietSec >= 8
+      ? copy.work.taskQuiet.replace("{n}", String(quietSec))
+      : "";
+  const status = [taskStatus(ticket, copy.work), pace].filter(Boolean).join(" · ");
   const ask = taskAsk(ticket, copy.work);
   const crumb = group ? [copy.tasks.groupCrumb.replace("{title}", group.title || group.id), ticket.role || ""].filter(Boolean).join(" · ") : "";
   async function act(kind: "stop" | "retry" | "pause") {
     try {
       await orchestratorAct(kind, ticket!.id, "", "", "");
-      props.onSent?.();
     } catch (err) {
       const text = errMessage(err);
-      if (kind === "pause" && text.includes("notRunning")) return;
-      toast.error(text);
+      if (!(kind === "pause" && text.includes("notRunning"))) toast.error(text);
     }
+    props.onSent?.();
   }
   return (
-    <div data-testid={props.stage ? "task-stage" : "task-read"} className={cn("flex h-full min-h-0 w-full flex-1 flex-col", props.stage ? "mx-auto max-w-[880px] bg-background" : "bg-transparent")}>
-      <div className={cn("flex shrink-0 items-center gap-1 pt-1", props.stage ? "px-3" : "px-1")}>
+    <div data-testid={props.stage ? "task-stage" : "task-read"} className={cn("no-drag flex h-full min-h-0 w-full flex-1 flex-col", props.stage ? "mx-auto max-w-[880px] bg-background" : "bg-transparent")}>
+      <div className={cn("no-drag relative z-20 flex shrink-0 items-center gap-1 pt-1", props.stage ? "px-3" : "px-1")}>
         <button type="button" className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-lift hover:text-foreground" onClick={props.onBack} aria-label={props.stage ? copy.desk.taskBackMain : copy.work.taskBack}>
           <ChevronLeft className="size-4" />
         </button>

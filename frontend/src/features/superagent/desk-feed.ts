@@ -19,7 +19,7 @@ let mutes: DeskMute[] = [];
 /** seenMinute 是这一进程上次看见的本地分钟。-1 表示还没看过钟，第一次只记账，不补生成。 */
 let seenMinute = -1;
 
-/** latestInitiative 是最近一轮感知。任务栏用它显示会说但没说的事。 */
+/** latestInitiative 是最近一轮感知。资讯写进主会话，任务栏只留其余按住的事。 */
 export function latestInitiative(): Initiative | undefined {
   return latest;
 }
