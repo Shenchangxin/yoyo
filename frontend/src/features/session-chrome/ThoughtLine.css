@@ -181,7 +181,8 @@
 
 .thought-line__fold {
   min-height: 0;
-  overflow-x: visible;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: clip;
 }
 
@@ -189,17 +190,19 @@
   display: flex;
   flex-direction: column;
   gap: 0.45em;
-  width: max-content;
+  width: 100%;
+  max-width: 100%;
   padding: 0.6em 0 0.2em 1.6em;
   font-size: 0.875em;
   font-weight: 400;
-  white-space: nowrap;
 }
 
 .thought-line__step {
   display: flex;
   align-items: center;
   gap: 0.5em;
+  min-width: 0;
+  max-width: 100%;
   opacity: 1;
   transform: translateY(0);
   transition:
@@ -244,6 +247,10 @@
 }
 
 .thought-line__step-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: opacity var(--tl-settle) ease;
 }
 
@@ -255,7 +262,7 @@
   min-width: 0;
   max-width: 100%;
   padding: 0.45em 0 0.15em;
-  overflow-x: auto;
+  overflow-x: hidden;
   font-size: 1em;
   font-weight: 400;
   line-height: 1.55;

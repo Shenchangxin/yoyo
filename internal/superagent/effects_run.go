@@ -78,8 +78,9 @@ func (rt *Runtime) launchWaiting(id string) bool {
 	return ticket.Assignments[len(ticket.Assignments)-1].State == "pending"
 }
 
-// runDelivery 把还没送到工人的输入送进去。工人进程已经不在时，结束停住的派工并再开一轮。
-// 工单已经结束、外部工人也已关掉时，这条投递作废，不再空等。
+// runDelivery 把还没送到工人的输入送进去。工人还在这进程里时直接送。
+// 工人进程已经不在、派工却还停在对话里时，用新的一句接着说，不把整段任务说明再开一轮。
+// 派工已经结束时才再排一轮。工单已经结束、外部工人也已关掉时，这条投递作废，不再空等。
 func (rt *Runtime) runDelivery(payload any) error {
 	id, _ := payload.(string)
 	if rt == nil || rt.exec == nil {
@@ -87,6 +88,13 @@ func (rt *Runtime) runDelivery(payload any) error {
 	}
 	if rt.exec.HasAgent(id) {
 		return rt.exec.DeliverPending(id)
+	}
+	ok, err := rt.exec.continueDelivery(id)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
 	}
 	if rt.eng != nil && rt.eng.ReopenForInput(id) {
 		return nil

@@ -597,6 +597,7 @@ func (e *Engine) FollowThreads() []string {
 }
 
 // ReopenForInput 在工人已经不在、但还有没送到的话时，结束当前派工并再排一轮。已经在排队时只再通知启动。
+// 投递不会用它来接着一句还在进行的对话：那种情况只把新的话送回原来的会话。
 func (e *Engine) ReopenForInput(ticketID string) bool {
 	if e == nil {
 		return false

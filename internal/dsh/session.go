@@ -131,6 +131,92 @@ func (s *Session) Reset() {
 	s.mu.Unlock()
 }
 
+// SetAssistantText 改掉 seq 那条助手消息的正文，表面一起改。找不到时返回假。
+func (s *Session) SetAssistantText(seq int, text string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := 0
+	for i := range s.events {
+		if s.events[i].Type != EventAssistant {
+			continue
+		}
+		if s.events[i].Seq != seq {
+			index++
+			continue
+		}
+		msg, ok := s.events[i].Data.(Assistant)
+		if !ok {
+			return false
+		}
+		msg.Text = text
+		s.events[i].Data = msg
+		s.setAssistantNodeLocked(index, func(node *surfaceNode) { node.text = text })
+		return true
+	}
+	return false
+}
+
+// SetToolArguments 改掉 seq 那条助手消息里 toolID 的参数，表面一起改。找不到时返回假。
+func (s *Session) SetToolArguments(seq int, toolID, args string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := 0
+	for i := range s.events {
+		if s.events[i].Type != EventAssistant {
+			continue
+		}
+		if s.events[i].Seq != seq {
+			index++
+			continue
+		}
+		msg, ok := s.events[i].Data.(Assistant)
+		if !ok {
+			return false
+		}
+		hit := false
+		for k := range msg.ToolCalls {
+			if toolID == "" || msg.ToolCalls[k].ID == toolID {
+				msg.ToolCalls[k].Arguments = args
+				hit = true
+			}
+		}
+		if !hit {
+			return false
+		}
+		s.events[i].Data = msg
+		s.setAssistantNodeLocked(index, func(node *surfaceNode) {
+			for k := range node.toolCalls {
+				if toolID == "" || node.toolCalls[k].ID == toolID {
+					node.toolCalls[k].Arguments = args
+				}
+			}
+		})
+		return true
+	}
+	return false
+}
+
+// setAssistantNodeLocked 改第 index 个助手表面节点。调用时要已持有锁。
+func (s *Session) setAssistantNodeLocked(index int, edit func(*surfaceNode)) {
+	seen := 0
+	for i := range s.nodes {
+		if s.nodes[i].kind != "assistant" {
+			continue
+		}
+		if seen == index {
+			edit(&s.nodes[i])
+			return
+		}
+		seen++
+	}
+}
+
 // Append 追加一条事件并更新表面。turn 和 step 写入事件。data 原样保存。返回序号。
 func (s *Session) Append(typ string, turn, step int, data any) int {
 	s.mu.Lock()

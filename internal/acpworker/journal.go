@@ -38,6 +38,7 @@ type toolCall struct {
 	rawInput  json.RawMessage
 	rawOutput json.RawMessage
 	logged    bool
+	eventSeq  int
 	done      bool
 	// denied 表示 yoyo 没批准这次调用，它带的 diff 没有写下去。
 	denied bool
@@ -50,15 +51,16 @@ type journal struct {
 	dir     string
 	onUsage func(acp.UsageUpdate)
 
-	active  bool
-	turn    int
-	step    int
-	seq     int
-	text    strings.Builder
-	calls   map[string]*toolCall
-	order   []*toolCall
-	held    []*toolCall
-	written []string
+	active   bool
+	turn     int
+	step     int
+	seq      int
+	text     strings.Builder
+	draftSeq int
+	calls    map[string]*toolCall
+	order    []*toolCall
+	held     []*toolCall
+	written  []string
 }
 
 // newJournal 建一个写进 sess 的 journal。dir 用来把相对路径补成绝对路径。
@@ -75,6 +77,7 @@ func (j *journal) begin(turn int) {
 	j.step = 0
 	j.seq = 0
 	j.text.Reset()
+	j.draftSeq = 0
 	j.calls = map[string]*toolCall{}
 	j.order = nil
 	j.held = nil
@@ -127,6 +130,22 @@ func (j *journal) noteWrite(path string) {
 	}
 }
 
+// unfinished 是这一轮还没有结果的调用数。压着还没写进日志的也算。
+func (j *journal) unfinished() int {
+	if j == nil {
+		return 0
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	n := 0
+	for _, c := range j.order {
+		if c != nil && !c.done {
+			n++
+		}
+	}
+	return n
+}
+
 // update 处理一条会话更新。replay 为真的是 session/load 回放的历史，丢掉。
 func (j *journal) update(n acp.SessionNotification, replay bool) {
 	if replay {
@@ -149,6 +168,7 @@ func (j *journal) update(n acp.SessionNotification, replay bool) {
 		if u.Chunk != nil && u.Chunk.Type == "text" && u.Chunk.Text != "" {
 			j.flushHeldLocked()
 			j.text.WriteString(u.Chunk.Text)
+			j.publishDraftLocked()
 		}
 	case acp.UpdateToolCall, acp.UpdateToolUpdate:
 		if u.ToolCall != nil {
@@ -194,24 +214,22 @@ func (j *journal) deny(acpID string) {
 	j.appendResultLocked(c.id, c.name, "denied: yoyo did not approve this call", true)
 }
 
-// toolLocked 处理 tool_call 和 tool_call_update。新调用先压着，等第一条更新或下一件事再写，参数才齐。
+// toolLocked 处理 tool_call 和 tool_call_update。调用一到就写进日志，人能看见正在用的工具。
+// 之后的更新只补这一条的参数，不另起一条。
 func (j *journal) toolLocked(tc acp.ToolCall) {
 	c := j.calls[tc.ToolCallID]
 	if c == nil {
 		c = &toolCall{id: j.callIDLocked(tc.ToolCallID)}
 		j.calls[tc.ToolCallID] = c
 		j.order = append(j.order, c)
-		mergeCall(c, tc)
 		j.held = append(j.held, c)
-		if !finished(c.status) {
-			return
-		}
-	} else {
-		mergeCall(c, tc)
 	}
+	mergeCall(c, tc)
 	j.flushHeldLocked()
 	if !c.logged {
 		j.logCallLocked(c)
+	} else if !c.done {
+		j.refreshCallLocked(c)
 	}
 	if finished(c.status) && !c.done {
 		c.done = true
@@ -262,24 +280,58 @@ func (j *journal) flushTextLocked() {
 	text := j.text.String()
 	j.text.Reset()
 	if strings.TrimSpace(text) == "" {
+		j.draftSeq = 0
+		return
+	}
+	if j.draftSeq != 0 {
+		j.sess.SetAssistantText(j.draftSeq, text)
+		j.draftSeq = 0
 		return
 	}
 	j.step++
 	j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{Text: text, Finish: "stop"})
 }
 
+// publishDraftLocked 把已经攒下的正文写成一条助手消息；同一条后来的字只改这一条，不另起。
+func (j *journal) publishDraftLocked() {
+	text := j.text.String()
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if j.draftSeq != 0 {
+		j.sess.SetAssistantText(j.draftSeq, text)
+		return
+	}
+	j.step++
+	j.draftSeq = j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{Text: text, Finish: "stop"})
+}
+
 // logCallLocked 把 c 写成一条带调用的 EventAssistant，攒着的正文跟它一起写。
 func (j *journal) logCallLocked(c *toolCall) {
 	c.logged = true
-	j.appendCallLocked(c.id, c.name, toolArgs(c, j.dir))
+	c.eventSeq = j.appendCallLocked(c.id, c.name, toolArgs(c, j.dir))
 }
 
-// appendCallLocked 写一条带一个调用的 EventAssistant，攒着的正文放进它的 Text。
-func (j *journal) appendCallLocked(id, name, args string) {
-	text := j.text.String()
-	j.text.Reset()
+// refreshCallLocked 用后来到齐的参数改掉已经写下的那条调用。
+func (j *journal) refreshCallLocked(c *toolCall) {
+	if c == nil || c.eventSeq == 0 {
+		return
+	}
+	j.sess.SetToolArguments(c.eventSeq, c.id, toolArgs(c, j.dir))
+}
+
+// appendCallLocked 写一条带一个调用的 EventAssistant。正文已经单独落成草稿时不再附一份。返回序号。
+func (j *journal) appendCallLocked(id, name, args string) int {
+	text := ""
+	if j.draftSeq != 0 && j.text.Len() > 0 {
+		j.draftSeq = 0
+		j.text.Reset()
+	} else if j.draftSeq == 0 {
+		text = j.text.String()
+		j.text.Reset()
+	}
 	j.step++
-	j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{
+	return j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{
 		Text:      text,
 		ToolCalls: []dsh.ToolCall{{ID: id, Name: name, Arguments: args}},
 		Finish:    "tool_calls",

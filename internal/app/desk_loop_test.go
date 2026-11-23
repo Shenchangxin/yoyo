@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,85 @@ func TestDeliverSpeaksRecordsOnlyWhatReachedTheSession(t *testing.T) {
 	}
 	if evs, _ := a.Traces.Read("main"); len(evs) != 1 {
 		t.Fatalf("a second note was written: %d", len(evs))
+	}
+}
+
+func TestDeliverSpeaksPushesHeldReachIntoTheSession(t *testing.T) {
+	dir := t.TempDir()
+	a := &App{Home: &home.Dir{Root: dir}, Traces: trace.NewStore(filepath.Join(dir, "sessions"))}
+	store, err := a.deskBook()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 23, 22, 0, 0, 0, time.Local)
+	item := initiative.Fact{
+		ID: "reach:a", Code: "reach", Class: "reach", Name: "Hebbia",
+		Detail: "金融研究\nhttps://example.com/hebbia", State: "match", Sig: "https://example.com/hebbia", Eligible: true,
+	}
+	held := store.Assess(initiative.Input{Now: now, Facts: []initiative.Fact{item}, ReachHold: true, ReachDaily: 12, ReachEvery: time.Minute})
+	if held.Speak || len(held.Signals) != 1 || !held.Signals[0].Held {
+		t.Fatalf("held = %#v", held)
+	}
+	sent := a.deliverSpeaks("main", held, now)
+	if len(sent) != 1 || sent[0].ID != "reach:a" || !sent[0].Speak {
+		t.Fatalf("sent = %#v", sent)
+	}
+	evs, err := a.Traces.Read("main")
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("events %d %v", len(evs), err)
+	}
+	text, _ := evs[0].Payload["text"].(string)
+	if !strings.Contains(text, "https://example.com/hebbia") {
+		t.Fatalf("text = %q", text)
+	}
+	again := store.Assess(initiative.Input{Now: now.Add(time.Minute), Facts: []initiative.Fact{item}, ReachHold: true, ReachDaily: 12, ReachEvery: time.Minute})
+	if again.Speak || briefingDelivers(again) {
+		t.Fatalf("already delivered, stay quiet: %#v", again.Signals)
+	}
+}
+
+func TestDeliverSpeaksSkipsMutedAndCappedReach(t *testing.T) {
+	dir := t.TempDir()
+	a := &App{Home: &home.Dir{Root: dir}, Traces: trace.NewStore(filepath.Join(dir, "sessions"))}
+	store, err := a.deskBook()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 23, 22, 0, 0, 0, time.Local)
+	if !a.DeskFeedback("reach", "mute", "") {
+		t.Fatal("mute")
+	}
+	muted := initiative.Fact{
+		ID: "reach:m", Code: "reach", Class: "reach", Name: "静音",
+		Detail: "https://example.com/muted", State: "match", Sig: "https://example.com/muted", Eligible: true,
+	}
+	held := store.Assess(initiative.Input{Now: now, Facts: []initiative.Fact{muted}, ReachHold: true, ReachDaily: 12, ReachEvery: time.Minute})
+	if got := a.deliverSpeaks("main", held, now); len(got) != 0 {
+		t.Fatalf("muted reach was sent: %#v", got)
+	}
+	if !a.DeskFeedback("reach", "unmute", "") {
+		t.Fatal("unmute")
+	}
+	var prior []initiative.Signal
+	for i := 0; i < 12; i++ {
+		prior = append(prior, initiative.Signal{
+			ID: "reach:old" + string(rune('a'+i)), Code: "reach", Class: "reach", Speak: true, Sig: "https://example.com/old",
+		})
+	}
+	store.Deliver(prior, now)
+	extra := initiative.Fact{
+		ID: "reach:c", Code: "reach", Class: "reach", Name: "超额",
+		Detail: "https://example.com/capped", State: "match", Sig: "https://example.com/capped", Eligible: true,
+	}
+	capped := store.Assess(initiative.Input{Now: now.Add(time.Hour), Facts: []initiative.Fact{extra}, ReachHold: true, ReachDaily: 12, ReachEvery: time.Minute})
+	if capped.Speak || len(capped.Signals) != 1 || !capped.Signals[0].Held {
+		t.Fatalf("capped = %#v", capped)
+	}
+	if got := a.deliverSpeaks("main", capped, now.Add(time.Hour)); len(got) != 0 {
+		t.Fatalf("over the daily cap: %#v", got)
+	}
+	if evs, _ := a.Traces.Read("main"); len(evs) != 0 {
+		t.Fatalf("notes written: %d", len(evs))
 	}
 }
 

@@ -685,6 +685,7 @@ export const en = {
     taskOpenDir: "Open folder",
     taskOrigin: "Open where it came from",
     taskStale: "Nothing new for {n} min",
+    taskQuiet: "No new output for {n}s",
     taskAskAnswer: "The worker is waiting for your answer.",
     taskAskReview: "The worker says it is done. Look at the result before you close it.",
     taskAskBlocked: "The worker is stuck and needs a look.",

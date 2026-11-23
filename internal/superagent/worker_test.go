@@ -467,6 +467,7 @@ func TestPassingErrorCoversAgentExit(t *testing.T) {
 		"agent exited: 1 boom":         true,
 		"process exited unexpectedly":  true,
 		"read tcp: connection reset":   true,
+		"agent stalled":                true,
 		ReasonAuthRequired + ": login": false,
 		"refusal":                      false,
 	} {

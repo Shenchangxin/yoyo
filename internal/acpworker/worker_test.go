@@ -434,6 +434,108 @@ func TestWorkerTurnTimeout(t *testing.T) {
 	}
 }
 
+// withQuiet 把静默判定收成测试能等完的间隔，结束时还原。
+func withQuiet(t *testing.T, model, tool, tick time.Duration) {
+	t.Helper()
+	oldModel, oldTool, oldTick := quietModel, quietTool, quietTick
+	quietModel, quietTool, quietTick = model, tool, tick
+	t.Cleanup(func() { quietModel, quietTool, quietTick = oldModel, oldTool, oldTick })
+}
+
+// TestWorkerStallDropsASilentSession 锁住一轮从头到尾没有更新时，记成 agent stalled，丢掉连接和会话编号。
+func TestWorkerStallDropsASilentSession(t *testing.T) {
+	withQuiet(t, 200*time.Millisecond, time.Minute, 20*time.Millisecond)
+	started := make(chan struct{}, 1)
+	var pointers record[string]
+	d := scripted(acptest.Script{OnPrompt: slowTurn(started)})
+	w := newWorker(t, d, func(c *Config) { c.Spec.OnPointer = pointers.add })
+	if end := run(w, "卡住"); end.Kind != "error" || end.Reason != errStalled.Error() {
+		t.Fatalf("turn end = %+v", end)
+	}
+	if connected(w) {
+		t.Fatal("stalled connection was kept")
+	}
+	if got := pointers.list(); len(got) != 2 || got[0] == "" || got[1] != "" {
+		t.Fatalf("pointers = %v, want the silent session dropped", got)
+	}
+}
+
+// TestWorkerStallKeepsASessionThatAnswered 锁住已经有过更新、之后又静默时，丢掉连接但留着会话编号，下一轮还能续接。
+func TestWorkerStallKeepsASessionThatAnswered(t *testing.T) {
+	withQuiet(t, 200*time.Millisecond, time.Minute, 20*time.Millisecond)
+	var pointers record[string]
+	d := scripted(acptest.Script{OnPrompt: func(t *acptest.Turn) acp.StopReason {
+		t.Say("还在看")
+		if t.WaitCancel(time.Minute) {
+			return acp.StopCancelled
+		}
+		return acp.StopEndTurn
+	}})
+	w := newWorker(t, d, func(c *Config) { c.Spec.OnPointer = pointers.add })
+	if end := run(w, "卡住"); end.Kind != "error" || end.Reason != errStalled.Error() {
+		t.Fatalf("turn end = %+v", end)
+	}
+	if got := pointers.list(); len(got) != 1 || got[0] == "" {
+		t.Fatalf("pointers = %v, want the session kept", got)
+	}
+}
+
+// TestWorkerStallWaitsOutAnOpenTool 锁住工具还没返回时不按模型静默的短上限取消。
+func TestWorkerStallWaitsOutAnOpenTool(t *testing.T) {
+	withQuiet(t, 40*time.Millisecond, time.Second, 10*time.Millisecond)
+	started := make(chan struct{}, 1)
+	d := scripted(acptest.Script{OnPrompt: func(t *acptest.Turn) acp.StopReason {
+		t.Tool(map[string]any{"toolCallId": "c1", "kind": "read", "status": "in_progress", "title": "read"})
+		started <- struct{}{}
+		if t.WaitCancel(time.Minute) {
+			return acp.StopCancelled
+		}
+		return acp.StopEndTurn
+	}})
+	w := newWorker(t, d, nil)
+	w.Followup(dsh.UserMessage{Text: "读一下"})
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tool turn did not start")
+	}
+	time.Sleep(160 * time.Millisecond)
+	if w.Status() != "running" {
+		t.Fatalf("status = %s, an open tool was stalled on the model budget", w.Status())
+	}
+	w.Cancel(dsh.CancelCause{Kind: "steer"}, false)
+	w.WhenIdle()
+}
+
+// TestWorkerStallWaitsWhileApprovalIsOpen 锁住等人批准时不把这一轮当成静默。
+func TestWorkerStallWaitsWhileApprovalIsOpen(t *testing.T) {
+	withQuiet(t, 40*time.Millisecond, time.Second, 10*time.Millisecond)
+	started := make(chan struct{}, 1)
+	d := scripted(acptest.Script{OnPrompt: func(t *acptest.Turn) acp.StopReason {
+		_, _ = t.Permission(map[string]any{"toolCallId": "p1", "title": "rm -rf build", "kind": "execute"}, acptest.DefaultPermOptions())
+		return acp.StopEndTurn
+	}})
+	w := newWorker(t, d, func(c *Config) {
+		c.Approve = func(ctx context.Context, _ Approval) (bool, error) {
+			started <- struct{}{}
+			<-ctx.Done()
+			return false, ctx.Err()
+		}
+	})
+	w.Followup(dsh.UserMessage{Text: "要批准"})
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("approval did not open")
+	}
+	time.Sleep(160 * time.Millisecond)
+	if w.Status() != "running" {
+		t.Fatalf("status = %s, approval wait was treated as a stall", w.Status())
+	}
+	w.Cancel(dsh.CancelCause{Kind: "steer"}, false)
+	w.WhenIdle()
+}
+
 func TestWorkerCrashReconnectsAndLoads(t *testing.T) {
 	d := &dialer{script: func(n int) acptest.Script {
 		if n == 1 {

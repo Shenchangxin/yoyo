@@ -686,6 +686,7 @@ export const zhCN = {
     taskOpenDir: "打开目录",
     taskOrigin: "打开来源",
     taskStale: "{n} 分钟没有新动静",
+    taskQuiet: "已 {n} 秒没有新输出",
     taskAskAnswer: "工人在等你回答。",
     taskAskReview: "工人说做完了。看过结果再收。",
     taskAskBlocked: "工人卡住了，要你看一眼。",

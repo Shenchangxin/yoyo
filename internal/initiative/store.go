@@ -108,6 +108,19 @@ func (s *Store) Quiet(day string) map[string]Mute {
 	return Quiet(s.book, day)
 }
 
+// ReachSent 是 day 这一天已经写进会话的资讯条数。换了一天则为 0。
+func (s *Store) ReachSent(day string) int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.book.Reach.Day != day {
+		return 0
+	}
+	return s.book.Reach.N
+}
+
 // NoteSchedule 记下一条到期的日程。
 func (s *Store) NoteSchedule(id, title, day string) {
 	if s == nil {

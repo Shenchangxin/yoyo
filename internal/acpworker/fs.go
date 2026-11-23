@@ -24,6 +24,9 @@ var errNotAbsolute = errors.New("path must be absolute")
 
 // readFile 处理 fs/read_text_file。Line 从 1 起，Limit 是最多几行。
 func (w *Worker) readFile(_ context.Context, req acp.ReadTextFileRequest) (string, error) {
+	w.holding.Add(1)
+	defer w.holding.Add(-1)
+	w.touchHeard()
 	path, err := w.fsPath(req.Path, false)
 	if err != nil {
 		return "", err
@@ -47,6 +50,9 @@ func (w *Worker) readFile(_ context.Context, req acp.ReadTextFileRequest) (strin
 
 // writeFile 处理 fs/write_text_file。写成后记进这一轮，没有工具调用覆盖到的会在回合结束时补记。
 func (w *Worker) writeFile(ctx context.Context, req acp.WriteTextFileRequest) error {
+	w.holding.Add(1)
+	defer w.holding.Add(-1)
+	w.touchHeard()
 	path, err := w.fsPath(req.Path, true)
 	if err != nil {
 		return err

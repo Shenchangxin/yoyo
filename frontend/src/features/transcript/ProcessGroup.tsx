@@ -155,7 +155,6 @@ export const ProcessGroup = memo(function ProcessGroup({
 }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
-  const swap = motionTransition(reduced, DURATION_FAST);
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const open = userOpen ?? !grouped;
   const [shown, setShown] = useState(PROCESS_PAGE);
@@ -200,44 +199,28 @@ export const ProcessGroup = memo(function ProcessGroup({
           )}
         </span>
         <span className="relative min-w-0 flex-1 overflow-hidden" aria-live={live ? "polite" : undefined}>
-          <AnimatePresence initial={false} mode="popLayout">
-            {live ? (
-              <motion.span
-                key={livePair?.key || "composing"}
-                className="flex min-w-0 items-center gap-2 truncate"
-                initial={reduced ? false : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduced ? undefined : { opacity: 0, y: -4 }}
-                transition={swap}
-                data-testid={livePair ? "tool-row" : undefined}
-              >
-                <LiveLabel pair={livePair} t={copy.transcript} detail={liveDetail} />
-              </motion.span>
-            ) : (
-              <motion.span
-                key="settled"
-                className="flex min-w-0 items-center gap-1.5 truncate text-muted"
-                initial={reduced ? false : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={swap}
-              >
-                {settledLabel ? <span>{settledLabel}</span> : null}
-                {settledLabel && summary ? <span className="text-muted/50">·</span> : null}
-                {summary ? <span className="truncate">{summary}</span> : null}
-                {failed > 0 ? (
-                  <>
-                    <span className="text-muted/50">·</span>
-                    <span className="text-danger/90">{copy.transcript.failedCount.replace("{n}", String(failed))}</span>
-                  </>
-                ) : interrupted ? (
-                  <>
-                    <span className="text-muted/50">·</span>
-                    <span className="text-warning/90">{copy.transcript.toolInterrupted}</span>
-                  </>
-                ) : null}
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {live ? (
+            <span className="flex min-w-0 items-center gap-2 truncate" data-testid={livePair ? "tool-row" : undefined}>
+              <LiveLabel pair={livePair} t={copy.transcript} detail={liveDetail} />
+            </span>
+          ) : (
+            <span className="flex min-w-0 items-center gap-1.5 truncate text-muted">
+              {settledLabel ? <span>{settledLabel}</span> : null}
+              {settledLabel && summary ? <span className="text-muted/50">·</span> : null}
+              {summary ? <span className="truncate">{summary}</span> : null}
+              {failed > 0 ? (
+                <>
+                  <span className="text-muted/50">·</span>
+                  <span className="text-danger/90">{copy.transcript.failedCount.replace("{n}", String(failed))}</span>
+                </>
+              ) : interrupted ? (
+                <>
+                  <span className="text-muted/50">·</span>
+                  <span className="text-warning/90">{copy.transcript.toolInterrupted}</span>
+                </>
+              ) : null}
+            </span>
+          )}
         </span>
         {live && start ? (
           <span className="shrink-0 text-ui-footnote text-muted/70">
@@ -262,7 +245,7 @@ export const ProcessGroup = memo(function ProcessGroup({
             transition={motionTransition(reduced)}
             className="overflow-hidden"
           >
-            <div className={cn("step-rail min-w-0 pb-1 pt-0.5", compact && "pt-1", live && "step-rail-live")}>
+            <div className={cn("step-rail min-w-0 pb-1 pt-0.5", compact && "pt-1")}>
               {hidden > 0 ? (
                 <button
                   type="button"
@@ -412,16 +395,16 @@ function StepRow({
 }) {
   const reduced = useMotionReduced();
   return (
-    <div data-testid={testId} className={cn("step-row -mx-1.5 rounded-md px-1.5", className)}>
+    <div data-testid={testId} className={cn("step-row min-w-0 max-w-full rounded-md px-1.5", className)}>
       <button
         type="button"
-        className="group/row flex w-full min-w-0 items-center gap-2.5 py-1 pr-0.5 text-left text-ui-body"
+        className="group/row flex w-full min-w-0 items-center gap-2.5 overflow-hidden py-1 pr-0.5 text-left text-ui-body"
         aria-expanded={open}
         onClick={onToggle}
       >
         {glyph}
-        <span className={cn("shrink-0 font-mono text-ui-footnote font-medium", labelTone || "text-foreground/85")}>{label}</span>
-        {detail ? <span className="min-w-0 truncate font-mono text-ui-footnote text-muted/75">{detail}</span> : null}
+        <span className={cn("max-w-[46%] shrink truncate font-mono text-ui-footnote font-medium", labelTone || "text-foreground/85")}>{label}</span>
+        {detail ? <span className="min-w-0 flex-1 basis-0 truncate font-mono text-ui-footnote text-muted/75" title={detail}>{detail}</span> : null}
         <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums text-ui-caption text-muted/70">
           {meta}
           <ChevronRight

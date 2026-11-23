@@ -777,6 +777,8 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 	var err error
 	var halted []string
 	relayStop := ""
+	pauseID := ""
+	stopID := ""
 	switch kind {
 	case "attach":
 		err = rt.eng.Attach(ticketID, triggerID, text)
@@ -803,14 +805,10 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 			if relayStop == "" {
 				relayStop = "已停下"
 			}
-			if rt.exec != nil {
-				rt.exec.Interrupt(ticketID)
-			}
+			stopID = ticketID
 		}
 	case "pause":
-		if rt.exec == nil || !rt.exec.Pause(ticketID) {
-			err = errCode("notRunning")
-		}
+		pauseID = ticketID
 	case "accept":
 		err = rt.eng.Accept(ticketID, reason)
 	case "retry":
@@ -858,21 +856,33 @@ func (rt *Runtime) Act(kind, ticketID, triggerID, text, reason string) error {
 		rt.mu.Unlock()
 		return err
 	}
+	exec := rt.exec
+	if pauseID != "" {
+		// 停工人可能要等对方取消，不能占着运行时的锁，否则整页按钮都会等。
+		rt.mu.Unlock()
+		if exec == nil || !exec.Pause(pauseID) {
+			return errCode("notRunning")
+		}
+		rt.mu.Lock()
+	}
 	haltedWhy := ""
 	if len(halted) > 0 {
 		haltedWhy = firstText(reason, "整组停下了")
 		if kind == "pick" {
 			haltedWhy = firstText(reason, "采用了 "+ticketID)
 		}
-		for _, id := range halted {
-			if rt.exec != nil {
-				rt.exec.Interrupt(id)
-			}
-		}
 	}
 	rt.saveLocked()
 	effects := rt.effects
 	rt.mu.Unlock()
+	if stopID != "" && exec != nil {
+		exec.Interrupt(stopID)
+	}
+	for _, id := range halted {
+		if exec != nil {
+			exec.Interrupt(id)
+		}
+	}
 	if relayStop != "" {
 		rt.queueReport(ticketID, "stopped", relayStop, "")
 	}

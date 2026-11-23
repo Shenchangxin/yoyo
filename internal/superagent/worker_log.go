@@ -554,13 +554,13 @@ func hasMessage(events []dsh.Event, id string) bool {
 	return false
 }
 
-// passingError 在失败是暂时的网络或服务端限流时为真。外部 agent 进程退出也算，重试时工人会重连并续接。准备命令失败不算。
+// passingError 在失败是暂时的网络、服务端限流或 agent 静默时为真。外部 agent 进程退出也算，重试时工人会重连并续接。准备命令失败不算。
 func passingError(err string) bool {
 	text := strings.ToLower(err)
 	if text == "" {
 		return false
 	}
-	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "connection closed", "broken pipe", "eof", "temporarily", "agent exited", "process exited"} {
+	for _, part := range []string{"408", "429", "500", "502", "503", "504", "timeout", "timed out", "connection refused", "connection reset", "connection closed", "broken pipe", "eof", "temporarily", "agent exited", "process exited", "stalled"} {
 		if strings.Contains(text, part) {
 			return true
 		}

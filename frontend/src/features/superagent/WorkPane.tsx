@@ -206,7 +206,7 @@ export function WorkPane(props: {
   const reduced = useMotionReduced();
   if (props.reviewOpen) {
     return (
-      <div data-testid="work-pane" className="rail-scroll-fade flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-3 pb-16 pt-2 text-foreground">
+      <div data-testid="work-pane" className="no-drag rail-scroll-fade flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-3 pb-16 pt-2 text-foreground">
         <button type="button" className="mb-2 self-start rounded-full border border-border bg-card px-3 py-1 text-ui-footnote text-muted shadow-[var(--shadow-card)] hover:bg-lift hover:text-foreground" onClick={() => props.onReview(false)}>
           {copy.work.back}
         </button>
@@ -216,7 +216,7 @@ export function WorkPane(props: {
   }
 
   return (
-    <div data-testid="work-pane" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent text-foreground">
+    <div data-testid="work-pane" className="no-drag flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent text-foreground">
       <div className="flex shrink-0 justify-center px-3 pb-1.5 pt-2">
         <div role="tablist" aria-label={copy.work.title} className="flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full border border-border/60 bg-lift/75 p-1">
           {tabs.map((item) => {
@@ -309,7 +309,7 @@ export function WorkPane(props: {
               onSelect={(id) => props.onOpenTask(id)}
               onOpenGroup={setGroupId}
               onNewTask={props.onNewTask}
-              held={(desk?.signals || []).filter((signal) => signal.held)}
+              held={(desk?.signals || []).filter((signal) => signal.held && signal.code !== "reach")}
               notes={(desk?.open || []).filter((item) => item.class === "schedule")}
               rules={view.rules ?? []}
               mode={view.mode}
