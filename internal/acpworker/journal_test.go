@@ -163,6 +163,20 @@ func TestJournalControlToolKeepsBareName(t *testing.T) {
 	}
 }
 
+func TestJournalStripsOpenCodeToolPrefix(t *testing.T) {
+	j, sess, _ := newTestJournal(t)
+	j.begin(1)
+	j.update(wire(t, map[string]any{
+		"sessionUpdate": acp.UpdateToolCall, "toolCallId": "r1", "title": "yoyo_orchestrator_report", "kind": "other", "status": "completed",
+		"rawInput": map[string]any{"state": "ready", "summary": "做完了"},
+	}), false)
+	j.finish(true)
+	wantLines(t, transcript(sess),
+		[3]string{"tool_call", "orchestrator_report", `{"state":"ready","summary":"做完了"}`},
+		[3]string{"tool_result", "orchestrator_report", "*"},
+	)
+}
+
 func TestJournalExecuteKeepsCommandAndOutputTail(t *testing.T) {
 	j, sess, _ := newTestJournal(t)
 	j.begin(1)

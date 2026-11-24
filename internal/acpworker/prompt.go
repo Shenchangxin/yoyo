@@ -18,8 +18,9 @@ const mcpName = "yoyo"
 
 // mcpServers 返回交给 agent 的控制面。对方支持 HTTP MCP 时直连，token 放在 Authorization 头里；
 // 否则经 yoyo 自己的 stdio 桥，token 放在桥进程的环境变量里。两种都不进命令行参数。url 或 token 为空时不给。
-func mcpServers(caps acp.AgentCapabilities, url, token, exe string) []acp.McpServer {
-	if url == "" || token == "" {
+// direct 为真时控制面已经写进 agent 自己的配置（OpenCode 要这样才把工具列出来），这里不再登记，免得盖掉那份配置。
+func mcpServers(caps acp.AgentCapabilities, url, token, exe string, direct bool) []acp.McpServer {
+	if direct || url == "" || token == "" {
 		return []acp.McpServer{}
 	}
 	if caps.McpCapabilities.HTTP {

@@ -88,6 +88,31 @@ func (a *App) openBuddyWorker(ctx context.Context, spec superagent.WorkerSpec) (
 	}
 	exe, _ := os.Executable()
 	ctl := a.control
+	direct := false
+	model := m.Model(id)
+	if openCodeBuddy(id) && strings.TrimSpace(spec.Dir) != "" && ctl.URL() != "" {
+		file := acpworker.OpenCodeFile{MCPURL: ctl.URL()}
+		qualified := ""
+		if base := launchEnv(launch.Env, "OPENAI_BASE_URL"); base != "" {
+			if ref, ok := acpworker.OpenCodeModelRef(model, base); ok {
+				file.Provider = &acpworker.OpenCodeProvider{BaseURL: base, Model: model}
+				qualified = ref
+				if launchEnv(launch.Env, "OPENAI_API_KEY") == "" {
+					diaglog.Warn("opencode provider has no api key", "component", "acp", "agent", id, "ticket", spec.TicketID)
+				}
+			}
+		}
+		if err := acpworker.WriteOpenCodeFile(spec.Dir, file); err != nil {
+			diaglog.Warn("opencode control config", "component", "acp", "agent", id, "ticket", spec.TicketID, "err", err)
+		} else {
+			direct = true
+			if qualified != "" {
+				model = qualified
+			}
+			launch.Env = append(append([]string{}, launch.Env...), "YOYO_MCP_TOKEN="+token)
+			secrets = append(secrets, token)
+		}
+	}
 	diaglog.Info("acp worker open", "component", "acp", "agent", id, "ticket", spec.TicketID, "resume", spec.Pointer != "")
 	return acpworker.Open(acpworker.Config{
 		Spec:        spec,
@@ -96,8 +121,9 @@ func (a *App) openBuddyWorker(ctx context.Context, spec superagent.WorkerSpec) (
 		Version:     version.Version,
 		MCPURL:      ctl.URL(),
 		MCPToken:    token,
+		MCPDirect:   direct,
 		Exe:         exe,
-		Model:       m.Model(id),
+		Model:       model,
 		Approve:     a.buddyApprover(spec, m.Approval(id)),
 		CheckWrite:  a.buddyWriteCheck(spec),
 		TurnTimeout: time.Duration(a.buddySettings().TurnMinutesOf()) * time.Minute,
@@ -111,6 +137,27 @@ func (a *App) openBuddyWorker(ctx context.Context, spec superagent.WorkerSpec) (
 		Redact:  func(s string) string { return buddy.Redact(s, secrets...) },
 		OnClose: func() { ctl.Unregister(token) },
 	}), nil
+}
+
+// launchEnv 按名字取启动环境里的值，名字不分大小写。没有时返回空串。
+func launchEnv(env []string, name string) string {
+	for _, item := range env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok && strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
+}
+
+// openCodeBuddy 在这一项是 OpenCode 时为真。它的 ACP 控制面默认进 Code Mode，报告工具模型点不到。
+func openCodeBuddy(id string) bool {
+	switch strings.ToLower(strings.TrimSpace(id)) {
+	case "opencode", "opencode-v2":
+		return true
+	default:
+		return false
+	}
 }
 
 // controlTools 只留 orchestrator_* 工具。控制面不给外部 agent 别的东西。

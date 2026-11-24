@@ -859,8 +859,11 @@ func (e *Executor) ackSnapshot(ticketID string, ticket Ticket) {
 	e.Engine.AckInputs(ticketID, ids)
 }
 
+// agentSpinSummary 是空转停下时留给任务页的那句。不再催「继续」，否则同一串打印会再来一轮。
+const agentSpinSummary = "工人在空转：连续用 shell 打印，没有调用报告工具，这一轮已停下"
+
 // afterTurn 看 w 的上一回合。暂时失败时再开一次并返回 again。其他失败记下 failed 并返回 stop。
-// 外部工人一轮超时记 waiting，要登录记 blocked，都返回 stop。
+// 外部工人一轮超时记 waiting，要登录记 blocked，空转也记 waiting，都返回 stop。
 func (e *Executor) afterTurn(w Worker, ticketID string, tries *int) (stop, again bool) {
 	kind, reason := lastTurnEnd(w)
 	if kind == "aborted" && reason == ReasonTurnTimeout {
@@ -873,6 +876,10 @@ func (e *Executor) afterTurn(w Worker, ticketID string, tries *int) (stop, again
 	}
 	if kind != "error" {
 		return false, false
+	}
+	if reason == ReasonAgentSpin {
+		e.stopWith(ticketID, Report{State: "waiting", Summary: agentSpinSummary})
+		return true, false
 	}
 	if strings.HasPrefix(reason, ReasonAuthRequired) {
 		name := e.agentName(e.agentOf(ticketID))

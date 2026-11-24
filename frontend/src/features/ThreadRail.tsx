@@ -376,7 +376,7 @@ export function ThreadRail(props: {
   return (
     <div className="rail-shell relative flex h-full min-h-0 flex-col overflow-hidden">
     <SidebarCard className="rail-scroll-host h-full min-h-0 flex-1 bg-transparent">
-      <div className={cn("chrome drag flex h-11 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
+      <div className={cn("chrome drag flex h-11 min-h-11 max-h-11 shrink-0 items-center gap-2 overflow-hidden px-3", mac && "pl-[76px]")}>
         <YoyoMark live />
         {props.isolated ? <span className="rounded-full bg-lift px-1.5 py-0.5 text-ui-badge text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
           <span className="rounded-full bg-lift px-1.5 py-0.5 text-ui-badge text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>

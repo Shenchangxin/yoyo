@@ -6,9 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { motion } from "motion/react";
 import { Activity, ArrowRight, Brain, Calendar, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Clock, Coffee, Compass, Folder, FolderOpen, GitBranch, Inbox, Info, ListChecks, Mail, MapPin, Megaphone, MessageCircle, Monitor, Moon, Plus, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Sun, type LucideIcon } from "lucide-react";
-import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import { toast } from "sonner";
 import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, inboxDismiss, inboxRead, memoryEdit, memoryForget, memoryList, memoryWrite, personalAnswer, personalDecide, type DeskMute } from "../../lib/client";
 import type { Attachment, FileHit, Notice, SkillInfo } from "../../lib/protocol";
@@ -203,7 +201,6 @@ export function WorkPane(props: {
     { id: "buddy", label: copy.work.buddy, count: buddyNeeds, person: buddyNeeds > 0 },
   ];
 
-  const reduced = useMotionReduced();
   if (props.reviewOpen) {
     return (
       <div data-testid="work-pane" className="no-drag rail-scroll-fade flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-3 pb-16 pt-2 text-foreground">
@@ -217,8 +214,8 @@ export function WorkPane(props: {
 
   return (
     <div data-testid="work-pane" className="no-drag flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent text-foreground">
-      <div className="flex shrink-0 justify-center px-3 pb-1.5 pt-2">
-        <div role="tablist" aria-label={copy.work.title} className="flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full border border-border/60 bg-lift/75 p-1">
+      <div className="flex h-12 shrink-0 items-center justify-center overflow-hidden px-3">
+        <div role="tablist" aria-label={copy.work.title} className="flex max-w-full flex-nowrap items-center justify-center gap-0.5 overflow-x-auto rounded-full border border-border/60 bg-lift/75 p-1">
           {tabs.map((item) => {
             const on = tab === item.id;
             return (
@@ -229,17 +226,13 @@ export function WorkPane(props: {
                 aria-selected={on}
                 data-testid={`work-tab-${item.id}`}
                 className={cn(
-                  "relative flex h-7 items-center gap-1.5 rounded-full px-3 text-ui-body font-medium transition-colors duration-200 ease-[var(--ease-out)]",
+                  "relative flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-ui-body font-medium transition-colors duration-200 ease-[var(--ease-out)]",
                   on ? "text-foreground" : "text-muted hover:text-foreground",
                 )}
                 onClick={() => pick(item.id)}
               >
                 {on ? (
-                  <motion.span
-                    layoutId="work-pane-tab-pill"
-                    className="absolute inset-0 rounded-full border border-border/70 bg-card shadow-[var(--shadow-card)]"
-                    transition={motionTransition(reduced, DURATION)}
-                  />
+                  <span className="absolute inset-0 rounded-full border border-border/70 bg-card shadow-[var(--shadow-card)]" />
                 ) : null}
                 <span className="relative z-10">{item.label}</span>
                 {item.count ? <span className={cn("relative z-10 tabular-nums text-ui-caption", item.person ? "text-warning" : "text-muted")}>{item.count}</span> : null}
@@ -468,8 +461,12 @@ function Now(props: {
   function jump(id: string) {
     setToggled((prev) => ({ ...prev, [id]: false }));
     requestAnimationFrame(() => {
+      const node = document.getElementById(briefCardAnchor(id));
+      const scroller = node?.closest(".day-scroll");
+      if (!node || !(scroller instanceof HTMLElement)) return;
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      document.getElementById(briefCardAnchor(id))?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+      const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 12;
+      scroller.scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
     });
   }
   return (

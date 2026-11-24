@@ -143,7 +143,7 @@ export class ConversationFold {
   }
 
   /**
-   * 流帧走 acceptStream。step_end 与 turn_end 退休流并收束。账本类忽略。compaction 只留 kind 为 checkpoint 的。用户、助手、推理、工具分别处理。键已存在则忽略，否则追加。
+   * 流帧走 acceptStream。step_end 与 turn_end 退休流并收束。kind 为 error 的 turn_end 补一张错误卡片。账本类忽略。compaction 只留 kind 为 checkpoint 的。用户、助手、推理、工具分别处理。键已存在则忽略，否则追加。
    * ev 读取 type、payload、key，为假时走另一支，传给 acceptStream，传给 acceptUser，传给 acceptSettlement，传给 acceptReasoning，传给 upsertByKey。
    */
   private acceptCore(ev: Item): void {
@@ -155,6 +155,22 @@ export class ConversationFold {
     if (ev.type === "step_end" || ev.type === "turn_end") {
       this.stream.retire();
       this.settleStreaming();
+      // 失败的回合结束本身不画。没有单独的错误事件时，用原因补一张卡片，否则页面只剩用户那一句。
+      if (ev.type === "turn_end" && String(ev.payload?.kind || "") === "error") {
+        const reason = String(ev.payload?.reason || "").trim() || "model error";
+        const key = `${ev.key || ev.ts || "turn"}:fault`;
+        if (!this.list.some((x) => x.type === "error" && (x.key === key || (ev.payload?.turn_id && x.payload?.turn_id === ev.payload.turn_id)))) {
+          this.list = [...this.list, {
+            ...ev,
+            type: "error",
+            key,
+            text: reason,
+            name: "",
+            delta: false,
+            payload: { error: reason, detail: reason, retryable: true, turn_id: ev.payload?.turn_id },
+          }];
+        }
+      }
       return;
     }
     if (isLedger(ev.type)) return;

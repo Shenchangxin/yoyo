@@ -42,6 +42,8 @@ type toolCall struct {
 	done      bool
 	// denied 表示 yoyo 没批准这次调用，它带的 diff 没有写下去。
 	denied bool
+	// counted 表示这次调用已经计入空转计数，后来的状态更新不再加一次。
+	counted bool
 }
 
 // journal 把一个工人的 ACP 更新写进它的 dsh 日志。只在 begin 和 finish 之间写；回放和回合外的更新只取用量。
@@ -61,6 +63,10 @@ type journal struct {
 	order    []*toolCall
 	held     []*toolCall
 	written  []string
+	// probes 是这一轮连续的纯打印次数。spin 在达到上限时为真，直到下一轮 begin。
+	probes    int
+	spin      bool
+	spinFired bool
 }
 
 // newJournal 建一个写进 sess 的 journal。dir 用来把相对路径补成绝对路径。
@@ -82,6 +88,9 @@ func (j *journal) begin(turn int) {
 	j.order = nil
 	j.held = nil
 	j.written = nil
+	j.probes = 0
+	j.spin = false
+	j.spinFired = false
 }
 
 // finish 收尾：写出还压着的调用，给结果里不会写成 wrote 的 fs 写入补一对 write_file，按出现顺序给没有结果的调用补结果，
@@ -235,6 +244,61 @@ func (j *journal) toolLocked(tc acp.ToolCall) {
 		c.done = true
 		j.appendResultLocked(c.id, c.name, resultText(c, j.dir), c.status == "failed")
 	}
+	j.noteProbeLocked(c)
+}
+
+// noteProbeLocked 数连续的纯打印。编辑、读取或一条真正干活的命令把计数清掉。达到上限时记下空转。
+func (j *journal) noteProbeLocked(c *toolCall) {
+	if c == nil || j.spin {
+		return
+	}
+	if c.kind != "" && c.kind != "execute" {
+		j.probes = 0
+		return
+	}
+	if c.name != "" && c.name != "shell" && c.name != "tool" {
+		j.probes = 0
+		return
+	}
+	cmd, ok := inputCommand(c)
+	if !ok {
+		return
+	}
+	if !isPrintProbe(cmd) {
+		j.probes = 0
+		return
+	}
+	if !c.counted {
+		c.counted = true
+		j.probes++
+	}
+	if j.probes >= probeStreakLimit {
+		j.spin = true
+	}
+}
+
+// spun 在这一轮已经判定为空转时为真。
+func (j *journal) spun() bool {
+	if j == nil {
+		return false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.spin
+}
+
+// consumeSpin 在空转刚被判定、还没通知过工人时为真，并记下已经通知过。
+func (j *journal) consumeSpin() bool {
+	if j == nil {
+		return false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.spin || j.spinFired {
+		return false
+	}
+	j.spinFired = true
+	return true
 }
 
 // planLocked 把计划写成一对合成的 update_plan 调用和结果，形状和 yoyo 自己的 update_plan 一样。
@@ -457,6 +521,10 @@ func stripPrefix(name string) string {
 			return name[len(prefix):]
 		}
 	}
+	// OpenCode 把关掉 Code Mode 的服务器列成 yoyo_orchestrator_report。只剥报告这一族，免得改掉别的工具。
+	if rest, ok := strings.CutPrefix(name, mcpName+"_"); ok && strings.HasPrefix(rest, "orchestrator_") {
+		return rest
+	}
 	return name
 }
 
@@ -515,6 +583,27 @@ func commandOf(c *toolCall) string {
 		}
 	}
 	return strings.TrimSpace(c.title)
+}
+
+// inputCommand 只取参数里的命令或代码。标题还没被参数替换时不算，免得把 "shell" 这种占位当成一条命令。
+func inputCommand(c *toolCall) (string, bool) {
+	if c == nil || len(c.rawInput) == 0 {
+		return "", false
+	}
+	var in struct {
+		Command json.RawMessage `json:"command"`
+		Cmd     json.RawMessage `json:"cmd"`
+		Code    json.RawMessage `json:"code"`
+	}
+	if json.Unmarshal(c.rawInput, &in) != nil {
+		return "", false
+	}
+	for _, raw := range []json.RawMessage{in.Command, in.Cmd, in.Code} {
+		if text := commandText(raw); text != "" {
+			return text, true
+		}
+	}
+	return "", false
 }
 
 // commandText 把字符串或字符串数组形式的命令收成一行。

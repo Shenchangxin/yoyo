@@ -7,6 +7,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -274,15 +275,18 @@ func TestWorkerGivesControlPlaneThroughBridge(t *testing.T) {
 
 func TestMCPServersPreferHTTP(t *testing.T) {
 	caps := acp.AgentCapabilities{McpCapabilities: acp.McpCapabilities{HTTP: true}}
-	got := mcpServers(caps, "http://127.0.0.1:1/mcp", "tok", "yoyo.exe")
+	got := mcpServers(caps, "http://127.0.0.1:1/mcp", "tok", "yoyo.exe", false)
 	if len(got) != 1 || got[0].Type != "http" || got[0].URL != "http://127.0.0.1:1/mcp" || got[0].Command != "" {
 		t.Fatalf("servers = %+v", got)
 	}
 	if len(got[0].Headers) != 1 || got[0].Headers[0] != (acp.HTTPHeader{Name: "Authorization", Value: "Bearer tok"}) {
 		t.Fatalf("headers = %+v", got[0].Headers)
 	}
-	if len(mcpServers(caps, "", "tok", "x")) != 0 || len(mcpServers(caps, "http://x", "", "x")) != 0 {
+	if len(mcpServers(caps, "", "tok", "x", false)) != 0 || len(mcpServers(caps, "http://x", "", "x", false)) != 0 {
 		t.Fatal("no control plane without both url and token")
+	}
+	if len(mcpServers(caps, "http://127.0.0.1:1/mcp", "tok", "yoyo.exe", true)) != 0 {
+		t.Fatal("a direct config must not also be registered over ACP")
 	}
 }
 
@@ -819,5 +823,61 @@ func TestCloseAllHaltsWithoutReconnecting(t *testing.T) {
 	fresh := newWorkerIn(t, w.pool, scripted(acptest.Script{}), nil)
 	if end := run(fresh, "新的"); end.Kind != "completed" {
 		t.Fatalf("a worker opened after CloseAll = %+v", end)
+	}
+}
+
+// shellCall 发一条已经完成的执行类调用。
+func shellCall(t *acptest.Turn, id, cmd string) {
+	t.Tool(map[string]any{
+		"toolCallId": id,
+		"title":      cmd,
+		"kind":       "execute",
+		"status":     "completed",
+		"rawInput":   map[string]any{"command": cmd},
+	})
+}
+
+func TestWorkerStopsPrintProbeSpin(t *testing.T) {
+	d := scripted(acptest.Script{OnPrompt: func(turn *acptest.Turn) acp.StopReason {
+		for i := 1; i <= probeStreakLimit+2; i++ {
+			shellCall(turn, "p"+strconv.Itoa(i), `node -e "console.log('real`+strconv.Itoa(i)+`')"`)
+			if turn.Ctx.Err() != nil {
+				return acp.StopCancelled
+			}
+		}
+		turn.Say("还在")
+		return acp.StopEndTurn
+	}})
+	w := newWorker(t, d, nil)
+	if end := run(w, "做完就报告"); end.Kind != "error" || end.Reason != superagent.ReasonAgentSpin {
+		t.Fatalf("turn end = %+v", end)
+	}
+}
+
+func TestWorkerAllowsRealCommandBetweenProbes(t *testing.T) {
+	d := scripted(acptest.Script{OnPrompt: func(turn *acptest.Turn) acp.StopReason {
+		for i := 1; i < probeStreakLimit; i++ {
+			shellCall(turn, "p"+strconv.Itoa(i), `node -e "console.log('real`+strconv.Itoa(i)+`')"`)
+		}
+		shellCall(turn, "work", "node verify_viewport.js plan.html out.json")
+		turn.Say("验证跑完了")
+		return acp.StopEndTurn
+	}})
+	w := newWorker(t, d, nil)
+	if end := run(w, "做完就报告"); end.Kind != "completed" {
+		t.Fatalf("turn end = %+v", end)
+	}
+}
+
+func TestWorkerSkipsACPWhenMCPDirect(t *testing.T) {
+	d := scripted(acptest.Script{})
+	w := newWorker(t, d, func(c *Config) {
+		c.MCPURL = "http://127.0.0.1:4321/mcp"
+		c.MCPToken = "tok-secret"
+		c.MCPDirect = true
+	})
+	run(w, "hi")
+	if servers := d.agent(0).Sessions()[0].McpServers; len(servers) != 0 {
+		t.Fatalf("direct config was also registered over ACP: %+v", servers)
 	}
 }

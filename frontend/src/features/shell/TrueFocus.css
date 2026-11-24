@@ -92,12 +92,15 @@
   border-top: none;
 }
 
-/* 左上角字标：内层拉开字形，外层按拉开后的宽高占位，两个 yo 不再叠在一起。 */
+/* 左上角字标：内层拉开字形，外层宽度按拉开后占位，高度固定，避免把顶栏撑高后再缩回去。 */
 .yoyo-mark-live {
   position: relative;
   display: inline-block;
-  min-width: 4.6em;
-  min-height: 1.15em;
+  width: 4.8rem;
+  height: 28px;
+  min-width: 4.8rem;
+  max-height: 28px;
+  min-height: 28px;
   vertical-align: middle;
   line-height: 1;
 }
@@ -122,8 +125,9 @@
 }
 
 .yoyo-mark-live .focus-word {
-  font-size: inherit;
-  font-weight: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
   letter-spacing: inherit;
   cursor: default;
 }
