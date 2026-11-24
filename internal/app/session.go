@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -697,6 +698,18 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			diaglog.InfoContext(ctx, "turn end", "component", "runtime")
 		}
 	}()
+	// 进 Run 之前就返回的失败（没有钥匙、没有 harness）不会经过回合结束投影。
+	// 模型错误和人点停止由桌面投影负责，这里不再发第二张卡片。
+	defer func() {
+		if runErr == nil || strings.TrimSpace(sessionID) == "" {
+			return
+		}
+		var stop *runtime.StopError
+		if errors.As(runErr, &stop) && (stop.Reason == runtime.StopModelError || stop.Reason == runtime.StopCancelled) {
+			return
+		}
+		a.noteTurnFault(sessionID, turnID, runErr)
+	}()
 	if strings.TrimSpace(sessionID) == "" {
 		return "", fmt.Errorf("empty session id")
 	}
@@ -1064,6 +1077,32 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		a.Threads.MarkTurnInFlight(sessionID, false, false)
 	}
 	return out, runErr
+}
+
+// noteTurnFault 把这一轮没能跑起来的原因写成错误卡片，追加进 JSONL 并交给界面。
+// 用户那一句已经落盘时，没有这张卡片，页面上就只剩那句话。
+func (a *App) noteTurnFault(sessionID, turnID string, err error) {
+	if a == nil || err == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	info := runtime.ClassifyError(err)
+	payload := info.Payload()
+	if turnID != "" {
+		payload["turn_id"] = turnID
+	}
+	ev := trace.Event{
+		Type:      trace.TypeError,
+		Source:    "runtime",
+		SessionID: sessionID,
+		TurnID:    turnID,
+		Payload:   payload,
+	}
+	if a.Traces != nil {
+		_ = a.Traces.AppendDurable(ev)
+	}
+	if a.Hub != nil {
+		a.Hub.Publish(ev)
+	}
 }
 
 // userCommitNeeded 在用户原文或附件非空时为真，这时才需要先落一条用户事件。

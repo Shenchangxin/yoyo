@@ -174,6 +174,15 @@ func TestQueuedTurnRunsAfterTurnEnds(t *testing.T) {
 	if strings.Join(said, "|") != "第一句|第二句" {
 		t.Fatalf("user lines %q", said)
 	}
+	var faults int
+	for _, ev := range evs {
+		if ev.Type == trace.TypeError {
+			faults++
+		}
+	}
+	if faults != 2 {
+		t.Fatalf("early exit must leave an error card per turn, got %d", faults)
+	}
 	if a.Threads.Load(sess.ID).ResumeInFlight {
 		t.Fatal("an early return left the turn marked in flight")
 	}

@@ -676,6 +676,7 @@ kbd,
 
 .day-scroll {
   scrollbar-width: none;
+  overflow-anchor: none;
 }
 .day-scroll::-webkit-scrollbar {
   display: none;

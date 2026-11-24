@@ -392,6 +392,30 @@ func TestTurnTimeoutParks(t *testing.T) {
 	}
 }
 
+// TestAgentSpinParks 锁住空转记成 waiting，不催继续，也不当成失败重试。
+func TestAgentSpinParks(t *testing.T) {
+	eng := NewEngine(autoPolicy())
+	ex := NewExecutor(eng, NewSlots(1), nil)
+	opened := make(chan *fakeWorker, 1)
+	ex.Opener = openWith(opened, func(w *fakeWorker, _ dsh.UserMessage) {
+		w.say("终于——现在我真正调用 orchestrator_report（ready）")
+		w.endWith("error", ReasonAgentSpin)
+	})
+	id := accept(t, eng, "m1")
+	setAgent(eng, id, "opencode")
+	if err := ex.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	w := <-opened
+	waitFor(t, "parked", func() bool { return notLive(ex, id) && lastSummary(eng, id) == agentSpinSummary })
+	if got := w.messages(); len(got) != 1 {
+		t.Fatalf("a spinning turn is not nudged: %+v", got)
+	}
+	if ticket, _ := eng.Ticket(id); ticket.Ended != nil {
+		t.Fatalf("ticket ended: %+v", ticket.Ended)
+	}
+}
+
 // TestAuthRequiredAsksLogin 锁住 agent 要求登录时报 blocked，问题带上 agent 的名字并交给 OnReport，不重试。
 func TestAuthRequiredAsksLogin(t *testing.T) {
 	eng := NewEngine(autoPolicy())
@@ -469,6 +493,7 @@ func TestPassingErrorCoversAgentExit(t *testing.T) {
 		"read tcp: connection reset":   true,
 		"agent stalled":                true,
 		ReasonAuthRequired + ": login": false,
+		ReasonAgentSpin:                false,
 		"refusal":                      false,
 	} {
 		if passingError(text) != want {
@@ -525,6 +550,9 @@ func TestExternalSpecCarriesPointerAndCallbacks(t *testing.T) {
 			t.Fatalf("system lacks %q:\n%s", want, spec.System)
 		}
 	}
+	if strings.Contains(spec.System, "yoyo_orchestrator_report") {
+		t.Fatal("codex must not be told OpenCode's tool names")
+	}
 	for _, banned := range []string{"update_plan", "load_skill"} {
 		if strings.Contains(spec.System, banned) {
 			t.Fatalf("system mentions %s", banned)
@@ -551,6 +579,23 @@ func TestExternalSpecCarriesPointerAndCallbacks(t *testing.T) {
 	spec.OnAttention("")
 	if got, _ := eng.Ticket(id); got.Attention != "给我一把 key" {
 		t.Fatalf("a worker question was overwritten: %q", got.Attention)
+	}
+}
+
+// TestOpenCodePromptUsesDirectToolNames 锁住 OpenCode 的说明点名可以直接调用的报告工具，并禁止用打印代替。
+func TestOpenCodePromptUsesDirectToolNames(t *testing.T) {
+	text := externalWorkerPrompt(nil, WorkerSpec{Agent: "opencode", TicketID: "tkt-52", Dir: `C:\work`})
+	for _, want := range []string{"tkt-52", "yoyo_orchestrator_report", "console.log", "node -e"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("system lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "update_plan") || strings.Contains(text, "load_skill") {
+		t.Fatalf("system mentions an internal tool:\n%s", text)
+	}
+	other := externalWorkerPrompt(nil, WorkerSpec{Agent: "codex", TicketID: "tkt-1"})
+	if strings.Contains(other, "yoyo_orchestrator_report") || !strings.Contains(other, "名为 yoyo 的 MCP") {
+		t.Fatalf("codex prompt = %s", other)
 	}
 }
 

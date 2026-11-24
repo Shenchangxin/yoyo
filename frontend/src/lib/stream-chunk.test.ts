@@ -305,6 +305,19 @@ describe("ConversationFold", () => {
     assert.equal(settled?.text, "hi");
     assert.equal(settled?.payload?.stream, undefined);
   });
+
+  /** 失败的回合结束要变成错误卡片。正常结束不补卡片。 */
+  it("turns an error turn_end into an error card", () => {
+    const f = new ConversationFold();
+    f.accept(item({ key: "u", type: "user", text: "写一份计划", source: "user" }));
+    f.accept(item({ key: "end", type: "turn_end", payload: { kind: "error", reason: "missing API key" } }));
+    const card = f.items().find((x) => x.type === "error");
+    assert.equal(card?.text, "missing API key");
+    assert.equal(f.items().some((x) => x.type === "turn_end"), false);
+    const ok = new ConversationFold();
+    ok.accept(item({ key: "end2", type: "turn_end", payload: { kind: "completed" } }));
+    assert.equal(ok.items().some((x) => x.type === "error"), false);
+  });
 });
 
 describe("frame-only live notices", () => {

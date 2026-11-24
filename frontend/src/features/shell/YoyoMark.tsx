@@ -35,7 +35,7 @@ export function YoyoMark({ className, compact, live }: MarkProps) {
   );
 }
 
-/** LiveMark 把字标横向拉开，高度只加一点，并按拉开后的尺寸占位，避免两个 yo 叠在一起。 */
+/** LiveMark 把字标横向拉开。高度钉在顶栏里，测量只改宽度，避免字号或字体加载把整栏顶高再缩回去。 */
 function LiveMark({ className }: { className?: string }) {
   const innerRef = useRef<HTMLSpanElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -68,7 +68,7 @@ function LiveMark({ className }: { className?: string }) {
       role="img"
       aria-label="yoyo"
       onMouseEnter={() => { if (rest) playRound(); }}
-      style={box.w > 0 ? { width: Math.ceil(box.w * MARK_SCALE_X), height: Math.ceil(box.h * MARK_SCALE_Y) } : undefined}
+      style={box.w > 0 ? { width: Math.ceil(box.w * MARK_SCALE_X) } : undefined}
     >
       <span
         ref={innerRef}

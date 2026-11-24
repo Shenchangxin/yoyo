@@ -101,8 +101,14 @@ func externalWorkerPrompt(e *Executor, spec WorkerSpec) string {
 	if len(spec.ReadRoots) > 0 {
 		fmt.Fprintf(&b, "只能读、不要改：%s\n", strings.Join(spec.ReadRoots, "；"))
 	}
-	b.WriteString("yoyo 的工具在名为 yoyo 的 MCP 服务里：orchestrator_report、orchestrator_reply、orchestrator_handback、orchestrator_follow、orchestrator_unrelated。\n")
-	b.WriteString("用 orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。progress 报完继续做。ready 只在完成标准达到时使用，summary 写做了什么、改了哪些文件、怎么验证的。\n")
+	if openCodeAgent(spec.Agent) {
+		b.WriteString("在 OpenCode 里这些工具可以直接调用，名字是 yoyo_orchestrator_report、yoyo_orchestrator_reply、yoyo_orchestrator_handback、yoyo_orchestrator_follow、yoyo_orchestrator_unrelated。\n")
+		b.WriteString("用 yoyo_orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。progress 报完继续做。ready 只在完成标准达到时使用，summary 写做了什么、改了哪些文件、怎么验证的。\n")
+		b.WriteString("不要用 shell、node -e、console.log 或 echo 代替这次调用。命令打印成功也不算报告送到了。\n")
+	} else {
+		b.WriteString("yoyo 的工具在名为 yoyo 的 MCP 服务里：orchestrator_report、orchestrator_reply、orchestrator_handback、orchestrator_follow、orchestrator_unrelated。\n")
+		b.WriteString("用 orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。progress 报完继续做。ready 只在完成标准达到时使用，summary 写做了什么、改了哪些文件、怎么验证的。\n")
+	}
 	b.WriteString("只有三种情况才停下来问：说明没授权的破坏性操作、必须改上面目录以外的文件、缺少密钥或登录。这时报 blocked，并在 question 里写清楚要人决定什么；question 不能和 ready 一起用。\n")
 	b.WriteString("不要为了确认下一步而提问，也不要在一个小进展之后把下一步交还给人。说明里已经写明的选择不要再问；没写到的细节按已有文件自己定，做完再核对。\n")
 	b.WriteString("后来补来的消息可能只是一个变化、一个答案或下一步，沿着已有的进展继续，不要要求把整张工单重写一遍。\n")
@@ -110,6 +116,16 @@ func externalWorkerPrompt(e *Executor, spec WorkerSpec) string {
 	b.WriteString("和别的 agent 共用任务组的共享目录时，开工前先读那里的 NOTES.md；做完把你的产出、接口和约定追加进去，不改别人写的段落。\n")
 	writePromptContext(&b, e, spec.Dir, spec.TicketID)
 	return b.String()
+}
+
+// openCodeAgent 在 agent 是 OpenCode 时为真。它默认把 MCP 工具藏进 Code Mode，调用方式和别的 agent 不同。
+func openCodeAgent(agent string) bool {
+	switch strings.ToLower(strings.TrimSpace(agent)) {
+	case "opencode", "opencode-v2":
+		return true
+	default:
+		return false
+	}
 }
 
 // writePromptContext 写操作者画像和这张工单的 DSH_SUPERAGENT_* 变量。没有画像或变量时什么都不写。

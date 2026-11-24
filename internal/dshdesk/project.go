@@ -90,6 +90,15 @@ func emitDsh(turn Turn, ev dsh.Event) {
 		turn.emit(trace.Event{Type: trace.TypeTurnEnd, Source: "dsh", Payload: map[string]any{
 			"turn": ev.Turn, "kind": end.Kind, "reason": end.Reason,
 		}}, true)
+		// 模型失败只写在 turn_end 里时，界面会把回合结束丢掉，页面上就只剩用户那一句。
+		// 同一条原因再落一张错误卡片，直播和回放都能看见。人点停止是 aborted，不在这里发。
+		if end.Kind == "error" {
+			reason := strings.TrimSpace(end.Reason)
+			if reason == "" {
+				reason = "model error"
+			}
+			turn.emit(trace.Event{Type: trace.TypeError, Source: "runtime", Payload: runtime.ClassifyError(fmt.Errorf("%s", reason)).Payload()}, true)
+		}
 	case dsh.EventStepStart:
 		turn.emit(trace.Event{Type: trace.TypeStepStart, Source: "dsh", Payload: map[string]any{
 			"turn": ev.Turn, "step": ev.Step,

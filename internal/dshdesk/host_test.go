@@ -382,6 +382,66 @@ func TestJobCompletionStaysOnTheTool(t *testing.T) {
 	}
 }
 
+// TestEmitDshTurnErrorIsACard 确认模型失败的回合结束会再发一张错误卡片。人点停止不会。
+func TestEmitDshTurnErrorIsACard(t *testing.T) {
+	var got []trace.Event
+	turn := Turn{SessionID: "s", OnEvent: func(ev trace.Event) { got = append(got, ev) }}
+	emitDsh(turn, dsh.Event{Type: dsh.EventTurnEnd, Turn: 2, Data: dsh.TurnEnd{Kind: "error", Reason: "missing API key — paste the token in Settings"}})
+	var end, card int
+	for _, ev := range got {
+		switch ev.Type {
+		case trace.TypeTurnEnd:
+			end++
+		case trace.TypeError:
+			card++
+			if ev.Payload["error"] == "" || ev.Payload["detail"] == "" {
+				t.Fatalf("payload %+v", ev.Payload)
+			}
+		}
+	}
+	if end != 1 || card != 1 {
+		t.Fatalf("end %d card %d", end, card)
+	}
+	emitDsh(turn, dsh.Event{Type: dsh.EventTurnEnd, Turn: 3, Data: dsh.TurnEnd{Kind: "aborted", Reason: "stop"}})
+	card = 0
+	for _, ev := range got {
+		if ev.Type == trace.TypeError {
+			card++
+		}
+	}
+	if card != 1 {
+		t.Fatalf("stop wrote another card, total %d", card)
+	}
+}
+
+// TestDeskEmptyReplyIsVisible 确认人发了话、模型既不说话也不调工具时，Run 失败并留下错误卡片。
+func TestDeskEmptyReplyIsVisible(t *testing.T) {
+	var got []trace.Event
+	host := New()
+	_, err := host.Run(context.Background(), Turn{
+		SessionID: "s",
+		User:      "写一份计划",
+		Client:    &seeingClient{reply: "  "},
+		OnEvent:   func(ev trace.Event) { got = append(got, ev) },
+	})
+	if err == nil || runtime.ReasonOf(err) != runtime.StopModelError {
+		t.Fatalf("err %v", err)
+	}
+	var card bool
+	for _, ev := range got {
+		if ev.Type == trace.TypeError {
+			card = true
+			detail, _ := ev.Payload["detail"].(string)
+			if !strings.Contains(detail, "模型没有返回内容") {
+				t.Fatalf("payload %+v", ev.Payload)
+			}
+		}
+	}
+	if !card {
+		t.Fatal("missing error card")
+	}
+}
+
 // TestDeskResumesTurnNumber 确认新代理从轨迹里已有的最大回合号继续，下一回合是 5。
 func TestDeskResumesTurnNumber(t *testing.T) {
 	store := trace.NewStore(t.TempDir())

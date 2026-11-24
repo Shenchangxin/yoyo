@@ -29,6 +29,8 @@ var (
 	errTurnTimeout = errors.New("turn timeout")
 	// errStalled 是一轮里 agent 不再发更新，提示也不会自己结束。
 	errStalled = errors.New("agent stalled")
+	// errSpin 是连续纯打印、这一轮被认定为空转时取消的原因。
+	errSpin = errors.New("agent spin")
 	// errWorkerClosed 是工人已经关掉后还要连接。
 	errWorkerClosed = errors.New("acp worker is closed")
 	// quietModel 是没有未完成工具时，多久没有更新就认定模型请求停了。
@@ -50,6 +52,8 @@ type Config struct {
 	Version string
 	// MCPURL 和 MCPToken 是控制面的地址和这张工单的 token。任一为空时不给 agent 配控制面。
 	MCPURL, MCPToken string
+	// MCPDirect 为真时控制面已经写进 agent 自己的配置。session/new 不再带这份服务器，免得盖掉 codemode 之类的设置。
+	MCPDirect bool
 	// Exe 是 stdio 桥要启动的 yoyo 可执行文件。为空时用 os.Executable。
 	Exe string
 	// Model 是人为这个 agent 选的模型。为空时用 agent 自己的默认。
@@ -281,6 +285,9 @@ func (w *Worker) prompt(ctx context.Context, turn int, msgs []dsh.UserMessage) d
 		return w.endFor(ctx, err)
 	}
 	stop, err := c.Prompt(ctx, sid, promptBlocks(preface, msgs))
+	if w.jr.spun() {
+		return dsh.TurnEnd{Kind: "error", Reason: superagent.ReasonAgentSpin}
+	}
 	if ctx.Err() != nil || err != nil {
 		return w.endFor(ctx, err)
 	}
@@ -335,6 +342,9 @@ func (w *Worker) touchHeard() {
 func (w *Worker) endFor(ctx context.Context, err error) dsh.TurnEnd {
 	if ctx.Err() != nil {
 		cause := context.Cause(ctx)
+		if errors.Is(cause, errSpin) {
+			return dsh.TurnEnd{Kind: "error", Reason: superagent.ReasonAgentSpin}
+		}
 		if errors.Is(cause, errTurnTimeout) {
 			return dsh.TurnEnd{Kind: "aborted", Reason: superagent.ReasonTurnTimeout}
 		}
@@ -423,7 +433,7 @@ func (w *Worker) connect(ctx context.Context, turn int) (*acp.Client, string, st
 		return nil, "", "", err
 	}
 	caps := c.Caps()
-	servers := mcpServers(caps, w.cfg.MCPURL, w.cfg.MCPToken, w.exe())
+	servers := mcpServers(caps, w.cfg.MCPURL, w.cfg.MCPToken, w.exe(), w.cfg.MCPDirect)
 	sid, how, resp, err := w.open(ctx, c, caps, servers, extraDirs(caps, w.spec))
 	if err != nil {
 		_ = c.Close()
@@ -463,6 +473,7 @@ func (w *Worker) connect(ctx context.Context, turn int) (*acp.Client, string, st
 }
 
 // onUpdate 把会话更新写进日志，并记下这一轮还有动静。回放只刷新计时，不算 agent 回应了这次提示。
+// 连续纯打印被判成空转时取消这一轮。取消放到别的 goroutine，免得读循环在写 session/cancel 时和对方堵住。
 func (w *Worker) onUpdate(n acp.SessionNotification, replay bool) {
 	if replay {
 		w.touch()
@@ -470,6 +481,21 @@ func (w *Worker) onUpdate(n acp.SessionNotification, replay bool) {
 		w.touchHeard()
 	}
 	w.jr.update(n, replay)
+	if replay || !w.jr.consumeSpin() {
+		return
+	}
+	w.mu.Lock()
+	gen := w.turn
+	cancel := w.cancel
+	w.mu.Unlock()
+	go func() {
+		w.mu.Lock()
+		same := w.turn == gen
+		w.mu.Unlock()
+		if same && cancel != nil {
+			cancel(errSpin)
+		}
+	}()
 }
 
 // forgetSession 丢掉外部会话编号。下一轮新建，而不是再续接一个已经不回话的会话。

@@ -264,6 +264,13 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 			return text, err
 		}
 	}
+	// 人发了话，这一轮却既没有正文也没有工具。回合结束会被界面丢掉，看起来像没响应。
+	// 唤醒不是人说的话，取消也已经在上面返回。错误卡片由这里发出；调用方看到的是模型错误，不再发第二张。
+	if end.Kind != "aborted" && strings.TrimSpace(turn.User) != "" && strings.TrimSpace(turn.Wake) == "" && !turnVisible(agent) {
+		reason := "模型没有返回内容"
+		turn.emit(trace.Event{Type: trace.TypeError, Source: "runtime", Payload: runtime.ClassifyError(errString(reason)).Payload()}, true)
+		return text, &runtime.StopError{Reason: runtime.StopModelError, Msg: reason, Err: errString(reason)}
+	}
 	return text, nil
 }
 
@@ -385,6 +392,33 @@ func stopCancelled(err error) error {
 		err = context.Canceled
 	}
 	return &runtime.StopError{Reason: runtime.StopCancelled, Msg: err.Error(), Err: err}
+}
+
+// turnVisible 在最近一次回合开始之后，已经有助手正文或工具调用时为真。更早的历史不算。
+func turnVisible(agent *dsh.Agent) bool {
+	if agent == nil || agent.Session() == nil {
+		return false
+	}
+	evs := agent.Session().Events()
+	start := 0
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].Type == dsh.EventTurnStart {
+			start = i
+			break
+		}
+	}
+	for _, ev := range evs[start:] {
+		switch ev.Type {
+		case dsh.EventToolCall:
+			return true
+		case dsh.EventAssistant:
+			msg, _ := ev.Data.(dsh.Assistant)
+			if strings.TrimSpace(msg.Text) != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // lastAssistant 返回 agent 日志里最后一条非空助手正文。没有则返回空串。
