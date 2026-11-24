@@ -44,6 +44,9 @@ type toolCall struct {
 	denied bool
 	// counted 表示这次调用已经计入空转计数，后来的状态更新不再加一次。
 	counted bool
+	// fromPermission 表示这次调用先出现在权限请求里，对方还没把它当成工具更新报过来。
+	// 这期间的正文先不落成草稿，收尾补上的结果才能排在这句话前面。
+	fromPermission bool
 }
 
 // journal 把一个工人的 ACP 更新写进它的 dsh 日志。只在 begin 和 finish 之间写；回放和回合外的更新只取用量。
@@ -104,6 +107,12 @@ func (j *journal) finish(normal bool) {
 	j.flushHeldLocked()
 	tail := j.text.String()
 	j.text.Reset()
+	// 正文已经落成草稿，而这轮还有没结果的调用。先把草稿让开，结果写完再把这句话接到最后。
+	draft := 0
+	if j.draftSeq != 0 && j.openLoggedLocked() {
+		draft = j.draftSeq
+		j.draftSeq = 0
+	}
 	shown := j.shownLocked(normal)
 	for _, path := range j.written {
 		if shown[pathKey(path)] {
@@ -125,9 +134,22 @@ func (j *journal) finish(normal bool) {
 			j.appendResultLocked(c.id, c.name, "interrupted", true)
 		}
 	}
+	if draft != 0 {
+		j.sess.SetAssistantText(draft, "")
+	}
 	j.text.WriteString(tail)
 	j.flushTextLocked()
 	j.active = false
+}
+
+// openLoggedLocked 在还有已写入日志、但没有结果的调用时为真。调用时要已持有锁。
+func (j *journal) openLoggedLocked() bool {
+	for _, c := range j.order {
+		if c != nil && c.logged && !c.done {
+			return true
+		}
+	}
+	return false
 }
 
 // noteWrite 记下这一轮经 fs/write_text_file 写过的文件。
@@ -177,7 +199,10 @@ func (j *journal) update(n acp.SessionNotification, replay bool) {
 		if u.Chunk != nil && u.Chunk.Type == "text" && u.Chunk.Text != "" {
 			j.flushHeldLocked()
 			j.text.WriteString(u.Chunk.Text)
-			j.publishDraftLocked()
+			// 权限请求带来的调用还没有结果。这句话先攒着，finish 补完结果再落笔。
+			if !j.permissionOpenLocked() {
+				j.publishDraftLocked()
+			}
 		}
 	case acp.UpdateToolCall, acp.UpdateToolUpdate:
 		if u.ToolCall != nil {
@@ -194,7 +219,7 @@ func (j *journal) merge(tc acp.ToolCall) toolCall {
 	defer j.mu.Unlock()
 	c := j.calls[tc.ToolCallID]
 	if c == nil {
-		c = &toolCall{}
+		c = &toolCall{fromPermission: true}
 		if j.active && tc.ToolCallID != "" {
 			c.id = j.callIDLocked(tc.ToolCallID)
 			j.calls[tc.ToolCallID] = c
@@ -233,6 +258,7 @@ func (j *journal) toolLocked(tc acp.ToolCall) {
 		j.order = append(j.order, c)
 		j.held = append(j.held, c)
 	}
+	c.fromPermission = false
 	mergeCall(c, tc)
 	j.flushHeldLocked()
 	if !c.logged {
@@ -354,6 +380,16 @@ func (j *journal) flushTextLocked() {
 	}
 	j.step++
 	j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{Text: text, Finish: "stop"})
+}
+
+// permissionOpenLocked 在还有来自权限请求、且没有结果的调用时为真。调用时要已持有锁。
+func (j *journal) permissionOpenLocked() bool {
+	for _, c := range j.order {
+		if c != nil && c.fromPermission && !c.done {
+			return true
+		}
+	}
+	return false
 }
 
 // publishDraftLocked 把已经攒下的正文写成一条助手消息；同一条后来的字只改这一条，不另起。

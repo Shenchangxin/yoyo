@@ -100,6 +100,32 @@ func TestJournalDraftShowsBeforeTheTurnEnds(t *testing.T) {
 	wantLines(t, transcript(sess), [3]string{"assistant", "", "先看一下。"})
 }
 
+func TestJournalPermissionTextFollowsTheResult(t *testing.T) {
+	j, sess, _ := newTestJournal(t)
+	j.begin(1)
+	j.merge(acp.ToolCall{
+		ToolCallID: "p1",
+		Title:      "rm -rf build",
+		Kind:       "execute",
+		RawInput:   json.RawMessage(`{"command":"rm -rf build"}`),
+	})
+	j.update(wire(t, chunk("outcome selected allow")), false)
+	j.finish(true)
+	wantLines(t, transcript(sess),
+		[3]string{"tool_call", "shell", "*"},
+		[3]string{"tool_result", "shell", "done"},
+		[3]string{"assistant", "", "outcome selected allow"},
+	)
+	j.begin(2)
+	j.merge(acp.ToolCall{ToolCallID: "p2", Title: "rm -rf build", Kind: "execute", RawInput: json.RawMessage(`{"command":"rm -rf build"}`)})
+	j.update(wire(t, chunk("outcome cancelled")), false)
+	j.finish(false)
+	lines := transcript(sess)
+	if last := lines[len(lines)-1]; last.Role != "assistant" || last.Text != "outcome cancelled" {
+		t.Fatalf("last = %+v", last)
+	}
+}
+
 func TestJournalToolShowsWhileItRuns(t *testing.T) {
 	j, sess, dir := newTestJournal(t)
 	path := filepath.Join(dir, "a.txt")
