@@ -106,7 +106,7 @@ export default function YingceApp({ initialPath = "/create" }: { initialPath?: s
     };
     syncTheme();
     const observer = new MutationObserver(syncTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-palette"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-skin"] });
     void primeCanvasMediaBase();
     void import("@yingce/lib/plugins/builtin");
     const uninstallHub = installCanvasHub();

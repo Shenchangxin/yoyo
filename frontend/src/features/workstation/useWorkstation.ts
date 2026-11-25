@@ -26,7 +26,7 @@ import { toolArgs, toolName } from "../../lib/tool-summary";
 import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { loadModelCatalog } from "../../lib/model-catalog";
-import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
+import { parseThemePref, useTheme } from "../../lib/theme";
 import { isUserSkinId } from "../../lib/skin/schema";
 import { readPopoutId } from "../../lib/popout";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
@@ -231,7 +231,7 @@ function readInspTab(id: string) {
 /** useWorkstation 保住当前会话、对话、队列和实验室动作，并把它们交给 App。 */
 export function useWorkstation() {
   const copy = useCopy();
-  const { setPref, setDarkPalette, setLightPalette, setSkinOverlay, resolved } = useTheme();
+  const { setPref, setSkinOverlay, resolved } = useTheme();
   const lab = useUI((s) => s.lab);
   const setLab = useUI((s) => s.setLab);
   const surface = useUI((s) => s.surface);
@@ -627,8 +627,6 @@ export function useWorkstation() {
     applyUiScale(savedCfg.uiScale);
     const theme = parseThemePref(savedCfg.theme);
     if (theme) setPref(theme);
-    setDarkPalette(parseDarkPalette(savedCfg.paletteDark));
-    setLightPalette(parseLightPalette(savedCfg.paletteLight));
     const skin = savedCfg.skin || "";
     if (!isUserSkinId(skin)) {
       setSkinOverlay(null);
@@ -649,7 +647,7 @@ export function useWorkstation() {
       void api.activateSkin("");
       toast.error(copy.settings.skinBroken);
     });
-  }, [savedCfg.locale, savedCfg.uiScale, savedCfg.theme, savedCfg.paletteDark, savedCfg.paletteLight, savedCfg.skin, resolved, setPref, setDarkPalette, setLightPalette, setSkinOverlay, copy.settings.skinBroken]);
+  }, [savedCfg.locale, savedCfg.uiScale, savedCfg.theme, savedCfg.skin, resolved, setPref, setSkinOverlay, copy.settings.skinBroken]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { void loadModelCatalog(); }, []);

@@ -1881,7 +1881,7 @@ function UserPrompt({
   const prose = peeled.text.trim();
   const images = (parts || []).filter((p) => p.image_url && (p.type === "image_url" || (p.mime || "").startsWith("image/")));
   return (
-    <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-ui-body-l leading-[1.55] tracking-normal">
+    <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-ui-body-l leading-[1.65] tracking-normal">
       {images.length ? (
         <div className={cn("flex flex-wrap gap-1.5", (chips.length || prose) && "mb-1.5")}>
           {images.map((p, i) => (

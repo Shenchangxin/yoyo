@@ -1,4 +1,4 @@
-// 内置调色板 ink、dim、slate、neutral、paper、mist。dim 和 slate 叠在 ink 上，paper 和 mist 叠在 neutral 上。
+// 内置外观只有深色 ink 和浅色 neutral。dim、slate 解析成 ink，paper、mist 解析成 neutral。
 
 package skin
 
@@ -21,179 +21,105 @@ func mergeMap(base, over TokenMap) TokenMap {
 	return out
 }
 
-// ink 是深色调色板的完整令牌。
+// ink 是深色主题的完整令牌。
 var ink = TokenMap{
-	"--background":       "#13151a",
-	"--foreground":       "#f2f4f8",
-	"--sidebar":          "#0d0f13",
-	"--panel":            "#13151a",
-	"--card":             "#1a1d24",
-	"--popover":          "#1f232c",
-	"--input-bar":        "#1b1f28",
-	"--lift":             "#242934",
-	"--border":           "color-mix(in srgb, #f2f4f8 8%, transparent)",
-	"--muted":            "#8e95a5",
-	"--accent":           "#6e85ff",
-	"--accent-fg":        "#0d0f13",
+	"--background":       "#161922",
+	"--foreground":       "#f4f5f7",
+	"--sidebar":          "#0c0e14",
+	"--panel":            "#161922",
+	"--card":             "rgba(255, 255, 255, 0.075)",
+	"--popover":          "rgba(28, 32, 42, 0.88)",
+	"--input-bar":        "rgba(22, 26, 34, 0.72)",
+	"--lift":             "rgba(255, 255, 255, 0.06)",
+	"--border":           "rgba(255, 255, 255, 0.08)",
+	"--muted":            "#a3a9b5",
+	"--accent":           "#8b9cff",
+	"--accent-fg":        "#12141c",
 	"--mark":             "#f2965c",
 	"--mark-deep":        "#d47b44",
 	"--danger":           "#f27474",
 	"--success":          "#3dd68c",
 	"--warning":          "#f5b851",
-	"--ring":             "#6e85ff",
-	"--media-surface":    "#090b0f",
-	"--media-foreground": "#f2f4f8",
-	"--glass-blur":       "20px",
-	"--glass-bg":         "color-mix(in srgb, var(--sidebar) 76%, transparent)",
-	"--glass-stroke":     "color-mix(in srgb, var(--foreground) 8%, transparent)",
-	"--radius":           "0.5rem",
-	"--radius-lg":        "0.75rem",
-	"--radius-composer":  "1.125rem",
-	"--radius-window":    "0.75rem",
-	"--radius-pane":      "0.75rem",
-	"--radius-control":   "0.5rem",
-	"--radius-chip":      "0.375rem",
-	"--shadow-card":      "inset 0 0.5px 0 color-mix(in srgb, white 6%, transparent)",
-	"--shadow-composer":  "0 14px 40px color-mix(in srgb, black 34%, transparent), inset 0 0.5px 0 color-mix(in srgb, white 7%, transparent)",
-	"--shadow-popover":   "0 20px 52px color-mix(in srgb, black 48%, transparent), 0 0 0 1px color-mix(in srgb, white 7%, transparent)",
-	"--ctx-system":       "color-mix(in srgb, var(--foreground) 38%, #8e95a5)",
+	"--ring":             "#8b9cff",
+	"--media-surface":    "#090b10",
+	"--media-foreground": "#f4f5f7",
+	"--glass-blur":       "22px",
+	"--glass-bg":         "rgba(22, 26, 34, 0.62)",
+	"--glass-stroke":     "rgba(255, 255, 255, 0.14)",
+	"--radius":           "0.625rem",
+	"--radius-lg":        "1rem",
+	"--radius-composer":  "1.625rem",
+	"--radius-window":    "1rem",
+	"--radius-pane":      "1.5rem",
+	"--radius-control":   "0.625rem",
+	"--radius-chip":      "999px",
+	"--shadow-card":      "0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.10)",
+	"--shadow-composer":  "0 16px 40px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
+	"--shadow-popover":   "0 24px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
+	"--ctx-system":       "color-mix(in srgb, var(--foreground) 38%, #a3a9b5)",
 	"--ctx-tools":        "color-mix(in srgb, var(--accent) 72%, var(--muted))",
 	"--ctx-dynamic":      "var(--warning)",
 	"--ctx-chat":         "var(--accent)",
 	"--ctx-free":         "color-mix(in srgb, var(--muted) 18%, transparent)",
 }
 
-// dimOver 是叠在 ink 上的 dim 差异。
-var dimOver = TokenMap{
-	"--background": "#202226",
-	"--foreground": "#f3f4f6",
-	"--sidebar":    "#181a1e",
-	"--panel":      "#202226",
-	"--card":       "#282b30",
-	"--popover":    "#30343b",
-	"--input-bar":  "#26292f",
-	"--lift":       "#343840",
-	"--border":     "color-mix(in srgb, white 8%, transparent)",
-	"--muted":      "#969ca8",
-}
-
-// slateOver 是叠在 ink 上的 slate 差异。
-var slateOver = TokenMap{
-	"--background": "#121213",
-	"--foreground": "#f5f5f7",
-	"--sidebar":    "#0b0b0c",
-	"--panel":      "#121213",
-	"--card":       "#1b1b1d",
-	"--popover":    "#232326",
-	"--input-bar":  "#19191b",
-	"--lift":       "#27272a",
-	"--border":     "color-mix(in srgb, white 8%, transparent)",
-	"--muted":      "#8f9096",
-	"--ctx-system": "color-mix(in srgb, var(--foreground) 32%, #8a9098)",
-}
-
-// neutral 是浅色调色板的完整令牌。
+// neutral 是浅色主题的完整令牌。
 var neutral = TokenMap{
-	"--background":       "#ffffff",
-	"--foreground":       "#111318",
-	"--sidebar":          "#f3f4f6",
-	"--panel":            "#ffffff",
-	"--card":             "#ffffff",
-	"--popover":          "#ffffff",
-	"--input-bar":        "#ffffff",
-	"--lift":             "#e8ebef",
-	"--border":           "color-mix(in srgb, #111318 8%, transparent)",
-	"--muted":            "#646b78",
-	"--accent":           "#3b5bff",
-	"--accent-fg":        "#f8faff",
-	"--mark":             "#d25e2c",
-	"--mark-deep":        "#a3461e",
-	"--danger":           "#d93842",
-	"--success":          "#108956",
-	"--warning":          "#c87a0a",
-	"--ring":             "#3b5bff",
-	"--media-surface":    "#0b0d12",
-	"--media-foreground": "#f2f4f8",
-	"--glass-blur":       "20px",
-	"--glass-bg":         "color-mix(in srgb, var(--sidebar) 78%, transparent)",
-	"--glass-stroke":     "color-mix(in srgb, var(--foreground) 7%, transparent)",
-	"--radius":           "0.5rem",
-	"--radius-lg":        "0.75rem",
-	"--radius-composer":  "1.125rem",
-	"--radius-window":    "0.75rem",
-	"--radius-pane":      "0.75rem",
-	"--radius-control":   "0.5rem",
-	"--radius-chip":      "0.375rem",
-	"--shadow-card":      "0 1px 2px color-mix(in srgb, #111318 4%, transparent)",
-	"--shadow-composer":  "0 14px 38px color-mix(in srgb, #111318 8%, transparent)",
-	"--shadow-popover":   "0 20px 48px color-mix(in srgb, #111318 11%, transparent), 0 0 0 1px color-mix(in srgb, #111318 6%, transparent)",
-	"--ctx-system":       "color-mix(in srgb, var(--foreground) 22%, #646b78)",
+	"--background":       "#f7f8fb",
+	"--foreground":       "#1c1f26",
+	"--sidebar":          "#e3e7ee",
+	"--panel":            "#f7f8fb",
+	"--card":             "rgba(255, 255, 255, 0.94)",
+	"--popover":          "rgba(255, 255, 255, 0.92)",
+	"--input-bar":        "rgba(255, 255, 255, 0.78)",
+	"--lift":             "rgba(28, 31, 38, 0.045)",
+	"--border":           "rgba(28, 31, 38, 0.08)",
+	"--muted":            "#5c6472",
+	"--accent":           "#3558f5",
+	"--accent-fg":        "#f7f8ff",
+	"--mark":             "#c2512a",
+	"--mark-deep":        "#9a3e20",
+	"--danger":           "#c4313b",
+	"--success":          "#0e7a4b",
+	"--warning":          "#a16207",
+	"--ring":             "#3558f5",
+	"--media-surface":    "#12141a",
+	"--media-foreground": "#f4f5f7",
+	"--glass-blur":       "22px",
+	"--glass-bg":         "rgba(255, 255, 255, 0.74)",
+	"--glass-stroke":     "rgba(255, 255, 255, 0.78)",
+	"--radius":           "0.625rem",
+	"--radius-lg":        "1rem",
+	"--radius-composer":  "1.625rem",
+	"--radius-window":    "1rem",
+	"--radius-pane":      "1.5rem",
+	"--radius-control":   "0.625rem",
+	"--radius-chip":      "999px",
+	"--shadow-card":      "0 10px 28px rgba(36, 44, 68, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.85)",
+	"--shadow-composer":  "0 16px 40px rgba(36, 44, 68, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9)",
+	"--shadow-popover":   "0 24px 60px rgba(28, 34, 52, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9)",
+	"--ctx-system":       "color-mix(in srgb, var(--foreground) 22%, #5c6472)",
 	"--ctx-tools":        "color-mix(in srgb, var(--accent) 55%, var(--muted))",
 	"--ctx-dynamic":      "var(--warning)",
 	"--ctx-chat":         "var(--accent)",
 	"--ctx-free":         "color-mix(in srgb, var(--muted) 16%, transparent)",
 }
 
-// paperOver 是叠在 neutral 上的 paper 差异。
-var paperOver = TokenMap{
-	"--background": "#f6f3ec",
-	"--foreground": "#1a1916",
-	"--sidebar":    "#eeeae2",
-	"--panel":      "#f6f3ec",
-	"--card":       "#fffdf8",
-	"--popover":    "#fffdf8",
-	"--input-bar":  "#fffdf8",
-	"--lift":       "#e7e2d8",
-	"--muted":      "#6d6a62",
-}
-
-// mistOver 是叠在 neutral 上的 mist 差异。
-var mistOver = TokenMap{
-	"--background":      "#f6f8fa",
-	"--foreground":      "#1b1f24",
-	"--sidebar":         "#eef1f4",
-	"--panel":           "#f6f8fa",
-	"--card":            "#ffffff",
-	"--popover":         "#ffffff",
-	"--input-bar":       "#ffffff",
-	"--lift":            "#e6eaee",
-	"--border":          "color-mix(in srgb, #1b1f24 7%, transparent)",
-	"--muted":           "#6a7178",
-	"--shadow-composer": "0 12px 36px color-mix(in srgb, #1b1f24 6%, transparent)",
-	"--shadow-popover":  "0 18px 44px color-mix(in srgb, #1b1f24 9%, transparent), 0 0 0 1px color-mix(in srgb, #1b1f24 5%, transparent)",
-	"--ctx-system":      "color-mix(in srgb, var(--foreground) 22%, #7a8aa0)",
-}
-
-// Palette 返回一份内置调色板的副本。dim 和 slate 由 ink 合并而来，paper 和 mist 由 neutral 合并而来。未知 id 返回假。
+// Palette 返回一份内置外观的副本。dim 和 slate 等于 ink，paper 和 mist 等于 neutral。未知 id 返回假。
 func Palette(id string) (TokenMap, bool) {
 	switch id {
-	case "ink":
+	case "ink", "dim", "slate":
 		return cloneMap(ink), true
-	case "dim":
-		return mergeMap(ink, dimOver), true
-	case "slate":
-		return mergeMap(ink, slateOver), true
-	case "neutral":
+	case "neutral", "paper", "mist":
 		return cloneMap(neutral), true
-	case "paper":
-		return mergeMap(neutral, paperOver), true
-	case "mist":
-		return mergeMap(neutral, mistOver), true
 	default:
 		return nil, false
 	}
 }
 
-// PairForBuiltin 给 ink、dim、slate 配上浅色 neutral，给 neutral、paper、mist 配上深色 ink。其他 id 返回 ink 和 neutral。
-func PairForBuiltin(id string) (dark, light string) {
-	switch id {
-	case "ink", "dim", "slate":
-		return id, "neutral"
-	case "neutral", "paper", "mist":
-		return "ink", id
-	default:
-		return "ink", "neutral"
-	}
+// PairForBuiltin 给任何内置 id 配上深色 ink 和浅色 neutral。
+func PairForBuiltin(_ string) (dark, light string) {
+	return "ink", "neutral"
 }
 
 // BuiltinInfo 返回 ID 为 builtin.<id> 的 Info，PreserveEvidence 为真。
@@ -231,7 +157,7 @@ func stringsToUpper(s string) string {
 	return string(r)
 }
 
-// BuiltinIDs 按 ink、dim、slate、neutral、paper、mist 的顺序返回。
+// BuiltinIDs 只列出深色和浅色。旧 id 仍能由 Palette 解析。
 func BuiltinIDs() []string {
-	return []string{"ink", "dim", "slate", "neutral", "paper", "mist"}
+	return []string{"ink", "neutral"}
 }

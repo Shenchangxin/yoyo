@@ -663,7 +663,7 @@ func (a *App) ResolveApprovalAnswer(id, decision, answer string) error {
 	return nil
 }
 
-// NormalizeAppearance 补上主题和调色板的空值，并拒绝不认识的 id。主题和两套调色板互不替代。
+// NormalizeAppearance 补上主题的空值，并拒绝不认识的 id。调色板固定为深色 ink、浅色 neutral。
 func (c *Config) NormalizeAppearance() {
 	if c == nil {
 		return
@@ -676,16 +676,8 @@ func (c *Config) NormalizeAppearance() {
 	default:
 		c.Theme = "system"
 	}
-	switch c.PaletteDark {
-	case "ink", "dim", "slate":
-	default:
-		c.PaletteDark = "ink"
-	}
-	switch c.PaletteLight {
-	case "neutral", "paper", "mist":
-	default:
-		c.PaletteLight = "neutral"
-	}
+	c.PaletteDark = "ink"
+	c.PaletteLight = "neutral"
 	c.UIScale = snapUIScale(c.UIScale)
 	c.Skin = skin.NormalizeSkinID(c.Skin)
 }

@@ -12,7 +12,7 @@ export function AppFrame({
 }: ComponentProps<"div"> & { overlay?: ReactNode }) {
   return (
     <div
-      className={cn("app-shell-root relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-foreground", className)}
+      className={cn("app-shell-root relative isolate flex h-full w-full flex-col overflow-hidden text-foreground", className)}
       {...props}
     >
       <div className="app-wallpaper" aria-hidden />

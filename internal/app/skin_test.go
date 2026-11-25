@@ -14,7 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
-// TestSkinDefaultsEmpty 锁住 Open 后 Config.Skin 为空，ListSkins 至少包含 6 个内置皮肤。
+// TestSkinDefaultsEmpty 锁住 Open 后 Config.Skin 为空，ListSkins 列出深色和浅色两套内置外观。
 func TestSkinDefaultsEmpty(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -25,8 +25,8 @@ func TestSkinDefaultsEmpty(t *testing.T) {
 		t.Fatalf("skin %q", a.Config.Skin)
 	}
 	list := a.ListSkins()
-	if len(list) < 6 {
-		t.Fatalf("expected builtin skins, got %d", len(list))
+	if len(list) != 2 || list[0].ID != "builtin.ink" || list[1].ID != "builtin.neutral" {
+		t.Fatalf("expected ink and neutral, got %+v", list)
 	}
 }
 

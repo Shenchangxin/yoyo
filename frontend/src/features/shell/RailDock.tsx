@@ -3,57 +3,61 @@
  * Buddy 不在这里：它在会话的今天栏里，和今天、任务、记忆并排，要处理的 agent 数挂在那个页签上。
  * 不拥有：切到哪一面。点下去只调用外面传入的回调。
  */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { BookOpen, Clapperboard, FileText, GitBranch, Heart, MessageSquare, Settings } from "lucide-react";
 import GlassIcons from "./GlassIcons";
 import { useTheme } from "../../lib/theme";
 import type { Copy } from "../../lib/copy";
 import type { Surface } from "../../lib/protocol";
 
-const FALLBACK = {
+const DOCK = {
   light: {
-    accent: "#3b5bff",
-    mark: "#d25e2c",
-    warning: "#c87a0a",
-    success: "#108956",
-    muted: "#646b78",
-    markDeep: "#a3461e",
-    ink: "#111318",
+    accent: "#3558f5",
+    mark: "#c2512a",
+    warning: "#a16207",
+    success: "#0e7a4b",
+    muted: "#5c6472",
+    markDeep: "#9a3e20",
+    ink: "#1c1f26",
     glass: "#ffffff",
   },
   dark: {
-    accent: "#6e85ff",
+    accent: "#8b9cff",
     mark: "#f2965c",
     warning: "#f5b851",
     success: "#3dd68c",
-    muted: "#8e95a5",
+    muted: "#a3a9b5",
     markDeep: "#d47b44",
-    ink: "#f2f4f8",
+    ink: "#f4f5f7",
     glass: "#1a1d24",
   },
 };
 
-/** 读文档根上的颜色。皮肤和调色板写在根上，这里跟着变。 */
+/** 只接受十六进制。半透明颜色会让玻璃采样跳色。 */
+function pickHex(tokens: Record<string, string> | undefined, name: string, fallback: string) {
+  const value = tokens?.[name]?.trim() || "";
+  return /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : fallback;
+}
+
+/** 颜色跟当前明暗一起算出来。不在绘制后再读 CSS，避免切主题时闪一下。 */
 function useDockTokens() {
-  const { resolved, palette, skinId } = useTheme();
+  const { resolved, skin } = useTheme();
   const light = resolved === "light";
-  const [tokens, setTokens] = useState(light ? FALLBACK.light : FALLBACK.dark);
-  useEffect(() => {
-    const style = getComputedStyle(document.documentElement);
-    const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
-    const base = light ? FALLBACK.light : FALLBACK.dark;
-    setTokens({
-      accent: read("--accent", base.accent),
-      mark: read("--mark", base.mark),
-      warning: read("--warning", base.warning),
-      success: read("--success", base.success),
-      muted: read("--muted", base.muted),
-      markDeep: read("--mark-deep", base.markDeep),
-      ink: read("--foreground", base.ink),
-      glass: read("--card", base.glass),
-    });
-  }, [light, palette, skinId]);
-  return { light, tokens };
+  const base = light ? DOCK.light : DOCK.dark;
+  const over = skin?.tokens;
+  return {
+    light,
+    tokens: {
+      accent: pickHex(over, "--accent", base.accent),
+      mark: pickHex(over, "--mark", base.mark),
+      warning: pickHex(over, "--warning", base.warning),
+      success: pickHex(over, "--success", base.success),
+      muted: pickHex(over, "--muted", base.muted),
+      markDeep: pickHex(over, "--mark-deep", base.markDeep),
+      ink: pickHex(over, "--foreground", base.ink),
+      glass: pickHex(over, "--card", base.glass),
+    },
+  };
 }
 
 const DOCK_COUNT = 7;

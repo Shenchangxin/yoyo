@@ -139,21 +139,17 @@ func (a *App) DeleteSkin(id string) error {
 	return st.Delete(id)
 }
 
-// ActivateSkin 在 id 为空时清空 Config.Skin。内置 ink、dim、slate 写入 PaletteDark，neutral、paper、mist 写入 PaletteLight，并清空 Skin。用户皮肤把 Config.Skin 设为该 id。
+// ActivateSkin 在 id 为空或为内置外观时清空 Config.Skin，回到深色或浅色主题。用户皮肤把 Config.Skin 设为该 id。
 func (a *App) ActivateSkin(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		a.Config.Skin = ""
 		return a.SaveConfig()
 	}
-	if pal, ok := skin.BuiltinPaletteID(id); ok {
+	if _, ok := skin.BuiltinPaletteID(id); ok {
 		a.Config.Skin = ""
-		switch pal {
-		case "ink", "dim", "slate":
-			a.Config.PaletteDark = pal
-		case "neutral", "paper", "mist":
-			a.Config.PaletteLight = pal
-		}
+		a.Config.PaletteDark = "ink"
+		a.Config.PaletteLight = "neutral"
 		return a.SaveConfig()
 	}
 	st := a.skinStore()

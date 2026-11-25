@@ -98,7 +98,7 @@ export function GroupPage(props: {
     }
   }
   return (
-    <div data-testid={props.stage ? "group-stage" : "group-page"} data-group={group.id} className={cn("flex h-full min-h-0 w-full flex-1 flex-col bg-background", props.stage && "mx-auto max-w-[1200px]")}>
+    <div data-testid={props.stage ? "group-stage" : "group-page"} data-group={group.id} className={cn("flex h-full min-h-0 w-full flex-1 flex-col bg-transparent", props.stage && "mx-auto max-w-[1200px]")}>
       <div className={cn("flex shrink-0 items-center gap-1 pt-1", props.stage ? "px-3" : "px-1")}>
         <button type="button" className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-lift hover:text-foreground" onClick={props.onBack} aria-label={props.stage ? copy.desk.taskBackMain : copy.work.taskBack}>
           <ChevronLeft className="size-4" />

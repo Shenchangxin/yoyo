@@ -299,10 +299,12 @@
   min-width: 0;
   align-self: stretch;
   padding-top: 8px;
-  border: 1px solid color-mix(in srgb, var(--foreground) 11%, transparent);
+  border: 1px solid var(--stroke);
   border-radius: var(--radius-composer);
-  background: var(--input-bar);
+  background: var(--glass);
   box-shadow: var(--shadow-composer);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.25);
   font-size: 14.5px;
   line-height: 24px;
 }
@@ -317,7 +319,7 @@
 
 /* 主输入框聚焦时一圈静态柔光；电流只在 Agent 干活时出现（ChatBorder）。 */
 .sc-root[data-primary="true"][data-focused="true"] .sc-card {
-  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 13%, transparent), var(--shadow-composer);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent), var(--shadow-composer);
 }
 
 /* 有审批在等时，边线变成静态琥珀色。 */
