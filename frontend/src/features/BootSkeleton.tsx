@@ -6,7 +6,7 @@ import { PresenceAnchor } from "./presence";
 // BootSkeleton 标成 aria-busy，侧栏宽 60，中间放 boot 锚点，尺寸 148。
 export function BootSkeleton() {
   return (
-    <div className="relative flex h-full min-h-0 overflow-hidden bg-background" aria-busy="true" aria-label="Loading">
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-transparent" aria-busy="true" aria-label="Loading">
       <div className="app-wallpaper" aria-hidden />
       <div className="app-grain" aria-hidden />
       <div className="flex w-60 shrink-0 flex-col bg-sidebar p-3">

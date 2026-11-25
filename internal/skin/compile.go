@@ -95,7 +95,7 @@ func CompileBuiltin(palette, mode string) Resolved {
 		PreserveEvidence: true,
 		Tokens:           tokens,
 		WindowRGB:        WindowRGB(tokens),
-		Materials:        Materials{Grain: 0.04, WallpaperFit: "cover", WallpaperDim: 0.45, RadiusScale: 1},
+		Materials:        Materials{Grain: 0.03, WallpaperFit: "cover", WallpaperDim: 0.45, RadiusScale: 1},
 		Contrast:         ContrastOf(tokens),
 	}
 }

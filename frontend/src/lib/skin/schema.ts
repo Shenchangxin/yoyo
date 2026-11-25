@@ -136,13 +136,13 @@ export const KEY_SKIN_EVIDENCE = "yoyo-skin-evidence";
 
 /** RADIUS_TOKENS 可按倍率缩放的圆角变量及其缺省长度。 */
 export const RADIUS_TOKENS: readonly { name: string; fallback: string }[] = [
-  { name: "--radius", fallback: "0.5rem" },
-  { name: "--radius-lg", fallback: "0.875rem" },
-  { name: "--radius-composer", fallback: "1.25rem" },
+  { name: "--radius", fallback: "0.625rem" },
+  { name: "--radius-lg", fallback: "1rem" },
+  { name: "--radius-composer", fallback: "1.625rem" },
   { name: "--radius-window", fallback: "1rem" },
-  { name: "--radius-pane", fallback: "0.75rem" },
-  { name: "--radius-control", fallback: "0.5rem" },
-  { name: "--radius-chip", fallback: "0.375rem" },
+  { name: "--radius-pane", fallback: "1.5rem" },
+  { name: "--radius-control", fallback: "0.625rem" },
+  { name: "--radius-chip", fallback: "999px" },
 ];
 
 /** isUserSkinId 小写开头、长度符合目录名，且不是 builtin. 前缀，才是用户皮肤。id 看开头，为假时走另一支，传给 test。 */
@@ -152,5 +152,5 @@ export function isUserSkinId(id: string | undefined | null): boolean {
 
 /** defaultMaterials 颗粒、铺满、暗化和圆角倍率的缺省材质。 */
 export function defaultMaterials(): SkinMaterials {
-  return { grain: 0.04, wallpaperFit: "cover", wallpaperDim: 0.45, radiusScale: 1 };
+  return { grain: 0.03, wallpaperFit: "cover", wallpaperDim: 0.45, radiusScale: 1 };
 }

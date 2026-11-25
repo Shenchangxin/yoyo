@@ -37,7 +37,7 @@ export function SheetContent({
       {overlay ? <Dialog.Overlay className="overlay-scrim fixed inset-0 z-40" /> : null}
       <Dialog.Content
         className={cn(
-          "fixed z-50 overscroll-contain bg-sidebar outline-none",
+          "fixed z-50 overscroll-contain bg-popover shadow-[var(--shadow-popover)] outline-none",
           side === "right" && "inset-y-0 right-0 w-[min(380px,92%)] border-l border-border",
           side === "left" && "inset-y-0 left-0 w-[min(280px,88%)] border-r border-border",
           side === "bottom" && "inset-x-0 bottom-0 h-[min(70vh,520px)] border-t border-border",

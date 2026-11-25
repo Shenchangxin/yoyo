@@ -10,9 +10,8 @@ import { writeClipboard } from "../../lib/clipboard";
 import { applyLocale, getLocale, useCopy, type Locale } from "../../lib/i18n";
 import { useUI } from "../../lib/store";
 import { DEFAULT_KEYMAP, formatShortcut, mergeKeymap, type KeymapId } from "../../lib/keymap";
-import { DARK_PALETTES, LIGHT_PALETTES, useTheme, type DarkPalette, type LightPalette, type PaletteId, type ThemePref } from "../../lib/theme";
+import { useTheme, type ThemePref } from "../../lib/theme";
 import { SkinStudio } from "./SkinStudio";
-import { builtinTokens } from "../../lib/skin/builtin";
 import { applyUiScale, snapUiScale, type UiScale } from "../../lib/scale";
 import { browserSurface, chrome } from "../../lib/chrome";
 import { asArray, str } from "../../lib/normalize";
@@ -136,10 +135,10 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** AppearanceSettings 改主题（明暗和色板）、壁纸和对话显示。host 读取 cfg，调用 patch，写到 SkinStudio 的 host。 */
+/** AppearanceSettings 改明暗、壁纸和对话显示。host 读取 cfg，调用 patch，写到 SkinStudio 的 host。 */
 export function AppearanceSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
-  const { pref, setPref, resolved, darkPalette, lightPalette, setDarkPalette, setLightPalette } = useTheme();
+  const { pref, setPref, resolved } = useTheme();
   const scale = String(snapUiScale(host.cfg.uiScale)) as `${UiScale}`;
   const view = host.cfg.transcriptView === "compact" ? "compact" : host.cfg.transcriptView === "detailed" || host.cfg.transcriptView === "verbose" ? "detailed" : "standard";
   const modes: { id: ThemePref; label: string }[] = [
@@ -164,7 +163,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                 key={m.id}
                 aria-pressed={active}
                 className={cn(
-                  "group cursor-pointer rounded-md border bg-card p-2 text-left transition-colors",
+                  "group cursor-pointer rounded-xl border border-border bg-card p-2 text-left shadow-[var(--shadow-card)] transition-[background-color,box-shadow] duration-200 ease-[var(--ease-out)]",
                   active ? "bg-lift" : "hover:bg-lift/70",
                 )}
                 onClick={() => {
@@ -172,7 +171,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                   void host.patch({ theme: m.id });
                 }}
               >
-                <ThemePreview mode={m.id} dark={darkPalette} light={lightPalette} />
+                <ThemePreview mode={m.id} />
                 <div className="mt-2 flex items-center gap-1 text-ui-footnote font-medium text-foreground">
                   {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
                   {m.label}
@@ -181,26 +180,6 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
             );
           })}
         </div>
-        <PaletteGroup
-          label={copy.settings.paletteGroupDark}
-          ids={DARK_PALETTES}
-          selected={darkPalette}
-          className="mt-5"
-          onPick={(id) => {
-            setDarkPalette(id);
-            void host.patch({ paletteDark: id });
-          }}
-        />
-        <PaletteGroup
-          label={copy.settings.paletteGroupLight}
-          ids={LIGHT_PALETTES}
-          selected={lightPalette}
-          className="mt-4"
-          onPick={(id) => {
-            setLightPalette(id);
-            void host.patch({ paletteLight: id });
-          }}
-        />
       </SettingSection>
 
       <SkinStudio host={host} />
@@ -869,104 +848,43 @@ export function DiagnosticsSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** 按色板编号取出名字和说明。id 用来做分支。palettes 读取 ink、inkHint、dim、dimHint、slate、slateHint 等。 */
-function paletteCopy(id: PaletteId, palettes: ReturnType<typeof useCopy>["settings"]["palettes"]) {
-  switch (id) {
-    case "ink": return { name: palettes.ink, hint: palettes.inkHint };
-    case "dim": return { name: palettes.dim, hint: palettes.dimHint };
-    case "slate": return { name: palettes.slate, hint: palettes.slateHint };
-    case "neutral": return { name: palettes.neutral, hint: palettes.neutralHint };
-    case "paper": return { name: palettes.paper, hint: palettes.paperHint };
-    case "mist": return { name: palettes.mist, hint: palettes.mistHint };
-  }
-}
+const PREVIEW = {
+  dark: { canvas: "#10131a", side: "rgba(22,26,34,.72)", line: "#a3a9b5", card: "rgba(255,255,255,.1)", accent: "#8b9cff" },
+  light: { canvas: "#e7ebf2", side: "rgba(255,255,255,.74)", line: "#5c6472", card: "#ffffff", accent: "#3558f5" },
+} as const;
 
-/** 画一组色板供挑选。label 作为子节点渲染。ids 做映射。selected 与 id 比较是否相等。onPick 被调用，并传入 id。className 写到 div 的 className。 */
-function PaletteGroup<T extends DarkPalette | LightPalette>({
-  label,
-  ids,
-  selected,
-  onPick,
-  className,
-}: {
-  label: string;
-  ids: readonly T[];
-  selected: T;
-  onPick: (id: T) => void;
-  className?: string;
-}) {
-  const copy = useCopy();
-  return (
-    <div className={className}>
-      <div className="mb-2 px-1 text-ui-caption font-medium text-muted">{label}</div>
-      <div className="grid grid-cols-3 gap-3">
-        {ids.map((id) => {
-          const meta = paletteCopy(id, copy.settings.palettes);
-          const active = selected === id;
-          return (
-            <button
-              type="button"
-              key={id}
-              aria-pressed={active}
-              aria-label={`${meta.name}. ${meta.hint}`}
-              className={cn(
-                "group cursor-pointer rounded-xl border bg-card p-2 text-left transition-[background-color,border-color,transform] duration-200 ease-[var(--ease-out)]",
-                active ? "bg-lift" : "hover:bg-lift/70",
-              )}
-              onClick={() => onPick(id)}
-            >
-              <div className="h-[56px] overflow-hidden rounded-xl border border-border">
-                <PreviewPane palette={id} />
-              </div>
-              <div className="mt-2 flex items-center gap-1 text-ui-footnote font-medium text-foreground">
-                {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
-                {meta.name}
-              </div>
-              <p className="mt-0.5 text-left text-ui-caption leading-[1.4] text-muted">{meta.hint}</p>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** 预览当前明暗色板。mode 与 system、dark 比较是否相等。dark 作为分支结果，写到 PreviewPane 的 palette。light 作为分支结果，写到 PreviewPane 的 palette。 */
-function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalette; light: LightPalette }) {
+/** 预览深色、浅色，或系统模式下的左右对半。mode 为 system 时左右各画一套。 */
+function ThemePreview({ mode }: { mode: ThemePref }) {
   if (mode === "system") {
     return (
       <div className="flex h-[56px] overflow-hidden rounded-xl border border-border">
-        <div className="w-1/2 overflow-hidden">
-          <PreviewPane palette={dark} />
-        </div>
-        <div className="w-1/2 overflow-hidden border-l border-border">
-          <PreviewPane palette={light} />
-        </div>
+        <PreviewPane tone="dark" />
+        <PreviewPane tone="light" className="border-l border-border" />
       </div>
     );
   }
   return (
     <div className="h-[56px] overflow-hidden rounded-xl border border-border">
-      <PreviewPane palette={mode === "dark" ? dark : light} />
+      <PreviewPane tone={mode} />
     </div>
   );
 }
 
-/** 画出一块色板。palette 传给 builtinTokens，写到 div 的 data-theme-preview。 */
-function PreviewPane({ palette }: { palette: PaletteId }) {
-  const tokens = builtinTokens(palette);
+/** 画出深色或浅色的一小块窗口。tone 选取 PREVIEW 里的颜色。 */
+function PreviewPane({ tone, className }: { tone: "dark" | "light"; className?: string }) {
+  const tokens = PREVIEW[tone];
   return (
     <div
-      className="flex h-full w-full"
-      data-theme-preview={palette}
-      style={{ background: tokens["--background"], borderColor: tokens["--border"] }}
+      className={cn("flex h-full min-w-0 flex-1", className)}
+      data-theme-preview={tone}
+      style={{ background: tokens.canvas }}
     >
-      <div className="h-full w-[28%] border-r" style={{ background: tokens["--sidebar"], borderColor: tokens["--border"] }} />
+      <div className="h-full w-[28%] border-r border-white/20" style={{ background: tokens.side }} />
       <div className="flex-1 space-y-[3px] p-[6px]">
-        <div className="h-[3px] w-4/5 rounded-full" style={{ background: tokens["--muted"] }} />
-        <div className="h-[3px] w-3/5 rounded-full" style={{ background: tokens["--muted"] }} />
-        <div className="mt-[5px] h-[14px] w-full rounded-sm" style={{ background: tokens["--card"], border: `1px solid ${tokens["--border"]}` }} />
-        <div className="mt-[4px] h-[4px] w-8 rounded-full" style={{ background: tokens["--accent"] }} />
+        <div className="h-[3px] w-4/5 rounded-full" style={{ background: tokens.line }} />
+        <div className="h-[3px] w-3/5 rounded-full" style={{ background: tokens.line }} />
+        <div className="mt-[5px] h-[14px] w-full rounded-lg" style={{ background: tokens.card }} />
+        <div className="mt-[4px] h-[4px] w-8 rounded-full" style={{ background: tokens.accent }} />
       </div>
     </div>
   );

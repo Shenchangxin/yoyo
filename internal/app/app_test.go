@@ -613,8 +613,8 @@ func TestAppearancePaletteDefaults(t *testing.T) {
 	if err := a.SaveConfig(); err != nil {
 		t.Fatal(err)
 	}
-	if a.Config.Theme != "light" || a.Config.PaletteDark != "slate" || a.Config.PaletteLight != "paper" {
-		t.Fatalf("valid palettes must stick: %+v", a.Config)
+	if a.Config.Theme != "light" || a.Config.PaletteDark != "ink" || a.Config.PaletteLight != "neutral" {
+		t.Fatalf("palettes collapse to ink and neutral: %+v", a.Config)
 	}
 }
 

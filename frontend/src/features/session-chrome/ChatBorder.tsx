@@ -8,7 +8,7 @@ import ElectricBorder from "./ElectricBorder";
 import { useTheme } from "../../lib/theme";
 
 const PAD = 3;
-const FALLBACK = { dark: "#6e85ff", light: "#3b5bff" };
+const FALLBACK = { dark: "#8b9cff", light: "#3558f5" };
 const IDLE_AFTER_BLUR_MS = 30_000;
 
 /** 窗口在前台，或者离开还不到 30 秒。 */
@@ -35,9 +35,9 @@ function useWindowAttention(): boolean {
   return attentive;
 }
 
-/** 读文档根上的强调色。皮肤和调色板改到根上，这里跟着变。 */
+/** 读文档根上的强调色。皮肤改到根上，这里跟着变。 */
 function useAccent(fallback: string) {
-  const { resolved, palette, skinId } = useTheme();
+  const { resolved, skinId } = useTheme();
   const [color, setColor] = useState(fallback);
   useEffect(() => {
     const read = () => {
@@ -48,17 +48,17 @@ function useAccent(fallback: string) {
     const observer = new MutationObserver(read);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "style", "data-palette", "data-skin"],
+      attributeFilter: ["class", "style", "data-skin"],
     });
     return () => observer.disconnect();
-  }, [fallback, resolved, palette, skinId]);
+  }, [fallback, resolved, skinId]);
   return color;
 }
 
 /** 量内容自己的圆角。胶囊会报一个很大的半径，描边时再夹回半高。 */
 function useCorner(explicit: number | undefined) {
   const fitRef = useRef<HTMLDivElement>(null);
-  const { resolved, palette, skinId } = useTheme();
+  const { resolved, skinId } = useTheme();
   const [radius, setRadius] = useState(explicit ?? 20);
   useEffect(() => {
     if (explicit != null) {
@@ -81,7 +81,7 @@ function useCorner(explicit: number | undefined) {
     const observer = new ResizeObserver(read);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [explicit, resolved, palette, skinId]);
+  }, [explicit, resolved, skinId]);
   return { fitRef, radius };
 }
 

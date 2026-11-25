@@ -1486,29 +1486,21 @@ test("task plan leaves the composer when the next user turn starts", async ({ pa
   await expect(page.getByTestId("conversation-column").getByText("second")).toBeVisible();
 });
 
-test("appearance palettes keep light off paper yellow by default", async ({ page }) => {
+test("appearance offers light and dark only", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Appearance" }).click();
-  await expect(page.getByRole("button", { name: /Daylight/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Paper/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Mist/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Night/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Light", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dark", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "System", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Paper|Mist|Slate|Daylight|Night/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Light", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/light/);
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "neutral");
-  await page.getByRole("button", { name: /Paper/ }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "paper");
-  await page.getByRole("button", { name: /Daylight/ }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "neutral");
+  await expect(page.locator("html")).not.toHaveAttribute("data-palette", /.+/);
   await page.getByRole("button", { name: "Dark", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "ink");
-  await expect(page.getByRole("button", { name: /Daylight/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: /Slate/ }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "slate");
-  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).not.toHaveClass(/light/);
 });
 
 test("titlebar hides update button until a package is downloaded", async ({ page }) => {

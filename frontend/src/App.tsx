@@ -1492,11 +1492,11 @@ function WorkstationApp() {
             <>
               <button
                 type="button"
-                className="absolute inset-0 z-20 bg-black/40"
+                className="overlay-scrim absolute inset-0 z-20"
                 aria-label={copy.rail.collapse}
                 onClick={() => ws.setSidebarHover(false)}
               />
-              <div className="absolute inset-y-0 left-0 z-30 w-[min(20.5rem,92%)] bg-sidebar pt-[env(safe-area-inset-top)] shadow-[var(--shadow-popover)]">
+              <div className="glass-chrome absolute inset-y-0 left-0 z-30 w-[min(20.5rem,92%)] pt-[env(safe-area-inset-top)] shadow-[var(--shadow-popover)]">
                 <div className="h-full">{rail}</div>
               </div>
             </>
@@ -1504,7 +1504,7 @@ function WorkstationApp() {
         ) : (
           <div
             className={overlayRail
-              ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)] border-r border-border bg-sidebar shadow-[var(--shadow-popover)]"
+              ? "glass-chrome absolute inset-y-0 left-0 z-20 w-[min(288px,90%)] shadow-[var(--shadow-popover)]"
               : "absolute inset-y-0 left-0 z-20 w-2"}
             onMouseEnter={() => ws.setSidebarHover(true)}
             onMouseLeave={() => ws.setSidebarHover(false)}
