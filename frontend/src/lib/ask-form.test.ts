@@ -52,6 +52,15 @@ describe("ask form", () => {
     assert.match(answered, /note: operator answered/);
   });
 
+  /** hold 卡有选项也不空闲通过，题干照常解析。 */
+  it("never idles a hold card", () => {
+    const form = parseAskCommand(JSON.stringify({ title: "制作简报", hold: true, questions: [{ id: "go", prompt: "按这个方案开拍？", options: [{ id: "go", label: "开拍" }, { id: "stop", label: "先不做" }] }] }));
+    assert.equal(form.hold, true);
+    assert.equal(form.questions.length, 1);
+    assert.equal(askCanIdle(form), false);
+    assert.equal(askCanIdle(parseAskCommand(formJSON)), true);
+  });
+
   /** 只取出本会话的 ask_user，shell 和其他会话不算。 */
   it("shows one card for this session only", () => {
     const mine: Approval = { id: "a", action: "ask_user", command: formJSON, path: "", level: "", sessionId: "s1" };

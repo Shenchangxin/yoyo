@@ -2,14 +2,14 @@
 name: hypit
 description: Finish a commissioned film as a watchable short. Use when the operator hands over a talking, drama, podcast, interview, ranking, explainer, or narration brief, or mentions @skill:hypit.
 license: Apache-2.0
-allowed-tools: video_route provider_menu studio_get studio_update studio_apply_template studio_approve_script studio_preflight studio_auto studio_generate_missing studio_speak studio_apply_timing studio_assemble ask_user update_plan load_skill
+allowed-tools: video_route provider_menu video_brief studio_get studio_update studio_apply_template studio_approve_script studio_preflight studio_auto studio_generate_missing studio_speak studio_apply_timing studio_assemble ask_user update_plan load_skill
 ---
 
 # Hypit
 
 This skill ships with Yoyo. The operator talks to you; you make the short with the shorts tools that ship in the app.
 
-The creation desk already collected the brief. Keep their subject, people, and lines. `provider_menu` before image or speech. Missing Settings accounts do not exist. `ask_user` before `studio_approve_script`.
+The conductor already wrote the brief with `video_brief` and the operator answered `confirmed: go`. If you see no `confirmed: go` in this thread, call `video_brief` intent=film first and wait for it. Keep their subject, people, and lines. Missing Settings accounts do not exist. Do not ask again before `studio_approve_script` when the brief was confirmed and the script follows it; ask only if you changed what they agreed to.
 
 ## Open the short
 

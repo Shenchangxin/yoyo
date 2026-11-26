@@ -74,7 +74,8 @@ import { useCutDesk } from "./features/video/cut-desk";
 import { useFilmDesk } from "./features/video/film-desk";
 import { useRemakeDesk } from "./features/video/remake-desk";
 import { useCreateMode } from "./features/video/create-mode";
-import { CreateSkills } from "./features/video/CreateSkills";
+
+import { createDeskView } from "./features/video/create-desk-view";
 import { useStudioSelection } from "./features/video/workshop-store";
 import { studioSessionId } from "./features/video/studio-session";
 import { sessionLane } from "./features/video/video-lanes";
@@ -132,8 +133,9 @@ function WorkstationApp() {
   const createEngaged = useCreateMode((s) => s.engaged);
   const filmOpen = useFilmDesk((s) => !!s.project?.id);
   const remakeOpen = useRemakeDesk((s) => !!s.draft?.id);
-  const createLauncher = createDesk && !cutBound && !filmOpen && !remakeOpen;
-  const finishDesk = createDesk && cutBound;
+  const deskView = createDeskView({ createDesk, cutBound, filmOpen, remakeOpen });
+
+  const finishDesk = deskView === "cut";
   const talkDesk = createDesk;
   const studioId = useStudioSelection((s) => s.studioId);
   const studioCopilotSession = studioSessionId(studioId, ws.videoProjects);
@@ -343,6 +345,8 @@ function WorkstationApp() {
     },
     /** onIngestVideo 调用 ingestVideo。source 传给 ws.ingestVideo。 */
     onIngestVideo: (source: { path?: string; file?: File }) => ws.ingestVideo(source),
+    /** onRemake 调用 startRemake：选一条参考片建成翻拍稿。 */
+    onRemake: () => ws.startRemake(),
     /** onAuthMode 调用 setPendingAuthMode。mode 传给 setPendingAuthMode，传给 api.setSessionAuthMode。 */
     onAuthMode: async (mode: AuthMode) => {
       if (!ws.activeId) {
@@ -398,11 +402,15 @@ function WorkstationApp() {
         useCreateMode.getState().setEngaged(true);
         void ws.onSend(opts);
       }}
-      placeholder={createLauncher ? copy.video.conductor.clipPlaceholder : undefined}
+
       onStop={ws.onStop}
       onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
       onModel={async (model) => {
-        if (!ws.activeId) return;
+        // 空的创作桌还没有会话：先记成默认模型，下一条会话就用它。
+        if (!ws.activeId) {
+          await ws.patchConfig({ model });
+          return;
+        }
         const t = await api.setSessionModel(ws.activeId, model);
         ws.setActive(t);
         ws.refreshCtx();
@@ -730,13 +738,7 @@ function WorkstationApp() {
         )}
         {home && !railNarrow && filmSurface ? homeStarters : null}
         <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
-          {createLauncher ? (
-            <CreateSkills
-              onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-              onImport={() => { void ws.ingestVideo({}); }}
-              onRemake={() => { void ws.startRemake(); }}
-            />
-          ) : null}
+
           <div className={mainChat && !home ? THREAD_READ : "contents"}>
             {!home && !videoing && !paging && !!ws.activeId && ws.active?.channel !== "video" && hasConversation(copilotItems) && !ws.threadRunning && lastTurnFailed(copilotItems) ? (
               <ChatNotWorking onImprove={() => ws.openHarness("propose")} />

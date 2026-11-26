@@ -13,6 +13,8 @@ const (
 	askNoOperator = "no operator answer; continue with a reasonable default"
 	askIdleNote   = "note: operator idle; used recommended"
 	askAnswerNote = "note: operator answered"
+	// askHoldNoOperator 是 hold 卡没人作答时的答复。花额度的确认不能按建议项自己通过。
+	askHoldNoOperator = "not confirmed: nobody answered this card; do not call paid or credit-spending tools, tell the operator what is waiting for their go-ahead"
 )
 
 const askContinueNudge = "You ended the turn to wait for a nod. Do not. Call ask_user now with questions, each having id, prompt, options (id and label), and recommended (the option id you would pick). One card sits above the composer; if the operator does not touch it, this turn continues with recommended. After the tool result, keep going. Do not write another letter that waits for a new message."
@@ -37,12 +39,14 @@ type AskQuestion struct {
 type AskForm struct {
 	Title     string        `json:"title,omitempty"`
 	Questions []AskQuestion `json:"questions"`
+	// Hold 为真时这张卡要操作者亲手作答：桌面不倒计时，无界面时答复是未确认。花额度前的确认用它。
+	Hold bool `json:"hold,omitempty"`
 }
 
 // parseAskForm 从 questions 或单个 question 解析表单，再规范化。questions 可以是 JSON 字符串。
 // args 提供 title、questions，以及 questions 为空时的 question。
 func parseAskForm(args map[string]any) AskForm {
-	form := AskForm{Title: strings.TrimSpace(str(args["title"]))}
+	form := AskForm{Title: strings.TrimSpace(str(args["title"])), Hold: askHold(args["hold"])}
 	form.Questions = questionsOf(args["questions"])
 	if len(form.Questions) == 0 {
 		prompt := strings.TrimSpace(str(args["question"]))
@@ -203,16 +207,19 @@ func AskPrompt(payload string) string {
 // payload 交给 decodeAskPayload，解不开或 askCanIdle 为假时返回 askNoOperator。
 func AskIdleAnswer(payload string) string {
 	form, ok := decodeAskPayload(payload)
+	if ok && form.Hold {
+		return askHoldNoOperator
+	}
 	if !ok || !askCanIdle(form) {
 		return askNoOperator
 	}
 	return formatAsk(form, true)
 }
 
-// askCanIdle 在每道题都有选项时才允许用推荐项继续。
-// form 的 Questions 为空，或任一道题没有选项时返回 false。
+// askCanIdle 在每道题都有选项、且不是 hold 卡时才允许用推荐项继续。
+// form 的 Hold 为真、Questions 为空，或任一道题没有选项时返回 false。
 func askCanIdle(form AskForm) bool {
-	if len(form.Questions) == 0 {
+	if form.Hold || len(form.Questions) == 0 {
 		return false
 	}
 	for _, q := range form.Questions {
@@ -330,4 +337,19 @@ var nodNeedles = []string{
 	"let me know which",
 	"your go-ahead",
 	"your approval",
+}
+
+// askHold 读 hold 参数。布尔真，或字符串 1、true、yes、on 为真，其余为假。
+// v 是参数原值，可能是布尔、字符串或 nil。
+func askHold(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		switch strings.ToLower(strings.TrimSpace(x)) {
+		case "1", "true", "yes", "on":
+			return true
+		}
+	}
+	return false
 }

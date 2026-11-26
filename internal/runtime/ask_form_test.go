@@ -95,3 +95,24 @@ func mustAskJSON(t *testing.T, form AskForm) string {
 	}
 	return string(b)
 }
+
+// TestAskHoldNeverIdles 确认 hold 卡不空闲通过，没人作答时答复是未确认，不是按建议继续；hold 能从字符串读出。
+func TestAskHoldNeverIdles(t *testing.T) {
+	form := parseAskForm(map[string]any{
+		"title": "开拍",
+		"hold":  true,
+		"questions": []any{
+			map[string]any{"id": "go", "prompt": "按这个方案开拍？", "options": []any{"开拍", "先不做"}},
+		},
+	})
+	if !form.Hold || askCanIdle(form) {
+		t.Fatalf("hold form must not idle %+v", form)
+	}
+	got := AskIdleAnswer(mustAskJSON(t, form))
+	if got != askHoldNoOperator || strings.Contains(got, askIdleNote) {
+		t.Fatalf("idle answer %q", got)
+	}
+	if !askHold("true") || !askHold(" ON ") || askHold("no") || askHold(nil) {
+		t.Fatal("hold parsing")
+	}
+}

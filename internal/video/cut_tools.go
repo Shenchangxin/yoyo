@@ -20,7 +20,7 @@ func CutToolNames() []string {
 
 // ConductorToolNames 返回 video_route 和 provider_menu。
 func ConductorToolNames() []string {
-	return []string{"video_route", "provider_menu"}
+	return []string{"video_route", "provider_menu", "video_brief"}
 }
 
 // CutToolSpecs 返回剪辑工程从创建、分析、提议、拼接到字幕、配音和调色的工具规格。Desc 是给模型看的说明。
@@ -70,6 +70,10 @@ func ConductorToolSpecs() []ToolSpec {
 	return []ToolSpec{
 		{Name: "video_route", Desc: "Open or bind a workshop. dest is studio (短片), drama (短剧), canvas (画布), or cut (胶片/创作). Creates a shorts or cut project when id is empty.", Params: obj(map[string]any{"dest": str, "id": str, "title": str, "intent": str}, "dest")},
 		{Name: "provider_menu", ReadOnly: true, Desc: "List Settings accounts that are enabled and have a vault key. Missing vendors do not exist. Optional capability filter: speech, music, stock, asr, image, video.", Params: obj(map[string]any{"capability": str})},
+		{Name: "video_brief", Desc: "Write the production brief before any paid step. intent: cut, dub, remake, film, still, short, drama, canvas. film takes format: talking, drama, podcast, interview, ranking, explainer, narration. Returns needs, the enabled accounts per need (have), local fallbacks, missing, spend, and ready. When spend and ready are true the operator sees one confirm card in this same call and the result ends with confirmed: go, edit, stop, or unconfirmed. Call paid tools only after confirmed: go. On edit, change the brief and call again. On stop or unconfirmed, stop and say what waits. If missing is not empty, name the missing account and send them to Settings -> Generation. Never invent accounts or hashes.", Params: obj(map[string]any{
+			"intent": str, "format": str, "subject": str, "seconds": map[string]any{"type": "number"},
+			"aspect": str, "voice": str, "style": str, "source_hash": str,
+		}, "intent")},
 	}
 }
 
@@ -231,6 +235,12 @@ func (e *Engine) CutTool(sessionID, name string, args map[string]any) (string, e
 			return "", err
 		}
 		return marshalJSON(out), nil
+	case "video_brief":
+		plan, err := e.VideoBrief(args)
+		if err != nil {
+			return "", err
+		}
+		return marshalJSON(plan), nil
 	case "provider_menu":
 		return marshalJSON(e.ProviderMenu(strAnyMap(args, "capability", "cap"))), nil
 	default:
