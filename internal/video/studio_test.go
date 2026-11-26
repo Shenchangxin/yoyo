@@ -455,14 +455,14 @@ func TestStudioPipelineGatesApprovePackage(t *testing.T) {
 	if p.FurthestGate() != GateScript || p.Identity.CharacterID == "" || p.PresetID == "" {
 		t.Fatalf("create %+v furthest=%s", p, p.FurthestGate())
 	}
-	if _, err := e.ApproveStudioScript(p.ID); err == nil {
+	if _, err := e.ApproveStudioScriptText(p.ID, ""); err == nil {
 		t.Fatal("approve empty script")
 	}
 	p.Script = "开头三秒报选题。中间讲一个可核验的点。结尾告诉你下一步。"
 	if _, err := e.UpdateStudioProject(p); err != nil {
 		t.Fatal(err)
 	}
-	approved, err := e.ApproveStudioScript(p.ID)
+	approved, err := e.ApproveStudioScriptText(p.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}

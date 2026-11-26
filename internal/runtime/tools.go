@@ -32,6 +32,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/pwsh"
+	"github.com/Shenchangxin/yoyo/internal/safeguard"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/tool"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -370,6 +371,10 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 		if hook.Deny {
 			return ToolResult{Err: fmt.Errorf("%s", hook.Reason)}
 		}
+	}
+	// 桌面工具不经过 runtime.Run 的事件总线。破坏性删除、外传和往浏览器粘贴密钥在这里拒绝。
+	if deny, reason := safeguard.PreTool(name, argsJSON); deny {
+		return ToolResult{Err: fmt.Errorf("%s", reason)}
 	}
 	if t != nil && t.ReadOnly && !readOnlySubagentCall(name) {
 		return ToolResult{Err: fmt.Errorf("read-only subagent: write/shell tools are disabled; return findings in the final letter")}

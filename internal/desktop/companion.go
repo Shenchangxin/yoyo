@@ -384,15 +384,6 @@ func (s *Service) OpenCompanionChat() {
 	s.refreshChrome()
 }
 
-// ToggleCompanion 在宠物正显示时 HideCompanion，否则 ShowCompanion。
-func (s *Service) ToggleCompanion() {
-	if s.companionShown() {
-		s.HideCompanion()
-		return
-	}
-	_ = s.ShowCompanion()
-}
-
 // syncCompanion 在配置关掉宠物时收起、关闭窗口，并发出 yoyo:companion 且值为 hidden。已经收起时只关闭并 refreshChrome。否则 OpenCompanion。
 // cfg 的 CompanionEnabled 为假时收起并关闭宠物。为真且尚未收起时调用 OpenCompanion。
 func (s *Service) syncCompanion(cfg app.Config) {

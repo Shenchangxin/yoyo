@@ -78,20 +78,6 @@ type ManifestAgentResponse struct {
 // AdapterResolver 供宿主把随应用带上的执行引擎绑到清单。上传的插件走声明式路径。宿主绑定只留给随应用发布的清单。
 type AdapterResolver func(string) (Adapter, bool)
 
-// LoadInstalledPlugin 加载插件里的供应商并返回第一个。一个都没有则失败。
-// data 传给 LoadInstalledProviders。
-// resolve 传给 LoadInstalledProviders。
-func LoadInstalledPlugin(data []byte, resolve AdapterResolver) (Adapter, error) {
-	adapters, err := LoadInstalledProviders(data, resolve)
-	if err != nil {
-		return nil, err
-	}
-	if len(adapters) == 0 {
-		return nil, fmt.Errorf("plugin does not provide an executable provider")
-	}
-	return adapters[0], nil
-}
-
 // LoadInstalledProviders 从一个插件包加载全部供应商。后端以 host: 开头时只能有一项供应商，并用 resolve 取出宿主适配器。没有供应商贡献时走声明式清单。有贡献时按每一项各建一个适配器。
 // data 传给 decodeManifest。
 func LoadInstalledProviders(data []byte, resolve AdapterResolver) ([]Adapter, error) {
@@ -135,30 +121,6 @@ func LoadInstalledProviders(data []byte, resolve AdapterResolver) ([]Adapter, er
 		result = append(result, adapter)
 	}
 	return result, nil
-}
-
-// validatePluginMetadata 要求标识和版本非空且标识合法，至少有一种能力和一个使用面。能力只能是 text、image、video 或 audio。使用面只能是管理端系统频道、用户自定义频道、画布、创作或代理。
-// metadata 的 ID、Version 去掉空白后为空，或 ID 没通过 validManifestIdentifier 就失败；Categories、Scopes 长度为 0，或能力、使用面不在允许值里也失败。
-func validatePluginMetadata(metadata Metadata) error {
-	if strings.TrimSpace(metadata.ID) == "" || strings.TrimSpace(metadata.Version) == "" || !validManifestIdentifier(metadata.ID) {
-		return fmt.Errorf("protocol plugin metadata is invalid")
-	}
-	if len(metadata.Categories) == 0 || len(metadata.Scopes) == 0 {
-		return fmt.Errorf("protocol plugin metadata requires categories and scopes")
-	}
-	for _, capability := range metadata.Categories {
-		if capability != CapabilityText && capability != CapabilityImage && capability != CapabilityVideo && capability != CapabilityAudio {
-			return fmt.Errorf("unsupported protocol capability %q", capability)
-		}
-	}
-	for _, scope := range metadata.Scopes {
-		switch scope {
-		case SurfaceAdminSystemChannel, SurfaceUserCustomChannel, SurfaceCanvas, SurfaceCreation, SurfaceAgent:
-		default:
-			return fmt.Errorf("unsupported protocol scope %q", scope)
-		}
-	}
-	return nil
 }
 
 type metadataAdapter struct {
@@ -247,16 +209,6 @@ func (a metadataAdapter) ParseAgent(ctx context.Context, body []byte) (AgentResu
 		return AgentResult{}, unavailable(a.metadata)
 	}
 	return adapter.ParseAgent(ctx, body)
-}
-
-// LoadManifest 解码清单并装成声明式适配器。
-// data 传给 decodeManifest。
-func LoadManifest(data []byte) (Adapter, error) {
-	manifest, err := decodeManifest(data)
-	if err != nil {
-		return nil, err
-	}
-	return loadDeclarativeManifest(manifest)
 }
 
 // decodeManifest 把字节解成清单并调用 ValidateManifest。解码或校验失败时返回该错误。

@@ -6,7 +6,6 @@ package video
 import (
 	"fmt"
 	"sort"
-	"strings"
 )
 
 // PresetStyles 返回内置画面风格。核心表在前，extraPresetStyles 接在后面。
@@ -222,6 +221,3 @@ func (e *Engine) DeleteStyle(id string) error {
 	rec.UpdatedAt = Now()
 	return e.putDoc(colStyles, id, rec)
 }
-
-// styleValueKey 去掉 value 两端的空白。
-func styleValueKey(v string) string { return strings.TrimSpace(v) }

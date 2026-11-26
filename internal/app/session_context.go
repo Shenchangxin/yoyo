@@ -84,6 +84,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		PlanText:      meta.PlanText,
 		PageContext:   pageCtx,
 		ProfileMemory: profile,
+		Chat:          true,
 	})
 	if pp := promptFromEvents(evs); pp > 0 {
 		rep.ProviderPrompt = pp

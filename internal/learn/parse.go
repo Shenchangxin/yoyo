@@ -80,12 +80,6 @@ type parseMeta struct {
 	Outline []OutlineEntry `json:"outline"`
 }
 
-// ParseFile 按扩展名抽出文本单元，并返回文件字节的 sha256。path 必须是已有文件，超过 MaxImportBytes 返回错误。
-func ParseFile(path string) (string, []PageText, error) {
-	sum, doc, err := parseFile(path)
-	return sum, doc.Units, err
-}
-
 // parseFile 解析 path 指向的文件，返回它的 sha256、文本单元和提纲。扩展名不认识或文件超过 MaxImportBytes 时返回错误。
 func parseFile(path string) (string, parsedDoc, error) {
 	st, err := os.Stat(path)

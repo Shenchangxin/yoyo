@@ -150,8 +150,8 @@ func (n *Node) serveWS(w http.ResponseWriter, r *http.Request) {
 // pump 把 Hub 的全部事件收成 type 为 live 的帧，把状态订阅收成 type 为 state 的帧。Hub 为空就跳过实时这一路。app 为空就两路都不订。
 // ctx 在两个订阅循环里看 Done，并传给 send。
 func (n *Node) pump(ctx context.Context, s *sock) {
-	if n.app != nil && n.app.Hub != nil {
-		ch, unsub := n.app.Hub.Subscribe("*")
+	if n.app != nil {
+		ch, unsub := n.app.SubscribeHub("*")
 		go func() {
 			defer unsub()
 			for {
@@ -294,10 +294,10 @@ func (n *Node) serveMedia(w http.ResponseWriter, r *http.Request) {
 // 越界、目录，或没有 home，都拒绝。
 // path 不是绝对路径时接到 video 目录上，是绝对路径时也必须落在该目录里，然后交给 os.Open。
 func (n *Node) openMedia(path string) (*os.File, error) {
-	if n.app == nil || n.app.Home == nil {
+	if n.app == nil || n.app.HomeRoot() == "" {
 		return nil, errors.New("no home")
 	}
-	root := filepath.Clean(filepath.Join(n.app.Home.Root, "video"))
+	root := filepath.Clean(filepath.Join(n.app.HomeRoot(), "video"))
 	full := filepath.Clean(path)
 	if !filepath.IsAbs(full) {
 		full = filepath.Clean(filepath.Join(root, path))

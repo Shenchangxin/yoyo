@@ -220,15 +220,3 @@ func (b Bin) ExtractAudio(src, outPath string) error {
 	_, err := b.run("-y", "-i", src, "-vn", "-acodec", "aac", "-ar", "48000", "-b:a", "192k", outPath)
 	return err
 }
-
-// EnhanceAudio 对音轨套用 EnhanceFilter 给出的滤镜。
-// src 作为 -i。
-// outPath 作为输出路径。
-// preset 传给 EnhanceFilter。
-func (b Bin) EnhanceAudio(src, outPath, preset string) error {
-	if err := b.ok(); err != nil {
-		return err
-	}
-	_, err := b.run("-y", "-i", src, "-af", EnhanceFilter(preset), outPath)
-	return err
-}

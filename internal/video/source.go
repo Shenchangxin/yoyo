@@ -17,27 +17,27 @@ import (
 // 这些数值是原文切片和成片时长估算用的窗口。
 const (
 	// sliceWindow 是默认读取窗口，1800 个字符。
-	sliceWindow     = 1800
+	sliceWindow = 1800
 	// sliceOverlap 是相邻切片重叠的字符数，200。
-	sliceOverlap    = 200
+	sliceOverlap = 200
 	// maxReadWindow 是一次读取的上限，2400 个字符。
-	maxReadWindow   = 2400
+	maxReadWindow = 2400
 	// seriesRuneMin 是直接当成连续剧的字符数，2000。
-	seriesRuneMin   = 2000
+	seriesRuneMin = 2000
 	// chapterMinRunes 是靠章节标题判定连续剧时的最少字符数，400。
 	chapterMinRunes = 400
 	// episodeWindow 是分集切分窗口，4000 个字符。
-	episodeWindow   = 4000
+	episodeWindow = 4000
 	// maxEpisodeRunes 是单集上限，8000 个字符。
 	maxEpisodeRunes = 8000
 	// minEpisodeRunes 是单集下限，600 个字符。
 	minEpisodeRunes = 600
 	// maxFilmSeconds 是单集成片估算的上限，90 秒。
-	maxFilmSeconds  = 90
+	maxFilmSeconds = 90
 	// minFilmSeconds 是单集成片估算的下限，45 秒。
-	minFilmSeconds  = 45
+	minFilmSeconds = 45
 	// peekRunes 是切片预览的字符数，180。
-	peekRunes       = 180
+	peekRunes = 180
 )
 
 // chapterRe 匹配「第…章节回部卷」或 Chapter 加数字，忽略大小写。
@@ -395,15 +395,6 @@ func filmTarget(sourceRunes int) int {
 // b 在 a 不小于它时返回。
 func minInt(a, b int) int {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-// maxInt 返回两个整数里较大的一个。
-// b 在 a 大于它时不返回，否则返回。
-func maxInt(a, b int) int {
-	if a > b {
 		return a
 	}
 	return b

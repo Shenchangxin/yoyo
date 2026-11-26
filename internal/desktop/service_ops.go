@@ -521,7 +521,7 @@ func (s *Service) KeyStatus() map[string]any {
 	if s.App == nil {
 		return map[string]any{}
 	}
-	return s.App.Vault.Status()
+	return s.App.VaultStatus()
 }
 
 // StopMCP 在 RPC 非空时调用 mcp.stop，否则走 App.StopMCP。
@@ -532,16 +532,6 @@ func (s *Service) StopMCP(name string) error {
 		return err
 	}
 	return s.App.StopMCP(name)
-}
-
-// MCPList 在 RPC 非空时调用 mcp.list。否则返回 servers 为 MCP.Info，tools 为 MCP.Tools。
-func (s *Service) MCPList() map[string]any {
-	if s.RPC != nil {
-		v, err := s.call("mcp.list", nil)
-		m, _ := decode[map[string]any](v, err)
-		return m
-	}
-	return map[string]any{"servers": s.App.MCP.Info(), "tools": s.App.MCP.Tools()}
 }
 
 // Logs 在 RPC 非空时调用 logs.tail，否则走 App.Logs。
@@ -738,8 +728,8 @@ func (s *Service) RevealJournal() error {
 		v, err := s.call("journal.tail", map[string]any{"limit": 1})
 		m, _ := decode[map[string]any](v, err)
 		path, _ = m["path"].(string)
-	} else if s.App != nil && s.App.Journal != nil {
-		path = s.App.Journal.Path
+	} else if s.App != nil {
+		path = s.App.JournalPath()
 	}
 	if path == "" {
 		return errors.New("journal path unknown")

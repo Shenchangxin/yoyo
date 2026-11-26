@@ -354,11 +354,10 @@ type StopReason string
 
 // 一轮结束的原因。
 const (
-	StopEndTurn         StopReason = "end_turn"
-	StopMaxTokens       StopReason = "max_tokens"
-	StopMaxTurnRequests StopReason = "max_turn_requests"
-	StopRefusal         StopReason = "refusal"
-	StopCancelled       StopReason = "cancelled"
+	StopEndTurn   StopReason = "end_turn"
+	StopMaxTokens StopReason = "max_tokens"
+	StopRefusal   StopReason = "refusal"
+	StopCancelled StopReason = "cancelled"
 )
 
 // PromptResponse 是 session/prompt 的结果。

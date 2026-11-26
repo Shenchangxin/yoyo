@@ -171,16 +171,6 @@ func (h *Host) OpenURL(raw string) (Snapshot, error) {
 	return snap, nil
 }
 
-// LastAction 返回最近一次点击的观察文字。宿主为空时返回空字符串。
-func (h *Host) LastAction() string {
-	if h == nil {
-		return ""
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.lastClick
-}
-
 // ShotMeta 返回最近一张截图是否与上一张相同、哈希前 8 字节的十六进制，以及字节数。还没有截图时三个结果都是零值。
 func (h *Host) ShotMeta() (unchanged bool, sum string, n int) {
 	if h == nil {

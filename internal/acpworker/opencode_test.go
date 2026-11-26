@@ -15,7 +15,7 @@ func TestWriteOpenCodeMCPListsToolsDirectly(t *testing.T) {
 	}
 	const url = "http://127.0.0.1:9/mcp"
 	const token = "super-secret-token"
-	if err := WriteOpenCodeMCP(dir, url); err != nil {
+	if err := WriteOpenCodeFile(dir, OpenCodeFile{MCPURL: url}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "opencode.json"))
@@ -49,7 +49,7 @@ func TestWriteOpenCodeMCPListsToolsDirectly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "opencode.jsonc"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteOpenCodeMCP(dir, url); err == nil {
+	if err := WriteOpenCodeFile(dir, OpenCodeFile{MCPURL: url}); err == nil {
 		t.Fatal("an existing jsonc config should be left alone")
 	}
 }

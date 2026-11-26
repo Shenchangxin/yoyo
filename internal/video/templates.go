@@ -26,8 +26,3 @@ func ProviderTemplates() []Provider {
 	}
 	return out
 }
-
-// ServiceTypes 返回 image、video、tts、music、matting、stock、asr、storage、search 和 workflow。
-func ServiceTypes() []string {
-	return []string{"image", "video", "tts", "music", "matting", "stock", "asr", "storage", "search", "workflow"}
-}

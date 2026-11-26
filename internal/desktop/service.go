@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -185,7 +184,7 @@ func (s *Service) SetAPIKey(value string) {
 		_, _ = s.call("key.set", map[string]any{"value": value})
 		return
 	}
-	s.App.Vault.Set("default", value)
+	s.App.SetDefaultKey(value)
 }
 
 // CreateSession 调用 CreateSessionOn，频道固定为 agent。
@@ -440,7 +439,7 @@ func (s *Service) RunEvalSafety() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run_safety", nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalTimeout)
 	defer cancel()
 	return s.App.RunEvalOpts(ctx, nil, true)
 }
@@ -450,7 +449,7 @@ func (s *Service) RunEvalTB() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run_tb", nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalTimeout)
 	defer cancel()
 	return s.App.RunEvalTB(ctx, nil)
 }
@@ -460,7 +459,7 @@ func (s *Service) RunEvalSealed() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run_sealed", nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalSuiteTimeout)
 	defer cancel()
 	return s.App.RunEvalSealed(ctx, nil)
 }
@@ -470,7 +469,7 @@ func (s *Service) RunEvalTransfer() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run_transfer", nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalSuiteTimeout)
 	defer cancel()
 	return s.App.RunEvalTransfer(ctx, nil)
 }
@@ -480,7 +479,7 @@ func (s *Service) RunEvalIndex() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run_index", nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalSuiteTimeout)
 	defer cancel()
 	return s.App.RunEvalIndex(ctx, nil)
 }
@@ -490,7 +489,7 @@ func (s *Service) RunEvalBehavior() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run_behavior", nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalTimeout)
 	defer cancel()
 	return s.App.RunEvalBehavior(ctx, nil)
 }
@@ -996,7 +995,7 @@ func (s *Service) RunEval() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run", nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalTimeout)
 	defer cancel()
 	return s.App.RunEval(ctx, nil)
 }
@@ -1007,7 +1006,7 @@ func (s *Service) RunEvalAt(snapshot string) (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run", map[string]any{"snapshot": snapshot})
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalTimeout)
 	defer cancel()
 	if snapshot == "" {
 		return s.App.RunEval(ctx, nil)
@@ -1020,7 +1019,7 @@ func (s *Service) BestOfN(n int) (app.BestOfNReport, error) {
 	if s.RPC != nil {
 		return decode[app.BestOfNReport](s.call("eval.best_of_n", map[string]any{"n": n}))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalSuiteTimeout)
 	defer cancel()
 	return s.App.BestOfN(ctx, n, nil)
 }
@@ -1030,7 +1029,7 @@ func (s *Service) BestOfModels(models []string) (app.BestOfNReport, error) {
 	if s.RPC != nil {
 		return decode[app.BestOfNReport](s.call("eval.best_of_models", map[string]any{"models": models}))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvalSuiteTimeout)
 	defer cancel()
 	return s.App.BestOfModels(ctx, models, nil)
 }
@@ -1071,14 +1070,7 @@ func (s *Service) EvolveLab(k, rounds int, sealed, promote, behavior, index bool
 			"behavior": behavior, "index": index, "baselines": baselines, "max_usd": maxUSD,
 		}))
 	}
-	timeout := 15 * time.Minute
-	if rounds > 1 {
-		timeout = time.Duration(rounds) * 15 * time.Minute
-		if timeout > 2*time.Hour {
-			timeout = 2 * time.Hour
-		}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), app.EvolveTimeout(rounds))
 	defer cancel()
 	return s.App.EvolveWith(ctx, nil, nil, app.EvolveRun{
 		K: k, Rounds: rounds, Sealed: sealed, PromoteActive: promote,
@@ -1098,15 +1090,7 @@ func (s *Service) OverlaySession(sessionID, task string, reuseTurn bool, maxUSD 
 			"session": sessionID, "task": task, "reuse_turn": reuseTurn, "max_usd": maxUSD, "overlay_k": overlayK, "overlay_mode": overlayMode,
 		}))
 	}
-	ok := overlayK
-	if ok < 1 {
-		ok = 1
-	}
-	timeout := 15 * time.Minute * time.Duration(ok)
-	if timeout > time.Hour {
-		timeout = time.Hour
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), app.OverlayTimeout(overlayK, 0))
 	defer cancel()
 	return s.App.OverlaySession(ctx, app.OverlayRun{
 		SessionID: sessionID, Task: task, ReuseTurn: reuseTurn, MaxUSD: maxUSD, K: overlayK, Mode: overlayMode,
@@ -1139,7 +1123,7 @@ func (s *Service) Plugins() map[string]any {
 		m, _ := decode[map[string]any](v, err)
 		return m
 	}
-	return map[string]any{"fibers": s.App.Kernel.Fibers(), "wasm": s.App.WASM.List(), "mcp": s.App.MCP.Info(), "tools": s.App.MCP.Tools()}
+	return s.App.PluginList()
 }
 
 // UnloadFiber 在 RPC 非空时调用 fiber.unload。同进程先 Dispose 同名 fiber，没有则 WASM.Unload。
@@ -1149,10 +1133,7 @@ func (s *Service) UnloadFiber(name string) error {
 		_, err := s.call("fiber.unload", map[string]any{"name": name})
 		return err
 	}
-	if f := s.App.Kernel.Fiber(name); f != nil {
-		return f.Dispose()
-	}
-	return s.App.WASM.Unload(name)
+	return s.App.UnloadFiber(name)
 }
 
 // ApplyUpdate 在 RPC 非空时调用 update.apply，exe 为空。同进程走 ApplyStagedUpdate。ErrQuitNeeded 变成 quit，ErrOpenedPackage 变成 opened。quit 为真且 gui 非空时发出 yoyo:do-quit。

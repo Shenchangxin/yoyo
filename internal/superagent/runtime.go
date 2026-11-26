@@ -351,19 +351,6 @@ func (rt *Runtime) refreshEnvLocked() {
 	}
 }
 
-// SetPrepare 记下第一次派工前要跑的命令。空串表示只建空目录。面板才能改它。
-func (rt *Runtime) SetPrepare(command string) {
-	if rt == nil {
-		return
-	}
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	rt.prepareCmd = strings.TrimSpace(command)
-	if rt.exec != nil {
-		rt.exec.PrepareCmd = rt.prepareCmd
-	}
-}
-
 // SetIntake 接上邮件和日历。fn 返回推断触发，由轮询按固定间隔收下。
 func (rt *Runtime) SetIntake(fn func() []Trigger) {
 	if rt == nil {
@@ -579,22 +566,6 @@ func (rt *Runtime) Pass(now time.Time) {
 	rt.poll(now)
 	rt.flushOutbox()
 	rt.save()
-}
-
-// SetEvalTimeout 改评估时限。d 小于等于 0 时改回两分钟。改完立刻落盘。
-func (rt *Runtime) SetEvalTimeout(d time.Duration) {
-	if rt == nil || rt.eng == nil {
-		return
-	}
-	if d <= 0 {
-		d = 120 * time.Second
-	}
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	rt.eng.mu.Lock()
-	rt.eng.policy.EvalTimeout = d
-	rt.eng.mu.Unlock()
-	rt.saveLocked()
 }
 
 // Decide 评估 triggerID。kind 和 reason 写进决定。成功后立刻泵一次派工并落盘。

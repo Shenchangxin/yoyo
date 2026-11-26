@@ -484,24 +484,6 @@ func (e *Engine) channelFromConnCap(c connection.Connection, yingceCap string) c
 	}
 }
 
-// syncProviderChannel 当前直接返回 nil。
-// p 函数体没有读取。
-func (e *Engine) syncProviderChannel(p Provider) error { return nil }
-
-// deleteProviderChannel 删除供应商记录和同 id 的画布通道文档。
-func (e *Engine) deleteProviderChannel(id string) {
-	_ = e.DeleteProvider(id)
-	_ = e.delDoc(colChannels, id)
-}
-
-// syncAllProviderChannels 当前直接返回 nil。
-func (e *Engine) syncAllProviderChannels() error { return nil }
-
-// seedCanvasChannels 调用 syncAllProviderChannels，因此当前返回 nil。
-func (e *Engine) seedCanvasChannels() error {
-	return e.syncAllProviderChannels()
-}
-
 // listCanvasChannels 合并连接表和已保存的画布通道，并按金库标记是否有密钥。
 func (e *Engine) listCanvasChannels() []canvasChannel {
 	seen := map[string]bool{}

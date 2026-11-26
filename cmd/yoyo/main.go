@@ -321,7 +321,11 @@ func evalCmd() *cobra.Command {
 				return err
 			}
 			defer a.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+			limit := app.EvalTimeout
+			if len(models) > 0 || best > 1 || index || transfer || sealed {
+				limit = app.EvalSuiteTimeout
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), limit)
 			defer cancel()
 			client := labClient(solver)
 			if len(models) > 0 {
@@ -589,7 +593,7 @@ func evolveCmd() *cobra.Command {
 			if rounds <= 0 {
 				rounds = 1
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(rounds)*15*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), app.EvolveTimeout(rounds))
 			defer cancel()
 			res, err := a.EvolveWith(ctx, labClient(solver), nil, app.EvolveRun{
 				K: k, Rounds: rounds, PromoteActive: promote, Sealed: sealed,
@@ -688,21 +692,7 @@ func runOverlayEvolve(cmd *cobra.Command, sessionID, task, solver string, reuseT
 		}
 		return nil
 	}
-	ok := overlayK
-	if ok < 1 {
-		ok = 1
-	}
-	if ok > 4 {
-		ok = 4
-	}
-	timeout := 15 * time.Minute * time.Duration(ok)
-	if maxWall > timeout {
-		timeout = maxWall
-	}
-	if timeout > time.Hour {
-		timeout = time.Hour
-	}
-	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	ctx, cancel := context.WithTimeout(cmd.Context(), app.OverlayTimeout(overlayK, maxWall))
 	defer cancel()
 	res, err := a.OverlaySession(ctx, app.OverlayRun{
 		SessionID: sessionID,

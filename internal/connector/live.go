@@ -911,16 +911,3 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
-
-// envSecret 读取 YOYO_GMAIL_CLIENT_SECRET 或 YOYO_OUTLOOK_CLIENT_SECRET。本文件没有调用它。
-// provider 转成小写。gmail 或 gcal 时返回 YOYO_GMAIL_CLIENT_SECRET 去掉空白后的值，outlook 时返回 YOYO_OUTLOOK_CLIENT_SECRET 去掉空白后的值，其他值返回空字符串。
-func envSecret(provider string) string {
-	switch strings.ToLower(provider) {
-	case "gmail", "gcal":
-		return strings.TrimSpace(os.Getenv("YOYO_GMAIL_CLIENT_SECRET"))
-	case "outlook":
-		return strings.TrimSpace(os.Getenv("YOYO_OUTLOOK_CLIENT_SECRET"))
-	default:
-		return ""
-	}
-}

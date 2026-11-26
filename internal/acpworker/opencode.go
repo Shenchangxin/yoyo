@@ -44,12 +44,6 @@ func OpenCodeModelRef(model, baseURL string) (string, bool) {
 	return ref, ref != ""
 }
 
-// WriteOpenCodeMCP 在 dir 的 opencode.json 里把名为 yoyo 的远程服务器写成直接列出工具。
-// url 是控制面地址。调用方要把 token 放进这个进程的 YOYO_MCP_TOKEN，文件里只引用这个变量。
-func WriteOpenCodeMCP(dir, url string) error {
-	return WriteOpenCodeFile(dir, OpenCodeFile{MCPURL: url})
-}
-
 // OpenCodeFile 是一次要写进工单目录的 OpenCode 配置。MCPURL 和 Provider 可以只给其中一个。
 type OpenCodeFile struct {
 	MCPURL   string

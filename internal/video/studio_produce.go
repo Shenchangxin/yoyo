@@ -205,20 +205,6 @@ func landShotMedia(p *StudioProject, i int, j Job) {
 	p.Storyboard.Shots[i].JobID = j.ID
 }
 
-// jobPending 判断任务还在排队、运行或轮询。读不到任务时返回假。
-func (e *Engine) jobPending(id string) bool {
-	j, err := e.GetJob(id)
-	if err != nil {
-		return false
-	}
-	switch j.Status {
-	case "queued", "running", "polling":
-		return true
-	default:
-		return false
-	}
-}
-
 // markStudioJobFailed 记下镜头生图失败，并把原因挂到画面这一闸。封面任务不处理。任务编号清掉，界面不再一直显示生成中。这一镜已经有图或视频时清掉过期，避免旧画面被卡死。
 // j 的 Params 传给 parseParams，ID 与参数里的 StudioShotID 一起用来匹配镜头，Error 写进问题。
 func (e *Engine) markStudioJobFailed(j Job) {

@@ -20,15 +20,6 @@ import (
 // dynMarker 是工作记忆消息的开头，setDynamic 用它替换上一条动态段。
 const dynMarker = "YOYO_WORKING_MEMORY"
 
-// AssembleSystem 只拼前缀和空的动态段，不带规则和已加载技能。
-// loop 传给 Assemble。
-// fragments 传给 Assemble。
-// playbook 传给 Assemble。
-// skills 传给 Assemble。
-func AssembleSystem(loop artifact.LoopPreset, fragments []artifact.PromptFragment, playbook artifact.Playbook, skills []artifact.Skill) string {
-	return Assemble(loop, fragments, playbook, skills, "", "", nil)
-}
-
 // Assemble 把稳定前缀和空计划的动态段接在一起。规则和已加载技能分别进入两段。
 // loop 传给 AssemblePrefix。
 // fragments 传给 AssemblePrefix。

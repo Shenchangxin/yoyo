@@ -763,7 +763,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return map[string]any{"ok": true}, a.OpenPath(p.Path)
 		}
 	case "key.status":
-		return a.Vault.Status(), nil
+		return a.VaultStatus(), nil
 	case "mcp.stop":
 		var p struct {
 			Name string `json:"name"`
@@ -851,7 +851,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		return map[string]any{"diff": text}, nil
 	case "eval.run_safety":
-		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalTimeout)
 		defer cancel()
 		return a.RunEvalOpts(tctx, nil, true)
 	case "eval.run":
@@ -859,7 +859,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Snapshot string `json:"snapshot"`
 		}
 		_ = json.Unmarshal(params, &p)
-		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalTimeout)
 		defer cancel()
 		if strings.TrimSpace(p.Snapshot) != "" {
 			return a.RunEvalAt(tctx, nil, p.Snapshot)
@@ -870,7 +870,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			N int `json:"n"`
 		}
 		_ = json.Unmarshal(params, &p)
-		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalSuiteTimeout)
 		defer cancel()
 		return a.BestOfN(tctx, p.N, nil)
 	case "eval.best_of_models":
@@ -878,27 +878,27 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Models []string `json:"models"`
 		}
 		_ = json.Unmarshal(params, &p)
-		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalSuiteTimeout)
 		defer cancel()
 		return a.BestOfModels(tctx, p.Models, nil)
 	case "eval.run_tb":
-		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalTimeout)
 		defer cancel()
 		return a.RunEvalTB(tctx, nil)
 	case "eval.run_sealed":
-		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalSuiteTimeout)
 		defer cancel()
 		return a.RunEvalSealed(tctx, nil)
 	case "eval.run_transfer":
-		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalSuiteTimeout)
 		defer cancel()
 		return a.RunEvalTransfer(tctx, nil)
 	case "eval.run_index":
-		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalSuiteTimeout)
 		defer cancel()
 		return a.RunEvalIndex(tctx, nil)
 	case "eval.run_behavior":
-		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalTimeout)
 		defer cancel()
 		return a.RunEvalBehavior(tctx, nil)
 	case "eval.last":
@@ -912,7 +912,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			MaxUSD float64 `json:"max_usd"`
 		}
 		_ = json.Unmarshal(params, &p)
-		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		tctx, cancel := context.WithTimeout(ctx, app.EvalSuiteTimeout)
 		defer cancel()
 		return a.SearchBaselines(tctx, nil, p.N, app.EvolveRun{Sealed: p.Sealed, MaxUSD: p.MaxUSD, Baselines: p.N})
 	case "evolve.run":
@@ -926,15 +926,10 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Baselines int     `json:"baselines"`
 			MaxUSD    float64 `json:"max_usd"`
 		}
-		_ = json.Unmarshal(params, &p)
-		timeout := 15 * time.Minute
-		if p.Rounds > 1 {
-			timeout = time.Duration(p.Rounds) * 15 * time.Minute
-			if timeout > 2*time.Hour {
-				timeout = 2 * time.Hour
-			}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
 		}
-		tctx, cancel := context.WithTimeout(ctx, timeout)
+		tctx, cancel := context.WithTimeout(ctx, app.EvolveTimeout(p.Rounds))
 		defer cancel()
 		return a.EvolveWith(tctx, nil, nil, app.EvolveRun{
 			K: p.K, Rounds: p.Rounds, PromoteActive: p.Promote, Sealed: p.Sealed,
@@ -994,21 +989,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		if p.ReuseTurn != nil {
 			reuse = *p.ReuseTurn
 		}
-		ok := p.OverlayK
-		if ok < 1 {
-			ok = 1
-		}
-		if ok > 4 {
-			ok = 4
-		}
-		timeout := 15 * time.Minute * time.Duration(ok)
-		if wall > timeout {
-			timeout = wall
-		}
-		if timeout > time.Hour {
-			timeout = time.Hour
-		}
-		tctx, cancel := context.WithTimeout(ctx, timeout)
+		tctx, cancel := context.WithTimeout(ctx, app.OverlayTimeout(p.OverlayK, wall))
 		defer cancel()
 		return a.OverlaySession(tctx, app.OverlayRun{
 			SessionID: p.Session,
@@ -1126,7 +1107,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Value string `json:"value"`
 		}
 		_ = json.Unmarshal(params, &p)
-		a.Vault.Set("default", strings.TrimSpace(p.Value))
+		a.SetDefaultKey(p.Value)
 		return map[string]any{"ok": true}, nil
 	case "mcp.start":
 		var p struct {
@@ -1137,18 +1118,15 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": true, "tools": a.MCP.Tools()}, a.StartMCP(p.Name, p.Command, p.Args)
 	case "archive.list":
-		return a.Archive.List(), nil
+		return a.ArchiveList(), nil
 	case "plugins.list":
-		return map[string]any{"fibers": a.Kernel.Fibers(), "wasm": a.WASM.List(), "mcp": a.MCP.Info(), "tools": a.MCP.Tools()}, nil
+		return a.PluginList(), nil
 	case "fiber.unload":
 		var p struct {
 			Name string `json:"name"`
 		}
 		_ = json.Unmarshal(params, &p)
-		if f := a.Kernel.Fiber(p.Name); f != nil {
-			return map[string]any{"ok": true}, f.Dispose()
-		}
-		return map[string]any{"ok": true}, a.WASM.Unload(p.Name)
+		return map[string]any{"ok": true}, a.UnloadFiber(p.Name)
 	case "workspace.hunks":
 		var p struct {
 			Workspace string `json:"workspace"`

@@ -61,16 +61,6 @@ func (r *Registry) Unregister(id string) bool {
 	return true
 }
 
-// RegisterManifest 从清单字节装入适配器再登记。
-// data 传给 LoadManifest，得到的适配器再传给 Register。
-func (r *Registry) RegisterManifest(data []byte) error {
-	adapter, err := LoadManifest(data)
-	if err != nil {
-		return err
-	}
-	return r.Register(adapter)
-}
-
 // Get 按去掉空白后的标识取出适配器。
 // id 去掉空白后作为登记表的键。
 func (r *Registry) Get(id string) (Adapter, bool) {
@@ -120,18 +110,6 @@ func (r *Registry) List(surface Surface, capability Capability, includeUnavailab
 	r.mu.RUnlock()
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	return items
-}
-
-// IsCapability 在解析得到的适配器已启用、没有不可用原因，且类别里含该能力时为真。
-// id 传给 Resolve。
-// capability 传给 containsCapability。
-func (r *Registry) IsCapability(id string, capability Capability) bool {
-	adapter, ok := r.Resolve(id)
-	if !ok {
-		return false
-	}
-	metadata := adapter.Metadata()
-	return metadata.Enabled && metadata.UnavailableReason == "" && containsCapability(metadata.Categories, capability)
 }
 
 // containsCapability 报告能力切片里有没有这个值。

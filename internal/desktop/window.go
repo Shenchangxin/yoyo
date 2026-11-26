@@ -136,12 +136,6 @@ func markLost(saved *WindowState) {
 	saved.Recenter = true
 }
 
-// FitWorkArea 按主工作区的 frac 比例算出首次启动的宽高。
-func FitWorkArea(frac float64) (w, h int) {
-	aw, ah := primaryWorkArea()
-	return winsize.Fit(aw, ah, frac)
-}
-
 // RestoreGeometry 没有 window.json 时返回按当前工作区拟合的尺寸，并标上 Refit。读到的宽高小于最小值时抬到 MinW 和 MinH。最大化的记录只做 markLost。ShouldRefit 为假时原样返回并 markLost，为真时换成拟合尺寸并标上 Refit。
 // svc 传给 windowStatePath。
 func RestoreGeometry(svc *Service) WindowState {

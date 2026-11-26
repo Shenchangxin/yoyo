@@ -1047,13 +1047,23 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		HarnessHash:      hash,
 		ModelFingerprint: Fingerprint(a.Config),
 		Meter:            meter,
-		UserParts:        userParts,
-		PullSteer:        func() string { return a.pullSteer(sessionID) },
-		StopHooks:        stopHooks,
-		Checkpoint:       checkpoint,
-		Wake:             wake.Text,
-		WakeMeta:         wakeMeta,
-		HostLines:        hostLines,
+		OnPrompt: func(prompt, _ int) {
+			if prompt <= 0 {
+				return
+			}
+			a.RememberShape(sessionID, runtime.ShapeReport{
+				Tokens:         prompt,
+				ProviderPrompt: prompt,
+				Window:         runtime.EffectiveModelWindow(model, a.Config.ContextWindow),
+			})
+		},
+		UserParts:  userParts,
+		PullSteer:  func() string { return a.pullSteer(sessionID) },
+		StopHooks:  stopHooks,
+		Checkpoint: checkpoint,
+		Wake:       wake.Text,
+		WakeMeta:   wakeMeta,
+		HostLines:  hostLines,
 	})
 	a.markRunDone(sessionID)
 	if a.Threads != nil {
@@ -1540,14 +1550,6 @@ func (a *App) runEvalAt(ctx context.Context, client runtime.Client, model, hash 
 	}
 	a.rememberEval(rep)
 	return rep, nil
-}
-
-// EvolveOnce 用候选数 3 跑一轮演进。
-// ctx 传给 EvolveWith。
-// client 传给 EvolveWith。
-// failed 传给 EvolveWith。
-func (a *App) EvolveOnce(ctx context.Context, client runtime.Client, failed map[string]string) (evolve.CycleResult, error) {
-	return a.EvolveWith(ctx, client, failed, EvolveRun{K: 3})
 }
 
 // EvolveK 用给定的候选数跑一轮演进。

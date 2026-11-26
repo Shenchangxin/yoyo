@@ -33,10 +33,12 @@ type Turn struct {
 	HarnessHash      string
 	ModelFingerprint string
 	Meter            *runtime.Meter
-	UserParts        []runtime.ContentPart
-	PullSteer        func() string
-	StopHooks        []runtime.FileHook
-	Checkpoint       string
+	// OnPrompt 在每次模型返回后调用。prompt 和 completion 是供应商报的 token，没报就是 0。
+	OnPrompt   func(prompt, completion int)
+	UserParts  []runtime.ContentPart
+	PullSteer  func() string
+	StopHooks  []runtime.FileHook
+	Checkpoint string
 	// Wake 是唤醒路由时写给它的任务组回报，不是人说的话。非空时这一轮先落一条来源为 wake 的注入，回放历史时它是一条用户消息。
 	Wake string
 	// WakeMeta 是那条注入载荷里另外带的字段，例如任务组编号和状态。
@@ -123,6 +125,7 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 		bridge.MaxTokens = turn.MaxTokens
 		bridge.ShowThinking = turn.ShowThinking
 		bridge.Meter = turn.Meter
+		bridge.OnPrompt = turn.OnPrompt
 		bridge.UserParts = turn.UserParts
 		bridge.partsUsed = false
 		agent.SetPrompt(turn.Prompt)
@@ -147,6 +150,7 @@ func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
 			MaxTokens:    turn.MaxTokens,
 			ShowThinking: turn.ShowThinking,
 			Meter:        turn.Meter,
+			OnPrompt:     turn.OnPrompt,
 			UserParts:    turn.UserParts,
 		}
 		reg = dsh.NewRegistry()

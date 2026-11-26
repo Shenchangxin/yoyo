@@ -197,22 +197,6 @@ func srtSeconds(h, m, s, frac string) float64 {
 	return float64(hh*3600+mm*60+ss) + float64(ms)/1000
 }
 
-// BurnCaptions 用 subtitles 滤镜把 SRT 烧进画面，音频复制。路径里的反斜杠、冒号和单引号会转义。
-// video 作为 -i。
-// srtPath 经 ToSlash，反斜杠、冒号和单引号转义后放进 subtitles 滤镜。
-// outPath 作为输出路径。
-func (b Bin) BurnCaptions(video, srtPath, outPath string) error {
-	if err := b.ok(); err != nil {
-		return err
-	}
-	slash := filepath.ToSlash(srtPath)
-	slash = strings.ReplaceAll(slash, `\`, `/`)
-	slash = strings.ReplaceAll(slash, ":", `\:`)
-	vf := "subtitles='" + strings.ReplaceAll(slash, "'", `\'`) + "'"
-	_, err := b.run("-y", "-i", video, "-vf", vf, "-c:a", "copy", outPath)
-	return err
-}
-
 // Transcribe 先用 ffmpeg 把音轨抽成 16 kHz 单声道 WAV，再运行 whisper.cpp：-m 模型、-l 语言（空着是 auto）、-otxt、-osrt、-of。whisper.cpp 默认只认 WAV，不带模型时会去找当前目录下的英文模型，所以两样都要给。
 // 读出 out.txt 与 out.srt。没有字幕但有文本时，用成片时长把文本切成字幕。whisper 或模型找不到时返回能照着做的错误。
 // src 是音频或视频文件，先抽成 WAV；没有字幕但有文本时再传给 Duration。

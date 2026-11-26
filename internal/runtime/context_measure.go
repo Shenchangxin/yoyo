@@ -26,6 +26,8 @@ type MeasureOpts struct {
 	SoftHorizon   bool
 	PageContext   string
 	ProfileMemory string
+	// Chat 为真时按桌面发出的系统提示计量，不把 playbook、规则、目录和笔记算进这一轮。
+	Chat bool
 }
 
 // MeasureContext 投影下一轮会发给模型的内容并填写账本。笔记为空且有 spill 时读 spill 里的 notes。
@@ -62,6 +64,7 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 		Plan:      plan,
 		Notes:     notes,
 		Suggested: suggested,
+		Chat:      opts.Chat,
 	})
 	prefix := bill.prefix()
 	dyn := bill.dynamic()

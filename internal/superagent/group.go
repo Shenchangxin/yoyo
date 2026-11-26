@@ -303,36 +303,6 @@ func (e *Engine) depsStateLocked(t *Ticket) string {
 	return state
 }
 
-// ReleaseDependent 放行挂着的 ticketID：清掉 Held，追加一条不算人写的输入，再启动。note 为空时写前置任务的结果。
-// 暂停时推断的工作只放行不启动。没有挂着时返回 notHeld。
-func (e *Engine) ReleaseDependent(ticketID, note string) error {
-	e.mu.Lock()
-	t := e.tickets[ticketID]
-	if err := heldCheck(t); err != nil {
-		e.mu.Unlock()
-		return err
-	}
-	e.releaseLocked(t, note, nil)
-	start := t.Mandate.Strength == "explicit" || !e.policy.Paused
-	e.mu.Unlock()
-	if start && e.OnLaunch != nil {
-		e.OnLaunch(ticketID)
-	}
-	return nil
-}
-
-// HoldDependent 在 ticketID 的前置没做成时挂起它：Held 记成 deps_failed，再记一份不带问题的 blocked。reason 为空时写哪几份没做成。
-func (e *Engine) HoldDependent(ticketID, reason string) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	t := e.tickets[ticketID]
-	if err := heldCheck(t); err != nil {
-		return err
-	}
-	e.holdLocked(t, reason, nil)
-	return nil
-}
-
 // heldCheck 在 t 不是一张还挂着的工单时返回错误短码。
 func heldCheck(t *Ticket) error {
 	switch {

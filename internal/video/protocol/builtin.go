@@ -100,20 +100,6 @@ func Builtins() *Registry {
 	return registry
 }
 
-// BundledManifest 按标识从内置注册表取出清单。适配器不存在，或它不是清单适配器时，返回空清单和假。
-// id 传给 Builtins 的 Get。
-func BundledManifest(id string) (Manifest, bool) {
-	adapter, ok := Builtins().Get(id)
-	if !ok {
-		return Manifest{}, false
-	}
-	manifest, ok := adapter.(manifestAdapter)
-	if !ok {
-		return Manifest{}, false
-	}
-	return manifest.manifest, true
-}
-
 // allSurfaces 返回管理端系统频道、用户自定义频道、画布、创作和代理。
 func allSurfaces() []Surface {
 	return []Surface{SurfaceAdminSystemChannel, SurfaceUserCustomChannel, SurfaceCanvas, SurfaceCreation, SurfaceAgent}
@@ -129,11 +115,6 @@ func allSurfaces() []Surface {
 // contentType 写入 ContentType。
 func metadata(id, name, vendor string, capability Capability, create, poll, contentType string) Metadata {
 	return Metadata{ID: id, Version: "1.0.0", Name: name, Vendor: vendor, Categories: []Capability{capability}, Scopes: allSurfaces(), Create: create, Poll: poll, ContentType: contentType, Enabled: true, Installable: true}
-}
-
-// mediaParams 返回 model、prompt、images、imageCount、aspectRatio、resolution 和 quality。model 和 prompt 必填。
-func mediaParams() []Parameter {
-	return []Parameter{{Name: "model", Type: "string", Required: true, Mapping: "model"}, {Name: "prompt", Type: "string", Required: true, Mapping: "prompt"}, {Name: "images", Type: "media[]", Mapping: "provider-specific"}, {Name: "imageCount", Type: "integer", Mapping: "provider-specific"}, {Name: "aspectRatio", Type: "string", Mapping: "provider-specific"}, {Name: "resolution", Type: "string", Mapping: "provider-specific"}, {Name: "quality", Type: "string", Mapping: "provider-specific"}}
 }
 
 // videoParams 返回视频参数，含模型、提示词、图像、视频、音频、时长、画幅、分辨率、是否生成音频和是否加水印。model 和 prompt 必填。
@@ -772,21 +753,6 @@ func videoAdapterWithPoll(info Metadata, create func(GenerationRequest) (Request
 
 }
 
-// asyncMediaAdapter 用创建函数和只替换 task_id 的 GET 轮询做成异步媒体适配器。
-// info 传给 asyncMediaAdapterWithPoll，Poll 去掉方法前缀后只替换 {task_id}。
-// capability 传给 asyncMediaAdapterWithPoll。
-// create 传给 asyncMediaAdapterWithPoll。
-func asyncMediaAdapter(info Metadata, capability Capability, create func(GenerationRequest) (RequestSpec, error)) Adapter {
-	return asyncMediaAdapterWithPoll(info, capability, create, func(c PollContext) (RequestSpec, error) {
-		path := strings.TrimSpace(info.Poll)
-		if index := strings.IndexByte(path, ' '); index > 0 {
-			path = strings.TrimSpace(path[index+1:])
-		}
-		path = strings.Replace(path, "{task_id}", url.PathEscape(c.TaskID), 1)
-		return RequestSpec{Method: http.MethodGet, Path: path}, nil
-	})
-}
-
 // asyncMediaAdapterWithPoll 把创建、轮询和按能力解析媒体的函数装进 builtinAdapter。创建响应用 parseAsyncCreate。
 // info 写入适配器。
 // capability 传给 parseAsyncMediaPoll。
@@ -851,50 +817,6 @@ func parseClaudeResponse(payload map[string]any) (CreateResult, error) {
 		}
 	}
 	return CreateResult{Status: StatusSucceeded, Result: &Result{Text: text, Usage: object(payload["usage"])}}, nil
-}
-
-// parseImageResponse 从 data 里收集 url 或 base64 图片。裸 base64 补上 data:image/png;base64, 前缀。一张都没有则失败。
-// payload 的 data 里收集 url，或 b64_json、data；不以 data: 开头的补上 data:image/png;base64,。一张都没有则失败。
-func parseImageResponse(payload map[string]any) (CreateResult, error) {
-	values, _ := payload["data"].([]any)
-	images := make([]MediaReference, 0, len(values))
-	for _, item := range values {
-		media, _ := item.(map[string]any)
-		if value := firstString(media, "url"); value != "" {
-			images = append(images, MediaReference{URL: value, Kind: "image"})
-			continue
-		}
-		if value := firstString(media, "b64_json", "data"); value != "" {
-			if !strings.HasPrefix(value, "data:") {
-				value = "data:image/png;base64," + value
-			}
-			images = append(images, MediaReference{DataURL: value, Kind: "image"})
-		}
-	}
-	if len(images) == 0 {
-		return CreateResult{}, fmt.Errorf("image response has no image data")
-	}
-	return CreateResult{Status: StatusSucceeded, Result: &Result{Images: images}}, nil
-}
-
-// parseJiMengCreate 从响应或 data 里取任务标识。没有则失败，状态为 pending。
-// payload 以及其中的 data 用 task_id、taskId、id 取任务标识，没有则失败。
-func parseJiMengCreate(payload map[string]any) (CreateResult, error) {
-	id := firstString(payload, "task_id", "taskId", "id")
-	if data := object(payload["data"]); data != nil {
-		id = defaultValue(firstString(data, "task_id", "taskId", "id"), id)
-	}
-	if id == "" {
-		return CreateResult{}, fmt.Errorf("Jimeng response has no task id")
-	}
-	return CreateResult{TaskID: id, Status: StatusPending}, nil
-}
-
-// parseJiMengPoll 按图像能力解析即梦的轮询响应。
-// c 传给 parseAsyncMediaPoll。
-// payload 传给 parseAsyncMediaPoll，能力用 CapabilityImage。
-func parseJiMengPoll(c PollContext, payload map[string]any) (PollResult, error) {
-	return parseAsyncMediaPoll(c, payload, CapabilityImage)
 }
 
 // parseGeminiVeoCreate 用 name 作为任务标识。没有 name 则失败，状态为 pending。
@@ -1028,16 +950,6 @@ func parseAsyncMediaPoll(c PollContext, payload map[string]any, capability Capab
 		result = nil
 	}
 	return PollResult{TaskID: defaultValue(firstString(payload, "id", "task_id", "taskId"), c.TaskID), Status: status, Result: result, Message: firstString(payload, "message", "error", "fail_reason")}, nil
-}
-
-// parseAudioResponse 从 url、audio_url 或 data 取音频地址。都没有则失败。
-// payload 用 url、audio_url、data 取音频地址，都空则失败。
-func parseAudioResponse(payload map[string]any) (CreateResult, error) {
-	value := firstString(payload, "url", "audio_url", "data")
-	if value == "" {
-		return CreateResult{}, fmt.Errorf("audio response has no result")
-	}
-	return CreateResult{Status: StatusSucceeded, Result: &Result{Audios: []MediaReference{{URL: value, Kind: "audio"}}}}, nil
 }
 
 // normalizeStatus 把已知状态文本收成 pending、processing、succeeded、cancelled 或 failed。识别不了时返回空串。

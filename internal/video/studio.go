@@ -465,17 +465,6 @@ func studioGateKnown(g string) bool {
 	return false
 }
 
-// PutStudioProject 在这条短片的锁里按现有编号整份写回。编号空着就拒绝。
-// p 的 ID 去掉首尾空白后为空时返回错误 id required，否则与 p 一起传给 putDoc。
-func (e *Engine) PutStudioProject(p StudioProject) error {
-	if strings.TrimSpace(p.ID) == "" {
-		return fmt.Errorf("id required")
-	}
-	unlock := e.lockDoc(colStudioProjects, p.ID)
-	defer unlock()
-	return e.putDoc(colStudioProjects, p.ID, p)
-}
-
 // DeleteStudioProject 删掉工程，并拆掉所有指着它的会话绑定。编号空着就拒绝。
 // id 去掉首尾空白，空串时返回错误 id required，否则从会话绑定里删掉指向它的项，并传给 delDoc。
 func (e *Engine) DeleteStudioProject(id string) error {

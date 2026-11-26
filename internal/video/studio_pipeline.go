@@ -191,14 +191,6 @@ func (e *Engine) noteStudio(p *StudioProject, kind, message string) {
 	}
 }
 
-// flagStudio 记一条错误，级别是 error。
-// p 传给 addStudioIssue。
-// gate 传给 addStudioIssue。
-// message 传给 addStudioIssue。
-func (e *Engine) flagStudio(p *StudioProject, gate, message string) {
-	e.addStudioIssue(p, "error", gate, message)
-}
-
 // warnStudio 记一条警告。同一闸、同一句话的旧警告会先去掉，避免重复。空消息不记。
 // p 为 nil，或 message 去掉首尾空白后为空时直接返回。
 // gate 用来丢掉同一闸、同一句的旧问题，并传给 addStudioIssue。
@@ -363,12 +355,6 @@ func (e *Engine) SetStudioIdentity(id, characterID, styleID string) (StudioProje
 		e.noteStudio(p, "identity", p.Identity.Name)
 		return nil
 	})
-}
-
-// ApproveStudioScript 锁住工程里现有的口播。见 ApproveStudioScriptText。
-// id 传给 ApproveStudioScriptText。
-func (e *Engine) ApproveStudioScript(id string) (StudioProject, error) {
-	return e.ApproveStudioScriptText(id, "")
 }
 
 // ApproveStudioScriptText 锁住口播。script 非空时先换成这份正文再锁，界面不必先等失焦保存落地。正文是空的就拒绝。

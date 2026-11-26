@@ -14,7 +14,6 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/expert"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/isolation"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
@@ -426,14 +425,6 @@ func (a *App) ComputerRecording() []computeruse.Event {
 		return nil
 	}
 	return a.Computer.Recording()
-}
-
-// DistillSkill 把名称、描述和正文交给 expert.Distill。
-// name 传给 expert.Distill。
-// description 传给 expert.Distill。
-// body 传给 expert.Distill。
-func (a *App) DistillSkill(name, description, body string) string {
-	return expert.Distill(name, description, body)
 }
 
 // PhoneStatus 汇总待审批数、未读收件箱、正在跑的会话、隔离报告、日程条数和个人事务计数。

@@ -61,6 +61,8 @@ type billInput struct {
 	Notes      string
 	Checkpoint string
 	Suggested  string
+	// Chat 为真时只留下桌面真正发出的系统提示：身份、档案和页面。不放 playbook、规则、技能目录和笔记。
+	Chat bool
 }
 
 // buildBill 组装身份、环境和 pins。规则用 LoadWorkspaceRules，上限是 Loop.RulesTokens。
@@ -69,6 +71,22 @@ type billInput struct {
 func buildBill(in billInput) contextBill {
 	var b contextBill
 	b.systemWire = AssembleIdentity(in.Loop, in.Fragments)
+	if in.Chat {
+		// 与 dshdesk.PromptText 同一段：身份、档案、页面。环境、playbook、规则和目录不在这条提示里。
+		b.systemWire = strings.TrimSpace(b.systemWire)
+		for _, text := range []string{in.Profile, in.Page} {
+			text = strings.TrimSpace(text)
+			if text == "" {
+				continue
+			}
+			if b.systemWire != "" {
+				b.systemWire += "\n\n"
+			}
+			b.systemWire += text
+		}
+		b.System = b.systemWire
+		return b
+	}
 	if env := AssembleEnvironment(in.Workspace); env != "" {
 		b.systemWire += "\n## Environment\n" + env
 	}

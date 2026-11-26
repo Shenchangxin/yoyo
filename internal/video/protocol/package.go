@@ -15,8 +15,6 @@ import (
 
 // 包格式名和各类体积上限。
 const (
-	// PluginPackageFormat 是包格式名 yingce.plugin/package-v1。
-	PluginPackageFormat = "yingce.plugin/package-v1"
 	// PluginPackageMaxBytes 是整个包的上限，48 MiB。
 	PluginPackageMaxBytes = 48 << 20
 	// PluginManifestMaxBytes 是 manifest.json 的上限，512 KiB。

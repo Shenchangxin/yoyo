@@ -634,9 +634,6 @@ func TestProviderSyncsIntoCanvasCatalog(t *testing.T) {
 	if _, err := e.upsertCanvasChannel(map[string]any{"id": "extra-1", "name": "Yingce extra", "capability": "image", "pluginId": "openai-images"}, "k-extra"); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.syncAllProviderChannels(); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := e.getCanvasChannel("extra-1"); err != nil {
 		t.Fatal(err)
 	}

@@ -71,26 +71,3 @@ func escapeConcat(p string) string {
 	}
 	return out
 }
-
-// PadAspect 加黑边到目标画幅。默认 1080×1920；16:9 是 1920×1080，1:1 是 1080×1080。先按比例缩小再居中填充。复制音频失败时改为不带音频。
-// src 作为 -i。
-// outPath 作为两次 b.run 的输出路径。
-// aspect 为 16:9 时宽高是 1920 和 1080，为 1:1 时是 1080 和 1080，其余是 1080 和 1920。
-func (b Bin) PadAspect(src, outPath, aspect string) error {
-	if err := b.ok(); err != nil {
-		return err
-	}
-	w, h := 1080, 1920
-	switch aspect {
-	case "16:9":
-		w, h = 1920, 1080
-	case "1:1":
-		w, h = 1080, 1080
-	}
-	vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1", w, h, w, h)
-	_, err := b.run("-y", "-i", src, "-vf", vf, "-c:a", "copy", outPath)
-	if err != nil {
-		_, err = b.run("-y", "-i", src, "-vf", vf, "-an", outPath)
-	}
-	return err
-}

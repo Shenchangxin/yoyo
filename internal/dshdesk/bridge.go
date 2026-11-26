@@ -23,6 +23,7 @@ type Bridge struct {
 	MaxTokens    int
 	ShowThinking bool
 	Meter        *runtime.Meter
+	OnPrompt     func(prompt, completion int)
 	UserParts    []runtime.ContentPart
 	OpenStream   streamOpen
 	partsUsed    bool
@@ -81,6 +82,9 @@ func (b *Bridge) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant, 
 	}
 	if b.Meter != nil {
 		b.Meter.Add(msg.PromptTokens, msg.CompletionTokens)
+	}
+	if b.OnPrompt != nil {
+		b.OnPrompt(msg.PromptTokens, msg.CompletionTokens)
 	}
 	out := toAssistant(msg)
 	out.AttemptID = attemptID

@@ -341,6 +341,12 @@ func Open(root, bundledEvals string) (*App, error) {
 		askAns:       map[string]string{},
 		Skins:        skin.NewStore(h.Skins()),
 	}
+	opened := false
+	defer func() {
+		if !opened {
+			_ = a.Close()
+		}
+	}()
 	idols, err := idol.Open(h.Idols())
 	if err != nil {
 		return nil, err
@@ -447,7 +453,6 @@ func Open(root, bundledEvals string) (*App, error) {
 		return nil, err
 	}
 	if err := a.openIM(); err != nil {
-		_ = a.Close()
 		return nil, err
 	}
 	if err := a.openVideo(); err != nil {
@@ -481,6 +486,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	go a.warmModelCatalog()
 	a.startUpdateLoop()
 	diaglog.Info("app open", "component", "boot", "home", h.Root, "isolated", isolated(), "isolation_kind", isolationKind(), "crash_resume", a.crashResume())
+	opened = true
 	return a, nil
 }
 

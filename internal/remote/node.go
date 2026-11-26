@@ -72,6 +72,8 @@ type diskState struct {
 
 // Node 是本进程里的手持门。手机 WebSocket 走 TLS，浏览器走另一端口的明文 HTTP。
 type Node struct {
+	// app 给手机 RPC 和浏览器页面用。那两扇门走 api.Dispatch 和 api.Handler，方法表在 App 上。
+	// 状态序号、轨迹订阅和数据根走 App 的方法，不直接读 Hub 或 Home。
 	app *app.App
 	dir string
 
@@ -107,10 +109,10 @@ func Current() *Node { return current.Load() }
 // 磁盘上 enabled 为真就 listen。听失败只写进 listenErr，仍然返回这个节点和空错误。
 // home 为空时返回错误，不登记，也不写入 current。
 func Bind(a *app.App) (*Node, error) {
-	if a == nil || a.Home == nil {
+	if a == nil || a.HomeRoot() == "" {
 		return nil, errors.New("remote needs a home")
 	}
-	dir := filepath.Join(a.Home.Root, "remote")
+	dir := filepath.Join(a.HomeRoot(), "remote")
 	if err := os.MkdirAll(filepath.Join(dir, "devices"), 0o700); err != nil {
 		return nil, err
 	}

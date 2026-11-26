@@ -2,7 +2,7 @@
 
 最后审阅：**2026-09-21**。对照的是各产品 **2026 年仍在演进的公开机制**（官方博客 / 文档 / 开源树），不是 2024 年的玩具 demo。
 
-落地状态：**Slice 0–3 已进树。** `Run()` 只消费 `ContextKernel`（`seed` / `prompt` / `checkpoint`）。Chat 前缀 append-only 直到检查点；Dynamic 在 tail；Harbor 仍 Shape-only 且 `ModelWindow=0` 禁止 LLM compact。Playbook 永不进 compact prompt。
+落地状态：**桌面聊天不走 `runtime.Run`。** `sendLocked` 把身份、档案和页面交给 `dshdesk.Host.Run`。压缩只在发送前、历史已经超过整窗时做一次 `MaybeCheckpoint`。溢出是模型错误，不重试。`runtime.Run` 和 `ContextKernel` 是 Harbor 和它派生的子任务。Harbor 仍 Shape-only，且 `ModelWindow=0`、`AllowLLMCompact=false`。Playbook 不进 Harbor 的压缩提示，也不进桌面发出的系统提示。上下文用量按桌面实际发出的那段系统提示估算。
 
 本文是工程方案，不是文献卡片。文献谱系仍走 [docs/research](../research/README.md)。Harbor / CAS / L4 不变量见 [invariants.md](invariants.md)。Skill Pack（Superpowers / NovelToGame）见 [skill-packs.md](skill-packs.md)。
 
@@ -130,18 +130,17 @@ Yoyo 已经有一条正确的产品轴线：
 
 ### 3.1 每轮实际组装顺序
 
-`internal/app/session.go` `sendLocked` → `runtime.Run` → `ContextKernel`:
+桌面一回合是 `internal/app/session.go` `sendLocked` → `dshdesk.Host.Run`：
 
-1. `ApplyChatHorizon`（chat：MaxTurns≥64，KeepTokens≥16k，RulesTokens≥8k，子代理 24/60）
-2. `MessagesFromEventsOpts`（JSONL；遇 `kind=checkpoint` 从 spill `tail_id` + 摘要重建）
-3. `MaybeCheckpoint`（历史已超预算才在 turn 前写检查点）
-4. Kernel `seed`：`AssembleIdentity` + `AssemblePins`（playbook / skill catalog / 第一份规则 / profile / MEMORY.md≤4k）
-5. Kernel `prompt`：`AssembleDynamic`（plan、loaded skills cap、notes、今日针）→ `RoleMemory` **挂在历史之后**；chat 对 hot **恒等**（只 Legalize）直到检查点；Harbor 每轮 Shape
-6. `@` mention 作为 user 注入（总预算 2400 **字节**）
-7. `prompt_cache_key` = harness + prefix + tools JSON；`cached_tokens` 写入账本
-8. 溢出：checkpoint → 重放当前 step **一次**；第二次失败才 `StopOverflow`
-9. 检查点：stale 读去重、结构摘要、回锚最多 5 个热文件、JSONL 存 spill 指针；`pre_compact` 只观测
-10. ChatOverlay：`tool_search` 写入 `ExtraLive`，schema 延到下一检查点才进 tools 数组
+1. `ApplyChatHorizon` 把 `RulesTokens` 写成 1600，并打开 `AllowLLMCompact`。子代理工具在这条路上没有装上。
+2. 历史来自检查点之后的轨迹。
+3. `MaybeCheckpoint` 只在估算已经超过整窗时，于发送前写一次检查点。
+4. 系统提示是 `dshdesk.PromptText`：`AssembleIdentity`、档案钉、页面。没有 playbook、技能目录、工作区规则、笔记或项目记忆钉。
+5. `Bridge.Complete` 只做 `Legalize`。工具走 `WorkspaceTools.Call`，调用前跑 `safeguard.PreTool`。
+6. 供应商报了 prompt token 时，记进这一轮的现场用量。回合外的用量按上面这段系统提示重算，不把 Harbor 的账单算进去。
+7. 上下文溢出作为模型错误结束这一轮，不自动压缩再试。
+
+Harbor 仍是 `eval/harbor.go` `runTask` → `runtime.Run` → `ContextKernel`。那条循环才有 Shape、溢出后重试一次、spill 和 `dispatchTools`。上面第 4 步以后的内核账单不要写回桌面。
 
 Harbor 不设 `ModelWindow`，预算钉死 `CompactionTokens`（默认 24k），且 `AllowLLMCompact` 被评测强制关掉。这条必须保持。
 

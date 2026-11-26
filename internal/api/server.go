@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
@@ -869,7 +868,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, a.Doctor())
 	})
 	mux.HandleFunc("/api/key/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, a.Vault.Status())
+		writeJSON(w, a.VaultStatus())
 	})
 	mux.HandleFunc("/api/harness", func(w http.ResponseWriter, r *http.Request) {
 		st, err := a.HarnessState()
@@ -1031,7 +1030,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, blob)
 	})
 	mux.HandleFunc("/api/eval/safety", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalTimeout)
 		defer cancel()
 		rep, err := a.RunEvalOpts(ctx, nil, true)
 		if err != nil {
@@ -1047,7 +1046,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		if r.Method == http.MethodPost {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalTimeout)
 		defer cancel()
 		var (
 			rep any
@@ -1070,7 +1069,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			Models []string `json:"models"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalSuiteTimeout)
 		defer cancel()
 		if len(body.Models) > 0 {
 			rep, err := a.BestOfModels(ctx, body.Models, nil)
@@ -1089,7 +1088,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, rep)
 	})
 	mux.HandleFunc("/api/eval/tb", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalTimeout)
 		defer cancel()
 		rep, err := a.RunEvalTB(ctx, nil)
 		if err != nil {
@@ -1099,7 +1098,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, rep)
 	})
 	mux.HandleFunc("/api/eval/sealed", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalSuiteTimeout)
 		defer cancel()
 		rep, err := a.RunEvalSealed(ctx, nil)
 		if err != nil {
@@ -1109,7 +1108,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, rep)
 	})
 	mux.HandleFunc("/api/eval/transfer", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalSuiteTimeout)
 		defer cancel()
 		rep, err := a.RunEvalTransfer(ctx, nil)
 		if err != nil {
@@ -1119,7 +1118,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, rep)
 	})
 	mux.HandleFunc("/api/eval/index", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalSuiteTimeout)
 		defer cancel()
 		rep, err := a.RunEvalIndex(ctx, nil)
 		if err != nil {
@@ -1129,7 +1128,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, rep)
 	})
 	mux.HandleFunc("/api/eval/behavior", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalTimeout)
 		defer cancel()
 		rep, err := a.RunEvalBehavior(ctx, nil)
 		if err != nil {
@@ -1151,7 +1150,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			MaxUSD float64 `json:"max_usd"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvalSuiteTimeout)
 		defer cancel()
 		rep, err := a.SearchBaselines(ctx, nil, body.N, app.EvolveRun{Sealed: body.Sealed, MaxUSD: body.MaxUSD, Baselines: body.N})
 		if err != nil {
@@ -1171,15 +1170,11 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			Baselines int     `json:"baselines"`
 			MaxUSD    float64 `json:"max_usd"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		timeout := 15 * time.Minute
-		if body.Rounds > 1 {
-			timeout = time.Duration(body.Rounds) * 15 * time.Minute
-			if timeout > 2*time.Hour {
-				timeout = 2 * time.Hour
-			}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		ctx, cancel := context.WithTimeout(r.Context(), app.EvolveTimeout(body.Rounds))
 		defer cancel()
 		res, err := a.EvolveWith(ctx, nil, nil, app.EvolveRun{
 			K: body.K, Rounds: body.Rounds, PromoteActive: body.Promote, Sealed: body.Sealed,
@@ -1192,15 +1187,10 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, res)
 	})
 	mux.HandleFunc("/api/archive", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, a.Archive.List())
+		writeJSON(w, a.ArchiveList())
 	})
 	mux.HandleFunc("/api/plugins", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{
-			"fibers": a.Kernel.Fibers(),
-			"wasm":   a.WASM.List(),
-			"mcp":    a.MCP.Info(),
-			"tools":  a.MCP.Tools(),
-		})
+		writeJSON(w, a.PluginList())
 	})
 	mux.HandleFunc("/api/update/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.UpdateStatus())
@@ -1231,7 +1221,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			Value string `json:"value"`
 		}
 		_ = json.Unmarshal(b, &body)
-		a.Vault.Set("default", strings.TrimSpace(body.Value))
+		a.SetDefaultKey(body.Value)
 		writeJSON(w, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("/api/skins", func(w http.ResponseWriter, r *http.Request) {
