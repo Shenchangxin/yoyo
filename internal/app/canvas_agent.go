@@ -14,37 +14,37 @@ import (
 )
 
 // startCanvasAgent 复用或新建视频频道会话，绑定画布，并按 turn 设置模型、权限和点名技能。permission 为 auto 时会话权限是 AuthFull，否则 AuthAsk。然后 StartSend。ErrQueued 返回 nil。
-func (a *App) startCanvasAgent(turn video.CanvasAgentTurn) error {
-	if a == nil || a.Video == nil {
+func (appHost *videoHost) startCanvasAgent(turn video.CanvasAgentTurn) error {
+	if appHost.app == nil || appHost.app.Video == nil {
 		return fmt.Errorf("视频模块还没有就绪")
 	}
-	sid, err := a.canvasAgentSession(turn.CanvasID)
+	sid, err := appHost.app.canvasAgentSession(turn.CanvasID)
 	if err != nil {
 		return err
 	}
-	if err := a.Video.BindCanvasSession(sid, turn.CanvasID); err != nil {
+	if err := appHost.app.Video.BindCanvasSession(sid, turn.CanvasID); err != nil {
 		return err
 	}
-	a.Video.RememberCanvasAgentSession(turn.CanvasID, sid, turn.RunID)
+	appHost.app.Video.RememberCanvasAgentSession(turn.CanvasID, sid, turn.RunID)
 	if strings.TrimSpace(turn.Model) != "" {
-		_, _ = a.SetSessionModel(sid, turn.Model)
+		_, _ = appHost.app.SetSessionModel(sid, turn.Model)
 	}
 	mode := capability.AuthAsk
 	if turn.Permission == "auto" {
 		mode = capability.AuthFull
 	}
-	if _, err := a.SetSessionAuthMode(sid, mode); err != nil {
+	if _, err := appHost.app.SetSessionAuthMode(sid, mode); err != nil {
 		return err
 	}
 	if len(turn.SkillIDs) > 0 {
-		if _, err := a.SetSessionPinnedSkills(sid, turn.SkillIDs); err != nil {
+		if _, err := appHost.app.SetSessionPinnedSkills(sid, turn.SkillIDs); err != nil {
 			return err
 		}
 	}
-	if err := a.ensureCanvasAgentWatch(sid); err != nil {
+	if err := appHost.app.ensureCanvasAgentWatch(sid); err != nil {
 		return err
 	}
-	err = a.StartSend(sid, canvasAgentPrompt(turn), false)
+	err = appHost.app.StartSend(sid, canvasAgentPrompt(turn), false)
 	if errors.Is(err, ErrQueued) {
 		return nil
 	}
@@ -53,79 +53,79 @@ func (a *App) startCanvasAgent(turn video.CanvasAgentTurn) error {
 
 // stopCanvasAgent 对给定会话调用 Interrupt。会话 id 空白或 App 为空则返回。
 // sessionID 去掉首尾空白后为空则返回，否则传给 Interrupt。
-func (a *App) stopCanvasAgent(sessionID string) {
-	if a == nil || strings.TrimSpace(sessionID) == "" {
+func (appHost *videoHost) stopCanvasAgent(sessionID string) {
+	if appHost.app == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	_ = a.Interrupt(sessionID)
+	_ = appHost.app.Interrupt(sessionID)
 }
 
 // decideCanvasAgent 把 approve 解析成 capability.Once，其他决定解析成 Deny。没有 Gate 时返回没有审批网关。
 // approvalID 传给 Gate.Resolve。
 // decision 等于 approve 时决定用 Once，否则用 Deny。
-func (a *App) decideCanvasAgent(approvalID, decision string) error {
-	if a == nil || a.Gate == nil {
+func (appHost *videoHost) decideCanvasAgent(approvalID, decision string) error {
+	if appHost.app == nil || appHost.app.Gate == nil {
 		return fmt.Errorf("没有审批网关")
 	}
 	d := capability.Deny
 	if decision == "approve" {
 		d = capability.Once
 	}
-	return a.Gate.Resolve(approvalID, d)
+	return appHost.app.Gate.Resolve(approvalID, d)
 }
 
 // canvasAgentSession 复用该画布已记住且仍存在的会话。否则在视频工作区新建频道为视频的会话，标题写为画布助手。
 // canvasID 用作 agentSess 的键。
-func (a *App) canvasAgentSession(canvasID string) (string, error) {
-	if v, ok := a.agentSess.Load(canvasID); ok {
+func (appHost *videoHost) canvasAgentSession(canvasID string) (string, error) {
+	if v, ok := appHost.app.agentSess.Load(canvasID); ok {
 		if id, _ := v.(string); id != "" {
-			if _, err := a.GetSession(id); err == nil {
+			if _, err := appHost.app.GetSession(id); err == nil {
 				return id, nil
 			}
 		}
 	}
-	meta, err := a.NewSessionOn(a.VideoWorkspace(), session.ChannelVideo)
+	meta, err := appHost.app.NewSessionOn(appHost.app.VideoWorkspace(), session.ChannelVideo)
 	if err != nil {
 		return "", err
 	}
 	meta.Title = "画布助手"
-	_ = a.writeSession(meta)
-	a.agentSess.Store(canvasID, meta.ID)
+	_ = appHost.app.writeSession(meta)
+	appHost.app.agentSess.Store(canvasID, meta.ID)
 	return meta.ID, nil
 }
 
 // ensureCanvasAgentWatch 为会话订阅 Hub，并只启动一次 canvasAgentLoop。Hub 为空返回对话事件通道还没有就绪。
 // sessionID 用作 agentWatch 的键，并传给 Hub.Subscribe 和 canvasAgentLoop。
-func (a *App) ensureCanvasAgentWatch(sessionID string) error {
-	if a == nil || a.Hub == nil {
+func (appHost *videoHost) ensureCanvasAgentWatch(sessionID string) error {
+	if appHost.app == nil || appHost.app.Hub == nil {
 		return fmt.Errorf("对话事件通道还没有就绪")
 	}
-	if _, loaded := a.agentWatch.LoadOrStore(sessionID, true); loaded {
+	if _, loaded := appHost.app.agentWatch.LoadOrStore(sessionID, true); loaded {
 		return nil
 	}
-	ch, unsub := a.Hub.Subscribe(sessionID)
-	go a.canvasAgentLoop(sessionID, ch, unsub)
+	ch, unsub := appHost.app.Hub.Subscribe(sessionID)
+	go appHost.app.canvasAgentLoop(sessionID, ch, unsub)
 	return nil
 }
 
 // canvasAgentLoop 把同一 epoch 的流式文本、回合结束、错误、工具结果和审批写回视频引擎。epoch 变了的事件丢掉。退出时取消订阅并删掉监视标记。
 // sessionID 传给 CanvasAgentEpoch、CanvasAgentStream、CanvasAgentFinish、CanvasAgentFail、CanvasAgentTool 和 CanvasAgentApproval，退出时从 agentWatch 删掉。
 // unsub 在退出时调用。
-func (a *App) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub func()) {
+func (appHost *videoHost) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub func()) {
 	defer unsub()
-	defer a.agentWatch.Delete(sessionID)
+	defer appHost.app.agentWatch.Delete(sessionID)
 	var buf strings.Builder
 	var epoch int
 	for ev := range ch {
-		if a == nil || a.Video == nil {
+		if appHost.app == nil || appHost.app.Video == nil {
 			return
 		}
 		switch ev.Type {
 		case trace.TypeTurnStart:
-			epoch = a.Video.CanvasAgentEpoch(sessionID)
+			epoch = appHost.app.Video.CanvasAgentEpoch(sessionID)
 			buf.Reset()
 		case trace.TypeAssistantStream:
-			if epoch == 0 || a.Video.CanvasAgentEpoch(sessionID) != epoch {
+			if epoch == 0 || appHost.app.Video.CanvasAgentEpoch(sessionID) != epoch {
 				continue
 			}
 			delta := assistantDelta(ev)
@@ -133,9 +133,9 @@ func (a *App) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub fun
 				continue
 			}
 			buf.WriteString(delta)
-			a.Video.CanvasAgentStream(sessionID, epoch, buf.String())
+			appHost.app.Video.CanvasAgentStream(sessionID, epoch, buf.String())
 		case trace.TypeTurnEnd:
-			if epoch == 0 || a.Video.CanvasAgentEpoch(sessionID) != epoch {
+			if epoch == 0 || appHost.app.Video.CanvasAgentEpoch(sessionID) != epoch {
 				continue
 			}
 			text := buf.String()
@@ -150,25 +150,25 @@ func (a *App) canvasAgentLoop(sessionID string, ch <-chan trace.Event, unsub fun
 					okTurn, _ = v.(bool)
 				}
 			}
-			a.Video.CanvasAgentFinish(sessionID, epoch, text, okTurn)
+			appHost.app.Video.CanvasAgentFinish(sessionID, epoch, text, okTurn)
 			buf.Reset()
 		case trace.TypeError:
-			if epoch == 0 || a.Video.CanvasAgentEpoch(sessionID) != epoch {
+			if epoch == 0 || appHost.app.Video.CanvasAgentEpoch(sessionID) != epoch {
 				continue
 			}
-			a.Video.CanvasAgentFail(sessionID, epoch, agentEventMessage(ev))
+			appHost.app.Video.CanvasAgentFail(sessionID, epoch, agentEventMessage(ev))
 		case trace.TypeToolResult:
-			if epoch == 0 || a.Video.CanvasAgentEpoch(sessionID) != epoch || ev.Payload == nil {
+			if epoch == 0 || appHost.app.Video.CanvasAgentEpoch(sessionID) != epoch || ev.Payload == nil {
 				continue
 			}
 			name, _ := ev.Payload["name"].(string)
 			id, _ := ev.Payload["id"].(string)
-			a.Video.CanvasAgentTool(sessionID, epoch, name, id)
+			appHost.app.Video.CanvasAgentTool(sessionID, epoch, name, id)
 		case trace.TypeApproval:
-			if epoch == 0 || a.Video.CanvasAgentEpoch(sessionID) != epoch {
+			if epoch == 0 || appHost.app.Video.CanvasAgentEpoch(sessionID) != epoch {
 				continue
 			}
-			a.Video.CanvasAgentApproval(sessionID, epoch, ev.Payload)
+			appHost.app.Video.CanvasAgentApproval(sessionID, epoch, ev.Payload)
 		}
 	}
 }

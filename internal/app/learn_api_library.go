@@ -24,8 +24,8 @@ const (
 )
 
 // learnLibraryCall 处理文库和阅读的方法。ok 为假表示这个方法不归它管。
-func (a *App) learnLibraryCall(method string, params map[string]any) (any, bool, error) {
-	s := a.Learn
+func (appHost *learnHost) learnLibraryCall(method string, params map[string]any) (any, bool, error) {
+	s := appHost.app.Learn
 	lib := strParam(params, "library_id")
 	doc := strParam(params, "document_id")
 	mat := strParam(params, "material_id")
@@ -67,7 +67,7 @@ func (a *App) learnLibraryCall(method string, params map[string]any) (any, bool,
 		out, err := s.ImportPaths(lib, paths)
 		return out, true, err
 	case "learn.import.url":
-		out, err := a.learnImportURL(lib, strParam(params, "url"))
+		out, err := appHost.app.learnImportURL(lib, strParam(params, "url"))
 		return out, true, err
 	case "learn.rebuild":
 		return okMap(), true, s.Rebuild(lib)
@@ -143,7 +143,7 @@ func (a *App) learnLibraryCall(method string, params map[string]any) (any, bool,
 		}
 		return map[string]any{"filename": name, "markdown": body}, true, nil
 	case "learn.viewport":
-		a.setLearnViewport(strParam(params, "session"), learnViewport{
+		appHost.app.setLearnViewport(strParam(params, "session"), learnViewport{
 			MaterialID: mat, Locator: intParam(params, "locator"), Selection: clipLearn(strings.TrimSpace(strParam(params, "selection")), learnSelectionRunes),
 		})
 		return okMap(), true, nil
@@ -153,7 +153,7 @@ func (a *App) learnLibraryCall(method string, params map[string]any) (any, bool,
 
 // learnImportURL 把一个网页的正文存进文库。只认 http 和 https，最多读 8 MiB，只收网页和纯文本。
 // libraryID 是要存进去的 indexed 库，rawURL 是网页地址。抓取由操作者在界面上发起，模型的工具里没有这一项。
-func (a *App) learnImportURL(libraryID, rawURL string) (learn.Document, error) {
+func (appHost *learnHost) learnImportURL(libraryID, rawURL string) (learn.Document, error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return learn.Document{}, fmt.Errorf("give a full web address starting with http or https")
@@ -195,5 +195,5 @@ func (a *App) learnImportURL(libraryID, rawURL string) (learn.Document, error) {
 	if strings.TrimSpace(title) == "" {
 		title = strings.Trim(u.Host+u.Path, "/")
 	}
-	return a.Learn.ImportText(libraryID, title, text, u.String())
+	return appHost.app.Learn.ImportText(libraryID, title, text, u.String())
 }

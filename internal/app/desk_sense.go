@@ -10,88 +10,88 @@ import (
 )
 
 // deskBook 返回这台机器上唯一打开的开口记录。判断、送达和反馈都经过它，两份记录不会互相盖掉对方写下的按住。
-func (a *App) deskBook() (*initiative.Store, error) {
-	if a == nil || a.Home == nil {
+func (appHost *deskHost) deskBook() (*initiative.Store, error) {
+	if appHost.app == nil || appHost.app.Home == nil {
 		return nil, errString("home unavailable")
 	}
-	a.bookMu.Lock()
-	defer a.bookMu.Unlock()
-	if a.book != nil {
-		return a.book, nil
+	appHost.app.bookMu.Lock()
+	defer appHost.app.bookMu.Unlock()
+	if appHost.app.book != nil {
+		return appHost.app.book, nil
 	}
-	store, err := initiative.Open(a.Home.Memory())
+	store, err := initiative.Open(appHost.app.Home.Memory())
 	if err != nil {
 		return nil, err
 	}
-	a.book = store
+	appHost.app.book = store
 	return store, nil
 }
 
 // assessDesk 把这一轮清点、编排台和本机状态收成要不要开口的判断。它不记成已经开口，送达由 deliverSpeaks 记。
 // 记录打不开时 ok 为假，调用方就不要假装已经判断过。
-func (a *App) assessDesk(snap poi.Snapshot) (initiative.Briefing, bool) {
-	store, err := a.deskBook()
+func (appHost *deskHost) assessDesk(snap poi.Snapshot) (initiative.Briefing, bool) {
+	store, err := appHost.app.deskBook()
 	if err != nil {
 		return initiative.Briefing{}, false
 	}
 	now := time.Now()
 	facts, idle := initiative.LocalFacts(poi.DefaultRoots())
-	facts = append(facts, a.reachFacts(store.Seen(), now)...)
+	facts = append(facts, appHost.app.reachFacts(store.Seen(), now)...)
 	facts = append(facts, lineFacts(snap.Census)...)
 	facts = append(facts, poiFacts(snap)...)
-	facts = append(facts, a.connectorFacts()...)
-	facts = append(facts, a.orchestratorFacts(now)...)
-	allow, hold := a.reachBudget(now)
+	facts = append(facts, appHost.app.connectorFacts()...)
+	facts = append(facts, appHost.app.orchestratorFacts(now)...)
+	allow, hold := appHost.app.reachBudget(now)
 	briefing := store.Assess(initiative.Input{
 		Now: now, Idle: idle, Facts: facts,
 		ReachDaily: allow.Daily, ReachEvery: allow.Speak, ReachHold: hold,
 	})
-	a.keepBriefing(briefing, now)
+	appHost.app.keepBriefing(briefing, now)
 	return briefing, true
 }
 
 // keepBriefing 记下最近一轮判断。界面读它，不再为了读而重跑清点。
-func (a *App) keepBriefing(b initiative.Briefing, at time.Time) {
-	a.bookMu.Lock()
-	a.deskSeen = b
-	a.deskSeenAt = at
-	a.bookMu.Unlock()
+func (appHost *deskHost) keepBriefing(b initiative.Briefing, at time.Time) {
+	appHost.app.bookMu.Lock()
+	appHost.app.deskSeen = b
+	appHost.app.deskSeenAt = at
+	appHost.app.bookMu.Unlock()
 }
 
 // DeskFeedback 记下人对某一类开口的反应。wrong 会忘掉对应的记忆。
 // className 是这一类的名字。kind 取 used、ignore、later、wrong、mute、unmute。memoryID 只在 wrong 时使用。
-func (a *App) DeskFeedback(className, kind, memoryID string) bool {
+func (appHost *deskHost) DeskFeedback(className, kind, memoryID string) bool {
 	switch strings.TrimSpace(kind) {
 	case "used", "ignore", "later", "wrong", "mute", "unmute":
 	default:
 		return false
 	}
-	store, err := a.deskBook()
+	store, err := appHost.app.deskBook()
 	if err != nil {
 		return false
 	}
 	forget := store.Feedback(strings.TrimSpace(className), strings.TrimSpace(memoryID), strings.TrimSpace(kind), time.Now().Format("2006-01-02"))
 	if forget != "" {
-		a.MemoryForget(forget)
+		appHost.app.MemoryForget(forget)
 	}
 	return true
 }
 
-func (a *App) noteSchedule(id, title string) {
-	store, err := a.deskBook()
+func (appHost *deskHost) noteSchedule(id, title string) {
+	store, err := appHost.app.deskBook()
 	if err != nil {
 		return
 	}
 	store.NoteSchedule(id, title, time.Now().Format("2006-01-02"))
 }
 
-func (a *App) scheduleAllowed() bool {
-	if a == nil {
+func (appHost *deskHost) scheduleAllowed() bool {
+	if appHost.app == nil {
 		return true
 	}
-	a.deskMu.Lock()
-	rt := a.orch
-	a.deskMu.Unlock()
+	appHost.app.deskMu.Lock()
+	rt := appHost.app.orch
+	appHost.app.deskMu.Unlock()
 	if rt == nil {
 		return true
 	}
@@ -129,10 +129,10 @@ func poiFacts(snap poi.Snapshot) []initiative.Fact {
 	return facts
 }
 
-func (a *App) connectorFacts() []initiative.Fact {
+func (appHost *deskHost) connectorFacts() []initiative.Fact {
 	mail, calendar := false, false
-	if a != nil && a.Connectors != nil {
-		for _, acct := range a.Connectors.List() {
+	if appHost.app != nil && appHost.app.Connectors != nil {
+		for _, acct := range appHost.app.Connectors.List() {
 			switch acct.Kind {
 			case connector.KindMail:
 				mail = true
@@ -155,13 +155,13 @@ func linkFact(code string, linked bool) initiative.Fact {
 	return initiative.Fact{ID: code, Code: code, Class: code, Name: code, State: state, Sig: state, Rank: 6}
 }
 
-func (a *App) orchestratorFacts(now time.Time) []initiative.Fact {
-	if a == nil {
+func (appHost *deskHost) orchestratorFacts(now time.Time) []initiative.Fact {
+	if appHost.app == nil {
 		return nil
 	}
-	a.deskMu.Lock()
-	rt := a.orch
-	a.deskMu.Unlock()
+	appHost.app.deskMu.Lock()
+	rt := appHost.app.orch
+	appHost.app.deskMu.Unlock()
 	if rt == nil {
 		return nil
 	}

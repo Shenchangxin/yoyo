@@ -22,11 +22,11 @@ var reachFileMu sync.Mutex
 // reachFacts 把一条还没说过的公开检索交给开口门。检索本身在后台，不占这一轮刷新。
 // 没到点或上一轮还在跑时什么都不加。来源按表轮换，每轮都带默认话题；搜不到就沉默，不编一条新闻。
 // seen 里 reach: 开头的编号，以及日志里模型跳过的编号，都不再说。now 用来判断这一轮到不到点。
-func (a *App) reachFacts(seen map[string]string, now time.Time) []initiative.Fact {
-	if a == nil || a.Home == nil {
+func (appHost *deskHost) reachFacts(seen map[string]string, now time.Time) []initiative.Fact {
+	if appHost.app == nil || appHost.app.Home == nil {
 		return nil
 	}
-	log := a.readReachLog()
+	log := appHost.app.readReachLog()
 	seenIDs := map[string]bool{}
 	for id := range seen {
 		if strings.HasPrefix(id, "reach:") {
@@ -37,7 +37,7 @@ func (a *App) reachFacts(seen map[string]string, now time.Time) []initiative.Fac
 		seenIDs[id] = true
 	}
 	if log.Pending != nil && seenIDs[reach.ID(log.Pending.URL)] {
-		a.updateReachLog(func(current *reach.Log) {
+		appHost.app.updateReachLog(func(current *reach.Log) {
 			if current.Pending != nil && seenIDs[reach.ID(current.Pending.URL)] {
 				current.Pending = nil
 			}
@@ -47,23 +47,23 @@ func (a *App) reachFacts(seen map[string]string, now time.Time) []initiative.Fac
 	if fact, ok := reach.Emit(log.Pending, seenIDs); ok {
 		return []initiative.Fact{fact}
 	}
-	lines := a.reachLines()
+	lines := appHost.app.reachLines()
 	probe, ok := reach.Next(log, lines, now)
-	if !ok || !a.reachMu.TryLock() {
+	if !ok || !appHost.app.reachMu.TryLock() {
 		return nil
 	}
-	go a.runReach(probe, seenIDs, a.reachPace(now))
+	go appHost.app.runReach(probe, seenIDs, appHost.app.reachPace(now))
 	return nil
 }
 
-func (a *App) reachLines() []string {
-	if a == nil || a.Memory == nil {
+func (appHost *deskHost) reachLines() []string {
+	if appHost.app == nil || appHost.app.Memory == nil {
 		return nil
 	}
 	// 检索词会发到外部搜索。档案里是本人说过的话，可能有名字和私事，不拿去检索。
 	var texts []string
 	now := time.Now()
-	for _, item := range a.Memory.All() {
+	for _, item := range appHost.app.Memory.All() {
 		if item.Staging || item.Source == "machine" || memory.Expired(item, now) {
 			continue
 		}
@@ -75,8 +75,8 @@ func (a *App) reachLines() []string {
 	return reach.Lines(texts)
 }
 
-func (a *App) runReach(probe reach.Probe, seen map[string]bool, pace string) {
-	defer a.reachMu.Unlock()
+func (appHost *deskHost) runReach(probe reach.Probe, seen map[string]bool, pace string) {
+	defer appHost.app.reachMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Second)
 	defer cancel()
 	now := time.Now()
@@ -86,7 +86,7 @@ func (a *App) runReach(probe reach.Probe, seen map[string]bool, pace string) {
 		item.Line = probe.Line
 		item.Topic = probe.Topic
 		item.Source = probe.Name
-		item.Note = a.reachNote(*item)
+		item.Note = appHost.app.reachNote(*item)
 		if item.Note != "" {
 			pending = item
 		} else {
@@ -94,7 +94,7 @@ func (a *App) runReach(probe reach.Probe, seen map[string]bool, pace string) {
 		}
 	}
 	wait := reach.ProbeAfter(pace, now)
-	a.updateReachLog(func(log *reach.Log) {
+	appHost.app.updateReachLog(func(log *reach.Log) {
 		if pending != nil {
 			log.Pending = pending
 		}
@@ -107,34 +107,34 @@ func (a *App) runReach(probe reach.Probe, seen map[string]bool, pace string) {
 }
 
 // reachPace 用最近一次用户发言和当前有没有回合或任务组在跑，选出忙闲档。now 是这一轮的时刻。
-func (a *App) reachPace(now time.Time) string {
-	return reach.PaceOf(a.reachUserAt(), a.reachBusyNow(), now)
+func (appHost *deskHost) reachPace(now time.Time) string {
+	return reach.PaceOf(appHost.app.reachUserAt(), appHost.app.reachBusyNow(), now)
 }
 
 // reachBudget 返回这一刻的开口额度，以及要不要先按住。now 传给 PaceOf 和 Hold。
-func (a *App) reachBudget(now time.Time) (reach.Allowance, bool) {
-	at := a.reachUserAt()
-	running := a.reachBusyNow()
+func (appHost *deskHost) reachBudget(now time.Time) (reach.Allowance, bool) {
+	at := appHost.app.reachUserAt()
+	running := appHost.app.reachBusyNow()
 	return reach.AllowanceFor(reach.PaceOf(at, running, now)), reach.Hold(at, running, now)
 }
 
 // reachBusyNow 在有会话回合还没结束，或有任务组还在做、还在等人时为真。
-func (a *App) reachBusyNow() bool {
-	if a == nil {
+func (appHost *deskHost) reachBusyNow() bool {
+	if appHost.app == nil {
 		return false
 	}
-	if len(a.RunningIDs()) > 0 {
+	if len(appHost.app.RunningIDs()) > 0 {
 		return true
 	}
-	return a.groupsRunning()
+	return appHost.app.groupsRunning()
 }
 
 // reachUserAt 读日志里的用户发言时间。没有或解析不了时返回零值。
-func (a *App) reachUserAt() time.Time {
-	if a == nil {
+func (appHost *deskHost) reachUserAt() time.Time {
+	if appHost.app == nil {
 		return time.Time{}
 	}
-	at, err := time.Parse(time.RFC3339, a.readReachLog().UserAt)
+	at, err := time.Parse(time.RFC3339, appHost.app.readReachLog().UserAt)
 	if err != nil {
 		return time.Time{}
 	}
@@ -142,30 +142,30 @@ func (a *App) reachUserAt() time.Time {
 }
 
 // touchReachUser 记下用户刚刚在会话里说了话。now 为零或没有家目录时什么都不写。
-func (a *App) touchReachUser(now time.Time) {
-	if a == nil || a.Home == nil || now.IsZero() {
+func (appHost *deskHost) touchReachUser(now time.Time) {
+	if appHost.app == nil || appHost.app.Home == nil || now.IsZero() {
 		return
 	}
-	a.updateReachLog(func(log *reach.Log) {
+	appHost.app.updateReachLog(func(log *reach.Log) {
 		log.UserAt = now.UTC().Format(time.RFC3339)
 	})
 }
 
-func (a *App) reachPath() string {
-	if a == nil || a.Home == nil {
+func (appHost *deskHost) reachPath() string {
+	if appHost.app == nil || appHost.app.Home == nil {
 		return ""
 	}
-	return filepath.Join(a.Home.Memory(), "reach.json")
+	return filepath.Join(appHost.app.Home.Memory(), "reach.json")
 }
 
-func (a *App) readReachLog() reach.Log {
+func (appHost *deskHost) readReachLog() reach.Log {
 	reachFileMu.Lock()
 	defer reachFileMu.Unlock()
-	return a.readReachLogLocked()
+	return appHost.app.readReachLogLocked()
 }
 
-func (a *App) readReachLogLocked() reach.Log {
-	path := a.reachPath()
+func (appHost *deskHost) readReachLogLocked() reach.Log {
+	path := appHost.app.reachPath()
 	if path == "" {
 		return reach.Log{}
 	}
@@ -178,19 +178,19 @@ func (a *App) readReachLogLocked() reach.Log {
 	return log
 }
 
-func (a *App) updateReachLog(fn func(*reach.Log)) {
+func (appHost *deskHost) updateReachLog(fn func(*reach.Log)) {
 	if fn == nil {
 		return
 	}
 	reachFileMu.Lock()
 	defer reachFileMu.Unlock()
-	log := a.readReachLogLocked()
+	log := appHost.app.readReachLogLocked()
 	fn(&log)
-	a.writeReachLogLocked(log)
+	appHost.app.writeReachLogLocked(log)
 }
 
-func (a *App) writeReachLogLocked(log reach.Log) {
-	path := a.reachPath()
+func (appHost *deskHost) writeReachLogLocked(log reach.Log) {
+	path := appHost.app.reachPath()
 	if path == "" {
 		return
 	}
@@ -216,14 +216,14 @@ const reachNotePrompt = `你在主会话里留一张便条，像同事顺手丢�
 链接单独放在第二行。不要用标题、编号列表或 JSON。材料是空的、没有公开链接、或只是登录墙和广告时，只输出一个字：静。`
 
 // reachNote 把一条检索写成便条。模型认为不值得开口时返回空串，调用失败时用材料本身拼一句，不编新事实。
-func (a *App) reachNote(item reach.Item) string {
+func (appHost *deskHost) reachNote(item reach.Item) string {
 	packet := reachPacket(item)
 	if packet == "" {
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	out, err := liveModel{app: a}.Complete(ctx, dsh.Request{
+	out, err := liveModel{app: appHost.app}.Complete(ctx, dsh.Request{
 		Messages: []dsh.Message{
 			{Role: "system", Text: reachNotePrompt},
 			{Role: "user", Text: packet},

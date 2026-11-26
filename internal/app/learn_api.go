@@ -16,12 +16,12 @@ import (
 
 // LearnCall 处理 learn. 前缀的方法。method 决定分支。params 里的库、路径和材料 id 由操作者传入。
 // 模型不能从这里改会话绑定；绑定走 learn.bind。
-func (a *App) LearnCall(method string, params map[string]any) (any, error) {
-	if a == nil || a.Learn == nil {
+func (appHost *learnHost) LearnCall(method string, params map[string]any) (any, error) {
+	if appHost.app == nil || appHost.app.Learn == nil {
 		return nil, fmt.Errorf("learn store unavailable")
 	}
 	for _, handle := range []func(string, map[string]any) (any, bool, error){
-		a.learnCoreCall, a.learnMasteryCall, a.learnLibraryCall, a.learnPracticeCall, a.learnBooksCall,
+		appHost.app.learnCoreCall, appHost.app.learnMasteryCall, appHost.app.learnLibraryCall, appHost.app.learnPracticeCall, appHost.app.learnBooksCall,
 	} {
 		if out, ok, err := handle(method, params); ok {
 			return out, err
@@ -31,8 +31,8 @@ func (a *App) LearnCall(method string, params map[string]any) (any, error) {
 }
 
 // learnCoreCall 处理学习计划、手记和会话绑定。ok 为假表示这个方法不归它管。
-func (a *App) learnCoreCall(method string, params map[string]any) (any, bool, error) {
-	s := a.Learn
+func (appHost *learnHost) learnCoreCall(method string, params map[string]any) (any, bool, error) {
+	s := appHost.app.Learn
 	switch method {
 	case "learn.today":
 		out, err := s.TodayView(time.Now())
@@ -45,7 +45,7 @@ func (a *App) learnCoreCall(method string, params map[string]any) (any, bool, er
 	case "learn.journal.add":
 		return okMap(), true, s.AddJournal(strParam(params, "insight"))
 	case "learn.bind":
-		out, err := a.SetSessionLearn(strParam(params, "session"), LearnBinding{
+		out, err := appHost.app.SetSessionLearn(strParam(params, "session"), LearnBinding{
 			LibraryID: strParam(params, "library_id"), PathID: strParam(params, "path_id"),
 			MaterialID: strParam(params, "material_id"), BookID: strParam(params, "book_id"),
 		})
@@ -64,8 +64,8 @@ type LearnBinding struct {
 
 // SetSessionLearn 把库、路径、材料和课本绑到会话上。session 传给 GetSession。
 // 各项去掉空白后写入。路径上已有文库而 LibraryID 为空时，用路径自己的文库。
-func (a *App) SetSessionLearn(session string, bind LearnBinding) (SessionMeta, error) {
-	m, err := a.GetSession(session)
+func (appHost *learnHost) SetSessionLearn(session string, bind LearnBinding) (SessionMeta, error) {
+	m, err := appHost.app.GetSession(session)
 	if err != nil {
 		return m, err
 	}
@@ -73,30 +73,30 @@ func (a *App) SetSessionLearn(session string, bind LearnBinding) (SessionMeta, e
 	m.PathID = strings.TrimSpace(bind.PathID)
 	m.MaterialID = strings.TrimSpace(bind.MaterialID)
 	m.BookID = strings.TrimSpace(bind.BookID)
-	if m.LibraryID == "" && m.PathID != "" && a.Learn != nil {
-		if view, err := a.Learn.Path(m.PathID); err == nil {
+	if m.LibraryID == "" && m.PathID != "" && appHost.app.Learn != nil {
+		if view, err := appHost.app.Learn.Path(m.PathID); err == nil {
 			m.LibraryID = view.LibraryID
 		}
 	}
 	// 课本要是以某座文库为依据，导师也要能查那座文库，好核对书里的说法。
-	if m.LibraryID == "" && m.BookID != "" && a.Learn != nil {
-		if view, err := a.Learn.Book(m.BookID); err == nil {
+	if m.LibraryID == "" && m.BookID != "" && appHost.app.Learn != nil {
+		if view, err := appHost.app.Learn.Book(m.BookID); err == nil {
 			m.LibraryID = view.Book.LibraryID
 		}
 	}
-	if err := a.writeSession(m); err != nil {
+	if err := appHost.app.writeSession(m); err != nil {
 		return m, err
 	}
-	return a.attachAuthMode(m), nil
+	return appHost.app.attachAuthMode(m), nil
 }
 
 // publishLearn 把学习数据的一次变化发到 Hub。界面收到后重新读取对应的那一块。
 // 载荷只有范围、对象 id 和变化种类，小到能内联进桌面通知。
-func (a *App) publishLearn(c learn.Change) {
-	if a == nil || a.Hub == nil {
+func (appHost *learnHost) publishLearn(c learn.Change) {
+	if appHost.app == nil || appHost.app.Hub == nil {
 		return
 	}
-	a.Hub.Publish(trace.Event{
+	appHost.app.Hub.Publish(trace.Event{
 		TS: time.Now().UTC(), Type: trace.TypeSystem, Source: "learn", ItemKind: "learn",
 		Payload: map[string]any{"scope": c.Scope, "id": c.ID, "kind": c.Kind},
 	})

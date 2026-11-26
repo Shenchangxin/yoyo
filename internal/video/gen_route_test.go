@@ -2,7 +2,13 @@
 
 package video
 
-import "testing"
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 // TestImageRouteFollowsProtocol 确认 openai-images 协议不论厂商都走 OpenAI 兼容实现，即梦和混元走各自的实现，认不出的协议返回空串。
 func TestImageRouteFollowsProtocol(t *testing.T) {
@@ -42,4 +48,59 @@ func TestOpenAICompatURLKeepsVersionedBase(t *testing.T) {
 			t.Fatalf("%q: got %q want %q", base, got, want)
 		}
 	}
+}
+
+// TestOpenAIVideoUsesProtocolAdapter 确认手写分支没有的 OpenAI 视频走协议适配器，认不出的厂商仍直接拒绝。
+func TestOpenAIVideoUsesProtocolAdapter(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"task-1","status":"queued"}`))
+	}))
+	defer srv.Close()
+
+	e := testEngine(t)
+	e.HTTP = srv.Client()
+	if e.Proto == nil {
+		t.Fatal("protocol registry missing")
+	}
+	p, err := e.UpsertProvider(Provider{
+		ServiceType: "video", Provider: "openai", Name: "Sora", BaseURL: srv.URL, Model: "sora-2", IsActive: true,
+	}, "sk-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := &Job{Type: "video", Provider: p.Provider, VaultKey: p.VaultKey, Model: "sora-2", Prompt: "a cat"}
+	if err := e.submitVideo(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/v1/videos" {
+		t.Fatalf("path %s", gotPath)
+	}
+	if j.RemoteID != "task-1" {
+		t.Fatalf("remote %s", j.RemoteID)
+	}
+	if parseParams(j.Params).ProtocolRoute == "" {
+		t.Fatal("protocol route was not recorded")
+	}
+
+	e.HTTP = rejectHTTP{t}
+	mystery, err := e.UpsertProvider(Provider{
+		ServiceType: "video", Provider: "mystery", Name: "Mystery", BaseURL: srv.URL, IsActive: true,
+	}, "sk-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = e.submitVideo(context.Background(), &Job{Type: "video", Provider: mystery.Provider, VaultKey: mystery.VaultKey, Prompt: "nope"})
+	if err == nil || !strings.Contains(err.Error(), "unsupported video provider") {
+		t.Fatalf("mystery: %v", err)
+	}
+}
+
+type rejectHTTP struct{ t *testing.T }
+
+func (r rejectHTTP) Do(*http.Request) (*http.Response, error) {
+	r.t.Fatal("handwritten miss must not call the network")
+	return nil, nil
 }

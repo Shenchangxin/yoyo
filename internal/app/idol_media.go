@@ -53,32 +53,32 @@ type idolSettingsView struct {
 }
 
 // idolSettingsView 组装服务、用户卡、预设和回落连接，并用 idol.chat、idol.speech、idol.asr、idol.image 的密钥做提示。就绪与否来自对应的客户端函数。
-func (a *App) idolSettingsView() idolSettingsView {
-	st := a.Idols.View()
+func (appHost *idolHost) idolSettingsView() idolSettingsView {
+	st := appHost.app.Idols.View()
 	v := idolSettingsView{
 		Services: idol.NormalizeServices(st.Services),
 		User:     st.User,
 		Presets:  idol.ServicePresets(),
-		Fallback: a.idolMediaFallback(),
+		Fallback: appHost.app.idolMediaFallback(),
 	}
-	v.ChatKey = keyHint(a.vaultIdol("idol.chat"))
-	v.SpeechKey = keyHint(a.vaultIdol("idol.speech"))
-	v.ASRKey = keyHint(a.vaultIdol("idol.asr"))
-	v.ImageKey = keyHint(a.vaultIdol("idol.image"))
-	_, _, err := a.idolClient("chat")
+	v.ChatKey = keyHint(appHost.app.vaultIdol("idol.chat"))
+	v.SpeechKey = keyHint(appHost.app.vaultIdol("idol.speech"))
+	v.ASRKey = keyHint(appHost.app.vaultIdol("idol.asr"))
+	v.ImageKey = keyHint(appHost.app.vaultIdol("idol.image"))
+	_, _, err := appHost.app.idolClient("chat")
 	v.ChatReady = err == nil
-	_, _, _, serr := a.idolSpeechCreds("")
+	_, _, _, serr := appHost.app.idolSpeechCreds("")
 	v.SpeechReady = serr == nil
-	_, _, _, aerr := a.idolASRCreds()
+	_, _, _, aerr := appHost.app.idolASRCreds()
 	v.ASRReady = aerr == nil
-	_, _, _, ierr := a.idolImageCreds()
+	_, _, _, ierr := appHost.app.idolImageCreds()
 	v.ImageReady = ierr == nil
 	return v
 }
 
 // idolSaveSettings 保存服务和用户卡。四把密钥经 putIdolKey 写入 vault，空字符串不改，减号清空。
 // payload 解出服务、用户卡和四把密钥。
-func (a *App) idolSaveSettings(payload string) (string, error) {
+func (appHost *idolHost) idolSaveSettings(payload string) (string, error) {
 	var p struct {
 		idol.Services
 		User      idol.UserCard `json:"user"`
@@ -91,25 +91,25 @@ func (a *App) idolSaveSettings(payload string) (string, error) {
 		return "", err
 	}
 	p.Services = idol.NormalizeServices(p.Services)
-	if err := a.Idols.SaveServices(p.Services); err != nil {
+	if err := appHost.app.Idols.SaveServices(p.Services); err != nil {
 		return "", err
 	}
-	_ = a.Idols.Update(func(st *idol.State) error {
+	_ = appHost.app.Idols.Update(func(st *idol.State) error {
 		st.User = p.User
 		return nil
 	})
-	a.putIdolKey("idol.chat", p.ChatKey)
-	a.putIdolKey("idol.speech", p.SpeechKey)
-	a.putIdolKey("idol.asr", p.ASRKey)
-	a.putIdolKey("idol.image", p.ImageKey)
-	return idolJSON(a.idolSettingsView())
+	appHost.app.putIdolKey("idol.chat", p.ChatKey)
+	appHost.app.putIdolKey("idol.speech", p.SpeechKey)
+	appHost.app.putIdolKey("idol.asr", p.ASRKey)
+	appHost.app.putIdolKey("idol.image", p.ImageKey)
+	return idolJSON(appHost.app.idolSettingsView())
 }
 
 // putIdolKey 把非空密钥写入 vault。值为减号时把该键设成空串。vault 为空则返回。
 // name 传给 Vault.Set。
 // value 先 TrimSpace，空串则返回，减号则把该键设成空串，否则写入 vault。
-func (a *App) putIdolKey(name, value string) {
-	if a.Vault == nil {
+func (appHost *idolHost) putIdolKey(name, value string) {
+	if appHost.app.Vault == nil {
 		return
 	}
 	value = strings.TrimSpace(value)
@@ -117,19 +117,19 @@ func (a *App) putIdolKey(name, value string) {
 		return
 	}
 	if value == "-" {
-		a.Vault.Set(name, "")
+		appHost.app.Vault.Set(name, "")
 		return
 	}
-	a.Vault.Set(name, value)
+	appHost.app.Vault.Set(name, value)
 }
 
 // vaultIdol 读取一把偶像密钥。vault 为空或读取失败返回空串。
 // name 传给 Vault.Get。
-func (a *App) vaultIdol(name string) string {
-	if a == nil || a.Vault == nil {
+func (appHost *idolHost) vaultIdol(name string) string {
+	if appHost.app == nil || appHost.app.Vault == nil {
 		return ""
 	}
-	v, err := a.Vault.Get(name)
+	v, err := appHost.app.Vault.Get(name)
 	if err != nil {
 		return ""
 	}
@@ -151,13 +151,13 @@ func keyHint(s string) string {
 }
 
 // idolSnapshot 先 EnsureDaily 再返回钉住的偶像、立绘、好感（补上回暖）、圈子和各媒体是否就绪。立绘优先用当前服装 blob，否则用肖像 blob，读出后做 base64。
-func (a *App) idolSnapshot() (string, error) {
+func (appHost *idolHost) idolSnapshot() (string, error) {
 	now := time.Now()
-	_ = a.Idols.Update(func(live *idol.State) error {
+	_ = appHost.app.Idols.Update(func(live *idol.State) error {
 		live.EnsureDaily(now)
 		return nil
 	})
-	st := a.Idols.View()
+	st := appHost.app.Idols.View()
 	pinned, ok := st.Pinned()
 	var portrait string
 	if ok {
@@ -167,11 +167,11 @@ func (a *App) idolSnapshot() (string, error) {
 				blob = o.Blob
 			}
 		}
-		if b, err := a.Idols.ReadBlob(blob); err == nil && len(b) > 0 {
+		if b, err := appHost.app.Idols.ReadBlob(blob); err == nil && len(b) > 0 {
 			portrait = encodeB64Raw(b)
 		}
 	}
-	ready := a.idolSettingsView()
+	ready := appHost.app.idolSettingsView()
 	var aff any
 	if ok {
 		aff = st.AffinityOf(pinned.ID, now)
@@ -209,12 +209,12 @@ func pinnedOrNil(ok bool, it idol.Idol) any {
 
 // idolSave 解析并保存一个偶像。
 // payload 解成偶像后传给 SaveIdol。
-func (a *App) idolSave(payload string) (string, error) {
+func (appHost *idolHost) idolSave(payload string) (string, error) {
 	var in idol.Idol
 	if err := json.Unmarshal([]byte(payload), &in); err != nil {
 		return "", err
 	}
-	out, err := a.Idols.SaveIdol(in, time.Now())
+	out, err := appHost.app.Idols.SaveIdol(in, time.Now())
 	if err != nil {
 		return "", err
 	}
@@ -223,12 +223,12 @@ func (a *App) idolSave(payload string) (string, error) {
 
 // idolSaveCircle 解析并保存一个圈子。
 // payload 解成圈子后传给 SaveCircle。
-func (a *App) idolSaveCircle(payload string) (string, error) {
+func (appHost *idolHost) idolSaveCircle(payload string) (string, error) {
 	var c idol.Circle
 	if err := json.Unmarshal([]byte(payload), &c); err != nil {
 		return "", err
 	}
-	out, err := a.Idols.SaveCircle(c)
+	out, err := appHost.app.Idols.SaveCircle(c)
 	if err != nil {
 		return "", err
 	}
@@ -237,12 +237,12 @@ func (a *App) idolSaveCircle(payload string) (string, error) {
 
 // idolSaveLore 解析并保存一条设定。
 // payload 解成设定后传给 SaveLore。
-func (a *App) idolSaveLore(payload string) (string, error) {
+func (appHost *idolHost) idolSaveLore(payload string) (string, error) {
 	var doc idol.Lore
 	if err := json.Unmarshal([]byte(payload), &doc); err != nil {
 		return "", err
 	}
-	out, err := a.Idols.SaveLore(doc)
+	out, err := appHost.app.Idols.SaveLore(doc)
 	if err != nil {
 		return "", err
 	}
@@ -251,11 +251,11 @@ func (a *App) idolSaveLore(payload string) (string, error) {
 
 // idolVoice 优先用该偶像的 VoiceID，其次用服务里的 SpeechVoice，都空则返回 alloy。
 // idolID 传给 State.Idol。
-func (a *App) idolVoice(idolID string) string {
-	if a == nil || a.Idols == nil {
+func (appHost *idolHost) idolVoice(idolID string) string {
+	if appHost.app == nil || appHost.app.Idols == nil {
 		return "alloy"
 	}
-	st := a.Idols.View()
+	st := appHost.app.Idols.View()
 	if it, ok := st.Idol(idolID); ok && strings.TrimSpace(it.VoiceID) != "" {
 		return strings.TrimSpace(it.VoiceID)
 	}
@@ -270,11 +270,11 @@ func (a *App) idolVoice(idolID string) string {
 var errNoChatConn = errors.New("configure a chat model in Settings → Idol or Models")
 
 // idolClient 在 kind 为 judge、memory 或 title（后台的活）且 JudgeModel 非空时用评判模型，否则用 ChatModel。先走 idolSessionClient。得到 errNoChatConn 且 ChatBaseURL 非空时改用旧端点，否则 idolConfigClient。
-func (a *App) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
-	if a == nil || a.Idols == nil {
+func (appHost *idolHost) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
+	if appHost.app == nil || appHost.app.Idols == nil {
 		return nil, "", fmt.Errorf("idol store missing")
 	}
-	svc := a.Idols.View().Services
+	svc := appHost.app.Idols.View().Services
 	picked := strings.TrimSpace(svc.ChatModel)
 	switch kind {
 	case "judge", "memory", "title":
@@ -282,7 +282,7 @@ func (a *App) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
 			picked = strings.TrimSpace(svc.JudgeModel)
 		}
 	}
-	client, model, err := a.idolSessionClient(picked)
+	client, model, err := appHost.app.idolSessionClient(picked)
 	if err == nil {
 		return client, model, nil
 	}
@@ -291,23 +291,23 @@ func (a *App) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
 	}
 	// 会话连接返回 errNoChatConn 且 ChatBaseURL 非空时，改用这份旧端点。
 	if strings.TrimSpace(svc.ChatBaseURL) != "" {
-		return a.idolLegacyClient(svc.ChatBaseURL, picked)
+		return appHost.app.idolLegacyClient(svc.ChatBaseURL, picked)
 	}
-	return a.idolConfigClient(picked)
+	return appHost.app.idolConfigClient(picked)
 }
 
 // idolSessionClient 按会话模型解析 chat 连接。没有连接时返回 errNoChatConn。模型名空则用连接的 chat 模型，再空用 Config.Model。
 // picked 传给 splitSessionModel；连接 id 为空时再传给 sessionModelName。
-func (a *App) idolSessionClient(picked string) (*runtime.OpenAIClient, string, error) {
-	connID, model := a.splitSessionModel(picked)
+func (appHost *idolHost) idolSessionClient(picked string) (*runtime.OpenAIClient, string, error) {
+	connID, model := appHost.app.splitSessionModel(picked)
 	if connID == "" {
 		model = sessionModelName(picked)
 	}
-	c, err := a.resolveChatConnection(SessionMeta{ConnectionID: connID, Model: model})
+	c, err := appHost.app.resolveChatConnection(SessionMeta{ConnectionID: connID, Model: model})
 	if err != nil || strings.TrimSpace(c.ID) == "" {
 		return nil, "", errNoChatConn
 	}
-	client := a.openAIForConn(c)
+	client := appHost.app.openAIForConn(c)
 	if client == nil || strings.TrimSpace(client.APIKey) == "" {
 		return nil, "", fmt.Errorf("chat connection has no key")
 	}
@@ -316,7 +316,7 @@ func (a *App) idolSessionClient(picked string) (*runtime.OpenAIClient, string, e
 		model = connection.ModelFor(c, connection.CapChat)
 	}
 	if model == "" {
-		model = strings.TrimSpace(a.Config.Model)
+		model = strings.TrimSpace(appHost.app.Config.Model)
 	}
 	if model == "" {
 		return nil, "", fmt.Errorf("configure a chat model in Settings → Idol or Models")
@@ -338,14 +338,14 @@ func sessionModelName(picked string) string {
 // idolLegacyClient 用传入的旧端点和 idol.chat 密钥，密钥空则 fallbackChatKey。模型空则用 gpt-4.1-mini。密钥仍空则返回带 chat model 的错误。
 // base 传给 NewOpenAIClient。
 // picked 传给 sessionModelName，得到的模型名为空时改用 Config.Model，仍为空则用 gpt-4.1-mini。
-func (a *App) idolLegacyClient(base, picked string) (*runtime.OpenAIClient, string, error) {
-	key := a.vaultIdol("idol.chat")
+func (appHost *idolHost) idolLegacyClient(base, picked string) (*runtime.OpenAIClient, string, error) {
+	key := appHost.app.vaultIdol("idol.chat")
 	if key == "" {
-		key = a.fallbackChatKey()
+		key = appHost.app.fallbackChatKey()
 	}
 	model := sessionModelName(picked)
 	if model == "" {
-		model = strings.TrimSpace(a.Config.Model)
+		model = strings.TrimSpace(appHost.app.Config.Model)
 	}
 	if model == "" {
 		model = "gpt-4.1-mini"
@@ -358,28 +358,28 @@ func (a *App) idolLegacyClient(base, picked string) (*runtime.OpenAIClient, stri
 
 // idolConfigClient 用 Config.BaseURL 和 fallbackChatKey。模型空则用 gpt-4.1-mini。密钥或地址为空时返回 errNoChatConn。
 // picked 传给 sessionModelName，得到的模型名为空时改用 Config.Model，仍为空则用 gpt-4.1-mini。
-func (a *App) idolConfigClient(picked string) (*runtime.OpenAIClient, string, error) {
-	key := a.fallbackChatKey()
+func (appHost *idolHost) idolConfigClient(picked string) (*runtime.OpenAIClient, string, error) {
+	key := appHost.app.fallbackChatKey()
 	model := sessionModelName(picked)
 	if model == "" {
-		model = strings.TrimSpace(a.Config.Model)
+		model = strings.TrimSpace(appHost.app.Config.Model)
 	}
 	if model == "" {
 		model = "gpt-4.1-mini"
 	}
-	if key == "" || strings.TrimSpace(a.Config.BaseURL) == "" {
+	if key == "" || strings.TrimSpace(appHost.app.Config.BaseURL) == "" {
 		return nil, "", errNoChatConn
 	}
-	return runtime.NewOpenAIClient(a.Config.BaseURL, key), model, nil
+	return runtime.NewOpenAIClient(appHost.app.Config.BaseURL, key), model, nil
 }
 
 // fallbackChatKey 依次用 Vault.Get 读取 default、openai、api_key。default 和 openai 的 Get 会回落环境变量。都没有返回空串。
-func (a *App) fallbackChatKey() string {
-	if a == nil || a.Vault == nil {
+func (appHost *idolHost) fallbackChatKey() string {
+	if appHost.app == nil || appHost.app.Vault == nil {
 		return ""
 	}
 	for _, name := range []string{"default", "openai", "api_key"} {
-		if v, err := a.Vault.Get(name); err == nil && strings.TrimSpace(v) != "" {
+		if v, err := appHost.app.Vault.Get(name); err == nil && strings.TrimSpace(v) != "" {
 			return strings.TrimSpace(v)
 		}
 	}
@@ -387,16 +387,16 @@ func (a *App) fallbackChatKey() string {
 }
 
 // idolSpeechCreds 读取语音服务字段。地址为空时改用 speechCreds。然后 borrowMediaKey。填了厂商但仍然没有密钥时返回错误。
-func (a *App) idolSpeechCreds(_ string) (base, key, model string, err error) {
-	base, key, model, provider := a.idolMediaFields("speech")
+func (appHost *idolHost) idolSpeechCreds(_ string) (base, key, model string, err error) {
+	base, key, model, provider := appHost.app.idolMediaFields("speech")
 	if base == "" {
-		ep, k, m, e := a.speechCreds()
+		ep, k, m, e := appHost.app.speechCreds()
 		if e != nil {
 			return "", "", "", e
 		}
 		return ep, firstNonEmpty(key, k), firstNonEmpty(model, m), nil
 	}
-	key = a.borrowMediaKey(connection.CapSpeech, provider, base, key)
+	key = appHost.app.borrowMediaKey(connection.CapSpeech, provider, base, key)
 	if provider != "" && key == "" {
 		return "", "", "", fmt.Errorf("add a speech key in Settings → Idol, or a matching speech connection under Generation")
 	}
@@ -405,16 +405,16 @@ func (a *App) idolSpeechCreds(_ string) (base, key, model string, err error) {
 
 // idolSpeak 用这位偶像的音色把一句话念出来，返回音频和 Content-Type。读音表先换掉书面写法；语气提示 cue 交给认得它的厂商。
 // 按设置里的语音预设或地址认出厂商，各说各的协议。ctx 超时或取消时请求随之结束。
-func (a *App) idolSpeak(ctx context.Context, idolID, text, cue string) ([]byte, string, error) {
+func (appHost *idolHost) idolSpeak(ctx context.Context, idolID, text, cue string) ([]byte, string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, "", fmt.Errorf("empty speech")
 	}
-	base, key, model, err := a.idolSpeechCreds("")
+	base, key, model, err := appHost.app.idolSpeechCreds("")
 	if err != nil {
 		return nil, "", err
 	}
-	st := a.Idols.View()
+	st := appHost.app.Idols.View()
 	spokenLang := "zh"
 	if it, ok := st.Idol(idolID); ok {
 		text = idol.ApplyReadings(text, it.Readings)
@@ -423,15 +423,15 @@ func (a *App) idolSpeak(ctx context.Context, idolID, text, cue string) ([]byte, 
 	provider := idol.NormalizeServices(st.Services).SpeechProvider
 	return synthesize(ctx, speechCall{
 		route: mediaRoute(provider, base), base: base, key: key, model: model,
-		voice: a.idolVoice(idolID), text: text, cue: cue, lang: spokenLang,
+		voice: appHost.app.idolVoice(idolID), text: text, cue: cue, lang: spokenLang,
 	})
 }
 
 // idolASRCreds 读取识别字段。地址为空时先找活动的 asr 连接，再退到 speechCreds。speechCreds 失败时错误为 speech recognition is not configured。
-func (a *App) idolASRCreds() (base, key, model string, err error) {
-	base, key, model, provider := a.idolMediaFields("asr")
+func (appHost *idolHost) idolASRCreds() (base, key, model string, err error) {
+	base, key, model, provider := appHost.app.idolMediaFields("asr")
 	if base == "" {
-		if r := a.connReg(); r != nil {
+		if r := appHost.app.connReg(); r != nil {
 			if c, e := r.Active(connection.CapASR, ""); e == nil {
 				base = strings.TrimSpace(c.Endpoint)
 				model = firstNonEmpty(model, connection.ModelFor(c, connection.CapASR))
@@ -442,13 +442,13 @@ func (a *App) idolASRCreds() (base, key, model string, err error) {
 		}
 	}
 	if base == "" {
-		ep, k, m, e := a.speechCreds()
+		ep, k, m, e := appHost.app.speechCreds()
 		if e != nil {
 			return "", "", "", fmt.Errorf("speech recognition is not configured")
 		}
 		return ep, firstNonEmpty(key, k), firstNonEmpty(model, m), nil
 	}
-	key = a.borrowMediaKey(connection.CapASR, provider, base, key)
+	key = appHost.app.borrowMediaKey(connection.CapASR, provider, base, key)
 	if provider != "" && key == "" {
 		return "", "", "", fmt.Errorf("add an asr key in Settings → Idol, or a matching transcription connection under Generation")
 	}
@@ -456,18 +456,18 @@ func (a *App) idolASRCreds() (base, key, model string, err error) {
 }
 
 // idolTranscribe 识别一段录音。暂停时返回 paused。按设置里的识别预设或地址认出厂商，各说各的协议；hint 是热词。
-func (a *App) idolTranscribe(ctx context.Context, filename string, audio []byte, hint string) (string, error) {
-	if a.IsPaused() {
+func (appHost *idolHost) idolTranscribe(ctx context.Context, filename string, audio []byte, hint string) (string, error) {
+	if appHost.app.IsPaused() {
 		return "", fmt.Errorf("paused")
 	}
 	if len(audio) == 0 {
 		return "", fmt.Errorf("empty audio")
 	}
-	base, key, model, err := a.idolASRCreds()
+	base, key, model, err := appHost.app.idolASRCreds()
 	if err != nil {
 		return "", err
 	}
-	provider := idol.NormalizeServices(a.Idols.View().Services).ASRProvider
+	provider := idol.NormalizeServices(appHost.app.Idols.View().Services).ASRProvider
 	return transcribe(ctx, transcribeCall{
 		route: mediaRoute(provider, base), base: base, key: key, model: model,
 		filename: firstNonEmpty(filename, "audio.webm"), audio: audio, hint: hint,
@@ -475,10 +475,10 @@ func (a *App) idolTranscribe(ctx context.Context, filename string, audio []byte,
 }
 
 // idolImageCreds 读取图像字段。地址为空时用活动的 image 连接。仍没有地址则返回 image connection not configured。
-func (a *App) idolImageCreds() (base, key, model string, err error) {
-	base, key, model, provider := a.idolMediaFields("image")
+func (appHost *idolHost) idolImageCreds() (base, key, model string, err error) {
+	base, key, model, provider := appHost.app.idolMediaFields("image")
 	if base == "" {
-		if r := a.connReg(); r != nil {
+		if r := appHost.app.connReg(); r != nil {
 			if c, e := r.Active(connection.CapImage, ""); e == nil {
 				base = strings.TrimSpace(c.Endpoint)
 				model = firstNonEmpty(model, connection.ModelFor(c, connection.CapImage))
@@ -491,7 +491,7 @@ func (a *App) idolImageCreds() (base, key, model string, err error) {
 	if base == "" {
 		return "", "", "", fmt.Errorf("image connection not configured")
 	}
-	key = a.borrowMediaKey(connection.CapImage, provider, base, key)
+	key = appHost.app.borrowMediaKey(connection.CapImage, provider, base, key)
 	if provider != "" && key == "" {
 		return "", "", "", fmt.Errorf("add an image key in Settings → Idol, or a matching image connection under Generation")
 	}
@@ -499,35 +499,35 @@ func (a *App) idolImageCreds() (base, key, model string, err error) {
 }
 
 // idolPaint 按提示画一张图。按设置里的生图预设或地址认出厂商，各说各的协议；ctx 管整次请求和下载。
-func (a *App) idolPaint(ctx context.Context, prompt string) ([]byte, error) {
-	base, key, model, err := a.idolImageCreds()
+func (appHost *idolHost) idolPaint(ctx context.Context, prompt string) ([]byte, error) {
+	base, key, model, err := appHost.app.idolImageCreds()
 	if err != nil {
 		return nil, err
 	}
-	provider := idol.NormalizeServices(a.Idols.View().Services).ImageProvider
+	provider := idol.NormalizeServices(appHost.app.Idols.View().Services).ImageProvider
 	return paint(ctx, paintCall{route: mediaRoute(provider, base), base: base, key: key, model: model, prompt: prompt})
 }
 
 // idolCanPaint 判断有没有配好能用的生图服务。没有时她会说现在发不了照片，而不是答应了却发不出来。
-func (a *App) idolCanPaint() bool {
-	_, _, _, err := a.idolImageCreds()
+func (appHost *idolHost) idolCanPaint() bool {
+	_, _, _, err := appHost.app.idolImageCreds()
 	return err == nil
 }
 
 // idolMediaFields 按 speech、asr 或其他种类返回对应的地址、vault 密钥、模型和厂商。
 // kind 为 speech 或 asr 时返回对应字段，否则返回图像字段。
-func (a *App) idolMediaFields(kind string) (base, key, model, provider string) {
+func (appHost *idolHost) idolMediaFields(kind string) (base, key, model, provider string) {
 	var svc idol.Services
-	if a != nil && a.Idols != nil {
-		svc = idol.NormalizeServices(a.Idols.View().Services)
+	if appHost.app != nil && appHost.app.Idols != nil {
+		svc = idol.NormalizeServices(appHost.app.Idols.View().Services)
 	}
 	switch kind {
 	case "speech":
-		return strings.TrimSpace(svc.SpeechBaseURL), a.vaultIdol("idol.speech"), strings.TrimSpace(svc.SpeechModel), strings.TrimSpace(svc.SpeechProvider)
+		return strings.TrimSpace(svc.SpeechBaseURL), appHost.app.vaultIdol("idol.speech"), strings.TrimSpace(svc.SpeechModel), strings.TrimSpace(svc.SpeechProvider)
 	case "asr":
-		return strings.TrimSpace(svc.ASRBaseURL), a.vaultIdol("idol.asr"), strings.TrimSpace(svc.ASRModel), strings.TrimSpace(svc.ASRProvider)
+		return strings.TrimSpace(svc.ASRBaseURL), appHost.app.vaultIdol("idol.asr"), strings.TrimSpace(svc.ASRModel), strings.TrimSpace(svc.ASRProvider)
 	default:
-		return strings.TrimSpace(svc.ImageBaseURL), a.vaultIdol("idol.image"), strings.TrimSpace(svc.ImageModel), strings.TrimSpace(svc.ImageProvider)
+		return strings.TrimSpace(svc.ImageBaseURL), appHost.app.vaultIdol("idol.image"), strings.TrimSpace(svc.ImageModel), strings.TrimSpace(svc.ImageProvider)
 	}
 }
 
@@ -536,7 +536,7 @@ func (a *App) idolMediaFields(kind string) (base, key, model, provider string) {
 // provider 传给 idol.Preset。
 // endpoint 在 provider 没有预设时作为租用地址。
 // key 去掉首尾空白后非空则原样返回。
-func (a *App) borrowMediaKey(cap, provider, endpoint, key string) string {
+func (appHost *idolHost) borrowMediaKey(cap, provider, endpoint, key string) string {
 	if strings.TrimSpace(key) != "" {
 		return strings.TrimSpace(key)
 	}
@@ -544,11 +544,11 @@ func (a *App) borrowMediaKey(cap, provider, endpoint, key string) string {
 	if p, ok := idol.Preset(provider); ok {
 		vendor, root = p.Vendor, p.Endpoint
 	}
-	if borrowed := a.leaseMediaKey(cap, vendor, root, false); borrowed != "" {
+	if borrowed := appHost.app.leaseMediaKey(cap, vendor, root, false); borrowed != "" {
 		return borrowed
 	}
 	if vendor != "" && root != "" {
-		if borrowed := a.leaseMediaKey(connection.CapChat, vendor, root, true); borrowed != "" {
+		if borrowed := appHost.app.leaseMediaKey(connection.CapChat, vendor, root, true); borrowed != "" {
 			return borrowed
 		}
 	}
@@ -559,8 +559,8 @@ func (a *App) borrowMediaKey(cap, provider, endpoint, key string) string {
 // cap 去掉首尾空白后为空或连接库为空则返回空串，否则传给 List。
 // vendor 去掉首尾空白后用来和连接的 Vendor 比较。
 // endpoint 去掉首尾空白后用来和连接端点比较。
-func (a *App) leaseMediaKey(cap, vendor, endpoint string, strict bool) string {
-	r := a.connReg()
+func (appHost *idolHost) leaseMediaKey(cap, vendor, endpoint string, strict bool) string {
+	r := appHost.app.connReg()
 	if r == nil || strings.TrimSpace(cap) == "" {
 		return ""
 	}
@@ -612,15 +612,15 @@ func leasedKey(r *connection.Registry, c connection.Connection) string {
 }
 
 // idolMediaFallback 用语音、识别和图像的活动连接填名称、模型和预设 id。
-func (a *App) idolMediaFallback() idolMediaFallback {
+func (appHost *idolHost) idolMediaFallback() idolMediaFallback {
 	var out idolMediaFallback
-	name, vendor, endpoint, model := a.activeMedia(connection.CapSpeech)
+	name, vendor, endpoint, model := appHost.app.activeMedia(connection.CapSpeech)
 	out.SpeechName, out.SpeechModel = name, model
 	out.SpeechPreset = idol.MatchPreset("speech", vendor, endpoint)
-	name, vendor, endpoint, model = a.activeMedia(connection.CapASR)
+	name, vendor, endpoint, model = appHost.app.activeMedia(connection.CapASR)
 	out.ASRName, out.ASRModel = name, model
 	out.ASRPreset = idol.MatchPreset("asr", vendor, endpoint)
-	name, vendor, endpoint, model = a.activeMedia(connection.CapImage)
+	name, vendor, endpoint, model = appHost.app.activeMedia(connection.CapImage)
 	out.ImageName, out.ImageModel = name, model
 	out.ImagePreset = idol.MatchPreset("image", vendor, endpoint)
 	return out
@@ -628,8 +628,8 @@ func (a *App) idolMediaFallback() idolMediaFallback {
 
 // activeMedia 返回该能力的活动连接名称、厂商、端点和模型。没有库或没有活动连接时返回空串。
 // cap 传给 Active 和 ModelFor。
-func (a *App) activeMedia(cap string) (name, vendor, endpoint, model string) {
-	r := a.connReg()
+func (appHost *idolHost) activeMedia(cap string) (name, vendor, endpoint, model string) {
+	r := appHost.app.connReg()
 	if r == nil {
 		return
 	}
@@ -646,7 +646,7 @@ func (a *App) activeMedia(cap string) (name, vendor, endpoint, model string) {
 
 // idolPing 试通一项服务。speech 念一句你好，asr 识别一小段静音，image 画一只不带字的茶杯（最多等 150 秒），其他种类让聊天只回复 OK。
 // payload 解出 kind。
-func (a *App) idolPing(payload string) (string, error) {
+func (appHost *idolHost) idolPing(payload string) (string, error) {
 	var p struct {
 		Kind string `json:"kind"`
 	}
@@ -659,24 +659,24 @@ func (a *App) idolPing(payload string) (string, error) {
 	defer cancel()
 	switch p.Kind {
 	case "speech":
-		_, _, err := a.idolSpeak(ctx, "", "你好", "")
+		_, _, err := appHost.app.idolSpeak(ctx, "", "你好", "")
 		if err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "asr":
-		if _, err := a.idolTranscribe(ctx, "ping.wav", silentWAV(), ""); err != nil {
+		if _, err := appHost.app.idolTranscribe(ctx, "ping.wav", silentWAV(), ""); err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "image":
-		_, err := a.idolPaint(ctx, "a simple all-ages teacup, no text")
+		_, err := appHost.app.idolPaint(ctx, "a simple all-ages teacup, no text")
 		if err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})
 	default:
-		_, err := a.idolEngine().Brain.Chat(ctx, "title", "", []idol.Msg{
+		_, err := appHost.app.idolEngine().Brain.Chat(ctx, "title", "", []idol.Msg{
 			{Role: "user", Content: "只回复 OK"},
 		})
 		if err != nil {

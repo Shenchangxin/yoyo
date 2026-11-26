@@ -173,8 +173,8 @@ func idolTalking(idolID string, now time.Time) bool {
 }
 
 // openIdolTurn 在后台开一轮。同一位偶像还有没跑完的回合时先取消它：新的一句接替旧的。暂停时拒绝。
-func (a *App) openIdolTurn(in idol.TurnInput) (*idolLiveTurn, error) {
-	if a.IsPaused() {
+func (appHost *idolHost) openIdolTurn(in idol.TurnInput) (*idolLiveTurn, error) {
+	if appHost.app.IsPaused() {
 		return nil, errors.New("paused")
 	}
 	cancelIdolTurns(in.IdolID)
@@ -196,27 +196,27 @@ func (a *App) openIdolTurn(in idol.TurnInput) (*idolLiveTurn, error) {
 	}
 	idolLiveTable.turns[t.id] = t
 	idolLiveTable.mu.Unlock()
-	go a.runIdolTurn(ctx, t, in)
+	go appHost.app.runIdolTurn(ctx, t, in)
 	return t, nil
 }
 
 // runIdolTurn 跑一轮，把评判、写完的段和拍照交给 t；跑完时她要办事就交给助手，并开始等结果。
-func (a *App) runIdolTurn(ctx context.Context, t *idolLiveTurn, in idol.TurnInput) {
+func (appHost *idolHost) runIdolTurn(ctx context.Context, t *idolLiveTurn, in idol.TurnInput) {
 	defer t.cancel()
 	in.Stop = t.stop
 	in.OnJudged = func(e string) { t.update(func() { t.emotion = e }) }
 	in.OnSegment = func(_ int, s idol.Segment) { t.update(func() { t.segs = append(t.segs, s) }) }
 	in.OnPhoto = func() { t.update(func() { t.photo = true }) }
-	res, err := a.idolEngine().Turn(ctx, in)
+	res, err := appHost.app.idolEngine().Turn(ctx, in)
 	if err == nil && res.Work {
-		sid, werr := a.startIdolWork(in.IdolID, res.WorkInstruction)
+		sid, werr := appHost.app.startIdolWork(in.IdolID, res.WorkInstruction)
 		res.WorkSession = sid
 		if werr != nil {
 			res.WorkError = werr.Error()
 		}
-		_ = a.Idols.AttachWork(res.RecordID, sid, res.WorkError)
+		_ = appHost.app.Idols.AttachWork(res.RecordID, sid, res.WorkError)
 		if werr == nil && sid != "" {
-			a.watchIdolWork(in.IdolID, sid, res.RecordID)
+			appHost.app.watchIdolWork(in.IdolID, sid, res.RecordID)
 		}
 	}
 	t.update(func() {
@@ -285,7 +285,7 @@ func idolWork(recordID, session string) *idolWorkWatch {
 
 // watchIdolWork 在后台等会话 sid 跑完，再让她转述结果，写成一条 work_said。会话连续两次查到没在跑才算完，
 // 免得排队的下一件刚好在两件之间的空当里被当成办完。返回这件事，同一条记录重复调用时返回已有的那件。
-func (a *App) watchIdolWork(idolID, sid, recordID string) *idolWorkWatch {
+func (appHost *idolHost) watchIdolWork(idolID, sid, recordID string) *idolWorkWatch {
 	idolWorkTable.mu.Lock()
 	if w := idolWorkTable.records[recordID]; recordID != "" && w != nil {
 		idolWorkTable.mu.Unlock()
@@ -303,7 +303,7 @@ func (a *App) watchIdolWork(idolID, sid, recordID string) *idolWorkWatch {
 		idle := 0
 		for idle < 2 && time.Now().Before(deadline) {
 			time.Sleep(time.Second)
-			if a.Running(sid) {
+			if appHost.app.Running(sid) {
 				idle = 0
 			} else {
 				idle++
@@ -311,22 +311,22 @@ func (a *App) watchIdolWork(idolID, sid, recordID string) *idolWorkWatch {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		res, err := a.idolEngine().Narrate(ctx, idolID, a.lastAssistant(sid), time.Now())
+		res, err := appHost.app.idolEngine().Narrate(ctx, idolID, appHost.app.lastAssistant(sid), time.Now())
 		if err != nil {
 			w.errText = err.Error()
 			return
 		}
 		w.result = &res
-		a.Touch("idol", idolID)
+		appHost.app.Touch("idol", idolID)
 	}()
 	return w
 }
 
 // waitIdolPhoto 等一条记录的照片拍完或失败，最多 timeout。返回照片 id 和状态。
-func (a *App) waitIdolPhoto(recordID string, timeout time.Duration) (string, string) {
+func (appHost *idolHost) waitIdolPhoto(recordID string, timeout time.Duration) (string, string) {
 	deadline := time.Now().Add(timeout)
 	for {
-		photo, state, ok := a.Idols.PhotoState(recordID)
+		photo, state, ok := appHost.app.Idols.PhotoState(recordID)
 		if !ok {
 			return "", "missing"
 		}

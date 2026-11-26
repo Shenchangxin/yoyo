@@ -38,58 +38,58 @@ func wakeOf(ctx context.Context) (turnWake, bool) {
 
 // wakeRouter 是编排的唤醒回调。session 为空或那条会话已经没有了时回到主会话；主会话也没有时丢掉这次唤醒。
 // 应用暂停、会话在跑、运行槽还没放或还有排队的回合时返回 ErrLater，两秒后再试：人排着的话先跑，唤醒排在后面。
-func (a *App) wakeRouter(session, group, state, digest string) error {
-	if a == nil {
+func (appHost *routeHost) wakeRouter(session, group, state, digest string) error {
+	if appHost.app == nil {
 		return nil
 	}
-	sid := a.wakeSession(session)
+	sid := appHost.app.wakeSession(session)
 	if sid == "" {
 		return nil
 	}
-	if a.IsPaused() || a.runSlotHeld(sid) || len(a.QueueList(sid)) > 0 {
+	if appHost.app.IsPaused() || appHost.app.runSlotHeld(sid) || len(appHost.app.QueueList(sid)) > 0 {
 		return superagent.ErrLater
 	}
-	return a.launchWake(sid, group, state, digest, nil)
+	return appHost.app.launchWake(sid, group, state, digest, nil)
 }
 
 // wakeSession 是唤醒要去的会话：session 还在就用它，否则用主会话。都没有时为空串。
-func (a *App) wakeSession(session string) string {
+func (appHost *routeHost) wakeSession(session string) string {
 	if session = strings.TrimSpace(session); session != "" {
-		if _, err := a.GetSession(session); err == nil {
+		if _, err := appHost.app.GetSession(session); err == nil {
 			return session
 		}
 	}
-	if meta, ok := a.savedMain(); ok {
+	if meta, ok := appHost.app.savedMain(); ok {
 		return meta.ID
 	}
 	return ""
 }
 
 // pumpWake 让 sessionID 上等着的任务组唤醒马上再试。编排还没打开时什么都不做，不为这个去打开它。
-func (a *App) pumpWake(sessionID string) {
-	if a == nil {
+func (appHost *routeHost) pumpWake(sessionID string) {
+	if appHost.app == nil {
 		return
 	}
-	a.deskMu.Lock()
-	rt := a.orch
-	a.deskMu.Unlock()
+	appHost.app.deskMu.Lock()
+	rt := appHost.app.orch
+	appHost.app.deskMu.Unlock()
 	if rt != nil {
 		rt.PumpWake(sessionID)
 	}
 }
 
 // runSlotHeld 在 sessionID 的运行槽还占着时为真，包括这一轮已经跑完、槽还没放的那一小段。
-func (a *App) runSlotHeld(sessionID string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.runs[sessionID] != nil
+func (appHost *routeHost) runSlotHeld(sessionID string) bool {
+	appHost.app.mu.Lock()
+	defer appHost.app.mu.Unlock()
+	return appHost.app.runs[sessionID] != nil
 }
 
 // launchWake 占住 sessionID 的运行槽，异步跑一轮唤醒路由。client 为空时按会话设置取模型。槽被占着时返回 ErrLater。
 // 这一轮跑完后，state 是 done 的任务组把路由的最后一段话记成结论；先放掉槽，再取下一条排队的回合。
-func (a *App) launchWake(sessionID, group, state, digest string, client runtime.Client) error {
+func (appHost *routeHost) launchWake(sessionID, group, state, digest string, client runtime.Client) error {
 	ctx, cancel := chatTurnContext()
-	ctx, release, err := a.acquireRun(sessionID, ctx)
+	ctx, release, err := appHost.app.acquireRun(sessionID, ctx)
 	if err != nil {
 		cancel()
 		if err == errBusy {
@@ -97,12 +97,12 @@ func (a *App) launchWake(sessionID, group, state, digest string, client runtime.
 		}
 		return err
 	}
-	if a.Threads != nil {
-		a.Threads.MarkTurnInFlight(sessionID, true, false)
+	if appHost.app.Threads != nil {
+		appHost.app.Threads.MarkTurnInFlight(sessionID, true, false)
 	}
 	ctx = withWake(ctx, turnWake{Text: digest, Group: group, State: state})
 	go func() {
-		defer a.kickQueue(sessionID)
+		defer appHost.app.kickQueue(sessionID)
 		defer cancel()
 		defer release()
 		defer func() {
@@ -112,20 +112,20 @@ func (a *App) launchWake(sessionID, group, state, digest string, client runtime.
 				if path != "" {
 					payload["crash_path"] = path
 				}
-				if a.Hub != nil {
-					a.Hub.Publish(trace.Event{Type: trace.TypeError, Source: "runtime", SessionID: sessionID, Payload: payload})
+				if appHost.app.Hub != nil {
+					appHost.app.Hub.Publish(trace.Event{Type: trace.TypeError, Source: "runtime", SessionID: sessionID, Payload: payload})
 				}
 			}
 		}()
-		out, err := a.sendLocked(ctx, sessionID, "", client, nil, false, nil, true, false, "")
+		out, err := appHost.app.sendLocked(ctx, sessionID, "", client, nil, false, nil, true, false, "")
 		// sendLocked 在取不到模型这类早退里不会清掉进行中的标记，重启后会把这一轮当成没跑完再续一次。
-		if a.Threads != nil {
-			a.Threads.MarkTurnInFlight(sessionID, false, false)
+		if appHost.app.Threads != nil {
+			appHost.app.Threads.MarkTurnInFlight(sessionID, false, false)
 		}
 		if err != nil || state != superagent.GroupDone || strings.TrimSpace(out) == "" {
 			return
 		}
-		if rt := a.orchestrator(); rt != nil {
+		if rt := appHost.app.orchestrator(); rt != nil {
 			_ = rt.SetGroupVerdict(group, out)
 		}
 	}()

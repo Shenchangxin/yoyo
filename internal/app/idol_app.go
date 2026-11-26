@@ -91,23 +91,23 @@ func (b idolBrain) Paint(ctx context.Context, prompt string) ([]byte, error) {
 }
 
 // idolEngine 用当前偶像存储和 idolBrain 组一个引擎。照片、记忆和标题在后台 goroutine 里做。
-func (a *App) idolEngine() *idol.Engine {
+func (appHost *idolHost) idolEngine() *idol.Engine {
 	return &idol.Engine{
-		Store:    a.Idols,
-		Brain:    idolBrain{a},
+		Store:    appHost.app.Idols,
+		Brain:    idolBrain{appHost.app},
 		Defer:    func(fn func()) { go fn() },
-		CanPaint: a.idolCanPaint,
+		CanPaint: appHost.app.idolCanPaint,
 	}
 }
 
 // cancelIdolTurn 取消所有还在跑的偶像回合，并清掉旧的取消函数。
-func (a *App) cancelIdolTurn() {
+func (appHost *idolHost) cancelIdolTurn() {
 	cancelIdolTurns("")
-	a.idolMu.Lock()
-	defer a.idolMu.Unlock()
-	if a.idolCancel != nil {
-		a.idolCancel()
-		a.idolCancel = nil
+	appHost.app.idolMu.Lock()
+	defer appHost.app.idolMu.Unlock()
+	if appHost.app.idolCancel != nil {
+		appHost.app.idolCancel()
+		appHost.app.idolCancel = nil
 	}
 }
 
@@ -118,8 +118,8 @@ type idolID struct {
 }
 
 // IdolCall 是偶像桌面的唯一入口，payload 是 JSON 对象。它按 op 读写偶像、圈子、记忆、礼物和 blob，开一轮话、合成、识别和画图。未知 op 返回 unknown idol op。
-func (a *App) IdolCall(op, payload string) (string, error) {
-	if a == nil || a.Idols == nil {
+func (appHost *idolHost) IdolCall(op, payload string) (string, error) {
+	if appHost.app == nil || appHost.app.Idols == nil {
 		return "", fmt.Errorf("idol store missing")
 	}
 	op = strings.TrimSpace(op)
@@ -128,17 +128,17 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 	_ = json.Unmarshal([]byte(payload), &ref)
 	switch op {
 	case "snapshot":
-		return a.idolSnapshot()
+		return appHost.app.idolSnapshot()
 	case "settings_get":
-		return idolJSON(a.idolSettingsView())
+		return idolJSON(appHost.app.idolSettingsView())
 	case "settings_save":
-		return a.idolSaveSettings(payload)
+		return appHost.app.idolSaveSettings(payload)
 	case "user_save":
 		var card idol.UserCard
 		if err := json.Unmarshal([]byte(payload), &card); err != nil {
 			return "", err
 		}
-		if err := a.Idols.Update(func(st *idol.State) error {
+		if err := appHost.app.Idols.Update(func(st *idol.State) error {
 			st.User = card
 			return nil
 		}); err != nil {
@@ -146,22 +146,22 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		return idolJSON(card)
 	case "save_idol":
-		return a.idolSave(payload)
+		return appHost.app.idolSave(payload)
 	case "delete_idol":
 		cancelIdolTurns(ref.ID)
-		if err := a.Idols.DeleteIdol(ref.ID); err != nil {
+		if err := appHost.app.Idols.DeleteIdol(ref.ID); err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "pin":
-		if err := a.Idols.Pin(ref.ID); err != nil {
+		if err := appHost.app.Idols.Pin(ref.ID); err != nil {
 			return "", err
 		}
-		return a.idolSnapshot()
+		return appHost.app.idolSnapshot()
 	case "save_circle":
-		return a.idolSaveCircle(payload)
+		return appHost.app.idolSaveCircle(payload)
 	case "delete_circle":
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			var next []idol.Circle
 			for _, c := range st.Circles {
 				if c.ID != ref.ID {
@@ -181,13 +181,13 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "turn":
-		return a.idolTurn(payload)
+		return appHost.app.idolTurn(payload)
 	case "turn_open":
 		in, err := idolTurnInput(payload)
 		if err != nil {
 			return "", err
 		}
-		t, err := a.openIdolTurn(in)
+		t, err := appHost.app.openIdolTurn(in)
 		if err != nil {
 			return "", err
 		}
@@ -213,7 +213,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "cancel":
-		a.cancelIdolTurn()
+		appHost.app.cancelIdolTurn()
 		return idolJSON(map[string]any{"ok": true})
 	case "truncate":
 		var p struct {
@@ -221,7 +221,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 			Keep int    `json:"keep"`
 		}
 		_ = json.Unmarshal([]byte(payload), &p)
-		if err := a.Idols.Truncate(p.ID, p.Keep); err != nil {
+		if err := appHost.app.Idols.Truncate(p.ID, p.Keep); err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})
@@ -238,7 +238,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), idolHearTimeout)
 		defer cancel()
-		text, err := a.idolTranscribe(ctx, p.Filename, raw, a.Idols.View().HearingHint(p.IdolID))
+		text, err := appHost.app.idolTranscribe(ctx, p.Filename, raw, appHost.app.Idols.View().HearingHint(p.IdolID))
 		if err != nil {
 			return "", err
 		}
@@ -252,34 +252,34 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		_ = json.Unmarshal([]byte(payload), &p)
 		ctx, cancel := context.WithTimeout(context.Background(), idolSpeakTimeout)
 		defer cancel()
-		b, ctype, err := a.idolSpeak(ctx, p.IdolID, p.Text, p.Cue)
+		b, ctype, err := appHost.app.idolSpeak(ctx, p.IdolID, p.Text, p.Cue)
 		if err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"audio": base64.StdEncoding.EncodeToString(b), "content_type": ctype})
 	case "narrate":
-		return a.idolNarrate(payload)
+		return appHost.app.idolNarrate(payload)
 	case "photo_wait":
 		var p struct {
 			RecordID string `json:"record_id"`
 			WaitMs   int    `json:"wait_ms"`
 		}
 		_ = json.Unmarshal([]byte(payload), &p)
-		photo, state := a.waitIdolPhoto(p.RecordID, idolWaitFor(p.WaitMs))
+		photo, state := appHost.app.waitIdolPhoto(p.RecordID, idolWaitFor(p.WaitMs))
 		return idolJSON(map[string]any{"photo_id": photo, "state": state})
 	case "memories":
-		return idolJSON(map[string]any{"memories": a.Idols.View().MemoriesFor(ref.IdolID)})
+		return idolJSON(map[string]any{"memories": appHost.app.Idols.View().MemoriesFor(ref.IdolID)})
 	case "delete_memory":
-		if err := a.Idols.DeleteMemory(ref.ID); err != nil {
+		if err := appHost.app.Idols.DeleteMemory(ref.ID); err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "gifts":
-		_ = a.Idols.Update(func(live *idol.State) error {
+		_ = appHost.app.Idols.Update(func(live *idol.State) error {
 			live.EnsureDaily(now)
 			return nil
 		})
-		st := a.Idols.View()
+		st := appHost.app.Idols.View()
 		return idolJSON(map[string]any{
 			"catalog": idol.Catalog, "inventory": st.Inventory,
 			"draws": st.Draws + st.BonusDraws, "reset_cards": st.ResetCards,
@@ -287,7 +287,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 	case "draw":
 		rng := rand.New(rand.NewPCG(uint64(now.UnixNano()), 1))
 		var res idol.DrawResult
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			st.EnsureDaily(now)
 			var e error
 			res, e = st.Draw(rng)
@@ -306,7 +306,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		var rec idol.Record
 		var aff idol.Affinity
 		var change *idol.Change
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			var e error
 			rec, aff, change, e = st.Give(p.IdolID, p.GiftID, now)
 			return e
@@ -318,7 +318,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 	case "react":
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		res, err := a.idolEngine().React(ctx, ref.IdolID, now)
+		res, err := appHost.app.idolEngine().React(ctx, ref.IdolID, now)
 		if err != nil {
 			switch err.Error() {
 			case "nothing to answer", "cooldown", "ended":
@@ -329,7 +329,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		return idolJSON(res)
 	case "reset":
 		var n int
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			var e error
 			n, e = st.UseReset(now)
 			return e
@@ -339,9 +339,9 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		return idolJSON(map[string]any{"reset": n})
 	case "save_lore":
-		return a.idolSaveLore(payload)
+		return appHost.app.idolSaveLore(payload)
 	case "delete_lore":
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			var next []idol.Lore
 			for _, d := range st.Lore {
 				if d.ID != ref.ID {
@@ -356,12 +356,12 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "stats":
-		return idolJSON(a.Idols.View().Stats(now))
+		return idolJSON(appHost.app.Idols.View().Stats(now))
 	case "reach":
-		return a.idolReach(ref.IdolID, now)
+		return appHost.app.idolReach(ref.IdolID, now)
 	case "new_conversation":
 		var id string
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			if _, ok := st.Idol(ref.IdolID); !ok {
 				return fmt.Errorf("idol not found")
 			}
@@ -373,10 +373,10 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		return idolJSON(map[string]any{"id": id})
 	case "history":
-		return idolJSON(a.Idols.View().History(ref.IdolID))
+		return idolJSON(appHost.app.Idols.View().History(ref.IdolID))
 	case "delete_conversation":
 		var photos []string
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			var next []idol.Conversation
 			for _, c := range st.Conversations {
 				if c.ID == ref.ID && c.Current {
@@ -398,7 +398,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		a.Idols.RemoveBlobs(photos)
+		appHost.app.Idols.RemoveBlobs(photos)
 		return idolJSON(map[string]any{"ok": true})
 	case "call_start":
 		noteIdolCall(ref.IdolID, true)
@@ -411,7 +411,7 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		}
 		_ = json.Unmarshal([]byte(payload), &p)
 		noteIdolCall(p.IdolID, false)
-		err := a.Idols.Update(func(st *idol.State) error {
+		err := appHost.app.Idols.Update(func(st *idol.State) error {
 			st.Calls = append(st.Calls, idol.CallLog{IdolID: p.IdolID, At: now, Seconds: p.Seconds, Connected: p.Connected})
 			if p.Connected {
 				st.MarkTask(now, "call")
@@ -435,24 +435,24 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 		if raw, err = idol.ShrinkImage(raw, 1024); err != nil {
 			return "", err
 		}
-		id, err := a.Idols.SaveBlob(raw)
+		id, err := appHost.app.Idols.SaveBlob(raw)
 		if err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"id": id})
 	case "blob":
-		b, err := a.Idols.ReadBlob(ref.ID)
+		b, err := appHost.app.Idols.ReadBlob(ref.ID)
 		if err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"data": base64.StdEncoding.EncodeToString(b)})
 	case "ping":
-		return a.idolPing(payload)
+		return appHost.app.idolPing(payload)
 	case "profiles":
-		if a.Profiles == nil {
+		if appHost.app.Profiles == nil {
 			return idolJSON([]any{})
 		}
-		return idolJSON(a.Profiles.List())
+		return idolJSON(appHost.app.Profiles.List())
 	default:
 		return "", fmt.Errorf("unknown idol op %s", op)
 	}
@@ -474,12 +474,12 @@ func idolTurnInput(payload string) (idol.TurnInput, error) {
 }
 
 // idolTurn 开一轮并等它跑完再返回结果（打字用）。暂停时返回 paused。
-func (a *App) idolTurn(payload string) (string, error) {
+func (appHost *idolHost) idolTurn(payload string) (string, error) {
 	in, err := idolTurnInput(payload)
 	if err != nil {
 		return "", err
 	}
-	t, err := a.openIdolTurn(in)
+	t, err := appHost.app.openIdolTurn(in)
 	if err != nil {
 		return "", err
 	}
@@ -497,7 +497,7 @@ func (a *App) idolTurn(payload string) (string, error) {
 
 // idolNarrate 取她交给助手那件事的转述：发起那一轮的记录 id 或会话 id 有人在等时，最多等 wait_ms；
 // 没人在等（比如应用重启过）时现在开始等。还没办完返回 pending。
-func (a *App) idolNarrate(payload string) (string, error) {
+func (appHost *idolHost) idolNarrate(payload string) (string, error) {
 	var p struct {
 		IdolID   string `json:"idol_id"`
 		Session  string `json:"session"`
@@ -510,7 +510,7 @@ func (a *App) idolNarrate(payload string) (string, error) {
 		if p.Session == "" || p.IdolID == "" {
 			return "", fmt.Errorf("nothing to narrate")
 		}
-		w = a.watchIdolWork(p.IdolID, p.Session, p.RecordID)
+		w = appHost.app.watchIdolWork(p.IdolID, p.Session, p.RecordID)
 	}
 	timer := time.NewTimer(idolWaitFor(p.WaitMs))
 	defer timer.Stop()
@@ -526,18 +526,18 @@ func (a *App) idolNarrate(payload string) (string, error) {
 }
 
 // idolReach 在偶像 id 为空时用当前钉住的偶像，超时 60 秒。还没到她开口的时候、暂停时、用户正在和她打字或通话时，返回 due 为 false。
-func (a *App) idolReach(idolID string, now time.Time) (string, error) {
+func (appHost *idolHost) idolReach(idolID string, now time.Time) (string, error) {
 	if idolID == "" {
-		if it, ok := a.Idols.View().Pinned(); ok {
+		if it, ok := appHost.app.Idols.View().Pinned(); ok {
 			idolID = it.ID
 		}
 	}
-	if idolID == "" || a.IsPaused() || idolTalking(idolID, now) {
+	if idolID == "" || appHost.app.IsPaused() || idolTalking(idolID, now) {
 		return idolJSON(map[string]any{"due": false})
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	res, err := a.idolEngine().Reach(ctx, idolID, now)
+	res, err := appHost.app.idolEngine().Reach(ctx, idolID, now)
 	if err != nil && err.Error() == "not due" {
 		return idolJSON(map[string]any{"due": false})
 	}
@@ -549,11 +549,11 @@ func (a *App) idolReach(idolID string, now time.Time) (string, error) {
 
 // startIdolWork 复用偶像的工作会话，没有则新建并改名为偶像名。档案为空时用 assistant。然后 SetSessionProfile，并用 StartSendOpts 把指令交给该会话。
 // 会话正忙时这件事排在后面，也算交出去了。
-func (a *App) startIdolWork(idolID, instruction string) (string, error) {
-	if a.IsPaused() {
+func (appHost *idolHost) startIdolWork(idolID, instruction string) (string, error) {
+	if appHost.app.IsPaused() {
 		return "", fmt.Errorf("paused")
 	}
-	st := a.Idols.View()
+	st := appHost.app.Idols.View()
 	it, ok := st.Idol(idolID)
 	if !ok {
 		return "", fmt.Errorf("idol not found")
@@ -571,33 +571,33 @@ func (a *App) startIdolWork(idolID, instruction string) (string, error) {
 	}
 	sid := it.WorkSessionID
 	if sid != "" {
-		if _, err := a.GetSession(sid); err != nil {
+		if _, err := appHost.app.GetSession(sid); err != nil {
 			sid = ""
 		}
 	}
 	if sid == "" {
-		meta, err := a.NewSession("")
+		meta, err := appHost.app.NewSession("")
 		if err != nil {
 			return "", err
 		}
 		sid = meta.ID
-		_ = a.RenameSession(sid, it.Name)
-		_ = a.Idols.SetWorkSession(idolID, sid)
+		_ = appHost.app.RenameSession(sid, it.Name)
+		_ = appHost.app.Idols.SetWorkSession(idolID, sid)
 	}
-	_, _ = a.SetSessionProfile(sid, profileID)
+	_, _ = appHost.app.SetSessionProfile(sid, profileID)
 	msg := fmt.Sprintf("The operator asked their idol %s to get this done on the machine. Do it with your tools. When you finish, write a short plain-language result (what was done, what changed, anything they must decide) that she can retell; if you could not do it, say why. Do not role-play.\n\n%s", it.Name, instruction)
-	if err := a.StartSendOpts(sid, msg, false, nil); err != nil && !errors.Is(err, ErrQueued) {
+	if err := appHost.app.StartSendOpts(sid, msg, false, nil); err != nil && !errors.Is(err, ErrQueued) {
 		return sid, err
 	}
 	return sid, nil
 }
 
 // lastAssistant 从轨迹里取最后一条非 delta 的助手正文。轨迹库或会话 id 为空返回空串。
-func (a *App) lastAssistant(sessionID string) string {
-	if a.Traces == nil || sessionID == "" {
+func (appHost *idolHost) lastAssistant(sessionID string) string {
+	if appHost.app.Traces == nil || sessionID == "" {
 		return ""
 	}
-	evs, err := a.Traces.Read(sessionID)
+	evs, err := appHost.app.Traces.Read(sessionID)
 	if err != nil {
 		return ""
 	}

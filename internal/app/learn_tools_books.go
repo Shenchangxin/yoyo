@@ -17,8 +17,8 @@ const learnBookPin = `## Book
 - The book was written by a model. If the learner doubts a claim, check it against the bound library when there is one, and say so plainly when the book is wrong.`
 
 // mountBookTools 在学习对话上挂课本工具。book 是会话绑定的课本。
-func (a *App) mountBookTools(m *learnMount, book string) {
-	s := a.Learn
+func (appHost *learnHost) mountBookTools(m *learnMount, book string) {
+	s := appHost.app.Learn
 	m.add("learn_book_outline", "List the chapters of the book the learner is reading: id, title, summary, objectives, status, and which chapter they last opened.", true, nil, nil, func(map[string]any) (learnOut, error) {
 		view, err := s.Book(book)
 		if err != nil {
@@ -59,11 +59,11 @@ func (a *App) mountBookTools(m *learnMount, book string) {
 }
 
 // learnBookBrief 返回这一轮开头给导师的课本简报：书名、写作状态，以及读者正打开的那一章。没绑课本或课本已经不在时返回空串。
-func (a *App) learnBookBrief(meta SessionMeta) string {
-	if a == nil || a.Learn == nil || meta.BookID == "" {
+func (appHost *learnHost) learnBookBrief(meta SessionMeta) string {
+	if appHost.app == nil || appHost.app.Learn == nil || meta.BookID == "" {
 		return ""
 	}
-	view, err := a.Learn.Book(meta.BookID)
+	view, err := appHost.app.Learn.Book(meta.BookID)
 	if err != nil {
 		return ""
 	}

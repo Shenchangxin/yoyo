@@ -17,8 +17,8 @@ const learnPracticePin = `## Question bank
 - You cannot rate a review for the learner. Reviews happen on the practice page.`
 
 // mountPracticeTools 在学习对话上挂题库工具。
-func (a *App) mountPracticeTools(m *learnMount) {
-	s := a.Learn
+func (appHost *learnHost) mountPracticeTools(m *learnMount) {
+	s := appHost.app.Learn
 	sessionID := m.session
 
 	m.add("learn_bank_search", "Search the learner's question bank. query matches words in the question, its options, or its tags; leave it empty to list the most recent. mistakes_only lists questions they got wrong. Answers and the learner's last answer come back only for questions they have attempted.", true, map[string]any{

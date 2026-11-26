@@ -31,21 +31,21 @@ func learnCompleteTimeout(purpose string) time.Duration {
 
 // learnComplete 跑一次不带工具的补全。req.SessionID 非空时用那段对话的模型和路线，否则用默认聊天模型。
 // 没有可用的聊天连接时返回 learn.ErrNoModel。ctx 取消或超过时限时返回错误。
-func (a *App) learnComplete(ctx context.Context, req learn.CompleteRequest) (string, error) {
-	if a == nil {
+func (appHost *learnHost) learnComplete(ctx context.Context, req learn.CompleteRequest) (string, error) {
+	if appHost.app == nil {
 		return "", learn.ErrNoModel
 	}
 	meta := SessionMeta{}
 	if strings.TrimSpace(req.SessionID) != "" {
-		if m, err := a.GetSession(req.SessionID); err == nil {
+		if m, err := appHost.app.GetSession(req.SessionID); err == nil {
 			meta = m
 		}
 	}
-	client, err := a.ClientFor(meta)
+	client, err := appHost.app.ClientFor(meta)
 	if err != nil {
 		return "", fmt.Errorf("%w (%v)", learn.ErrNoModel, err)
 	}
-	model := a.Config.Model
+	model := appHost.app.Config.Model
 	if meta.Model != "" {
 		model = meta.Model
 	}
@@ -79,19 +79,19 @@ func (a *App) learnComplete(ctx context.Context, req learn.CompleteRequest) (str
 
 // embedTexts 向配置的嵌入端点请求向量。model 为空时返回错误，重建仍可以只留词法索引。
 // texts 按最多 16 条分批。花费不写入对话用量。
-func (a *App) embedTexts(model string, texts []string) ([][]float32, error) {
+func (appHost *learnHost) embedTexts(model string, texts []string) ([][]float32, error) {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return nil, fmt.Errorf("no embed model")
 	}
-	if a == nil || strings.TrimSpace(a.Config.BaseURL) == "" {
+	if appHost.app == nil || strings.TrimSpace(appHost.app.Config.BaseURL) == "" {
 		return nil, fmt.Errorf("embeddings not configured")
 	}
 	key := ""
-	if a.Vault != nil {
-		key, _ = a.Vault.Lease("openai")
+	if appHost.app.Vault != nil {
+		key, _ = appHost.app.Vault.Lease("openai")
 		if key == "" {
-			key, _ = a.Vault.Get("api_key")
+			key, _ = appHost.app.Vault.Get("api_key")
 		}
 	}
 	if key == "" {
@@ -103,25 +103,25 @@ func (a *App) embedTexts(model string, texts []string) ([][]float32, error) {
 		if end > len(texts) {
 			end = len(texts)
 		}
-		part, err := a.embedBatch(model, key, texts[i:end])
+		part, err := appHost.app.embedBatch(model, key, texts[i:end])
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, part...)
 	}
-	if a.Learn != nil {
-		a.Learn.NoteEmbed()
+	if appHost.app.Learn != nil {
+		appHost.app.Learn.NoteEmbed()
 	}
 	return out, nil
 }
 
 // embedBatch 向 BaseURL 下的 /embeddings 发一批文本。超时 45 秒。返回的条数和 texts 不一致时报错。
 // model 和 key 原样写进请求。
-func (a *App) embedBatch(model, key string, texts []string) ([][]float32, error) {
+func (appHost *learnHost) embedBatch(model, key string, texts []string) ([][]float32, error) {
 	body, _ := json.Marshal(map[string]any{"model": model, "input": texts})
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.Config.BaseURL, "/")+"/embeddings", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(appHost.app.Config.BaseURL, "/")+"/embeddings", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

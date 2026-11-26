@@ -19,7 +19,7 @@ import (
 
 // splitTool 把一条触发开成任务组。sessionID 是路由所在的会话，任务组有了结果时唤醒它。
 // turnID 是这一轮的编号。args 没写 trigger 时，用这一轮的桌面消息。
-func (a *App) splitTool(sessionID, turnID string) runtime.ExtraTool {
+func (appHost *routeHost) splitTool(sessionID, turnID string) runtime.ExtraTool {
 	return routeExtra("task_split", "把一条触发开成任务组，交给几个 agent 一起做。trigger 不填就是这一轮这条桌面消息。mode 取 split 或 compare。split：parts 填 2 到 6 份，每份有 title、agent、role、brief、depends_on；brief 要能独立读懂，写清交付物和放在哪；几份会改同一个目录时划开互不重叠的区域，做不到就用 depends_on 让后面的等前面的。compare：人要几个 agent 分别做同一件事再比较时用，agents 填 2 到 4 个不同的 agent，brief 写同一份完整说明，不能有 depends_on。agent 能填什么和 task_route 一样。title 是任务组的短名。推断接受时 rules 是启用的规则编号。", map[string]any{
 		"trigger": map[string]any{"type": "string", "description": "不填就是这一轮这条桌面消息。要处理别的触发时才填材料里给的编号。"},
 		"mode":    map[string]any{"type": "string", "enum": []string{superagent.GroupSplit, superagent.GroupCompare}},
@@ -44,18 +44,18 @@ func (a *App) splitTool(sessionID, turnID string) runtime.ExtraTool {
 			},
 		},
 	}, false, func(args map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
-		return a.splitOne(rt, sessionID, turnID, args)
+		return appHost.app.splitOne(rt, sessionID, turnID, args)
 	})
 }
 
 // splitOne 校验 args 里的每一份交给谁，开出任务组，写一次任务组卡片，再把回执交给路由。违反时返回路由能照着改的说明。
 // rt 是编排运行时。sessionID 是任务组要唤醒的会话，turnID 是这一轮。args 没写 trigger 时用这一轮的桌面消息。
-func (a *App) splitOne(rt *superagent.Runtime, sessionID, turnID string, args map[string]any) (string, error) {
-	trigger, err := a.bindRouteTrigger(rt, sessionID, turnID, strParam(args, "trigger"))
+func (appHost *routeHost) splitOne(rt *superagent.Runtime, sessionID, turnID string, args map[string]any) (string, error) {
+	trigger, err := appHost.app.bindRouteTrigger(rt, sessionID, turnID, strParam(args, "trigger"))
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +82,7 @@ func (a *App) splitOne(rt *superagent.Runtime, sessionID, turnID string, args ma
 		field = "agents"
 	}
 	for i := range req.Parts {
-		pick, _, err := a.routeAgent(rt, trigger, req.Parts[i].Agent)
+		pick, _, err := appHost.app.routeAgent(rt, trigger, req.Parts[i].Agent)
 		if err != nil {
 			return "", fmt.Errorf("%s[%d]：%s", field, i, err.Error())
 		}
@@ -93,14 +93,14 @@ func (a *App) splitOne(rt *superagent.Runtime, sessionID, turnID string, args ma
 		return "", splitError(err, mode, trigger)
 	}
 	members := rt.GroupMembers(g.ID)
-	if !a.groupCard(g, members) {
+	if !appHost.app.groupCard(g, members) {
 		return "这条触发已经开过任务组 " + g.ID + "「" + g.Title + "」，没有再开。要改哪一份就对那张工单用 task_route continue。", nil
 	}
-	return a.splitReceipt(g, members, rt.TriggerAgents(trigger)), nil
+	return appHost.app.splitReceipt(g, members, rt.TriggerAgents(trigger)), nil
 }
 
 // splitReceipt 是开出任务组后给路由的回执：每个成员一行，人 @ 过却没分到的 agent 提醒一句，再说接下来怎么做。
-func (a *App) splitReceipt(g superagent.Group, members []superagent.Ticket, mentioned []string) string {
+func (appHost *routeHost) splitReceipt(g superagent.Group, members []superagent.Ticket, mentioned []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "开了任务组 %s「%s」（%s，%d 份）：\n", g.ID, g.Title, groupModeWord(g.Mode), len(members))
 	assigned := map[string]bool{}
@@ -111,7 +111,7 @@ func (a *App) splitReceipt(g superagent.Group, members []superagent.Ticket, ment
 		if len(t.DependsOn) > 0 {
 			state = "等 " + strings.Join(t.DependsOn, "、") + " 做完再开工"
 		}
-		fmt.Fprintf(&b, "%s %s · %s：%s\n", t.ID, a.agentDisplay(agent), firstNonEmpty(t.Role, t.Title), state)
+		fmt.Fprintf(&b, "%s %s · %s：%s\n", t.ID, appHost.app.agentDisplay(agent), firstNonEmpty(t.Role, t.Title), state)
 	}
 	var missing []string
 	for _, id := range mentioned {
@@ -227,19 +227,19 @@ func stringsParam(raw any) []string {
 
 // groupCard 把任务组写成发起会话里的一张卡片：编号、标题、模式和成员。同一个任务组只写一次，已经写过时返回假。
 // 正文是界面认不出卡片时的退路，也是路由回看历史时读到的那一段。
-func (a *App) groupCard(g superagent.Group, members []superagent.Ticket) bool {
-	if a == nil || a.Traces == nil || strings.TrimSpace(g.Session) == "" {
+func (appHost *routeHost) groupCard(g superagent.Group, members []superagent.Ticket) bool {
+	if appHost.app == nil || appHost.app.Traces == nil || strings.TrimSpace(g.Session) == "" {
 		return true
 	}
 	id := "group:" + g.ID
-	if a.traceHasID(g.Session, id) {
+	if appHost.app.traceHasID(g.Session, id) {
 		return false
 	}
 	var lines []string
 	rows := make([]map[string]any, 0, len(members))
 	for _, t := range members {
 		agent := firstNonEmpty(t.Agent, buddy.YoyoID)
-		name := a.agentDisplay(agent)
+		name := appHost.app.agentDisplay(agent)
 		row := map[string]any{"ticket": t.ID, "agent": agent, "agentName": name, "role": t.Role, "title": t.Title}
 		line := "- " + t.ID + " " + name
 		if label := firstNonEmpty(t.Role, t.Title); label != "" {
@@ -261,21 +261,21 @@ func (a *App) groupCard(g superagent.Group, members []superagent.Ticket) bool {
 			"id": id, "kind": "group", "group": g.ID, "title": g.Title, "mode": g.Mode, "members": rows, "text": text,
 		},
 	}
-	if err := a.Traces.AppendDurable(ev); err != nil {
+	if err := appHost.app.Traces.AppendDurable(ev); err != nil {
 		return true
 	}
-	if a.Hub != nil {
-		a.Hub.Publish(ev)
+	if appHost.app.Hub != nil {
+		appHost.app.Hub.Publish(ev)
 	}
 	return true
 }
 
 // agentDisplay 是 agent 给人和路由看的名字。yoyo 自带工人就是 yoyo，其余没有名字时用编号。
-func (a *App) agentDisplay(agent string) string {
+func (appHost *routeHost) agentDisplay(agent string) string {
 	if agent == "" || agent == buddy.YoyoID {
 		return buddy.YoyoID
 	}
-	return firstNonEmpty(a.buddyName(agent), agent)
+	return firstNonEmpty(appHost.app.buddyName(agent), agent)
 }
 
 // groupModeWord 是任务组模式的说法。
@@ -287,13 +287,13 @@ func groupModeWord(mode string) string {
 }
 
 // pickTool 在对比的任务组里记下人采用哪一份，并停掉还在做的其他成员。
-func (a *App) pickTool() runtime.ExtraTool {
+func (appHost *routeHost) pickTool() runtime.ExtraTool {
 	return routeExtra("task_pick", "在对比的任务组里记下采用哪一份，并停掉还在做的其他成员。人同意采用之后才调用。group 是任务组编号，ticket 是采用的那张工单，reason 写给人看的原因。", map[string]any{
 		"group":  map[string]any{"type": "string"},
 		"ticket": map[string]any{"type": "string"},
 		"reason": map[string]any{"type": "string"},
 	}, false, func(args map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
@@ -306,12 +306,12 @@ func (a *App) pickTool() runtime.ExtraTool {
 }
 
 // recommendTool 在对比的任务组里记下路由推荐哪一份。界面在任务组卡片和对比页上标出来，不停任何成员。
-func (a *App) recommendTool() runtime.ExtraTool {
+func (appHost *routeHost) recommendTool() runtime.ExtraTool {
 	return routeExtra("task_recommend", "对比做完、比较之后，记下你推荐采用哪一份；界面会在任务组卡片和对比页上标出来。这不是采用：问过人、人同意后再用 task_pick。group 是任务组编号，ticket 是推荐的那张工单。", map[string]any{
 		"group":  map[string]any{"type": "string"},
 		"ticket": map[string]any{"type": "string"},
 	}, false, func(args map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
@@ -339,11 +339,11 @@ func groupActError(err error, group, ticket string) error {
 }
 
 // readTool 读一张工单的详情，比较对比结果或要细节时用。
-func (a *App) readTool() runtime.ExtraTool {
+func (appHost *routeHost) readTool() runtime.ExtraTool {
 	return routeExtra("task_read", "读一张工单的详情：状态、工人最后一段话、最后一份报告、写过的文件、目录、agent 和用量。比较对比的结果、或任务组的回报不够细时用。", map[string]any{
 		"ticket": map[string]any{"type": "string"},
 	}, true, func(args map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
@@ -352,18 +352,18 @@ func (a *App) readTool() runtime.ExtraTool {
 		if !ok {
 			return "", fmt.Errorf("没有工单 %s", id)
 		}
-		return a.ticketReadText(read), nil
+		return appHost.app.ticketReadText(read), nil
 	})
 }
 
 // ticketReadText 把 task_read 读到的详情写成几行，工人最后一段话放在最后。
-func (a *App) ticketReadText(read superagent.TicketRead) string {
+func (appHost *routeHost) ticketReadText(read superagent.TicketRead) string {
 	var b strings.Builder
 	head := read.ID
 	if read.Title != "" {
 		head += "「" + read.Title + "」"
 	}
-	fmt.Fprintf(&b, "%s · %s · %s\n", head, a.agentDisplay(read.Agent), read.State)
+	fmt.Fprintf(&b, "%s · %s · %s\n", head, appHost.app.agentDisplay(read.Agent), read.State)
 	if read.Group != "" {
 		line := "任务组 " + read.Group
 		if read.Role != "" {

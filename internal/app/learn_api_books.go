@@ -10,8 +10,8 @@ import (
 )
 
 // learnBooksCall 处理课本的方法。ok 为假表示这个方法不归它管。
-func (a *App) learnBooksCall(method string, params map[string]any) (any, bool, error) {
-	s := a.Learn
+func (appHost *learnHost) learnBooksCall(method string, params map[string]any) (any, bool, error) {
+	s := appHost.app.Learn
 	id := strParam(params, "id")
 	session := strParam(params, "session")
 	switch method {

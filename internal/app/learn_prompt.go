@@ -105,12 +105,12 @@ func applyLearnLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFragm
 
 // learnTurnBrief 返回这一轮开头给导师的简报：路径的状态、学习者正在看的材料位置、正在读的课本章节。
 // 三段各自为空时跳过，都空时返回空串。
-func (a *App) learnTurnBrief(meta SessionMeta) string {
-	if a == nil || a.Learn == nil {
+func (appHost *learnHost) learnTurnBrief(meta SessionMeta) string {
+	if appHost.app == nil || appHost.app.Learn == nil {
 		return ""
 	}
 	var parts []string
-	for _, part := range []string{a.learnPathBrief(meta), a.learnMaterialBrief(meta), a.learnBookBrief(meta)} {
+	for _, part := range []string{appHost.app.learnPathBrief(meta), appHost.app.learnMaterialBrief(meta), appHost.app.learnBookBrief(meta)} {
 		if strings.TrimSpace(part) != "" {
 			parts = append(parts, part)
 		}
@@ -121,11 +121,11 @@ func (a *App) learnTurnBrief(meta SessionMeta) string {
 // learnPathBrief 返回掌握路径这一轮的状态简报。没绑路径或路径读不出来时返回空串。
 // 简报里有模式、下一步、档案是否还没问过、到期的复习，以及刚在卡片上判完还没告诉导师的那道题。
 // 取出判定的同时把它标成已告知，所以同一条判定只出现在一轮里。
-func (a *App) learnPathBrief(meta SessionMeta) string {
+func (appHost *learnHost) learnPathBrief(meta SessionMeta) string {
 	if meta.PathID == "" {
 		return ""
 	}
-	view, err := a.Learn.Path(meta.PathID)
+	view, err := appHost.app.Learn.Path(meta.PathID)
 	if err != nil {
 		return ""
 	}
@@ -140,7 +140,7 @@ func (a *App) learnPathBrief(meta SessionMeta) string {
 	} else {
 		state["profile"] = view.Profile
 	}
-	brief := a.Learn.TakeTutorBrief(meta.PathID)
+	brief := appHost.app.Learn.TakeTutorBrief(meta.PathID)
 	if g := brief.Graded; g != nil {
 		state["graded"] = map[string]any{
 			"question_id": g.QuestionID, "point_id": g.PointID, "result": g.Result, "feedback": g.Feedback,

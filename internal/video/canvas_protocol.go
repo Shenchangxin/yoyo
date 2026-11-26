@@ -42,11 +42,20 @@ func (e *Engine) submitCanvas(ctx context.Context, j *Job) error {
 	if err != nil {
 		return e.submitCanvasFallback(ctx, j, ch, p)
 	}
-	body, status, err := e.doProtocol(ctx, spec, key, ch.BaseURL)
+	return e.finishProtocolCreate(ctx, j, adapter, spec, key, ch.BaseURL, p)
+}
+
+// finishProtocolCreate 发送已经编好的创建请求，并把结果写回任务。成功则落盘，失败返回错误，否则进入 polling。
+// ctx 传给 doProtocol 和 ParseCreate。
+// j 接收 RemoteID、Params 和 Status。
+// adapter 解析创建响应。
+// spec 是要发送的请求。key 和 base 传给 doProtocol。
+// params 写回 RemotePayload 后再存进 j.Params。
+func (e *Engine) finishProtocolCreate(ctx context.Context, j *Job, adapter protocol.Adapter, spec protocol.RequestSpec, key, base string, params JobParams) error {
+	body, _, err := e.doProtocol(ctx, spec, key, base)
 	if err != nil {
 		return err
 	}
-	_ = status
 	created, err := adapter.ParseCreate(ctx, body)
 	if err != nil {
 		return err
@@ -54,8 +63,8 @@ func (e *Engine) submitCanvas(ctx context.Context, j *Job) error {
 	if created.TaskID != "" {
 		j.RemoteID = created.TaskID
 	}
-	p.RemotePayload = json.RawMessage(body)
-	j.Params = marshalJSON(p)
+	params.RemotePayload = json.RawMessage(body)
+	j.Params = marshalJSON(params)
 	if created.Status == protocol.StatusSucceeded && created.Result != nil {
 		return e.materializeProtocolResult(j, created.Result)
 	}
@@ -64,6 +73,134 @@ func (e *Engine) submitCanvas(ctx context.Context, j *Job) error {
 	}
 	j.Status = "polling"
 	return nil
+}
+
+// protocolAdapter 按标识精确取出适配器，并且它的能力必须包含 mode。不按能力挑第一条。
+// id 传给 Proto.Resolve。空标识或注册表为空时返回假。
+// mode 为 image 时要求 image，为 video 时要求 video。
+func (e *Engine) protocolAdapter(id, mode string) (protocol.Adapter, bool) {
+	if e == nil || e.Proto == nil || strings.TrimSpace(id) == "" {
+		return nil, false
+	}
+	adapter, ok := e.Proto.Resolve(id)
+	if !ok {
+		return nil, false
+	}
+	var want protocol.Capability
+	switch mode {
+	case "image":
+		want = protocol.CapabilityImage
+	case "video":
+		want = protocol.CapabilityVideo
+	default:
+		return nil, false
+	}
+	for _, cap := range adapter.Metadata().Categories {
+		if cap == want {
+			return adapter, true
+		}
+	}
+	return nil, false
+}
+
+// protocolFallbackAllowed 挡住「认不出的视频厂商也被推断成 openai-videos」这条兜底。
+// 明确写成 OpenAI 视频协议的厂商仍走适配器。其余协议标识原样允许。
+// p 的 Provider 只在协议是 openai-videos、openai-video 或 newapi 时参与判断。
+// mode 不是 video 时直接允许。id 是协议标识。
+func protocolFallbackAllowed(p Provider, mode, id string) bool {
+	if mode != "video" {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(id)) {
+	case "openai-videos", "openai-video", "newapi":
+		switch strings.ToLower(strings.TrimSpace(p.Provider)) {
+		case "openai", "kling", "kuaishou", "kolors", "runway":
+			return true
+		default:
+			return false
+		}
+	default:
+		return true
+	}
+}
+
+// submitProtocolProvider 在手写厂商分支认不出这次连接时，按协议标识走适配器。没有对应适配器时 handled 为假。
+// ctx 传给 BuildCreate 和 finishProtocolCreate。
+// j 写入 ProtocolRoute。p 提供协议标识、地址和模型。key 传给协议请求。mode 是 image 或 video。
+func (e *Engine) submitProtocolProvider(ctx context.Context, j *Job, p Provider, key, mode string) (bool, error) {
+	id := firstNonEmpty(p.Protocol, p.ID)
+	if !protocolFallbackAllowed(p, mode, id) {
+		return false, nil
+	}
+	adapter, ok := e.protocolAdapter(id, mode)
+	if !ok {
+		return false, nil
+	}
+	params := parseParams(j.Params)
+	params.Mode = mode
+	params.ProtocolRoute = adapter.Metadata().ID
+	ch := canvasChannel{
+		ID: p.ID, PluginID: adapter.Metadata().ID, Name: p.Name, Capability: mode,
+		BaseURL: p.BaseURL, VaultKey: p.VaultKey, Model: firstNonEmpty(j.Model, p.Model), Enabled: true,
+	}
+	req, err := e.buildGenerationRequest(*j, params, ch)
+	if err != nil {
+		return true, err
+	}
+	spec, err := adapter.BuildCreate(ctx, protocol.RequestContext{BaseURL: ch.BaseURL, Request: req})
+	if err != nil {
+		return true, err
+	}
+	j.Params = marshalJSON(params)
+	return true, e.finishProtocolCreate(ctx, j, adapter, spec, key, ch.BaseURL, params)
+}
+
+// pollProtocolJob 轮询走了协议适配器的短片或短剧任务。ProtocolRoute 为空时 handled 为假，调用方继续用手写轮询。
+// ctx 传给 BuildPoll、doProtocol 和 ParsePoll。
+// j 的 ProtocolRoute 决定适配器，RemoteID 传给轮询。
+func (e *Engine) pollProtocolJob(ctx context.Context, j *Job) (bool, error) {
+	params := parseParams(j.Params)
+	if params.ProtocolRoute == "" {
+		return false, nil
+	}
+	adapter, ok := e.protocolAdapter(params.ProtocolRoute, firstNonEmpty(params.Mode, j.Type))
+	if !ok {
+		return true, fmt.Errorf("protocol adapter %s missing", params.ProtocolRoute)
+	}
+	prov, err := e.providerForJob(*j, firstNonEmpty(params.Mode, j.Type))
+	if err != nil {
+		return true, err
+	}
+	key, err := e.leaseProvider(prov)
+	if err != nil {
+		return true, err
+	}
+	ch := canvasChannel{BaseURL: prov.BaseURL, Model: firstNonEmpty(j.Model, prov.Model)}
+	req, _ := e.buildGenerationRequest(*j, params, ch)
+	spec, err := adapter.BuildPoll(ctx, protocol.PollContext{BaseURL: prov.BaseURL, Model: j.Model, Request: req, TaskID: j.RemoteID})
+	if err != nil {
+		return true, err
+	}
+	body, _, err := e.doProtocol(ctx, spec, key, prov.BaseURL)
+	if err != nil {
+		return true, err
+	}
+	polled, err := adapter.ParsePoll(ctx, protocol.PollContext{BaseURL: prov.BaseURL, Model: j.Model, Request: req, TaskID: j.RemoteID}, body)
+	if err != nil {
+		return true, err
+	}
+	switch polled.Status {
+	case protocol.StatusSucceeded:
+		if polled.Result == nil {
+			return true, fmt.Errorf("completed without result")
+		}
+		return true, e.materializeProtocolResult(j, polled.Result)
+	case protocol.StatusFailed, protocol.StatusCancelled:
+		return true, fmt.Errorf("%s", firstNonEmpty(polled.Message, string(polled.Status)))
+	default:
+		j.Status = "polling"
+		return true, nil
+	}
 }
 
 // pollCanvas 向适配器查询远程任务。成功则落盘，失败或取消返回错误，其余保持 polling。

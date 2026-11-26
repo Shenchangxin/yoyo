@@ -108,43 +108,43 @@ const briefMorningAsk = "晨间简报。先写要人先定的：过期和今天�
 const briefEveningAsk = "晚间简报。先写今天做成了什么：今天结束的工单和成形的文件。再写还开着、要挪到明天的，说清卡在哪。最后用一张卡只问一个问题：明天先碰哪一件。早上已经说过的不要再说一遍。"
 
 // ComposeToday 按当前材料写这一档简报。slot 取 morning 或 evening。同一档、同一天、材料没变时返回上一次的结果，安静的结果也一样。
-func (a *App) ComposeToday(slot string) TodayBrief {
-	if a == nil {
+func (appHost *deskHost) ComposeToday(slot string) TodayBrief {
+	if appHost.app == nil {
 		return TodayBrief{}
 	}
 	slot = briefSlot(slot)
 	now := time.Now()
-	material := a.briefMaterial(slot, now)
+	material := appHost.app.briefMaterial(slot, now)
 	packet := material.b.String()
 	if !briefPacketWorth(packet) {
 		return TodayBrief{Quiet: true}
 	}
 	sum := sha256.Sum256([]byte(slot + "\n" + now.Format("2006-01-02") + "\n" + packet))
 	sig := hex.EncodeToString(sum[:])
-	a.briefMu.Lock()
-	if a.briefSig == sig && (a.briefCached.Woven || a.briefCached.Quiet) {
-		cached := a.briefCached
-		a.briefMu.Unlock()
+	appHost.app.briefMu.Lock()
+	if appHost.app.briefSig == sig && (appHost.app.briefCached.Woven || appHost.app.briefCached.Quiet) {
+		cached := appHost.app.briefCached
+		appHost.app.briefMu.Unlock()
 		return cached
 	}
-	if a.briefBusy {
-		a.briefMu.Unlock()
+	if appHost.app.briefBusy {
+		appHost.app.briefMu.Unlock()
 		return TodayBrief{Pending: true}
 	}
-	a.briefBusy = true
-	a.briefMu.Unlock()
+	appHost.app.briefBusy = true
+	appHost.app.briefMu.Unlock()
 	defer func() {
-		a.briefMu.Lock()
-		a.briefBusy = false
-		a.briefMu.Unlock()
+		appHost.app.briefMu.Lock()
+		appHost.app.briefBusy = false
+		appHost.app.briefMu.Unlock()
 	}()
-	tokens := maxOutputTokensFor(a.Config.Model)
+	tokens := maxOutputTokensFor(appHost.app.Config.Model)
 	if tokens <= 0 {
 		tokens = 8192
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	out, err := liveModel{app: a}.Complete(ctx, dsh.Request{
+	out, err := liveModel{app: appHost.app}.Complete(ctx, dsh.Request{
 		Messages: []dsh.Message{
 			{Role: "system", Text: briefPrompt},
 			{Role: "user", Text: briefAsk(slot, packet)},
@@ -162,10 +162,10 @@ func (a *App) ComposeToday(slot string) TodayBrief {
 	if cards = groundRefs(cards, material.refs); len(cards) > 0 {
 		got = TodayBrief{Cards: cards, Woven: true}
 	}
-	a.briefMu.Lock()
-	a.briefSig = sig
-	a.briefCached = got
-	a.briefMu.Unlock()
+	appHost.app.briefMu.Lock()
+	appHost.app.briefSig = sig
+	appHost.app.briefCached = got
+	appHost.app.briefMu.Unlock()
 	return got
 }
 
@@ -212,14 +212,14 @@ func (m *briefMaterial) mark(prefix, kind, label, target string) string {
 
 // briefMaterial 把画像、经历、最近对话、日程、工单、桌面清点和本机感知收成一段材料。
 // 主会话里系统推进的简报、短讯和工人回报不算「最近说过」，免得简报复述自己。晚间还带上早上那封说过什么。
-func (a *App) briefMaterial(slot string, now time.Time) *briefMaterial {
+func (appHost *deskHost) briefMaterial(slot string, now time.Time) *briefMaterial {
 	m := &briefMaterial{}
-	if a == nil {
+	if appHost.app == nil {
 		return m
 	}
 	b := &m.b
-	if a.Memory != nil {
-		p := a.Memory.Portrait()
+	if appHost.app.Memory != nil {
+		p := appHost.app.Memory.Portrait()
 		if p.Git != "" {
 			b.WriteString("称呼 " + clipBrief(p.Git, 40) + "\n")
 		}
@@ -229,7 +229,7 @@ func (a *App) briefMaterial(slot string, now time.Time) *briefMaterial {
 		if p.Hours != "" {
 			b.WriteString("工作时间 " + clipBrief(p.Hours, 40) + "\n")
 		}
-		for _, it := range a.Memory.All() {
+		for _, it := range appHost.app.Memory.All() {
 			if it.Staging || it.Source == "machine" || strings.TrimSpace(it.Text) == "" || memory.Expired(it, now) {
 				continue
 			}
@@ -248,13 +248,13 @@ func (a *App) briefMaterial(slot string, now time.Time) *briefMaterial {
 			}
 			b.WriteString(label + " " + m.mark("m", "memory", it.Text, it.ID) + " " + clipBrief(it.Text, 240) + "\n")
 		}
-		for _, it := range a.Memory.Search("", memory.KindEpisodic, 16) {
+		for _, it := range appHost.app.Memory.Search("", memory.KindEpisodic, 16) {
 			b.WriteString("经历 " + m.mark("m", "memory", it.Text, it.ID) + " " + clipBrief(it.Text, 400) + "\n")
 		}
 	}
-	if a.Home != nil && a.Traces != nil {
-		if meta, ok := a.savedMain(); ok && meta.ID != "" {
-			if page, err := a.Traces.PageTurns(meta.ID, 0, 8); err == nil {
+	if appHost.app.Home != nil && appHost.app.Traces != nil {
+		if meta, ok := appHost.app.savedMain(); ok && meta.ID != "" {
+			if page, err := appHost.app.Traces.PageTurns(meta.ID, 0, 8); err == nil {
 				var lines []string
 				for _, ev := range page.Events {
 					if ev.Type != trace.TypeUser && ev.Type != trace.TypeAssistant {
@@ -286,13 +286,13 @@ func (a *App) briefMaterial(slot string, now time.Time) *briefMaterial {
 			}
 		}
 	}
-	if rt := a.orchestrator(); rt != nil {
+	if rt := appHost.app.orchestrator(); rt != nil {
 		writeBriefDesk(m, rt.View(), now)
 	}
 	writeBriefCensus(m, poi.ScanCensus(poi.DefaultRoots(), now))
-	writeBriefSenses(b, a)
+	writeBriefSenses(b, appHost.app)
 	if slot == "evening" {
-		writeMorningSaid(b, a.BriefList(), now.Format("2006-01-02"))
+		writeMorningSaid(b, appHost.app.BriefList(), now.Format("2006-01-02"))
 	}
 	return m
 }

@@ -275,6 +275,8 @@ type JobParams struct {
 	StudioProjectID    string          `json:"studio_project_id,omitempty"`
 	StudioShotID       string          `json:"studio_shot_id,omitempty"`
 	StudioKind         string          `json:"studio_kind,omitempty"`
+	// ProtocolRoute 非空时，短片和短剧的这一次提交走协议适配器，而不是手写的厂商分支。画布任务不写这个字段。
+	ProtocolRoute string `json:"protocol_route,omitempty"`
 }
 
 // EnqueueImage 是入队一张静帧时的提示词、模型、尺寸和引用。

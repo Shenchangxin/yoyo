@@ -33,8 +33,8 @@ type DeskNote struct {
 
 // DeskPush 把一条通知写进会话。同一 id 已经在轨迹里时不再写，但仍然返回真，表示这条已经送达。
 // 简报还要看磁盘上的那一封：同一天同一档已经写下之后，换一条会话也不再追加。它不开始模型回合。
-func (a *App) DeskPush(note DeskNote) bool {
-	if a == nil || a.Traces == nil {
+func (appHost *deskHost) DeskPush(note DeskNote) bool {
+	if appHost.app == nil || appHost.app.Traces == nil {
 		return false
 	}
 	sessionID := strings.TrimSpace(note.SessionID)
@@ -46,18 +46,18 @@ func (a *App) DeskPush(note DeskNote) bool {
 	if kind == "brief" {
 		briefSealMu.Lock()
 		defer briefSealMu.Unlock()
-		if a.briefRecorded(note.Slot, note.Day) {
+		if appHost.app.briefRecorded(note.Slot, note.Day) {
 			return true
 		}
 		if note.Quiet {
-			a.rememberBrief(note, time.Now().UTC())
-			return a.briefRecorded(note.Slot, note.Day)
+			appHost.app.rememberBrief(note, time.Now().UTC())
+			return appHost.app.briefRecorded(note.Slot, note.Day)
 		}
 	}
 	id := deskNoteID(note)
-	if a.traceHasID(sessionID, id) {
+	if appHost.app.traceHasID(sessionID, id) {
 		if kind == "brief" {
-			a.rememberSessionBrief(sessionID, id)
+			appHost.app.rememberSessionBrief(sessionID, id)
 		}
 		return true
 	}
@@ -88,14 +88,14 @@ func (a *App) DeskPush(note DeskNote) bool {
 		SessionID: sessionID,
 		Payload:   payload,
 	}
-	if err := a.Traces.AppendDurable(ev); err != nil {
+	if err := appHost.app.Traces.AppendDurable(ev); err != nil {
 		return false
 	}
 	if kind == "brief" {
-		a.rememberBrief(note, ev.TS)
+		appHost.app.rememberBrief(note, ev.TS)
 	}
-	if a.Hub != nil {
-		a.Hub.Publish(ev)
+	if appHost.app.Hub != nil {
+		appHost.app.Hub.Publish(ev)
 	}
 	return true
 }
@@ -110,8 +110,8 @@ func deskNoteID(note DeskNote) string {
 	return kind + ":" + day + ":" + hex.EncodeToString(sum[:6])
 }
 
-func (a *App) traceHasID(sessionID, id string) bool {
-	evs, err := a.Traces.Read(sessionID)
+func (appHost *deskHost) traceHasID(sessionID, id string) bool {
+	evs, err := appHost.app.Traces.Read(sessionID)
 	if err != nil {
 		return false
 	}
@@ -125,45 +125,45 @@ func (a *App) traceHasID(sessionID, id string) bool {
 }
 
 // PoiRefresh 用记忆和桌面表层名字刷新兴趣库。
-func (a *App) PoiRefresh() poi.Snapshot {
-	if a == nil || a.Poi == nil {
+func (appHost *deskHost) PoiRefresh() poi.Snapshot {
+	if appHost.app == nil || appHost.app.Poi == nil {
 		return poi.Snapshot{}
 	}
-	obs, blobs := a.poiObservations()
+	obs, blobs := appHost.app.poiObservations()
 	now := time.Now()
-	snap := a.Poi.Refresh(obs, blobs, now)
+	snap := appHost.app.Poi.Refresh(obs, blobs, now)
 	snap.Census = poi.ScanCensus(poi.DefaultRoots(), now)
 	for i := range snap.Census.Lines {
 		snap.Census.Lines[i].ID = memory.MachineID("project", snap.Census.Lines[i].Name)
 	}
-	a.fileCensus(snap.Census)
-	if briefing, ok := a.assessDesk(snap); ok {
+	appHost.app.fileCensus(snap.Census)
+	if briefing, ok := appHost.app.assessDesk(snap); ok {
 		snap.Initiative = &briefing
 	}
 	return snap
 }
 
 // PoiAck 记下这一版兴趣库已经推进过。
-func (a *App) PoiAck(sig string) bool {
-	if a == nil || a.Poi == nil {
+func (appHost *deskHost) PoiAck(sig string) bool {
+	if appHost.app == nil || appHost.app.Poi == nil {
 		return false
 	}
-	return a.Poi.Ack(sig)
+	return appHost.app.Poi.Ack(sig)
 }
 
-func (a *App) touchPoi() {
-	if a == nil || a.Poi == nil {
+func (appHost *deskHost) touchPoi() {
+	if appHost.app == nil || appHost.app.Poi == nil {
 		return
 	}
-	obs, blobs := a.poiObservations()
-	a.Poi.Refresh(obs, blobs, time.Now())
+	obs, blobs := appHost.app.poiObservations()
+	appHost.app.Poi.Refresh(obs, blobs, time.Now())
 }
 
-func (a *App) poiObservations() ([]poi.Observation, []string) {
+func (appHost *deskHost) poiObservations() ([]poi.Observation, []string) {
 	var obs []poi.Observation
 	var blobs []string
-	if a.Memory != nil {
-		for _, it := range a.Memory.All() {
+	if appHost.app.Memory != nil {
+		for _, it := range appHost.app.Memory.All() {
 			if it.Staging || it.Source == "machine" || strings.TrimSpace(it.Text) == "" {
 				continue
 			}
@@ -178,8 +178,8 @@ func (a *App) poiObservations() ([]poi.Observation, []string) {
 }
 
 // fileCensus 把这一轮清点收成记忆。同一条线用稳定 id，没有变化就不改更新时间。
-func (a *App) fileCensus(c poi.Census) {
-	if a == nil || a.Memory == nil {
+func (appHost *deskHost) fileCensus(c poi.Census) {
+	if appHost.app == nil || appHost.app.Memory == nil {
 		return
 	}
 	var facts []memory.MachineFact
@@ -217,8 +217,8 @@ func (a *App) fileCensus(c poi.Census) {
 			When:     line.When,
 		})
 	}
-	if a.Memory.FileMachine(facts) {
-		a.touchPoi()
+	if appHost.app.Memory.FileMachine(facts) {
+		appHost.app.touchPoi()
 	}
 }
 

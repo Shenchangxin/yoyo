@@ -26,11 +26,11 @@ import (
 )
 
 // openVideo 打开默认视频引擎、媒体服务和角色卡司，并把任务与画布 Hub 事件接到 onVideoJob、onCanvasHub。画布助手的 Start、Stop、Decide 分别是 startCanvasAgent、stopCanvasAgent、decideCanvasAgent。Start 进入会话的 StartSend，画布桥不是第二条 runtime.Run。
-func (a *App) openVideo() error {
-	if a.Home == nil || a.CAS == nil || a.Vault == nil {
+func (appHost *videoHost) openVideo() error {
+	if appHost.app.Home == nil || appHost.app.CAS == nil || appHost.app.Vault == nil {
 		return fmt.Errorf("video: home, cas, and vault are required")
 	}
-	eng, err := video.OpenDefault(a.Home.Video(), a.CAS, a.Vault)
+	eng, err := video.OpenDefault(appHost.app.Home.Video(), appHost.app.CAS, appHost.app.Vault)
 	if err != nil {
 		return err
 	}
@@ -38,35 +38,35 @@ func (a *App) openVideo() error {
 		diaglog.Warn("video media server failed", "component", "video", "err", err)
 	}
 	eng.StartCharacterCast()
-	eng.OnJob = a.onVideoJob
-	eng.OnHub = a.onCanvasHub
+	eng.OnJob = appHost.app.onVideoJob
+	eng.OnHub = appHost.app.onCanvasHub
 	eng.Agent = &video.CanvasAgentBridge{
-		Start:  a.startCanvasAgent,
-		Stop:   a.stopCanvasAgent,
-		Decide: a.decideCanvasAgent,
+		Start:  appHost.app.startCanvasAgent,
+		Stop:   appHost.app.stopCanvasAgent,
+		Decide: appHost.app.decideCanvasAgent,
 	}
-	a.Video = eng
-	a.seedConnections()
-	if a.Observe != nil {
-		a.Observe.SetEndpoint(a.otelEndpoint())
+	appHost.app.Video = eng
+	appHost.app.seedConnections()
+	if appHost.app.Observe != nil {
+		appHost.app.Observe.SetEndpoint(appHost.app.otelEndpoint())
 	}
 	return nil
 }
 
 // onCanvasHub 把画布事件发到 Hub，来源为 video，ItemKind 用传入的 kind。Hub 为空则返回。
 // payload 写入事件的 Payload。
-func (a *App) onCanvasHub(kind string, payload map[string]any) {
-	if a.Hub == nil {
+func (appHost *videoHost) onCanvasHub(kind string, payload map[string]any) {
+	if appHost.app.Hub == nil {
 		return
 	}
-	a.Hub.Publish(trace.Event{
+	appHost.app.Hub.Publish(trace.Event{
 		TS: time.Now().UTC(), Type: trace.TypeSystem, Source: "video", ItemKind: kind, Payload: payload,
 	})
 }
 
 // onVideoJob 把任务发到 Hub。状态为 succeeded 或 failed 时再记一条 video.job 日志。
-func (a *App) onVideoJob(j video.Job) {
-	if a.Hub == nil {
+func (appHost *videoHost) onVideoJob(j video.Job) {
+	if appHost.app.Hub == nil {
 		return
 	}
 	ev := trace.Event{
@@ -84,47 +84,47 @@ func (a *App) onVideoJob(j video.Job) {
 			"error":       j.Error,
 			"result_hash": j.ResultHash,
 			"poster_hash": j.PosterHash,
-			"media_url":   a.mediaURL(j.ResultHash),
-			"poster_url":  a.mediaURL(j.PosterHash),
+			"media_url":   appHost.app.mediaURL(j.ResultHash),
+			"poster_url":  appHost.app.mediaURL(j.PosterHash),
 		},
 	}
-	a.Hub.Publish(ev)
+	appHost.app.Hub.Publish(ev)
 	if j.Status == "succeeded" || j.Status == "failed" {
-		a.journalVideo("video.job."+j.Status, map[string]any{
+		appHost.app.journalVideo("video.job."+j.Status, map[string]any{
 			"id": j.ID, "kind": j.Type, "provider": j.Provider, "episode_id": j.EpisodeID, "error": j.Error,
 		})
 	}
 }
 
 // mediaURL 把 CAS hash 换成媒体地址。引擎或 hash 为空返回空串。
-func (a *App) mediaURL(hash string) string {
-	if a.Video == nil || hash == "" {
+func (appHost *videoHost) mediaURL(hash string) string {
+	if appHost.app.Video == nil || hash == "" {
 		return ""
 	}
-	return a.Video.MediaURL(hash)
+	return appHost.app.Video.MediaURL(hash)
 }
 
 // journalVideo 往日志追加一条视频事件。日志库为空则返回。
 // kind 传给 Journal.Append。
 // payload 传给 Journal.Append。
-func (a *App) journalVideo(kind string, payload map[string]any) {
-	if a.Journal == nil {
+func (appHost *videoHost) journalVideo(kind string, payload map[string]any) {
+	if appHost.app.Journal == nil {
 		return
 	}
-	_, _ = a.Journal.Append(kind, payload)
+	_, _ = appHost.app.Journal.Append(kind, payload)
 }
 
 // requireVideo 返回已打开的视频引擎。未打开时返回 video engine is not open。
-func (a *App) requireVideo() (*video.Engine, error) {
-	if a.Video == nil {
+func (appHost *videoHost) requireVideo() (*video.Engine, error) {
+	if appHost.app.Video == nil {
 		return nil, fmt.Errorf("video engine is not open")
 	}
-	return a.Video, nil
+	return appHost.app.Video, nil
 }
 
 // VideoStatus 返回引擎快照并把 ok 设为真。引擎未打开时 ok 为 false，并带上错误文本。
-func (a *App) VideoStatus() map[string]any {
-	eng, err := a.requireVideo()
+func (appHost *videoHost) VideoStatus() map[string]any {
+	eng, err := appHost.app.requireVideo()
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
@@ -136,11 +136,11 @@ func (a *App) VideoStatus() map[string]any {
 // attachDramaTools 只在该会话已绑定短剧时，把短剧工具挂进 Extra。调用进 Video.Tool。
 // tools 为 nil 时返回，否则写入 Extra 和 ExtraEnabled。
 // sessionID 传给 SessionBind 和 Tool。
-func (a *App) attachDramaTools(tools *runtime.WorkspaceTools, sessionID string) {
-	if tools == nil || a.Video == nil {
+func (appHost *videoHost) attachDramaTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || appHost.app.Video == nil {
 		return
 	}
-	if _, ok := a.Video.SessionBind(sessionID); !ok {
+	if _, ok := appHost.app.Video.SessionBind(sessionID); !ok {
 		return
 	}
 	if tools.Extra == nil {
@@ -158,7 +158,7 @@ func (a *App) attachDramaTools(tools *runtime.WorkspaceTools, sessionID string) 
 				if argsJSON != "" {
 					_ = json.Unmarshal([]byte(argsJSON), &args)
 				}
-				out, err := a.Video.Tool(sessionID, spec.Name, args)
+				out, err := appHost.app.Video.Tool(sessionID, spec.Name, args)
 				return runtime.ToolResult{Content: out, Err: err}
 			},
 		}
@@ -169,11 +169,11 @@ func (a *App) attachDramaTools(tools *runtime.WorkspaceTools, sessionID string) 
 // attachCanvasTools 只在会话已绑定画布时挂上画布工具。ask_user 已是宿主工具，这里跳过。plan_update 转给这场会话的 update_plan。generate_media、image_layer_split、image_annotation_render 以 Network 且 ForceAsk 检查能力。canvas_expose_mcp 未打开时去掉 mcp__ 工具。
 // tools 为 nil 时返回，否则写入 Extra 和 ExtraEnabled，并可能传给 stripCanvasMCP。
 // sessionID 传给 CanvasSessionBind 和 CanvasTool，并写入能力请求的 SessionID。
-func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string) {
-	if tools == nil || a.Video == nil {
+func (appHost *videoHost) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || appHost.app.Video == nil {
 		return
 	}
-	if _, ok := a.Video.CanvasSessionBind(sessionID); !ok {
+	if _, ok := appHost.app.Video.CanvasSessionBind(sessionID); !ok {
 		return
 	}
 	if tools.Extra == nil {
@@ -203,8 +203,8 @@ func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string)
 				if spec.Name == "ask_user" {
 					return tools.Call("ask_user", argsJSON)
 				}
-				if mediaAsk[spec.Name] && a.Caps != nil {
-					if err := a.Caps.Check(capability.Request{
+				if mediaAsk[spec.Name] && appHost.app.Caps != nil {
+					if err := appHost.app.Caps.Check(capability.Request{
 						Level: capability.Network, Action: spec.Name, SessionID: sessionID, ForceAsk: true,
 					}); err != nil {
 						return runtime.ToolResult{Err: err}
@@ -214,13 +214,13 @@ func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string)
 				if argsJSON != "" {
 					_ = json.Unmarshal([]byte(argsJSON), &args)
 				}
-				out, err := a.Video.CanvasTool(sessionID, spec.Name, args)
+				out, err := appHost.app.Video.CanvasTool(sessionID, spec.Name, args)
 				return runtime.ToolResult{Content: out, Err: err}
 			},
 		}
 	}
 	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, video.CanvasToolNames())
-	if !canvasExposeMCP(a.Video) {
+	if !canvasExposeMCP(appHost.app.Video) {
 		stripCanvasMCP(tools)
 	}
 }
@@ -248,37 +248,37 @@ var studioDeniedTools = []string{"list_dir", "glob", "grep", "shell", "git_statu
 
 // videoChannel 判断会话频道归一化后是否为视频。会话不存在返回 false。
 // sessionID 先 TrimSpace，空串返回 false，否则传给 GetSession。
-func (a *App) videoChannel(sessionID string) bool {
-	if a == nil || strings.TrimSpace(sessionID) == "" {
+func (appHost *videoHost) videoChannel(sessionID string) bool {
+	if appHost.app == nil || strings.TrimSpace(sessionID) == "" {
 		return false
 	}
-	meta, err := a.GetSession(sessionID)
+	meta, err := appHost.app.GetSession(sessionID)
 	return err == nil && session.NormalizeChannel(meta.Channel) == session.ChannelVideo
 }
 
 // studioLane 在该会话已绑定短片项目时返回真。
 // sessionID 先 TrimSpace，空串返回 false，否则传给 StudioSessionBind。
-func (a *App) studioLane(sessionID string) bool {
-	if a == nil || a.Video == nil || strings.TrimSpace(sessionID) == "" {
+func (appHost *videoHost) studioLane(sessionID string) bool {
+	if appHost.app == nil || appHost.app.Video == nil || strings.TrimSpace(sessionID) == "" {
 		return false
 	}
-	_, ok := a.Video.StudioSessionBind(sessionID)
+	_, ok := appHost.app.Video.StudioSessionBind(sessionID)
 	return ok
 }
 
 // conductorLane 要求视频频道，并且没有绑定短片、短剧或画布。
 // sessionID 传给 videoChannel、StudioSessionBind、SessionBind 和 CanvasSessionBind。
-func (a *App) conductorLane(sessionID string) bool {
-	if a == nil || a.Video == nil || !a.videoChannel(sessionID) {
+func (appHost *videoHost) conductorLane(sessionID string) bool {
+	if appHost.app == nil || appHost.app.Video == nil || !appHost.app.videoChannel(sessionID) {
 		return false
 	}
-	if _, ok := a.Video.StudioSessionBind(sessionID); ok {
+	if _, ok := appHost.app.Video.StudioSessionBind(sessionID); ok {
 		return false
 	}
-	if _, ok := a.Video.SessionBind(sessionID); ok {
+	if _, ok := appHost.app.Video.SessionBind(sessionID); ok {
 		return false
 	}
-	if _, ok := a.Video.CanvasSessionBind(sessionID); ok {
+	if _, ok := appHost.app.Video.CanvasSessionBind(sessionID); ok {
 		return false
 	}
 	return true
@@ -287,14 +287,14 @@ func (a *App) conductorLane(sessionID string) bool {
 // attachCutTools 在绑定了短片、短剧、画布，或本身是视频频道时挂上剪辑工具。cut_dub 以 Network 且 ForceAsk 检查能力。
 // tools 为 nil 时返回，否则写入 Extra 和 ExtraEnabled。
 // sessionID 传给 StudioSessionBind、SessionBind、CanvasSessionBind、videoChannel 和 CutTool，并写入能力请求的 SessionID。
-func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
-	if tools == nil || a.Video == nil {
+func (appHost *videoHost) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || appHost.app.Video == nil {
 		return
 	}
-	_, studioBound := a.Video.StudioSessionBind(sessionID)
-	_, dramaBound := a.Video.SessionBind(sessionID)
-	_, canvasBound := a.Video.CanvasSessionBind(sessionID)
-	if !studioBound && !dramaBound && !canvasBound && !a.videoChannel(sessionID) {
+	_, studioBound := appHost.app.Video.StudioSessionBind(sessionID)
+	_, dramaBound := appHost.app.Video.SessionBind(sessionID)
+	_, canvasBound := appHost.app.Video.CanvasSessionBind(sessionID)
+	if !studioBound && !dramaBound && !canvasBound && !appHost.app.videoChannel(sessionID) {
 		return
 	}
 	if tools.Extra == nil {
@@ -316,14 +316,14 @@ func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
 				if argsJSON != "" {
 					_ = json.Unmarshal([]byte(argsJSON), &args)
 				}
-				if askNet[spec.Name] && a.Caps != nil {
-					if err := a.Caps.Check(capability.Request{
+				if askNet[spec.Name] && appHost.app.Caps != nil {
+					if err := appHost.app.Caps.Check(capability.Request{
 						Level: capability.Network, Action: spec.Name, SessionID: sessionID, ForceAsk: true,
 					}); err != nil {
 						return runtime.ToolResult{Err: err}
 					}
 				}
-				out, err := a.Video.CutTool(sessionID, spec.Name, args)
+				out, err := appHost.app.Video.CutTool(sessionID, spec.Name, args)
 				return runtime.ToolResult{Content: out, Err: err}
 			},
 		}
@@ -334,8 +334,8 @@ func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
 // attachConductorTools 只在 conductorLane 为真时挂上指挥工具，钉住 conductorSkillNames，并调用 pinConductorLane。
 // tools 为 nil 时返回，否则写入 Extra、ExtraEnabled，并传给 MarkSkillsLoaded 和 pinConductorLane。
 // sessionID 传给 conductorLane、CutTool、GetSession 和 SetSessionPinnedSkills。
-func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID string) {
-	if tools == nil || a.Video == nil || !a.conductorLane(sessionID) {
+func (appHost *videoHost) attachConductorTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || appHost.app.Video == nil || !appHost.app.conductorLane(sessionID) {
 		return
 	}
 	if tools.Extra == nil {
@@ -359,11 +359,11 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 					_ = json.Unmarshal([]byte(argsJSON), &args)
 				}
 				if brief {
-					return a.conductorBrief(tools, args)
+					return appHost.app.conductorBrief(tools, args)
 				}
-				out, err := a.Video.CutTool(sessionID, spec.Name, args)
+				out, err := appHost.app.Video.CutTool(sessionID, spec.Name, args)
 				if err == nil && route {
-					if note := a.attachRoutedWorkshop(tools, sessionID); note != "" {
+					if note := appHost.app.attachRoutedWorkshop(tools, sessionID); note != "" {
 						out += "\n" + note
 					}
 				}
@@ -373,11 +373,11 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 	}
 	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, video.ConductorToolNames())
 	tools.MarkSkillsLoaded(conductorSkillNames...)
-	a.pinConductorLane(tools)
-	if meta, err := a.GetSession(sessionID); err == nil {
+	appHost.app.pinConductorLane(tools)
+	if meta, err := appHost.app.GetSession(sessionID); err == nil {
 		next := uniqueStrings(meta.PinnedSkills, conductorSkillNames)
 		if len(next) > len(meta.PinnedSkills) {
-			_, _ = a.SetSessionPinnedSkills(sessionID, next)
+			_, _ = appHost.app.SetSessionPinnedSkills(sessionID, next)
 		}
 	}
 }
@@ -385,7 +385,7 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 // attachRoutedWorkshop 在 video_route 绑好车间之后，把短剧、画布或短片的工具挂进这一轮。工具表每一步都会重读，所以模型下一步就能接着做，不必等操作者再发一句。返回给模型的说明列出新挂上的工具；没有新工具时返回空串。
 // tools 为 nil 时返回空串，否则传给 attachDramaTools、attachCanvasTools 和 attachStudioTools。
 // sessionID 传给这三个挂载函数。
-func (a *App) attachRoutedWorkshop(tools *runtime.WorkspaceTools, sessionID string) string {
+func (appHost *videoHost) attachRoutedWorkshop(tools *runtime.WorkspaceTools, sessionID string) string {
 	if tools == nil {
 		return ""
 	}
@@ -393,9 +393,9 @@ func (a *App) attachRoutedWorkshop(tools *runtime.WorkspaceTools, sessionID stri
 	for name := range tools.Extra {
 		before[name] = true
 	}
-	a.attachDramaTools(tools, sessionID)
-	a.attachCanvasTools(tools, sessionID)
-	a.attachStudioTools(tools, sessionID)
+	appHost.app.attachDramaTools(tools, sessionID)
+	appHost.app.attachCanvasTools(tools, sessionID)
+	appHost.app.attachStudioTools(tools, sessionID)
 	var added []string
 	for name := range tools.Extra {
 		if !before[name] {
@@ -412,11 +412,11 @@ func (a *App) attachRoutedWorkshop(tools *runtime.WorkspaceTools, sessionID stri
 // attachStudioTools 只在已绑定短片时挂上短片工具。配音、热点、安装、生图和选题扩展以 Network 且 ForceAsk 检查。打开发布页以 Browser 且 ForceAsk 检查，并调用 OpenStudioPublish。创建人设调用 CreateStudioPersona。然后钉住短片技能并 pinStudioLane。
 // tools 为 nil 时返回，否则写入 Extra、ExtraEnabled，并传给 MarkSkillsLoaded 和 pinStudioLane。
 // sessionID 传给 StudioSessionBind、StudioTool、GetSession 和 SetSessionPinnedSkills，并写入能力请求的 SessionID。
-func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string) {
-	if tools == nil || a.Video == nil {
+func (appHost *videoHost) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || appHost.app.Video == nil {
 		return
 	}
-	if _, studioBound := a.Video.StudioSessionBind(sessionID); !studioBound {
+	if _, studioBound := appHost.app.Video.StudioSessionBind(sessionID); !studioBound {
 		return
 	}
 	if tools.Extra == nil {
@@ -444,21 +444,21 @@ func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string)
 				if argsJSON != "" {
 					_ = json.Unmarshal([]byte(argsJSON), &args)
 				}
-				if askBrowser[spec.Name] && a.Caps != nil {
-					if err := a.Caps.Check(capability.Request{
+				if askBrowser[spec.Name] && appHost.app.Caps != nil {
+					if err := appHost.app.Caps.Check(capability.Request{
 						Level: capability.Browser, Action: spec.Name, SessionID: sessionID, ForceAsk: true,
 					}); err != nil {
 						return runtime.ToolResult{Err: err}
 					}
-				} else if askNet[spec.Name] && a.Caps != nil {
-					if err := a.Caps.Check(capability.Request{
+				} else if askNet[spec.Name] && appHost.app.Caps != nil {
+					if err := appHost.app.Caps.Check(capability.Request{
 						Level: capability.Network, Action: spec.Name, SessionID: sessionID, ForceAsk: true,
 					}); err != nil {
 						return runtime.ToolResult{Err: err}
 					}
 				}
 				if spec.Name == "studio_publish_open" || spec.Name == "studio_publish_analytics" {
-					out, err := a.OpenStudioPublish(strAnyFrom(args, "publish_id", "id"), spec.Name == "studio_publish_analytics")
+					out, err := appHost.app.OpenStudioPublish(strAnyFrom(args, "publish_id", "id"), spec.Name == "studio_publish_analytics")
 					if err != nil {
 						return runtime.ToolResult{Err: err}
 					}
@@ -466,32 +466,32 @@ func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string)
 					return runtime.ToolResult{Content: string(b)}
 				}
 				if spec.Name == "studio_persona_create" {
-					out, err := a.CreateStudioPersona(strAnyFrom(args, "name", "title"), strAnyFrom(args, "topic_id"))
+					out, err := appHost.app.CreateStudioPersona(strAnyFrom(args, "name", "title"), strAnyFrom(args, "topic_id"))
 					if err != nil {
 						return runtime.ToolResult{Err: err}
 					}
 					b, _ := json.Marshal(out)
 					return runtime.ToolResult{Content: string(b)}
 				}
-				out, err := a.Video.StudioTool(sessionID, spec.Name, args)
+				out, err := appHost.app.Video.StudioTool(sessionID, spec.Name, args)
 				return runtime.ToolResult{Content: out, Err: err}
 			},
 		}
 	}
 	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, video.StudioToolNames())
 	tools.MarkSkillsLoaded(studioSkillNames...)
-	a.pinStudioLane(tools)
-	if meta, err := a.GetSession(sessionID); err == nil {
+	appHost.app.pinStudioLane(tools)
+	if meta, err := appHost.app.GetSession(sessionID); err == nil {
 		next := uniqueStrings(meta.PinnedSkills, studioSkillNames)
 		if len(next) > len(meta.PinnedSkills) {
-			_, _ = a.SetSessionPinnedSkills(sessionID, next)
+			_, _ = appHost.app.SetSessionPinnedSkills(sessionID, next)
 		}
 	}
 }
 
 // pinStudioLane 从广告名去掉 studioDeniedTools，并把 AllowedTools 设为剩余广告名加上短片工具、剪辑工具，以及 load_skill、list_skills、tool_search、recall_context、update_plan、ask_user、read_skill_file。
 // tools 为 nil 时返回，否则改写 Advertised 和 AllowedTools。
-func (a *App) pinStudioLane(tools *runtime.WorkspaceTools) {
+func (appHost *videoHost) pinStudioLane(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
 	}
@@ -514,7 +514,7 @@ func (a *App) pinStudioLane(tools *runtime.WorkspaceTools) {
 
 // pinConductorLane 同样拿掉 studioDeniedTools。AllowedTools 是剩余广告名加上剪辑工具、指挥工具，以及 load_skill、list_skills、tool_search、recall_context、update_plan、ask_user、read_skill_file。
 // tools 为 nil 时返回，否则改写 Advertised 和 AllowedTools。
-func (a *App) pinConductorLane(tools *runtime.WorkspaceTools) {
+func (appHost *videoHost) pinConductorLane(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
 	}
@@ -576,8 +576,8 @@ func stripCanvasMCP(tools *runtime.WorkspaceTools) {
 // episodeID 在 dramaID 为空时用来查集，非大纲和圣经阶段传给 BindSession，并传给 StagePrompt 和 journal。
 // stage 先 TrimSpace，用来区分大纲、圣经和其他阶段，并传给 StagePrompt 和 journal。
 // dramaID 为空且 episodeID 非空时从集上补上；大纲或圣经阶段为空则返回错误，该阶段非空时传给 BindSessionDrama，并传给 StagePrompt 和 journal。
-func (a *App) RunDramaStage(sessionID, episodeID, stage, dramaID string) error {
-	eng, err := a.requireVideo()
+func (appHost *videoHost) RunDramaStage(sessionID, episodeID, stage, dramaID string) error {
+	eng, err := appHost.app.requireVideo()
 	if err != nil {
 		return err
 	}
@@ -607,20 +607,20 @@ func (a *App) RunDramaStage(sessionID, episodeID, stage, dramaID string) error {
 	if err != nil {
 		return err
 	}
-	if meta, err := a.GetSession(sessionID); err == nil {
+	if meta, err := appHost.app.GetSession(sessionID); err == nil {
 		pinned := uniqueStrings(meta.PinnedSkills, skills)
-		_, _ = a.SetSessionPinnedSkills(sessionID, pinned)
+		_, _ = appHost.app.SetSessionPinnedSkills(sessionID, pinned)
 	}
-	a.journalVideo("drama.stage", map[string]any{"session": sessionID, "episode_id": episodeID, "drama_id": dramaID, "stage": stage})
-	return a.StartSendOpts(sessionID, prompt, false, nil)
+	appHost.app.journalVideo("drama.stage", map[string]any{"session": sessionID, "episode_id": episodeID, "drama_id": dramaID, "stage": stage})
+	return appHost.app.StartSendOpts(sessionID, prompt, false, nil)
 }
 
 // DramaBind 在有单集 id 时 BindSession，否则在有系列 id 时 BindSessionDrama。两个都空返回 episode or series required。
 // sessionID 传给 BindSession 或 BindSessionDrama。
 // episodeID 去掉空白后非空时传给 BindSession。
 // dramaID 在 episodeID 去掉空白后为空、且自身去掉空白后非空时传给 BindSessionDrama。
-func (a *App) DramaBind(sessionID, episodeID, dramaID string) error {
-	eng, err := a.requireVideo()
+func (appHost *videoHost) DramaBind(sessionID, episodeID, dramaID string) error {
+	eng, err := appHost.app.requireVideo()
 	if err != nil {
 		return err
 	}
@@ -635,18 +635,18 @@ func (a *App) DramaBind(sessionID, episodeID, dramaID string) error {
 
 // VideoCall 是视频、短剧、画布、短片、剪辑和连接的 JSON-RPC 入口。未知方法返回 unknown video method。drama.stage.run 和 drama.plan.queue_scripts 经 RunDramaStage 交给会话。canvas.bind 只做 BindCanvasSession。video.topic.schedule 用 KindOnce，时间是现在加 10 分钟；已有未跑的选题任务则返回 duplicate。删除选题和从选题建项时会取消这类未跑任务。video.studio.bind 接受 project_id 或 id。drama.plan.get 在 not found 时返回空对象。
 // params 为 nil 时改成空 map，再按方法读取字段。
-func (a *App) VideoCall(method string, params map[string]any) (any, error) {
+func (appHost *videoHost) VideoCall(method string, params map[string]any) (any, error) {
 	if params == nil {
 		params = map[string]any{}
 	}
-	eng, err := a.requireVideo()
+	eng, err := appHost.app.requireVideo()
 	if err != nil {
 		return nil, err
 	}
 	str := func(k string) string { return rpcString(params, k) }
 	switch method {
 	case "video.status":
-		return a.VideoStatus(), nil
+		return appHost.app.VideoStatus(), nil
 	case "video.ffmpeg.install":
 		return eng.InstallFFmpeg(), nil
 	case "video.ytdlp.install":
@@ -772,11 +772,11 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichBundle(b), nil
+		return appHost.app.enrichBundle(b), nil
 	case "drama.bind":
-		return map[string]any{"ok": true}, a.DramaBind(str("session_id"), str("episode_id"), str("drama_id"))
+		return map[string]any{"ok": true}, appHost.app.DramaBind(str("session_id"), str("episode_id"), str("drama_id"))
 	case "drama.stage.run":
-		return map[string]any{"ok": true}, a.RunDramaStage(str("session_id"), str("episode_id"), str("stage"), str("drama_id"))
+		return map[string]any{"ok": true}, appHost.app.RunDramaStage(str("session_id"), str("episode_id"), str("stage"), str("drama_id"))
 	case "drama.source.ingest":
 		return eng.IngestSource(str("drama_id"), str("text"), str("title"))
 	case "drama.source.ingest_file":
@@ -817,7 +817,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if !ok {
 			return map[string]any{"ok": true, "plan": plan, "done": true}, nil
 		}
-		if err := a.RunDramaStage(str("session_id"), ep.ID, "rewrite", str("drama_id")); err != nil {
+		if err := appHost.app.RunDramaStage(str("session_id"), ep.ID, "rewrite", str("drama_id")); err != nil {
 			return nil, err
 		}
 		return map[string]any{"ok": true, "plan": plan, "episode_id": ep.ID}, nil
@@ -838,11 +838,11 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"ok": true}, eng.DeleteAsset(str("kind"), str("id"))
 	case "drama.assets.generate":
 		j, err := eng.GenerateAsset(str("kind"), str("id"), str("episode_id"))
-		a.journalVideo("video.generate", map[string]any{"kind": "image", "asset": str("kind"), "id": str("id")})
+		appHost.app.journalVideo("video.generate", map[string]any{"kind": "image", "asset": str("kind"), "id": str("id")})
 		return j, err
 	case "drama.assets.generate_missing":
 		j, err := eng.GenerateMissingAssets(str("episode_id"))
-		a.journalVideo("video.generate", map[string]any{"kind": "image_batch", "episode_id": str("episode_id"), "n": len(j)})
+		appHost.app.journalVideo("video.generate", map[string]any{"kind": "image_batch", "episode_id": str("episode_id"), "n": len(j)})
 		return j, err
 	case "drama.assets.upload":
 		raw, err := decodeB64(str("data_b64"))
@@ -872,27 +872,27 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"ok": true}, eng.DeleteShot(str("id"))
 	case "drama.shots.generate":
 		j, err := eng.GenerateShot(str("id"))
-		a.journalVideo("video.generate", map[string]any{"kind": "video", "shot_id": str("id")})
+		appHost.app.journalVideo("video.generate", map[string]any{"kind": "video", "shot_id": str("id")})
 		return j, err
 	case "drama.shots.generate_missing":
 		j, err := eng.GenerateMissingShots(str("episode_id"))
-		a.journalVideo("video.generate", map[string]any{"kind": "video_batch", "episode_id": str("episode_id"), "n": len(j)})
+		appHost.app.journalVideo("video.generate", map[string]any{"kind": "video_batch", "episode_id": str("episode_id"), "n": len(j)})
 		return j, err
 	case "drama.merge":
 		var ids []string
 		b, _ := json.Marshal(params["shot_ids"])
 		_ = json.Unmarshal(b, &ids)
 		j, err := eng.MergeEpisode(str("episode_id"), ids)
-		a.journalVideo("video.merge", map[string]any{"episode_id": str("episode_id"), "n": len(ids)})
+		appHost.app.journalVideo("video.merge", map[string]any{"episode_id": str("episode_id"), "n": len(ids)})
 		return j, err
 	case "drama.import":
 		return eng.ImportHuobao(str("db_path"), str("static_dir"))
 	case "drama.skip_rewrite":
 		return map[string]any{"ok": true}, eng.SkipRewrite(str("episode_id"))
 	case "media.url":
-		return map[string]any{"url": a.mediaURL(str("hash"))}, nil
+		return map[string]any{"url": appHost.app.mediaURL(str("hash"))}, nil
 	case "canvas.bind":
-		return map[string]any{"ok": true}, a.CanvasBind(str("session_id"), firstNonEmptyApp(str("project_id"), str("canvas_id")))
+		return map[string]any{"ok": true}, appHost.app.CanvasBind(str("session_id"), firstNonEmptyApp(str("project_id"), str("canvas_id")))
 	case "video.history":
 		rows, err := eng.ProjectHistory()
 		if err != nil {
@@ -915,7 +915,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return eng.SaveTopic(t)
 	case "video.topic.delete":
 		id := str("id")
-		a.cancelPendingTopicJobs(id)
+		appHost.app.cancelPendingTopicJobs(id)
 		return map[string]any{"ok": true}, eng.DeleteTopic(id)
 	case "video.topic.from_trend":
 		return eng.TopicFromTrend(str("platform"), str("title"), str("hot"))
@@ -924,7 +924,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if job, ok := a.pendingTopicJob(t.ID); ok {
+		if job, ok := appHost.app.pendingTopicJob(t.ID); ok {
 			return map[string]any{"ok": true, "job": job, "topic": t, "duplicate": true}, nil
 		}
 		runAt, err := topicRunAt(str("at"), params["delay_minutes"], time.Now())
@@ -936,18 +936,18 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		job := a.ScheduleCreate(schedule.Job{
+		job := appHost.app.ScheduleCreate(schedule.Job{
 			Kind:      schedule.KindOnce,
 			Spec:      runAt.UTC().Format(time.RFC3339),
 			Prompt:    studioJobPrompt(t, video.StudioProject{}),
-			Workspace: a.VideoWorkspace(),
+			Workspace: appHost.app.VideoWorkspace(),
 			Channel:   session.ChannelVideo,
 			SessionID: str("session_id"),
 			TopicID:   t.ID,
 			Aspect:    str("aspect"),
 		})
 		out := map[string]any{"ok": true, "job": job, "topic": t, "run_at": runAt.Format(time.RFC3339)}
-		if !a.scheduleAllowed() {
+		if !appHost.app.scheduleAllowed() {
 			out["paused"] = true
 		}
 		return out, nil
@@ -956,7 +956,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		cancelled := a.cancelPendingTopicJobs(t.ID)
+		cancelled := appHost.app.cancelPendingTopicJobs(t.ID)
 		if t.Status == video.TopicScheduled && t.StudioProjectID == "" {
 			if strings.TrimSpace(t.Angle) != "" {
 				t.Status = video.TopicReady
@@ -973,7 +973,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		rows := eng.ListStudioProjects()
 		out := make([]map[string]any, 0, len(rows))
 		for _, p := range rows {
-			out = append(out, a.enrichStudio(p))
+			out = append(out, appHost.app.enrichStudio(p))
 		}
 		return out, nil
 	case "video.studio.create":
@@ -994,15 +994,15 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			_ = eng.BindStudioSession(sid, out.ID)
 		}
 		if tid := strings.TrimSpace(out.TopicID); tid != "" {
-			a.cancelPendingTopicJobs(tid)
+			appHost.app.cancelPendingTopicJobs(tid)
 		}
-		return a.enrichStudio(out), nil
+		return appHost.app.enrichStudio(out), nil
 	case "video.studio.get":
 		p, err := eng.GetStudioProject(str("id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.update":
 		var p video.StudioProject
 		b, _ := json.Marshal(params)
@@ -1019,7 +1019,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(out), nil
+		return appHost.app.enrichStudio(out), nil
 	case "video.studio.delete":
 		return map[string]any{"ok": true}, eng.DeleteStudioProject(str("id"))
 	case "video.studio.bind":
@@ -1027,20 +1027,20 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.studio.assemble":
 		p, err := eng.StartStudioAssemble(str("id"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.auto":
 		p, err := eng.StartStudioAuto(str("id"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.auto.topics":
 		rows, err := eng.StartTopicFilms(topicIDsFrom(params))
 		out := make([]map[string]any, 0, len(rows))
 		for _, p := range rows {
-			out = append(out, a.enrichStudio(p))
+			out = append(out, appHost.app.enrichStudio(p))
 		}
 		return out, err
 	case "video.studio.bgm.list":
@@ -1048,39 +1048,39 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.studio.bgm.use":
 		p, err := eng.AttachStudioBGM(str("id"), str("name"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.bgm.clear":
 		p, err := eng.ClearStudioBGM(str("id"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.bgm.generate":
 		p, err := eng.StartStudioBGM(str("id"), str("prompt"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.speak":
 		p, err := eng.StartStudioSpeak(str("id"), str("text"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.ops.reframe":
 		ref, err := eng.Reframe(str("hash"), str("aspect"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichMedia(ref), nil
+		return appHost.app.enrichMedia(ref), nil
 	case "video.studio.ops.burnin":
 		ref, err := eng.BurnInCaptions(str("hash"), str("subtitle_hash"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichMedia(ref), nil
+		return appHost.app.enrichMedia(ref), nil
 	case "video.studio.ops.slideshow":
 		var hashes []string
 		b, _ := json.Marshal(params["hashes"])
@@ -1089,7 +1089,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichMedia(ref), nil
+		return appHost.app.enrichMedia(ref), nil
 	case "video.studio.media.put":
 		kind := str("kind")
 		mime := str("mime")
@@ -1109,7 +1109,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 					kind = "image"
 				}
 			}
-			return a.enrichMedia(video.MediaRef{Kind: kind, CASHash: hash, MIME: mime, Source: "studio-upload"}), nil
+			return appHost.app.enrichMedia(video.MediaRef{Kind: kind, CASHash: hash, MIME: mime, Source: "studio-upload"}), nil
 		}
 		raw, err := decodeB64(firstNonEmptyApp(str("data_b64"), str("data")))
 		if err != nil {
@@ -1126,20 +1126,20 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 				kind = "image"
 			}
 		}
-		return a.enrichMedia(video.MediaRef{Kind: kind, CASHash: hash, MIME: mime, Source: "studio-upload"}), nil
+		return appHost.app.enrichMedia(video.MediaRef{Kind: kind, CASHash: hash, MIME: mime, Source: "studio-upload"}), nil
 	case "video.studio.ops.wrap":
 		ref, err := eng.WrapTalkingHead(str("hash"), firstNonEmptyApp(str("title"), str("text")))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichMedia(ref), nil
+		return appHost.app.enrichMedia(ref), nil
 	case "video.studio.publish.platforms":
 		return video.PublishPlatforms(), nil
 	case "video.studio.publish.list":
 		rows := eng.ListPublishes(str("project_id"), str("platform"))
 		out := make([]map[string]any, 0, len(rows))
 		for _, p := range rows {
-			out = append(out, a.enrichPublish(p))
+			out = append(out, appHost.app.enrichPublish(p))
 		}
 		return out, nil
 	case "video.studio.publish.get":
@@ -1147,7 +1147,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichPublish(p), nil
+		return appHost.app.enrichPublish(p), nil
 	case "video.studio.publish.draft":
 		var p video.Publish
 		b, _ := json.Marshal(params)
@@ -1156,17 +1156,17 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichPublish(out), nil
+		return appHost.app.enrichPublish(out), nil
 	case "video.studio.publish.export":
 		out, err := eng.ExportPublish(firstNonEmptyApp(str("id"), str("publish_id")))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichPublish(out), nil
+		return appHost.app.enrichPublish(out), nil
 	case "video.studio.publish.open":
-		return a.OpenStudioPublish(firstNonEmptyApp(str("id"), str("publish_id")), false)
+		return appHost.app.OpenStudioPublish(firstNonEmptyApp(str("id"), str("publish_id")), false)
 	case "video.studio.publish.analytics":
-		return a.OpenStudioPublish(firstNonEmptyApp(str("id"), str("publish_id")), true)
+		return appHost.app.OpenStudioPublish(firstNonEmptyApp(str("id"), str("publish_id")), true)
 	case "video.studio.publish.mark":
 		out, err := eng.MarkPublish(
 			firstNonEmptyApp(str("id"), str("publish_id")),
@@ -1178,7 +1178,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichPublish(out), nil
+		return appHost.app.enrichPublish(out), nil
 	case "video.studio.remotion.status":
 		return eng.RemotionSnapshot(), nil
 	case "video.studio.remotion.install":
@@ -1186,7 +1186,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.studio.persona.template":
 		return map[string]any{"markdown": video.PersonaTemplate(firstNonEmptyApp(str("name"), str("title")))}, nil
 	case "video.studio.persona.create":
-		return a.CreateStudioPersona(firstNonEmptyApp(str("name"), str("title")), str("topic_id"))
+		return appHost.app.CreateStudioPersona(firstNonEmptyApp(str("name"), str("title")), str("topic_id"))
 	case "video.studio.catalog":
 		return eng.StudioCatalogLive(), nil
 	case "video.studio.voice.preview":
@@ -1196,81 +1196,81 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.studio.approve":
 		p, err := eng.ApproveStudioScriptText(str("id"), str("script"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.skip_audio":
 		p, err := eng.SkipStudioAudio(str("id"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.preset":
 		p, err := eng.ApplyStudioPreset(str("id"), str("preset_id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.template":
 		p, err := eng.ApplyStudioTemplate(str("id"), str("template_id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.identity":
 		p, err := eng.SetStudioIdentity(str("id"), str("character_id"), str("style_id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.generate.shot":
 		j, err := eng.GenerateStudioShot(str("id"), str("shot_id"))
-		a.journalVideo("studio.generate", map[string]any{"kind": "shot", "id": str("id"), "shot_id": str("shot_id")})
+		appHost.app.journalVideo("studio.generate", map[string]any{"kind": "shot", "id": str("id"), "shot_id": str("shot_id")})
 		return j, err
 	case "video.studio.generate.missing":
 		j, err := eng.GenerateMissingStudioShots(str("id"))
-		a.journalVideo("studio.generate", map[string]any{"kind": "missing", "id": str("id"), "n": len(j)})
+		appHost.app.journalVideo("studio.generate", map[string]any{"kind": "missing", "id": str("id"), "n": len(j)})
 		return j, err
 	case "video.studio.cover":
 		j, err := eng.GenerateStudioCover(str("id"))
-		a.journalVideo("studio.generate", map[string]any{"kind": "cover", "id": str("id")})
+		appHost.app.journalVideo("studio.generate", map[string]any{"kind": "cover", "id": str("id")})
 		return j, err
 	case "video.studio.cover.pick":
 		p, err := eng.PickStudioCover(str("id"), str("hash"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.copy":
 		p, err := eng.WriteStudioCopy(str("id"), str("platform"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.package":
 		p, err := eng.PackageStudio(str("id"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.restore":
 		p, err := eng.RestoreStudioVersion(str("id"), intArgApp(params["n"]))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.timing":
 		p, err := eng.ApplyStudioTiming(str("id"))
 		if err != nil {
-			return a.enrichStudio(p), err
+			return appHost.app.enrichStudio(p), err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.ingest":
 		p, err := eng.IngestStudioURL(str("id"), str("url"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichStudio(p), nil
+		return appHost.app.enrichStudio(p), nil
 	case "video.studio.autoclip":
 		clips, err := eng.AutoClip(str("hash"), intArgApp(params["count"]), firstNonEmptyApp(str("duration"), str("window")))
 		if err != nil {
@@ -1279,7 +1279,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		out := make([]map[string]any, 0, len(clips))
 		for _, c := range clips {
 			row := objJSON(c)
-			row["media_url"] = a.mediaURL(c.Hash)
+			row["media_url"] = appHost.app.mediaURL(c.Hash)
 			out = append(out, row)
 		}
 		return out, nil
@@ -1287,7 +1287,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		list := eng.ListCutProjects()
 		out := make([]map[string]any, 0, len(list))
 		for _, p := range list {
-			out = append(out, a.enrichCut(p))
+			out = append(out, appHost.app.enrichCut(p))
 		}
 		return out, nil
 	case "video.cut.open":
@@ -1300,7 +1300,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.create":
 		p, err := eng.CreateCutProject(video.CutProject{Title: str("title"), SourceHash: str("hash")})
 		if err != nil {
@@ -1316,19 +1316,19 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			_ = eng.BindCutSession(sid, p.ID)
 			p.SessionID = sid
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.remake.draft":
 		p, err := eng.RemakeDraft(str("hash"), str("title"), str("session_id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.remake.replace":
 		p, err := eng.RemakeReplace(firstNonEmptyApp(str("id"), str("project_id")), str("hash"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.film.open":
 		p, err := eng.OpenFilm(film.Input{
 			Title: str("title"), Structure: str("structure"), Description: str("description"),
@@ -1380,13 +1380,13 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.get":
 		p, err := eng.GetCutProject(str("id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.bind":
 		return map[string]any{"ok": true}, eng.BindCutSession(str("session_id"), firstNonEmptyApp(str("id"), str("project_id")))
 	case "video.cut.release":
@@ -1401,43 +1401,43 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return map[string]any{"id": id}, nil
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.ingest":
 		p, err := eng.CutIngest(str("id"), str("hash"), str("title"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.analyze":
 		p, err := eng.CutAnalyze(str("id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.propose":
 		p, err := eng.CutPropose(str("id"), intArgApp(params["count"]), firstNonEmptyApp(str("window"), str("duration")))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.apply":
 		p, err := eng.CutApply(str("id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.extract":
 		p, err := eng.CutExtractAudio(str("id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.enhance":
 		p, err := eng.CutEnhance(str("id"), str("preset"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.mix":
 		duck := true
 		if params["duck"] == false || str("duck") == "0" {
@@ -1448,43 +1448,43 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.transcribe":
 		p, err := eng.CutTranscribe(str("id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.captions":
 		p, err := eng.CutCaptions(str("id"), str("text"), firstNonEmptyApp(str("language"), str("lang")))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.burnin":
 		p, err := eng.CutBurnin(str("id"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.dub":
 		p, err := eng.CutDub(str("id"), str("text"), str("voice"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.grade":
 		p, err := eng.CutGrade(str("id"), str("preset"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.stem":
 		p, err := eng.CutSetStem(str("id"), str("kind"), str("hash"))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.keep":
 		var ids []string
 		b, _ := json.Marshal(params["clip_ids"])
@@ -1493,13 +1493,13 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.omit":
 		p, err := eng.CutOmitCue(str("id"), intArgApp(params["index"]))
 		if err != nil {
 			return nil, err
 		}
-		return a.enrichCut(p), nil
+		return appHost.app.enrichCut(p), nil
 	case "video.cut.delete":
 		return map[string]any{"ok": true}, eng.DeleteCutProject(str("id"))
 	case "video.route":
@@ -1523,8 +1523,8 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 // CanvasBind 把会话绑到画布。这里只调用 BindCanvasSession。
 // sessionID 传给 BindCanvasSession。
 // canvasID 传给 BindCanvasSession。
-func (a *App) CanvasBind(sessionID, canvasID string) error {
-	eng, err := a.requireVideo()
+func (appHost *videoHost) CanvasBind(sessionID, canvasID string) error {
+	eng, err := appHost.app.requireVideo()
 	if err != nil {
 		return err
 	}
@@ -1557,8 +1557,8 @@ func rpcString(params map[string]any, key string) string {
 }
 
 // enrichBundle 给短剧包里的角色、场景、道具、镜头、单集和任务补上媒体 URL，并附上 media_base 和 VideoStatus。
-func (a *App) enrichBundle(b video.EpisodeBundle) map[string]any {
-	urlOf := func(h string) string { return a.mediaURL(h) }
+func (appHost *videoHost) enrichBundle(b video.EpisodeBundle) map[string]any {
+	urlOf := func(h string) string { return appHost.app.mediaURL(h) }
 	chars := make([]map[string]any, 0, len(b.Characters))
 	for _, c := range b.Characters {
 		m := objJSON(c)
@@ -1598,8 +1598,8 @@ func (a *App) enrichBundle(b video.EpisodeBundle) map[string]any {
 	}
 	return map[string]any{
 		"drama": d, "episode": ep, "characters": chars, "scenes": scenes, "props": props,
-		"shots": shots, "jobs": jobs, "plan": b.Plan, "media_base": a.mediaURL(""),
-		"status": a.VideoStatus(),
+		"shots": shots, "jobs": jobs, "plan": b.Plan, "media_base": appHost.app.mediaURL(""),
+		"status": appHost.app.VideoStatus(),
 	}
 }
 
@@ -1764,12 +1764,12 @@ func topicRunAt(at string, delay any, now time.Time) (time.Time, error) {
 
 // pendingTopicJob 查找该选题上已启用、且 LastRun 为零的短片日程。没有则返回 false。
 // topicID 先 TrimSpace，空串返回 false，否则和日程的 TopicID 比较。
-func (a *App) pendingTopicJob(topicID string) (schedule.Job, bool) {
+func (appHost *videoHost) pendingTopicJob(topicID string) (schedule.Job, bool) {
 	topicID = strings.TrimSpace(topicID)
-	if a.Schedule == nil || topicID == "" {
+	if appHost.app.Schedule == nil || topicID == "" {
 		return schedule.Job{}, false
 	}
-	for _, j := range a.Schedule.List() {
+	for _, j := range appHost.app.Schedule.List() {
 		if !schedule.IsStudioJob(j) || strings.TrimSpace(j.TopicID) != topicID {
 			continue
 		}
@@ -1782,18 +1782,18 @@ func (a *App) pendingTopicJob(topicID string) (schedule.Job, bool) {
 
 // cancelPendingTopicJobs 取消该选题上已启用且尚未跑过的短片日程，返回取消条数。
 // topicID 先 TrimSpace，空串返回 0，否则取消 TopicID 相同且已启用、LastRun 为零的日程。
-func (a *App) cancelPendingTopicJobs(topicID string) int {
+func (appHost *videoHost) cancelPendingTopicJobs(topicID string) int {
 	topicID = strings.TrimSpace(topicID)
-	if a.Schedule == nil || topicID == "" {
+	if appHost.app.Schedule == nil || topicID == "" {
 		return 0
 	}
 	n := 0
-	for _, j := range a.Schedule.List() {
+	for _, j := range appHost.app.Schedule.List() {
 		if !schedule.IsStudioJob(j) || strings.TrimSpace(j.TopicID) != topicID {
 			continue
 		}
 		if j.Enabled && j.LastRun.IsZero() {
-			a.Schedule.Cancel(j.ID)
+			appHost.app.Schedule.Cancel(j.ID)
 			n++
 		}
 	}
@@ -1802,11 +1802,11 @@ func (a *App) cancelPendingTopicJobs(topicID string) int {
 
 // runStudioJob 在 StudioJobShouldSkip 为真时记成功并返回。否则复用视频频道会话或在视频工作区新建会话，绑定短片项目，钉上短片技能，再 StartSendOpts。ErrQueued 仍记成功。
 // j 用来读 ID、StudioID、TopicID、SessionID、Prompt 和 Aspect，并可能改写 Prompt。
-func (a *App) runStudioJob(j schedule.Job) {
-	eng, err := a.requireVideo()
+func (appHost *videoHost) runStudioJob(j schedule.Job) {
+	eng, err := appHost.app.requireVideo()
 	if err != nil {
-		if a.Schedule != nil {
-			a.Schedule.Record(j.ID, err)
+		if appHost.app.Schedule != nil {
+			appHost.app.Schedule.Record(j.ID, err)
 		}
 		return
 	}
@@ -1818,33 +1818,33 @@ func (a *App) runStudioJob(j schedule.Job) {
 	}
 	if studioID != "" {
 		if p, err := eng.GetStudioProject(studioID); err == nil && video.StudioJobShouldSkip(p, eng.LatestStudioSession(studioID)) {
-			if a.Inbox != nil {
-				a.Inbox.Push(inbox.Item{Kind: inbox.KindHeartbeat, Title: "Shorts skip " + j.ID, Body: "定时开拍已跳过：这条短片已有对话或已在制作。", SessionID: eng.LatestStudioSession(studioID)})
+			if appHost.app.Inbox != nil {
+				appHost.app.Inbox.Push(inbox.Item{Kind: inbox.KindHeartbeat, Title: "Shorts skip " + j.ID, Body: "定时开拍已跳过：这条短片已有对话或已在制作。", SessionID: eng.LatestStudioSession(studioID)})
 			}
-			if a.Schedule != nil {
-				a.Schedule.Record(j.ID, nil)
+			if appHost.app.Schedule != nil {
+				appHost.app.Schedule.Record(j.ID, nil)
 			}
 			return
 		}
 	}
 	sessionID := strings.TrimSpace(j.SessionID)
 	if sessionID != "" {
-		meta, err := a.GetSession(sessionID)
+		meta, err := appHost.app.GetSession(sessionID)
 		if err != nil || session.NormalizeChannel(meta.Channel) != session.ChannelVideo {
 			sessionID = ""
 		}
 	}
 	if sessionID == "" {
-		meta, err := a.NewSessionOn(a.VideoWorkspace(), session.ChannelVideo)
+		meta, err := appHost.app.NewSessionOn(appHost.app.VideoWorkspace(), session.ChannelVideo)
 		if err != nil {
-			if a.Schedule != nil {
-				a.Schedule.Record(j.ID, err)
+			if appHost.app.Schedule != nil {
+				appHost.app.Schedule.Record(j.ID, err)
 			}
 			return
 		}
 		sessionID = meta.ID
 		if title := titleFrom(j.Prompt); title != "" && title != "session" {
-			_ = a.RenameSession(sessionID, title)
+			_ = appHost.app.RenameSession(sessionID, title)
 		}
 	}
 	if studioID == "" && strings.TrimSpace(j.TopicID) != "" {
@@ -1876,21 +1876,21 @@ func (a *App) runStudioJob(j schedule.Job) {
 			j.Prompt = studioJobPrompt(t, p)
 		}
 	}
-	if meta, err := a.GetSession(sessionID); err == nil {
-		_, _ = a.SetSessionPinnedSkills(sessionID, uniqueStrings(meta.PinnedSkills, studioSkillNames))
+	if meta, err := appHost.app.GetSession(sessionID); err == nil {
+		_, _ = appHost.app.SetSessionPinnedSkills(sessionID, uniqueStrings(meta.PinnedSkills, studioSkillNames))
 	}
-	if a.Inbox != nil {
-		a.Inbox.Push(inbox.Item{Kind: inbox.KindHeartbeat, Title: "Shorts " + j.ID, Body: j.Prompt, SessionID: sessionID})
+	if appHost.app.Inbox != nil {
+		appHost.app.Inbox.Push(inbox.Item{Kind: inbox.KindHeartbeat, Title: "Shorts " + j.ID, Body: j.Prompt, SessionID: sessionID})
 	}
-	err = a.StartSendOpts(sessionID, j.Prompt, false, nil)
+	err = appHost.app.StartSendOpts(sessionID, j.Prompt, false, nil)
 	if err != nil && !errors.Is(err, ErrQueued) {
-		if a.Schedule != nil {
-			a.Schedule.Record(j.ID, err)
+		if appHost.app.Schedule != nil {
+			appHost.app.Schedule.Record(j.ID, err)
 		}
 		return
 	}
-	if a.Schedule != nil {
-		a.Schedule.Record(j.ID, nil)
+	if appHost.app.Schedule != nil {
+		appHost.app.Schedule.Record(j.ID, nil)
 	}
 }
 
@@ -1956,23 +1956,23 @@ func splitCSVApp(s string) []string {
 
 // enrichStudio 给短片项目补上成片、海报、旁白、封面和每个镜头的媒体 URL，并写入 furthest_gate。
 // p 用来读 ResultHash、PosterHash、NarrationHash、CoverHash、FurthestGate、Covers 和 Storyboard.Shots。
-func (a *App) enrichStudio(p video.StudioProject) map[string]any {
+func (appHost *videoHost) enrichStudio(p video.StudioProject) map[string]any {
 	m := objJSON(p)
-	m["media_url"] = a.mediaURL(p.ResultHash)
-	m["poster_url"] = a.mediaURL(p.PosterHash)
-	m["narration_url"] = a.mediaURL(p.NarrationHash)
-	m["cover_url"] = a.mediaURL(p.CoverHash)
+	m["media_url"] = appHost.app.mediaURL(p.ResultHash)
+	m["poster_url"] = appHost.app.mediaURL(p.PosterHash)
+	m["narration_url"] = appHost.app.mediaURL(p.NarrationHash)
+	m["cover_url"] = appHost.app.mediaURL(p.CoverHash)
 	m["furthest_gate"] = p.FurthestGate()
 	covers := make([]map[string]any, 0, len(p.Covers))
 	for _, h := range p.Covers {
-		covers = append(covers, map[string]any{"hash": h, "url": a.mediaURL(h)})
+		covers = append(covers, map[string]any{"hash": h, "url": appHost.app.mediaURL(h)})
 	}
 	m["cover_urls"] = covers
 	shots := p.Storyboard.Shots
 	enriched := make([]map[string]any, 0, len(shots))
 	for _, s := range shots {
 		row := objJSON(s)
-		row["media_url"] = a.mediaURL(firstNonEmptyApp(s.ImageHash, s.VideoHash))
+		row["media_url"] = appHost.app.mediaURL(firstNonEmptyApp(s.ImageHash, s.VideoHash))
 		enriched = append(enriched, row)
 	}
 	m["shots"] = enriched
@@ -1981,31 +1981,31 @@ func (a *App) enrichStudio(p video.StudioProject) map[string]any {
 
 // enrichMedia 给媒体引用补上 media_url 和 poster_url。
 // ref 用来读 CASHash 和 PosterHash。
-func (a *App) enrichMedia(ref video.MediaRef) map[string]any {
+func (appHost *videoHost) enrichMedia(ref video.MediaRef) map[string]any {
 	m := objJSON(ref)
-	m["media_url"] = a.mediaURL(ref.CASHash)
-	m["poster_url"] = a.mediaURL(ref.PosterHash)
+	m["media_url"] = appHost.app.mediaURL(ref.CASHash)
+	m["poster_url"] = appHost.app.mediaURL(ref.PosterHash)
 	return m
 }
 
 // enrichCut 给剪辑项目补上成片、源片、配音、人声、音乐和拆条的媒体 URL。会话 id 为空时用该项目最近的剪辑会话。
 // p 在 SessionID 去掉空白后为空且 Video 非 nil 时写入最近剪辑会话，并用来读 ResultHash、SourceHash、PosterHash、Stems 和 Breakdown.Clips。
-func (a *App) enrichCut(p video.CutProject) map[string]any {
-	if strings.TrimSpace(p.SessionID) == "" && a.Video != nil {
-		p.SessionID = a.Video.LatestCutSession(p.ID)
+func (appHost *videoHost) enrichCut(p video.CutProject) map[string]any {
+	if strings.TrimSpace(p.SessionID) == "" && appHost.app.Video != nil {
+		p.SessionID = appHost.app.Video.LatestCutSession(p.ID)
 	}
 	m := objJSON(p)
-	m["media_url"] = a.mediaURL(firstNonEmptyApp(p.ResultHash, p.SourceHash))
-	m["source_url"] = a.mediaURL(p.SourceHash)
-	m["result_url"] = a.mediaURL(p.ResultHash)
-	m["poster_url"] = a.mediaURL(p.PosterHash)
-	m["dub_url"] = a.mediaURL(p.Stems.Dub)
-	m["voice_url"] = a.mediaURL(p.Stems.Voice)
-	m["music_url"] = a.mediaURL(p.Stems.Music)
+	m["media_url"] = appHost.app.mediaURL(firstNonEmptyApp(p.ResultHash, p.SourceHash))
+	m["source_url"] = appHost.app.mediaURL(p.SourceHash)
+	m["result_url"] = appHost.app.mediaURL(p.ResultHash)
+	m["poster_url"] = appHost.app.mediaURL(p.PosterHash)
+	m["dub_url"] = appHost.app.mediaURL(p.Stems.Dub)
+	m["voice_url"] = appHost.app.mediaURL(p.Stems.Voice)
+	m["music_url"] = appHost.app.mediaURL(p.Stems.Music)
 	clips := make([]map[string]any, 0, len(p.Breakdown.Clips))
 	for _, c := range p.Breakdown.Clips {
 		row := objJSON(c)
-		row["media_url"] = a.mediaURL(c.Hash)
+		row["media_url"] = appHost.app.mediaURL(c.Hash)
 		clips = append(clips, row)
 	}
 	m["clips"] = clips
@@ -2015,8 +2015,8 @@ func (a *App) enrichCut(p video.CutProject) map[string]any {
 // conductorBrief 写出简报。花额度且账号齐全时，在同一次调用里抛出 hold 确认卡，结果末尾写上 confirmed 和卡片原答复。缺账号或不花额度时只返回简报。
 // tools 用来调用 ask_user，为 nil 时不出卡、答复记为 unconfirmed。
 // args 交给 VideoBrief。
-func (a *App) conductorBrief(tools *runtime.WorkspaceTools, args map[string]any) runtime.ToolResult {
-	plan, err := a.Video.VideoBrief(args)
+func (appHost *videoHost) conductorBrief(tools *runtime.WorkspaceTools, args map[string]any) runtime.ToolResult {
+	plan, err := appHost.app.Video.VideoBrief(args)
 	if err != nil {
 		return runtime.ToolResult{Err: err}
 	}
@@ -2028,7 +2028,7 @@ func (a *App) conductorBrief(tools *runtime.WorkspaceTools, args map[string]any)
 	if tools == nil {
 		return runtime.ToolResult{Content: out + "\nconfirmed: unconfirmed"}
 	}
-	form, _ := json.Marshal(a.Video.BriefConfirmArgs(plan))
+	form, _ := json.Marshal(appHost.app.Video.BriefConfirmArgs(plan))
 	res := tools.Call("ask_user", string(form))
 	if res.Err != nil {
 		return runtime.ToolResult{Err: res.Err}

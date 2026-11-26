@@ -69,6 +69,9 @@ func (e *Engine) submitImage(ctx context.Context, j *Job) error {
 	case "hunyuan":
 		return e.hunyuanImage(ctx, p, key, j, params)
 	default:
+		if handled, err := e.submitProtocolProvider(ctx, j, p, key, "image"); handled {
+			return err
+		}
 		return fmt.Errorf("图像连接「%s」（%s）还不能用于短片和短剧生图。到 设置 → 生成 里启用 OpenAI 兼容图像接口、Gemini 图像、Seedream、即梦或混元", firstNonEmpty(p.Name, p.Provider), firstNonEmpty(p.Protocol, p.Provider))
 	}
 }
@@ -94,6 +97,9 @@ func openAICompatURL(base, suffix string) string {
 // ctx 传给请求的 WithContext。
 // j 传给 providerForJob，RemoteID 拼进查询地址；succeeded、completed 或 success 时传给 finishMedia，否则把 Status 写成 polling。
 func (e *Engine) pollImage(ctx context.Context, j *Job) error {
+	if handled, err := e.pollProtocolJob(ctx, j); handled {
+		return err
+	}
 	p, err := e.providerForJob(*j, "image")
 	if err != nil {
 		return err
@@ -157,6 +163,9 @@ func (e *Engine) submitVideo(ctx context.Context, j *Job) error {
 	case "aliyun":
 		return e.wanSubmit(ctx, p, key, j, params)
 	default:
+		if handled, err := e.submitProtocolProvider(ctx, j, p, key, "video"); handled {
+			return err
+		}
 		return fmt.Errorf("unsupported video provider %s", p.Provider)
 	}
 }
@@ -165,6 +174,9 @@ func (e *Engine) submitVideo(ctx context.Context, j *Job) error {
 // ctx 传给 seedancePoll、minimaxPoll 或 wanPoll。
 // j 传给 providerForJob，再按供应商传给对应的查询函数。
 func (e *Engine) pollVideo(ctx context.Context, j *Job) error {
+	if handled, err := e.pollProtocolJob(ctx, j); handled {
+		return err
+	}
 	p, err := e.providerForJob(*j, "video")
 	if err != nil {
 		return err

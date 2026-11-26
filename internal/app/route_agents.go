@@ -19,8 +19,8 @@ const rosterMax = 8
 
 // agentIntake 取出 text 里 @ 过的 agent，用 Manager 核对。返回认得的编号（按出现顺序）和写给路由的说明，没有可说的时为空串。
 // 认不出的丢掉并说一句；点名的 agent 现在派不了时，让路由去问人，不擅自换人。
-func (a *App) agentIntake(text string) ([]string, string) {
-	m := a.Buddies()
+func (appHost *routeHost) agentIntake(text string) ([]string, string) {
+	m := appHost.app.Buddies()
 	var known, lines []string
 	for _, id := range runtime.MentionAgents(text) {
 		if id == buddy.YoyoID {
@@ -41,7 +41,7 @@ func (a *App) agentIntake(text string) ([]string, string) {
 			lines = append(lines, fmt.Sprintf("%s 现在离线（%s）。告诉人，问是等它上线还是改用 yoyo。不要擅自换人。", id, reason))
 		}
 	}
-	s := a.buddySettings()
+	s := appHost.app.buddySettings()
 	switch {
 	case len(known) == 1:
 		lines = append([]string{"人指定 " + known[0] + " 来做。accept 时 agent 填 " + known[0] + "。"}, lines...)
@@ -52,7 +52,7 @@ func (a *App) agentIntake(text string) ([]string, string) {
 	case strings.TrimSpace(s.DefaultAgent) != "":
 		lines = append(lines, "人没有点名 agent。agent 留空时交给默认的 "+strings.TrimSpace(s.DefaultAgent)+"。")
 	}
-	if roster := a.agentRoster(len(known) > 0 || a.groupsRunning(), s); roster != "" {
+	if roster := appHost.app.agentRoster(len(known) > 0 || appHost.app.groupsRunning(), s); roster != "" {
 		lines = append(lines, "可派的 agent：\n"+roster)
 	}
 	return known, strings.Join(lines, "\n")
@@ -70,10 +70,10 @@ func multiAgentNote(known []string, text string) string {
 
 // groupsRunning 在有任务组还在做或在等人时为真。这时人可能要改派其中一份，路由要看到可派名单。
 // 编排还没打开时为假，不为这个去打开它。
-func (a *App) groupsRunning() bool {
-	a.deskMu.Lock()
-	rt := a.orch
-	a.deskMu.Unlock()
+func (appHost *routeHost) groupsRunning() bool {
+	appHost.app.deskMu.Lock()
+	rt := appHost.app.orch
+	appHost.app.deskMu.Unlock()
 	if rt == nil {
 		return false
 	}
@@ -87,8 +87,8 @@ func (a *App) groupsRunning() bool {
 
 // agentRoster 是给路由看的可派名单，最多 rosterMax 行，每行「编号 名字，在线或在做 N，擅长 …」。
 // mentioned 为真（人 @ 过 agent，或有任务组还在做）、打开了自动挑选或设了默认 agent 时才给；能派的只有 yoyo 时不给。
-func (a *App) agentRoster(mentioned bool, s buddy.Settings) string {
-	m := a.Buddies()
+func (appHost *routeHost) agentRoster(mentioned bool, s buddy.Settings) string {
+	m := appHost.app.Buddies()
 	if m == nil || (!mentioned && !s.AutoPick && strings.TrimSpace(s.DefaultAgent) == "") {
 		return ""
 	}
@@ -124,9 +124,9 @@ func (a *App) agentRoster(mentioned bool, s buddy.Settings) string {
 // routeAgent 定下 triggerID 这一项交给谁。agent 是路由填的，可以为空；返回空串表示 yoyo 自带工人。
 // 只能交给人 @ 过的 agent 或 yoyo；人没 @ 时用默认 agent，打开自动挑选后也可以从名单里选。pinned 表示人点了名。
 // 违反时返回路由能照着改的说明。
-func (a *App) routeAgent(rt *superagent.Runtime, triggerID, agent string) (string, bool, error) {
+func (appHost *routeHost) routeAgent(rt *superagent.Runtime, triggerID, agent string) (string, bool, error) {
 	mentioned := rt.TriggerAgents(triggerID)
-	s := a.buddySettings()
+	s := appHost.app.buddySettings()
 	def := strings.TrimSpace(s.DefaultAgent)
 	agent = strings.ToLower(strings.TrimSpace(agent))
 	if agent == "" {
@@ -135,7 +135,7 @@ func (a *App) routeAgent(rt *superagent.Runtime, triggerID, agent string) (strin
 			agent = mentioned[0]
 		case len(mentioned) > 1:
 			return "", false, fmt.Errorf("人点了 %s，agent 要填其中一个", strings.Join(mentioned, "、"))
-		case def != "" && def != buddy.YoyoID && a.agentRoutable(def) == "":
+		case def != "" && def != buddy.YoyoID && appHost.app.agentRoutable(def) == "":
 			agent = def
 		default:
 			return "", false, nil
@@ -146,22 +146,22 @@ func (a *App) routeAgent(rt *superagent.Runtime, triggerID, agent string) (strin
 		return "", pinned, nil
 	}
 	if !pinned && (len(mentioned) > 0 || (agent != def && !s.AutoPick)) {
-		return "", false, fmt.Errorf("人没有点名 %s。%s", agent, a.agentChoices(mentioned, def, s.AutoPick))
+		return "", false, fmt.Errorf("人没有点名 %s。%s", agent, appHost.app.agentChoices(mentioned, def, s.AutoPick))
 	}
-	if reason := a.agentRoutable(agent); reason != "" {
-		return "", false, fmt.Errorf("%s 现在派不了（%s）。现在能派的有：%s。%s", agent, reason, strings.Join(a.routableIDs(), "、"), a.agentChoices(mentioned, def, s.AutoPick))
+	if reason := appHost.app.agentRoutable(agent); reason != "" {
+		return "", false, fmt.Errorf("%s 现在派不了（%s）。现在能派的有：%s。%s", agent, reason, strings.Join(appHost.app.routableIDs(), "、"), appHost.app.agentChoices(mentioned, def, s.AutoPick))
 	}
 	return agent, pinned, nil
 }
 
 // switchAgent 在路由给的 agent 和 ticket 现在的不同时改派，返回给路由的回执；agent 为空或相同时什么都不做，返回空串。
-func (a *App) switchAgent(rt *superagent.Runtime, ticket, trigger, agent, brief string) (string, error) {
+func (appHost *routeHost) switchAgent(rt *superagent.Runtime, ticket, trigger, agent, brief string) (string, error) {
 	agent = strings.ToLower(strings.TrimSpace(agent))
 	cur, ok := rt.TicketAgent(ticket)
 	if agent == "" || !ok || agent == cur {
 		return "", nil
 	}
-	pick, pinned, err := a.routeAgent(rt, trigger, agent)
+	pick, pinned, err := appHost.app.routeAgent(rt, trigger, agent)
 	if err != nil {
 		return "", err
 	}
@@ -172,12 +172,12 @@ func (a *App) switchAgent(rt *superagent.Runtime, ticket, trigger, agent, brief 
 }
 
 // agentChoices 是这一项的 agent 能填什么，写进拒绝说明里。
-func (a *App) agentChoices(mentioned []string, def string, auto bool) string {
+func (appHost *routeHost) agentChoices(mentioned []string, def string, auto bool) string {
 	switch {
 	case len(mentioned) > 0:
 		return "agent 只能填人 @ 过的 " + strings.Join(mentioned, "、") + "，或 yoyo。"
 	case auto:
-		return "agent 可以填名单里能派的：" + strings.Join(a.routableIDs(), "、") + "。"
+		return "agent 可以填名单里能派的：" + strings.Join(appHost.app.routableIDs(), "、") + "。"
 	case def != "" && def != buddy.YoyoID:
 		return "人没有点名 agent，agent 只能填默认的 " + def + "，或 yoyo。"
 	default:
@@ -186,11 +186,11 @@ func (a *App) agentChoices(mentioned []string, def string, auto bool) string {
 }
 
 // agentRoutable 说明 id 现在为什么派不了。能派时为空串。
-func (a *App) agentRoutable(id string) string {
+func (appHost *routeHost) agentRoutable(id string) string {
 	if id == buddy.YoyoID {
 		return ""
 	}
-	m := a.Buddies()
+	m := appHost.app.Buddies()
 	if m == nil {
 		return "Buddy 没有启动"
 	}
@@ -202,9 +202,9 @@ func (a *App) agentRoutable(id string) string {
 }
 
 // routableIDs 是现在能派的 agent 编号，yoyo 在前。
-func (a *App) routableIDs() []string {
+func (appHost *routeHost) routableIDs() []string {
 	out := []string{buddy.YoyoID}
-	m := a.Buddies()
+	m := appHost.app.Buddies()
 	if m == nil {
 		return out
 	}

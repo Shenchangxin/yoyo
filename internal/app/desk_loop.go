@@ -31,20 +31,20 @@ type DeskMute struct {
 }
 
 // DeskState 返回最近一轮判断和按住的类别。第一次调用时开始按分钟送达，所以只有接上界面的进程才会往主会话里说话。
-func (a *App) DeskState() DeskState {
+func (appHost *deskHost) DeskState() DeskState {
 	out := DeskState{Mutes: []DeskMute{}}
-	if a == nil || a.Home == nil {
+	if appHost.app == nil || appHost.app.Home == nil {
 		return out
 	}
-	a.ensureDeskLoop()
-	a.bookMu.Lock()
-	out.Briefing = a.deskSeen
-	at := a.deskSeenAt
-	a.bookMu.Unlock()
+	appHost.app.ensureDeskLoop()
+	appHost.app.bookMu.Lock()
+	out.Briefing = appHost.app.deskSeen
+	at := appHost.app.deskSeenAt
+	appHost.app.bookMu.Unlock()
 	if !at.IsZero() {
 		out.At = at.UTC().Format(time.RFC3339)
 	}
-	store, err := a.deskBook()
+	store, err := appHost.app.deskBook()
 	if err != nil {
 		return out
 	}
@@ -56,35 +56,35 @@ func (a *App) DeskState() DeskState {
 }
 
 // ensureDeskLoop 只启动一次送达循环。Close 之后不再重启。
-func (a *App) ensureDeskLoop() {
-	a.deskOnce.Do(func() {
+func (appHost *deskHost) ensureDeskLoop() {
+	appHost.app.deskOnce.Do(func() {
 		stop := make(chan struct{})
-		a.bookMu.Lock()
-		a.deskStop = stop
-		a.bookMu.Unlock()
-		go a.deskLoop(stop)
+		appHost.app.bookMu.Lock()
+		appHost.app.deskStop = stop
+		appHost.app.bookMu.Unlock()
+		go appHost.app.deskLoop(stop)
 	})
 }
 
 // stopDeskLoop 停掉送达循环。还没启动时什么都不做。
-func (a *App) stopDeskLoop() {
-	if a == nil {
+func (appHost *deskHost) stopDeskLoop() {
+	if appHost.app == nil {
 		return
 	}
-	a.bookMu.Lock()
-	stop := a.deskStop
-	a.deskStop = nil
-	a.bookMu.Unlock()
+	appHost.app.bookMu.Lock()
+	stop := appHost.app.deskStop
+	appHost.app.deskStop = nil
+	appHost.app.bookMu.Unlock()
 	if stop != nil {
 		close(stop)
 	}
 }
 
-func (a *App) deskLoop(stop <-chan struct{}) {
+func (appHost *deskHost) deskLoop(stop <-chan struct{}) {
 	tick := time.NewTicker(deskEvery)
 	defer tick.Stop()
 	for {
-		a.deskTick(time.Now())
+		appHost.app.deskTick(time.Now())
 		select {
 		case <-stop:
 			return
@@ -94,19 +94,19 @@ func (a *App) deskLoop(stop <-chan struct{}) {
 }
 
 // deskTick 刷新一轮清点和判断，再把该说的写进主会话。工作站暂停时整轮跳过。
-func (a *App) deskTick(now time.Time) {
-	if a == nil || a.IsPaused() {
+func (appHost *deskHost) deskTick(now time.Time) {
+	if appHost.app == nil || appHost.app.IsPaused() {
 		return
 	}
-	snap := a.PoiRefresh()
+	snap := appHost.app.PoiRefresh()
 	if snap.Initiative == nil || !briefingDelivers(*snap.Initiative) {
 		return
 	}
-	meta, err := a.MainSession()
+	meta, err := appHost.app.MainSession()
 	if err != nil || strings.TrimSpace(meta.ID) == "" {
 		return
 	}
-	a.deliverSpeaks(meta.ID, *snap.Initiative, now)
+	appHost.app.deliverSpeaks(meta.ID, *snap.Initiative, now)
 }
 
 // briefingDelivers 在这一轮有话要写进主会话时为真。开口的条目要送，按住的资讯也要送，不留在任务栏。
@@ -125,8 +125,8 @@ func briefingDelivers(b initiative.Briefing) bool {
 // deliverSpeaks 把 b 里该开口的写进 sessionID，再把真正写进去的记成已经说过。返回写进去的条目。
 // 工单走交接，欢迎信走简报，都不在这里重复。写不进去的留到下一轮，不会被记成说过。
 // 按住的资讯同样写进主会话：人在忙、或还没到下一条的间隔，都不再改放到任务栏。人按住的类别不送。当天额度用完后不再追加。
-func (a *App) deliverSpeaks(sessionID string, b initiative.Briefing, now time.Time) []initiative.Signal {
-	store, err := a.deskBook()
+func (appHost *deskHost) deliverSpeaks(sessionID string, b initiative.Briefing, now time.Time) []initiative.Signal {
+	store, err := appHost.app.deskBook()
 	if err != nil || strings.TrimSpace(sessionID) == "" {
 		return nil
 	}
@@ -135,7 +135,7 @@ func (a *App) deliverSpeaks(sessionID string, b initiative.Briefing, now time.Ti
 		day = now.Format("2006-01-02")
 	}
 	quiet := store.Quiet(day)
-	daily := reach.AllowanceFor(a.reachPace(now)).Daily
+	daily := reach.AllowanceFor(appHost.app.reachPace(now)).Daily
 	if daily < 1 {
 		daily = 12
 	}
@@ -152,7 +152,7 @@ func (a *App) deliverSpeaks(sessionID string, b initiative.Briefing, now time.Ti
 		if note.Text == "" {
 			continue
 		}
-		if !a.DeskPush(note) {
+		if !appHost.app.DeskPush(note) {
 			continue
 		}
 		if !signal.Speak {

@@ -18,33 +18,33 @@ import (
 )
 
 // agentDesk 返回进程内的桌面代理宿主。第一次调用时创建。
-func (a *App) agentDesk() *dshdesk.Host {
-	if a == nil {
+func (appHost *deskHost) agentDesk() *dshdesk.Host {
+	if appHost.app == nil {
 		return dshdesk.New()
 	}
-	a.deskMu.Lock()
-	defer a.deskMu.Unlock()
-	if a.desk == nil {
-		a.desk = dshdesk.New()
+	appHost.app.deskMu.Lock()
+	defer appHost.app.deskMu.Unlock()
+	if appHost.app.desk == nil {
+		appHost.app.desk = dshdesk.New()
 	}
-	return a.desk
+	return appHost.app.desk
 }
 
 // orchestrator 返回编排运行时。第一次调用时打开 SQLite、接上模型和工人，并开始两秒轮次。应用关掉之后返回 nil。
-func (a *App) orchestrator() *superagent.Runtime {
-	if a == nil {
+func (appHost *deskHost) orchestrator() *superagent.Runtime {
+	if appHost.app == nil {
 		return nil
 	}
-	a.deskMu.Lock()
-	if a.orch != nil || a.orchShut {
-		rt := a.orch
-		a.deskMu.Unlock()
+	appHost.app.deskMu.Lock()
+	if appHost.app.orch != nil || appHost.app.orchShut {
+		rt := appHost.app.orch
+		appHost.app.deskMu.Unlock()
 		return rt
 	}
 	path := ""
 	dir := ""
-	if a.Home != nil {
-		dir = a.Home.Root
+	if appHost.app.Home != nil {
+		dir = appHost.app.Home.Root
 		path = filepath.Join(dir, "superagent.sqlite")
 	}
 	rt, err := superagent.Open(path, superagent.Policy{Mode: "observe", Version: 1})
@@ -52,37 +52,37 @@ func (a *App) orchestrator() *superagent.Runtime {
 		rt, _ = superagent.Open("", superagent.Policy{Mode: "observe", Version: 1})
 	}
 	if rt == nil {
-		a.deskMu.Unlock()
+		appHost.app.deskMu.Unlock()
 		return nil
 	}
 	work := dir
 	rt.SetWorkRoot(work)
 	rt.Bind(func() error {
-		_, err := a.ClientFor(SessionMeta{})
+		_, err := appHost.app.ClientFor(SessionMeta{})
 		return err
-	}, liveModel{app: a}, orchestratorShell(work))
-	rt.SetMount(a.mountWorker)
-	rt.SetOpener(a.openBuddyWorker)
-	rt.SetAgentLimit(a.buddyLimit)
-	rt.SetAgentName(a.buddyName)
-	rt.SetRoots(func(ticketID string) []string { return a.namedWorkRoots(ticketID, dir) })
-	rt.SetProfile(a.workerProfile)
-	rt.SetOnReport(a.relayReport)
-	rt.SetOnNotice(a.relayNotice)
-	rt.SetOnWake(a.wakeRouter)
+	}, liveModel{app: appHost.app}, orchestratorShell(work))
+	rt.SetMount(appHost.app.mountWorker)
+	rt.SetOpener(appHost.app.openBuddyWorker)
+	rt.SetAgentLimit(appHost.app.buddyLimit)
+	rt.SetAgentName(appHost.app.buddyName)
+	rt.SetRoots(func(ticketID string) []string { return appHost.app.namedWorkRoots(ticketID, dir) })
+	rt.SetProfile(appHost.app.workerProfile)
+	rt.SetOnReport(appHost.app.relayReport)
+	rt.SetOnNotice(appHost.app.relayNotice)
+	rt.SetOnWake(appHost.app.wakeRouter)
 	rt.SetPrepareRunner(orchestratorPrepare(work))
-	rt.SetIntake(a.connectorTriggers)
-	a.orch = rt
-	a.deskMu.Unlock()
+	rt.SetIntake(appHost.app.connectorTriggers)
+	appHost.app.orch = rt
+	appHost.app.deskMu.Unlock()
 	// 应用本身没暂停时，清掉快照里留下的编排暂停。
 	// 那一档没有单独开关，留着真值时人点的任务不会开工，页面却像正在执行。
-	if !a.Config.Paused {
+	if !appHost.app.Config.Paused {
 		_ = rt.SetPaused(false)
 	}
 	rt.Start()
 	go func() {
 		time.Sleep(time.Second)
-		a.relayWaiting()
+		appHost.app.relayWaiting()
 	}()
 	return rt
 }
@@ -91,21 +91,21 @@ func (a *App) orchestrator() *superagent.Runtime {
 const workerProfileBytes = 1500
 
 // workerProfile 是交给工人的操作者画像：偏好和本人说过的话。没有记忆库时为空。
-func (a *App) workerProfile() string {
-	if a == nil || a.Memory == nil {
+func (appHost *deskHost) workerProfile() string {
+	if appHost.app == nil || appHost.app.Memory == nil {
 		return ""
 	}
-	return a.Memory.OperatorPin(workerProfileBytes)
+	return appHost.app.Memory.OperatorPin(workerProfileBytes)
 }
 
 // relayWaiting 把还等人的工单补进当前主会话。已经写过的同一段正文不会再写。
-func (a *App) relayWaiting() {
-	if a == nil {
+func (appHost *deskHost) relayWaiting() {
+	if appHost.app == nil {
 		return
 	}
-	a.deskMu.Lock()
-	rt := a.orch
-	a.deskMu.Unlock()
+	appHost.app.deskMu.Lock()
+	rt := appHost.app.orch
+	appHost.app.deskMu.Unlock()
 	if rt == nil {
 		return
 	}
@@ -115,28 +115,28 @@ func (a *App) relayWaiting() {
 		if !ok {
 			continue
 		}
-		a.relayReport(row.ID, state, summary, question)
+		appHost.app.relayReport(row.ID, state, summary, question)
 	}
 }
 
 // stopOrchestrator 停掉两秒轮次，之后不再打开。还没打开过时只记下已关。
-func (a *App) stopOrchestrator() {
-	if a == nil {
+func (appHost *deskHost) stopOrchestrator() {
+	if appHost.app == nil {
 		return
 	}
-	a.deskMu.Lock()
-	rt := a.orch
-	a.orch = nil
-	a.orchShut = true
-	a.deskMu.Unlock()
+	appHost.app.deskMu.Lock()
+	rt := appHost.app.orch
+	appHost.app.orch = nil
+	appHost.app.orchShut = true
+	appHost.app.deskMu.Unlock()
 	if rt != nil {
 		rt.Stop()
 	}
 }
 
 // OrchestratorView 返回编排台快照。还没有运行时时会先打开。
-func (a *App) OrchestratorView() superagent.View {
-	rt := a.orchestrator()
+func (appHost *deskHost) OrchestratorView() superagent.View {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return superagent.View{Health: "unavailable"}
 	}
@@ -144,8 +144,8 @@ func (a *App) OrchestratorView() superagent.View {
 }
 
 // OrchestratorDecide 评估 triggerID。kind 与 reason 写进决定。
-func (a *App) OrchestratorDecide(triggerID, kind, reason string) error {
-	rt := a.orchestrator()
+func (appHost *deskHost) OrchestratorDecide(triggerID, kind, reason string) error {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return errString("orchestrator unavailable")
 	}
@@ -156,8 +156,8 @@ func (a *App) OrchestratorDecide(triggerID, kind, reason string) error {
 }
 
 // OrchestratorMode 换成 mode。mode 只能是 off、observe 或 auto。
-func (a *App) OrchestratorMode(mode string) error {
-	rt := a.orchestrator()
+func (appHost *deskHost) OrchestratorMode(mode string) error {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return errString("orchestrator unavailable")
 	}
@@ -165,8 +165,8 @@ func (a *App) OrchestratorMode(mode string) error {
 }
 
 // OrchestratorPaused 设置暂停。paused 为真时两秒轮次不接受新触发。
-func (a *App) OrchestratorPaused(paused bool) error {
-	rt := a.orchestrator()
+func (appHost *deskHost) OrchestratorPaused(paused bool) error {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return errString("orchestrator unavailable")
 	}
@@ -174,8 +174,8 @@ func (a *App) OrchestratorPaused(paused bool) error {
 }
 
 // OrchestratorDeliver 把还没交给编排台的评估标成已交付。返回新交付的轮数。
-func (a *App) OrchestratorDeliver() int {
-	rt := a.orchestrator()
+func (appHost *deskHost) OrchestratorDeliver() int {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return 0
 	}
@@ -183,8 +183,8 @@ func (a *App) OrchestratorDeliver() int {
 }
 
 // WorkerTranscript 返回工单已经落下的会话。ticketID 为空时为空。
-func (a *App) WorkerTranscript(ticketID string) []superagent.TranscriptLine {
-	rt := a.orchestrator()
+func (appHost *deskHost) WorkerTranscript(ticketID string) []superagent.TranscriptLine {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return []superagent.TranscriptLine{}
 	}
@@ -197,8 +197,8 @@ func (a *App) WorkerTranscript(ticketID string) []superagent.TranscriptLine {
 
 // OrchestratorAct 执行编排台动作。kind、ticketID、triggerID、text 和 reason 交给运行时。
 // 换人时 text 是 agent 编号，空着是 yoyo；现在派不了的先拒掉，不让工单落到一个开不起来的工人上。
-func (a *App) OrchestratorAct(kind, ticketID, triggerID, text, reason string) error {
-	rt := a.orchestrator()
+func (appHost *deskHost) OrchestratorAct(kind, ticketID, triggerID, text, reason string) error {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return errString("orchestrator unavailable")
 	}
@@ -207,7 +207,7 @@ func (a *App) OrchestratorAct(kind, ticketID, triggerID, text, reason string) er
 		if agent == "" {
 			agent = buddy.YoyoID
 		}
-		if why := a.agentRoutable(agent); why != "" {
+		if why := appHost.app.agentRoutable(agent); why != "" {
 			return errString(agent + " " + why)
 		}
 		text = agent
@@ -216,8 +216,8 @@ func (a *App) OrchestratorAct(kind, ticketID, triggerID, text, reason string) er
 }
 
 // OrchestratorAdmission 写下三格准入。listedUnaddressed、unlistedAddressed、unlistedUnaddressed 只能是空、explicit、inferred 或 ignore。
-func (a *App) OrchestratorAdmission(listedUnaddressed, unlistedAddressed, unlistedUnaddressed string) error {
-	rt := a.orchestrator()
+func (appHost *deskHost) OrchestratorAdmission(listedUnaddressed, unlistedAddressed, unlistedUnaddressed string) error {
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return errString("orchestrator unavailable")
 	}

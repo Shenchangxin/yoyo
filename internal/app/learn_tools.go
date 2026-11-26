@@ -82,44 +82,44 @@ func (m *learnMount) add(name, desc string, readOnly bool, props map[string]any,
 
 // attachLearn 在学习频道的父会话上挂学习工具，并把它们放进开场的工具清单。
 // tools 为 nil、没有学习库、不是聊天叠加层、深度不是 0，或会话不在学习频道时什么都不做。
-func (a *App) attachLearn(tools *runtime.WorkspaceTools) {
-	if a == nil || a.Learn == nil || tools == nil || !tools.ChatOverlay || tools.Depth != 0 {
+func (appHost *learnHost) attachLearn(tools *runtime.WorkspaceTools) {
+	if appHost.app == nil || appHost.app.Learn == nil || tools == nil || !tools.ChatOverlay || tools.Depth != 0 {
 		return
 	}
-	meta, err := a.GetSession(tools.SessionID)
+	meta, err := appHost.app.GetSession(tools.SessionID)
 	if err != nil || session.NormalizeChannel(meta.Channel) != session.ChannelLearn {
 		return
 	}
 	if tools.Extra == nil {
 		tools.Extra = map[string]runtime.ExtraTool{}
 	}
-	m := &learnMount{a: a, tools: tools, session: tools.SessionID}
-	a.mountJournalTool(m)
+	m := &learnMount{a: appHost.app, tools: tools, session: tools.SessionID}
+	appHost.app.mountJournalTool(m)
 	lib := meta.LibraryID
 	if lib == "" && meta.PathID != "" {
-		if view, err := a.Learn.Path(meta.PathID); err == nil {
+		if view, err := appHost.app.Learn.Path(meta.PathID); err == nil {
 			lib = view.LibraryID
 		}
 	}
 	if lib != "" {
-		a.mountLibraryTools(m, lib)
+		appHost.app.mountLibraryTools(m, lib)
 	}
 	if meta.MaterialID != "" {
-		a.mountMaterialTools(m, meta.MaterialID)
+		appHost.app.mountMaterialTools(m, meta.MaterialID)
 	}
 	if meta.BookID != "" {
-		a.mountBookTools(m, meta.BookID)
+		appHost.app.mountBookTools(m, meta.BookID)
 	}
 	if meta.PathID != "" {
-		a.mountPathTools(m, meta.PathID)
+		appHost.app.mountPathTools(m, meta.PathID)
 	}
-	a.mountPracticeTools(m)
+	appHost.app.mountPracticeTools(m)
 	// 聊天叠加层只把点了名的扩展工具放进开场清单，其余要先搜才看得见。学习工具必须一开场就在。
 	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, m.names)
 }
 
 // mountJournalTool 挂上读写手记的工具。
-func (a *App) mountJournalTool(m *learnMount) {
+func (appHost *learnHost) mountJournalTool(m *learnMount) {
 	m.add("learn_journal", "Read or update the learner's mission and the hand-off for the next session. action=get reads it. action=set rewrites mission fields; pass only what changed. insight appends one line the learner wants to keep.", false, map[string]any{
 		"action":     map[string]any{"type": "string", "enum": []string{"get", "set"}},
 		"topic":      map[string]any{"type": "string", "description": "What the learner is working toward."},
@@ -130,7 +130,7 @@ func (a *App) mountJournalTool(m *learnMount) {
 		"insight":    map[string]any{"type": "string"},
 	}, nil, func(args map[string]any) (learnOut, error) {
 		if strParam(args, "action") == "set" {
-			cur, err := a.Learn.LoadJournal()
+			cur, err := appHost.app.Learn.LoadJournal()
 			if err != nil {
 				return learnOut{}, err
 			}
@@ -140,16 +140,16 @@ func (a *App) mountJournalTool(m *learnMount) {
 				}
 				return old
 			}
-			if err := a.Learn.SaveJournal(keep("topic", cur.Topic), keep("why", cur.Why), keep("level", cur.Level), keep("summary", cur.Summary), keep("next_focus", cur.NextFocus)); err != nil {
+			if err := appHost.app.Learn.SaveJournal(keep("topic", cur.Topic), keep("why", cur.Why), keep("level", cur.Level), keep("summary", cur.Summary), keep("next_focus", cur.NextFocus)); err != nil {
 				return learnOut{}, err
 			}
 		}
 		if insight := strParam(args, "insight"); insight != "" {
-			if err := a.Learn.AddJournal(insight); err != nil {
+			if err := appHost.app.Learn.AddJournal(insight); err != nil {
 				return learnOut{}, err
 			}
 		}
-		j, err := a.Learn.LoadJournal()
+		j, err := appHost.app.Learn.LoadJournal()
 		if err != nil {
 			return learnOut{}, err
 		}
@@ -159,8 +159,8 @@ func (a *App) mountJournalTool(m *learnMount) {
 }
 
 // mountPathTools 挂上掌握路径的工具。pathID 是会话绑定的路径。
-func (a *App) mountPathTools(m *learnMount, pathID string) {
-	s := a.Learn
+func (appHost *learnHost) mountPathTools(m *learnMount, pathID string) {
+	s := appHost.app.Learn
 	sessionID := m.session
 	tools := m.tools
 	// held 在占着路径租约的时候跑 fn。另一段对话正在改这条路径时返回 path busy。
@@ -246,7 +246,7 @@ func (a *App) mountPathTools(m *learnMount, pathID string) {
 		}},
 		"mode": map[string]any{"type": "string", "enum": []string{"replace", "append"}},
 	}, []string{"modules"}, func(args map[string]any) (learnOut, error) {
-		if err := a.needMode(pathID, "learn_build", learn.ModeOutline); err != nil {
+		if err := appHost.app.needMode(pathID, "learn_build", learn.ModeOutline); err != nil {
 			return learnOut{}, err
 		}
 		modules := decodeOutline(args["modules"])
@@ -294,7 +294,7 @@ func (a *App) mountPathTools(m *learnMount, pathID string) {
 		"remove": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Knowledge point ids."},
 		"order":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Module ids in the new order."},
 	}, nil, func(args map[string]any) (learnOut, error) {
-		if err := a.needMode(pathID, "learn_revise", learn.ModeOutline); err != nil {
+		if err := appHost.app.needMode(pathID, "learn_revise", learn.ModeOutline); err != nil {
 			return learnOut{}, err
 		}
 		edit := decodeOutlineEdit(args)
@@ -325,11 +325,11 @@ func (a *App) mountPathTools(m *learnMount, pathID string) {
 		"difficulty":       map[string]any{"type": "string", "enum": []string{"easy", "medium", "hard"}},
 		"hinted":           map[string]any{"type": "boolean", "description": "True when you already gave a hint for this exact question. A hinted answer does not count toward the gate."},
 	}, []string{"point_id", "question", "expected_answer"}, func(args map[string]any) (learnOut, error) {
-		if err := a.needMode(pathID, "learn_quiz", learn.ModeStudy, learn.ModeReview); err != nil {
+		if err := appHost.app.needMode(pathID, "learn_quiz", learn.ModeStudy, learn.ModeReview); err != nil {
 			return learnOut{}, err
 		}
 		pointID := strParam(args, "point_id")
-		if err := a.reviewScope(pathID, pointID); err != nil {
+		if err := appHost.app.reviewScope(pathID, pointID); err != nil {
 			return learnOut{}, err
 		}
 		var options []learn.Option
@@ -362,7 +362,7 @@ func (a *App) mountPathTools(m *learnMount, pathID string) {
 	m.add("learn_grade", "Grade the pending question from what the learner just wrote in the chat. Use it only when they answered in the message instead of on the card; a card answer is already graded and appears in learning_state. study or review mode only.", false, map[string]any{
 		"answer": map[string]any{"type": "string", "description": "The part of the learner's message that is their answer, copied exactly."},
 	}, nil, func(args map[string]any) (learnOut, error) {
-		if err := a.needMode(pathID, "learn_grade", learn.ModeStudy, learn.ModeReview); err != nil {
+		if err := appHost.app.needMode(pathID, "learn_grade", learn.ModeStudy, learn.ModeReview); err != nil {
 			return learnOut{}, err
 		}
 		answer := learnerWords(strParam(args, "answer"), tools.OperatorVoice)
@@ -392,11 +392,11 @@ func (a *App) mountPathTools(m *learnMount, pathID string) {
 		"point_id": map[string]any{"type": "string"},
 		"note":     map[string]any{"type": "string", "description": "Optional context for the grader, such as what the explanation should cover."},
 	}, []string{"point_id"}, func(args map[string]any) (learnOut, error) {
-		if err := a.needMode(pathID, "learn_assess", learn.ModeStudy, learn.ModeReview); err != nil {
+		if err := appHost.app.needMode(pathID, "learn_assess", learn.ModeStudy, learn.ModeReview); err != nil {
 			return learnOut{}, err
 		}
 		pointID := strParam(args, "point_id")
-		if err := a.reviewScope(pathID, pointID); err != nil {
+		if err := appHost.app.reviewScope(pathID, pointID); err != nil {
 			return learnOut{}, err
 		}
 		return held(func() (learnOut, error) {
@@ -479,8 +479,8 @@ func (a *App) mountPathTools(m *learnMount, pathID string) {
 }
 
 // needMode 在路径当前模式不在 allowed 里时返回一条告诉模型该怎么切的错误。tool 是被调用的工具名。
-func (a *App) needMode(pathID, tool string, allowed ...string) error {
-	mode, err := a.Learn.Mode(pathID)
+func (appHost *learnHost) needMode(pathID, tool string, allowed ...string) error {
+	mode, err := appHost.app.Learn.Mode(pathID)
 	if err != nil {
 		return err
 	}
@@ -493,8 +493,8 @@ func (a *App) needMode(pathID, tool string, allowed ...string) error {
 }
 
 // reviewScope 在复习模式下拦住还没掌握的知识点。复习只回头检验已经过门的内容。
-func (a *App) reviewScope(pathID, pointID string) error {
-	view, err := a.Learn.Path(pathID)
+func (appHost *learnHost) reviewScope(pathID, pointID string) error {
+	view, err := appHost.app.Learn.Path(pathID)
 	if err != nil || view.Mode != learn.ModeReview {
 		return err
 	}

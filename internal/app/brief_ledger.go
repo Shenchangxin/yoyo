@@ -27,11 +27,11 @@ type BriefRecord struct {
 	At        string `json:"at,omitempty"`
 }
 
-func (a *App) briefDir() string {
-	if a == nil || a.Home == nil || strings.TrimSpace(a.Home.Root) == "" {
+func (appHost *deskHost) briefDir() string {
+	if appHost.app == nil || appHost.app.Home == nil || strings.TrimSpace(appHost.app.Home.Root) == "" {
 		return ""
 	}
-	return filepath.Join(a.Home.Root, "briefs")
+	return filepath.Join(appHost.app.Home.Root, "briefs")
 }
 
 func briefFileName(slot, day string) string {
@@ -43,8 +43,8 @@ func briefFileName(slot, day string) string {
 	return day + "-" + slot + ".json"
 }
 
-func (a *App) briefPath(slot, day string) string {
-	dir := a.briefDir()
+func (appHost *deskHost) briefPath(slot, day string) string {
+	dir := appHost.app.briefDir()
 	name := briefFileName(slot, day)
 	if dir == "" || name == "" {
 		return ""
@@ -53,8 +53,8 @@ func (a *App) briefPath(slot, day string) string {
 }
 
 // briefRecorded 在这一天这一档已经有文件时为真。文件是第一次写下的那一封。
-func (a *App) briefRecorded(slot, day string) bool {
-	path := a.briefPath(slot, day)
+func (appHost *deskHost) briefRecorded(slot, day string) bool {
+	path := appHost.app.briefPath(slot, day)
 	if path == "" {
 		return false
 	}
@@ -63,8 +63,8 @@ func (a *App) briefRecorded(slot, day string) bool {
 }
 
 // rememberSessionBrief 用这条会话里已经写下的那一封建档，不用后来又送来的正文盖掉它。
-func (a *App) rememberSessionBrief(sessionID, id string) {
-	evs, err := a.Traces.Read(sessionID)
+func (appHost *deskHost) rememberSessionBrief(sessionID, id string) {
+	evs, err := appHost.app.Traces.Read(sessionID)
 	if err != nil {
 		return
 	}
@@ -77,18 +77,18 @@ func (a *App) rememberSessionBrief(sessionID, id string) {
 			if rec.SessionID == "" {
 				rec.SessionID = sessionID
 			}
-			a.saveBriefRecord(rec)
+			appHost.app.saveBriefRecord(rec)
 		}
 		return
 	}
 }
 
 // rememberBrief 把这一封收进 briefs。文件已经在时不覆盖。
-func (a *App) rememberBrief(note DeskNote, at time.Time) {
+func (appHost *deskHost) rememberBrief(note DeskNote, at time.Time) {
 	if at.IsZero() {
 		at = time.Now().UTC()
 	}
-	a.saveBriefRecord(BriefRecord{
+	appHost.app.saveBriefRecord(BriefRecord{
 		ID:        deskNoteID(note),
 		Slot:      strings.TrimSpace(note.Slot),
 		Day:       strings.TrimSpace(note.Day),
@@ -100,8 +100,8 @@ func (a *App) rememberBrief(note DeskNote, at time.Time) {
 	})
 }
 
-func (a *App) saveBriefRecord(rec BriefRecord) {
-	path := a.briefPath(rec.Slot, rec.Day)
+func (appHost *deskHost) saveBriefRecord(rec BriefRecord) {
+	path := appHost.app.briefPath(rec.Slot, rec.Day)
 	if path == "" || strings.TrimSpace(rec.Brief) == "" && strings.TrimSpace(rec.Text) == "" {
 		return
 	}
@@ -121,8 +121,8 @@ func (a *App) saveBriefRecord(rec BriefRecord) {
 }
 
 // BriefList 按写下的时间从新到旧列出已经固定的简报。
-func (a *App) BriefList() []BriefRecord {
-	dir := a.briefDir()
+func (appHost *deskHost) BriefList() []BriefRecord {
+	dir := appHost.app.briefDir()
 	if dir == "" {
 		return nil
 	}
@@ -159,13 +159,13 @@ func (a *App) BriefList() []BriefRecord {
 
 // sealBriefs 用各条会话里最早的那一封简报建档，并删掉之后又推进去的副本。
 // 启动时跑一次。之后 DeskPush 看见文件就不再往别的会话追加。
-func (a *App) sealBriefs() {
-	if a == nil || a.Traces == nil {
+func (appHost *deskHost) sealBriefs() {
+	if appHost.app == nil || appHost.app.Traces == nil {
 		return
 	}
 	briefSealMu.Lock()
 	defer briefSealMu.Unlock()
-	ids, err := a.Traces.ListSessions()
+	ids, err := appHost.app.Traces.ListSessions()
 	if err != nil || len(ids) == 0 {
 		return
 	}
@@ -178,7 +178,7 @@ func (a *App) sealBriefs() {
 	grouped := map[string][]loc{}
 	stored := map[string][]trace.Event{}
 	for _, id := range ids {
-		evs, err := a.Traces.Read(id)
+		evs, err := appHost.app.Traces.Read(id)
 		if err != nil {
 			continue
 		}
@@ -206,7 +206,7 @@ func (a *App) sealBriefs() {
 			if rec.SessionID == "" {
 				rec.SessionID = locs[0].session
 			}
-			a.saveBriefRecord(rec)
+			appHost.app.saveBriefRecord(rec)
 		}
 		for _, later := range locs[1:] {
 			if drop[later.session] == nil {
@@ -227,7 +227,7 @@ func (a *App) sealBriefs() {
 		if len(kept) == len(evs) {
 			continue
 		}
-		_ = a.Traces.Replace(session, kept)
+		_ = appHost.app.Traces.Replace(session, kept)
 	}
 }
 

@@ -66,24 +66,24 @@ var errNeedsHandoff = fmt.Errorf("继续这张工单需要给工人一句交代�
 // beginRoute 在智能体主会话上换成路由工具。视频、学习、短片和即时消息会话保持原来的工具。
 // tools 是这一轮的工具表，meta 是会话元数据。不是路由会话时不改 tools。
 // sessionID 是这条会话，turnID 是正在跑的这一轮。路由没写 trigger 时，用这一轮已经记下的桌面消息。
-func (a *App) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID, turnID string) bool {
-	if a == nil || tools == nil || !a.routeSession(meta, sessionID) {
+func (appHost *routeHost) beginRoute(tools *runtime.WorkspaceTools, meta SessionMeta, sessionID, turnID string) bool {
+	if appHost.app == nil || tools == nil || !appHost.app.routeSession(meta, sessionID) {
 		return false
 	}
 	tools.RouteOnly = true
-	tools.Extra = a.routerExtrasFor(sessionID, turnID)
+	tools.Extra = appHost.app.routerExtrasFor(sessionID, turnID)
 	return true
 }
 
 // routeSession 在这条会话该由路由接手时为真。
-func (a *App) routeSession(meta SessionMeta, sessionID string) bool {
+func (appHost *routeHost) routeSession(meta SessionMeta, sessionID string) bool {
 	if session.NormalizeChannel(meta.Channel) != session.ChannelAgent {
 		return false
 	}
 	if meta.ProfileID == "im" {
 		return false
 	}
-	if a.studioLane(sessionID) {
+	if appHost.app.studioLane(sessionID) {
 		return false
 	}
 	return true
@@ -95,19 +95,19 @@ func routeFragment() artifact.PromptFragment {
 }
 
 // isMainSession 在 sessionID 就是那条常驻的主会话时为真。
-func (a *App) isMainSession(sessionID string) bool {
-	if a == nil || a.Home == nil {
+func (appHost *routeHost) isMainSession(sessionID string) bool {
+	if appHost.app == nil || appHost.app.Home == nil {
 		return false
 	}
 	id := strings.TrimSpace(sessionID)
-	return id != "" && id == a.readMainID()
+	return id != "" && id == appHost.app.readMainID()
 }
 
 // chatSlotFor 返回这条会话该用哪个聊天连接和模型。主会话清掉自己钉下的，跟着应用的默认走；
 // 它开出的工人用的也是默认，这样接话的和干活的是同一个模型，在设置里换了默认也立刻生效。
 // 其余会话原样返回，各自选的模型照旧只管自己。
-func (a *App) chatSlotFor(meta SessionMeta, sessionID string) SessionMeta {
-	if a.isMainSession(sessionID) && a.routeSession(meta, sessionID) {
+func (appHost *routeHost) chatSlotFor(meta SessionMeta, sessionID string) SessionMeta {
+	if appHost.app.isMainSession(sessionID) && appHost.app.routeSession(meta, sessionID) {
 		meta.Model, meta.ConnectionID = "", ""
 	}
 	return meta
@@ -115,21 +115,21 @@ func (a *App) chatSlotFor(meta SessionMeta, sessionID string) SessionMeta {
 
 // adoptChatDefault 把 meta 选中的连接和模型设成应用的默认，并写回配置。连接库不可用或找不到连接时只改配置里的模型。
 // 只在主会话上换模型时调用：那里换的是 yoyo 的模型，不是某一段对话的。
-func (a *App) adoptChatDefault(meta SessionMeta) {
+func (appHost *routeHost) adoptChatDefault(meta SessionMeta) {
 	model := strings.TrimSpace(meta.Model)
-	if a == nil || model == "" {
+	if appHost.app == nil || model == "" {
 		return
 	}
-	r := a.connReg()
+	r := appHost.app.connReg()
 	if r == nil {
-		a.Config.Model = model
-		_ = a.SaveConfig()
+		appHost.app.Config.Model = model
+		_ = appHost.app.SaveConfig()
 		return
 	}
-	c, err := a.resolveChatConnection(meta)
+	c, err := appHost.app.resolveChatConnection(meta)
 	if err != nil || strings.TrimSpace(c.ID) == "" {
-		a.Config.Model = model
-		_ = a.SaveConfig()
+		appHost.app.Config.Model = model
+		_ = appHost.app.SaveConfig()
 		return
 	}
 	if c.DefaultModel == nil {
@@ -146,12 +146,12 @@ func (a *App) adoptChatDefault(meta SessionMeta) {
 	if err := r.SetDefault(connection.CapChat, out.ID); err != nil {
 		return
 	}
-	a.promoteChatDefault(out)
+	appHost.app.promoteChatDefault(out)
 }
 
 // compactOptsFor 是这条会话做检查点时的参数。路由的会话是一段长期对话，不是一件写代码的任务，摘要用对话的形状：
 // 人先后提过什么、定下了什么、还有什么没了结。其余会话用默认的目标、文件、决定。
-func (a *App) compactOptsFor(routing bool) runtime.CompactOpts {
+func (appHost *routeHost) compactOptsFor(routing bool) runtime.CompactOpts {
 	if !routing {
 		return runtime.CompactOpts{}
 	}
@@ -160,18 +160,18 @@ func (a *App) compactOptsFor(routing bool) runtime.CompactOpts {
 
 // intakeDesk 把这一轮桌面消息记成明确触发。已经落到同一条具体线程上的，告诉路由只能停止。
 // 主会话上的新请求先列出最近工单，由路由判断是继续原目录，还是新开。人 @ 过的 agent 核对后记在触发上，并写进说明。
-func (a *App) intakeDesk(sessionID, turnID, text string) string {
+func (appHost *routeHost) intakeDesk(sessionID, turnID, text string) string {
 	text = strings.TrimSpace(text)
-	if a == nil || text == "" || strings.TrimSpace(turnID) == "" {
+	if appHost.app == nil || text == "" || strings.TrimSpace(turnID) == "" {
 		return ""
 	}
-	a.heard(sessionID, text)
-	rt := a.orchestrator()
+	appHost.app.heard(sessionID, text)
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return ""
 	}
 	id := deskTriggerID(sessionID, turnID)
-	agents, agentNote := a.agentIntake(text)
+	agents, agentNote := appHost.app.agentIntake(text)
 	_, reached := rt.Receive(superagent.Trigger{
 		ID: id, Source: "desk", Threads: []string{"desk:" + sessionID}, Primary: "desk:" + sessionID,
 		Human: true, Addressed: true, Sender: "operator", Text: text, Channel: "desk", Agents: agents,
@@ -180,7 +180,7 @@ func (a *App) intakeDesk(sessionID, turnID, text string) string {
 		return "这条消息已经交给工单 " + strings.Join(reached, ", ") + "。不要再接受。只有人明确要求停止时才用 task_stop。"
 	}
 	line := "这条桌面消息的触发编号是 " + id + "。task_route 和 task_split 的 trigger 不填就是这一条，不必把编号抄回去。先看最近的工单和它现在的阶段。同一件事或明显相关就用 task_route，action 用 continue，ticket 填那张工单，不要新开目录。都不相关才 accept。accept 要写完整 brief。continue 的 brief 看阶段：正在做就只写变化，在等回答就只写答案，停着就写下一步，上下文断了才写完整说明。人的原话不要原样送去，brief 留空会被拒绝。title 只在 accept 时写短名，continue 留空。只是聊天就忽略。不要改文件，也不要等工人做完。"
-	if roster := a.taskRoster(rt); roster != "" {
+	if roster := appHost.app.taskRoster(rt); roster != "" {
 		line += "\n最近工单：\n" + roster
 	}
 	if rules := enabledRuleLine(rt); rules != "" {
@@ -230,27 +230,27 @@ func ruleParam(raw any) []string {
 
 // routerExtras 是不属于哪条会话时的十一件路由工具。记下的记忆都算路由的推断，开出的任务组唤醒触发所在的桌面会话。
 // 没有会话和轮次，task_route 不补 trigger。
-func (a *App) routerExtras() map[string]runtime.ExtraTool {
-	return a.routerExtrasFor("", "")
+func (appHost *routeHost) routerExtras() map[string]runtime.ExtraTool {
+	return appHost.app.routerExtrasFor("", "")
 }
 
 // routerExtrasFor 是主会话仅有的十一件工具。写记忆时拿 sessionID 这条会话里当事人最近写的话核对出处；
 // 在这里开出的任务组有了结果时唤醒 sessionID。turnID 是这一轮的编号。
 // task_route 和 task_split 没写 trigger 时，用 desk:sessionID:turnID 那条已经记下的桌面消息。
 // sessionID 或 turnID 为空时不补，调用方必须自己带 trigger。
-func (a *App) routerExtrasFor(sessionID, turnID string) map[string]runtime.ExtraTool {
+func (appHost *routeHost) routerExtrasFor(sessionID, turnID string) map[string]runtime.ExtraTool {
 	return map[string]runtime.ExtraTool{
-		"task_route":     a.routeTool(sessionID, turnID),
-		"task_split":     a.splitTool(sessionID, turnID),
-		"task_recommend": a.recommendTool(),
-		"task_pick":      a.pickTool(),
-		"task_read":      a.readTool(),
-		"task_status":    a.statusTool(),
-		"task_note":      a.noteTool(),
-		"task_stop":      a.stopTool(),
-		"memory_read":    a.memoryTool(),
-		"memory_write":   a.memoryWriteTool(sessionID),
-		"memory_forget":  a.memoryForgetTool(),
+		"task_route":     appHost.app.routeTool(sessionID, turnID),
+		"task_split":     appHost.app.splitTool(sessionID, turnID),
+		"task_recommend": appHost.app.recommendTool(),
+		"task_pick":      appHost.app.pickTool(),
+		"task_read":      appHost.app.readTool(),
+		"task_status":    appHost.app.statusTool(),
+		"task_note":      appHost.app.noteTool(),
+		"task_stop":      appHost.app.stopTool(),
+		"memory_read":    appHost.app.memoryTool(),
+		"memory_write":   appHost.app.memoryWriteTool(sessionID),
+		"memory_forget":  appHost.app.memoryForgetTool(),
 	}
 }
 
@@ -261,38 +261,38 @@ const (
 )
 
 // heard 记下当事人在 sessionID 里亲手写的一句话，只留最近 heardMax 句。
-func (a *App) heard(sessionID, text string) {
-	if a == nil || sessionID == "" || strings.TrimSpace(text) == "" {
+func (appHost *routeHost) heard(sessionID, text string) {
+	if appHost.app == nil || sessionID == "" || strings.TrimSpace(text) == "" {
 		return
 	}
 	if r := []rune(text); len(r) > heardRunes {
 		text = string(r[:heardRunes])
 	}
-	a.wordsMu.Lock()
-	defer a.wordsMu.Unlock()
-	if a.words == nil {
-		a.words = map[string][]string{}
+	appHost.app.wordsMu.Lock()
+	defer appHost.app.wordsMu.Unlock()
+	if appHost.app.words == nil {
+		appHost.app.words = map[string][]string{}
 	}
-	lines := append(a.words[sessionID], text)
+	lines := append(appHost.app.words[sessionID], text)
 	if len(lines) > heardMax {
 		lines = lines[len(lines)-heardMax:]
 	}
-	a.words[sessionID] = lines
+	appHost.app.words[sessionID] = lines
 }
 
 // heardIn 是当事人在 sessionID 里最近写的几句话。
-func (a *App) heardIn(sessionID string) []string {
-	if a == nil || sessionID == "" {
+func (appHost *routeHost) heardIn(sessionID string) []string {
+	if appHost.app == nil || sessionID == "" {
 		return nil
 	}
-	a.wordsMu.Lock()
-	defer a.wordsMu.Unlock()
-	return append([]string(nil), a.words[sessionID]...)
+	appHost.app.wordsMu.Lock()
+	defer appHost.app.wordsMu.Unlock()
+	return append([]string(nil), appHost.app.words[sessionID]...)
 }
 
 // routeTool 接受、忽略、停止或挂接触发。一次可以有多项。
 // sessionID 和 turnID 是正在跑的这一轮。某项没写 trigger 时，用这一轮的桌面消息。
-func (a *App) routeTool(sessionID, turnID string) runtime.ExtraTool {
+func (appHost *routeHost) routeTool(sessionID, turnID string) runtime.ExtraTool {
 	return routeExtra("task_route", "路由一条或多项触发。items 里每项有 action、ticket、title、brief、reason、rules、agent，trigger 不填就是这一轮这条桌面消息。action 取 accept、continue、ignore、stop、attach。同一件事用 continue 并填 ticket。brief 不能空，人的原话不会另送。accept 要写完整说明。continue 按工单阶段写：正在做只写变化，在等回答只写答案，停着写下一步，上下文断了才写完整说明。title 只在 accept 时作为短名。推断接受时 rules 是启用的规则编号。agent 是交给谁：accept 时用它开单，continue 时和工单现在的不同就改派。", map[string]any{
 		"items": map[string]any{
 			"type": "array",
@@ -312,7 +312,7 @@ func (a *App) routeTool(sessionID, turnID string) runtime.ExtraTool {
 			},
 		},
 	}, false, func(args map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
@@ -323,7 +323,7 @@ func (a *App) routeTool(sessionID, turnID string) runtime.ExtraTool {
 		}
 		var b strings.Builder
 		for _, item := range items {
-			line, err := a.routeOne(rt, sessionID, turnID, item)
+			line, err := appHost.app.routeOne(rt, sessionID, turnID, item)
 			if err != nil {
 				fmt.Fprintf(&b, "%s\n", err.Error())
 				continue
@@ -337,7 +337,7 @@ func (a *App) routeTool(sessionID, turnID string) runtime.ExtraTool {
 
 // routeOne 执行一项路由。rt 是编排运行时，item 是这一项的参数。
 // sessionID 和 turnID 是正在跑的这一轮。item 没写 trigger、而这一项又要落到一条触发上时，用它们对应的那条桌面消息。
-func (a *App) routeOne(rt *superagent.Runtime, sessionID, turnID string, item map[string]any) (string, error) {
+func (appHost *routeHost) routeOne(rt *superagent.Runtime, sessionID, turnID string, item map[string]any) (string, error) {
 	trigger := strParam(item, "trigger")
 	action := strParam(item, "action")
 	title := strParam(item, "title")
@@ -350,7 +350,7 @@ func (a *App) routeOne(rt *superagent.Runtime, sessionID, turnID string, item ma
 	agent := strParam(item, "agent")
 	if routeNeedsTrigger(action, ticket) {
 		var err error
-		trigger, err = a.bindRouteTrigger(rt, sessionID, turnID, trigger)
+		trigger, err = appHost.app.bindRouteTrigger(rt, sessionID, turnID, trigger)
 		if err != nil {
 			return "", err
 		}
@@ -361,7 +361,7 @@ func (a *App) routeOne(rt *superagent.Runtime, sessionID, turnID string, item ma
 			return "", errNeedsBrief
 		}
 		if ticket != "" {
-			if line, err := a.switchAgent(rt, ticket, trigger, agent, brief); line != "" || err != nil {
+			if line, err := appHost.app.switchAgent(rt, ticket, trigger, agent, brief); line != "" || err != nil {
 				return line, err
 			}
 			if err := rt.Act("assign", ticket, trigger, brief, ""); err != nil {
@@ -369,7 +369,7 @@ func (a *App) routeOne(rt *superagent.Runtime, sessionID, turnID string, item ma
 			}
 			return "attached " + trigger + " to " + ticket, nil
 		}
-		pick, pinned, err := a.routeAgent(rt, trigger, agent)
+		pick, pinned, err := appHost.app.routeAgent(rt, trigger, agent)
 		if err != nil {
 			return "", err
 		}
@@ -388,7 +388,7 @@ func (a *App) routeOne(rt *superagent.Runtime, sessionID, turnID string, item ma
 		if brief == "" {
 			return "", errNeedsHandoff
 		}
-		if line, err := a.switchAgent(rt, ticket, trigger, agent, brief); line != "" || err != nil {
+		if line, err := appHost.app.switchAgent(rt, ticket, trigger, agent, brief); line != "" || err != nil {
 			return line, err
 		}
 		// 工人在等一个答案时，人的原话就是答案，路径和数值转述会走样。原话和交代一起送过去。
@@ -438,7 +438,7 @@ func routeNeedsTrigger(action, ticket string) bool {
 // bindRouteTrigger 定下这一项用哪条触发。rt 是编排运行时。given 是路由填的编号，非空就原样用它。
 // given 为空时，用这一轮桌面消息 desk:sessionID:turnID。这条编号在 intakeDesk 时已经记下，模型不必再抄回来。
 // sessionID 或 turnID 为空、这条触发不存在、或已经路由过时，返回路由能照着改的说明。
-func (a *App) bindRouteTrigger(rt *superagent.Runtime, sessionID, turnID, given string) (string, error) {
+func (appHost *routeHost) bindRouteTrigger(rt *superagent.Runtime, sessionID, turnID, given string) (string, error) {
 	if given = strings.TrimSpace(given); given != "" {
 		return given, nil
 	}
@@ -479,13 +479,13 @@ func waitsForAnswer(rt *superagent.Runtime, ticketID string) bool {
 }
 
 // statusTool 列出最近的工单，包含已经停下或做完的。
-func (a *App) statusTool() runtime.ExtraTool {
+func (appHost *routeHost) statusTool() runtime.ExtraTool {
 	return routeExtra("task_status", "列出最近的工单，包含已经停下或做完的。没有参数。", map[string]any{}, true, func(map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
-		text := a.taskRoster(rt)
+		text := appHost.app.taskRoster(rt)
 		if text == "" {
 			return "没有工单", nil
 		}
@@ -494,7 +494,7 @@ func (a *App) statusTool() runtime.ExtraTool {
 }
 
 // taskRoster 把最近八张工单收成路由能对照的几行。新的在前。交给外部 agent 的写明是谁，任务组成员写明在哪一组、负责什么。
-func (a *App) taskRoster(rt *superagent.Runtime) string {
+func (appHost *routeHost) taskRoster(rt *superagent.Runtime) string {
 	if rt == nil {
 		return ""
 	}
@@ -518,7 +518,7 @@ func (a *App) taskRoster(rt *superagent.Runtime) string {
 		}
 		fmt.Fprintf(&b, "%s %s %s\n", ticket.ID, ticketSituation(ticket), title)
 		if ticket.Agent != "" && ticket.Agent != superagent.YoyoAgent {
-			fmt.Fprintf(&b, "  agent %s（%s）\n", ticket.Agent, firstNonEmpty(a.buddyName(ticket.Agent), ticket.Agent))
+			fmt.Fprintf(&b, "  agent %s（%s）\n", ticket.Agent, firstNonEmpty(appHost.app.buddyName(ticket.Agent), ticket.Agent))
 		}
 		if g, ok := groups[ticket.Group]; ok {
 			b.WriteString(groupRosterLine(g, ticket))
@@ -614,12 +614,12 @@ func ticketState(ticket superagent.TicketRow) string {
 }
 
 // noteTool 给工单记一条内部备注。
-func (a *App) noteTool() runtime.ExtraTool {
+func (appHost *routeHost) noteTool() runtime.ExtraTool {
 	return routeExtra("task_note", "给 ticket 记一条内部备注 text。这不会发给人。", map[string]any{
 		"ticket": map[string]any{"type": "string"},
 		"text":   map[string]any{"type": "string"},
 	}, false, func(args map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
@@ -631,14 +631,14 @@ func (a *App) noteTool() runtime.ExtraTool {
 }
 
 // stopTool 停下或收掉一张工单，或者停掉整个任务组。mode 为 pause 时只停正在跑的这一轮；done 时人验收通过；其余结束工单。
-func (a *App) stopTool() runtime.ExtraTool {
+func (appHost *routeHost) stopTool() runtime.ExtraTool {
 	return routeExtra("task_stop", "停下或收掉 ticket。mode 取 pause：只停正在跑的这一轮，工单留着，人再说一句就接着做；done：工单在等验收，人说通过，记成做完了；stop 或不填：结束这张工单，记成已打断。人要停掉整个任务组时填 group、不填 ticket：没结束的成员都停下。reason 写给人看的原因。", map[string]any{
 		"ticket": map[string]any{"type": "string"},
 		"group":  map[string]any{"type": "string", "description": "要停掉的任务组编号。填了就停整组，ticket 和 mode 不看。"},
 		"mode":   map[string]any{"type": "string", "enum": []string{"stop", "pause", "done"}},
 		"reason": map[string]any{"type": "string"},
 	}, false, func(args map[string]any) (string, error) {
-		rt := a.orchestrator()
+		rt := appHost.app.orchestrator()
 		if rt == nil {
 			return "", fmt.Errorf("orchestrator unavailable")
 		}
@@ -679,14 +679,14 @@ func (a *App) stopTool() runtime.ExtraTool {
 }
 
 // memoryTool 按词查找记忆。每行是编号、种类、最近记下的日子和正文，忘掉或改口时用这个编号。过去的安排标出来。
-func (a *App) memoryTool() runtime.ExtraTool {
+func (appHost *routeHost) memoryTool() runtime.ExtraTool {
 	return routeExtra("memory_read", "按 query 查找已经留下的记忆。每行是编号、种类、最近记下的日子和正文；已经过去的安排会标出来。", map[string]any{
 		"query": map[string]any{"type": "string"},
 	}, true, func(args map[string]any) (string, error) {
-		if a.Memory == nil {
+		if appHost.app.Memory == nil {
 			return "没有记忆", nil
 		}
-		items := a.Memory.Search(strParam(args, "query"), memory.Kind(""), 8)
+		items := appHost.app.Memory.Search(strParam(args, "query"), memory.Kind(""), 8)
 		if len(items) == 0 {
 			return "没有匹配的记忆", nil
 		}
@@ -709,13 +709,13 @@ const inferredSource = "Inferred in chat"
 // memoryWriteTool 把人说出的事实或偏好留下。改口时换掉旧的那一条。
 // 正文大半出自当事人在这条会话里最近写的话时，来源记成本人确认，界面上就是「你说的」；
 // 否则是路由的转述或推断，可能来自工人报告这类别处的内容，记成 inferredSource。
-func (a *App) memoryWriteTool(sessionID string) runtime.ExtraTool {
+func (appHost *routeHost) memoryWriteTool(sessionID string) runtime.ExtraTool {
 	return routeExtra("memory_write", "记下人说出的一条长期事实或偏好。kind 取 profile（关于这个人）、semantic（偏好和写法）或 project（在做的项目）。text 用人的原意写成一句；带日子的照原话写，「明天」「下周三」会换成日期。人改口时 replaces 填旧的那一条的编号。不记推断、一次性细节和密钥。", map[string]any{
 		"kind":     map[string]any{"type": "string", "enum": []string{"profile", "semantic", "project"}},
 		"text":     map[string]any{"type": "string"},
 		"replaces": map[string]any{"type": "string", "description": "人改口时，被换掉的那条旧记忆的编号。"},
 	}, false, func(args map[string]any) (string, error) {
-		if a.Memory == nil {
+		if appHost.app.Memory == nil {
 			return "", fmt.Errorf("没有记忆库")
 		}
 		kind := memory.Kind(strParam(args, "kind"))
@@ -726,16 +726,16 @@ func (a *App) memoryWriteTool(sessionID string) runtime.ExtraTool {
 		}
 		text := strParam(args, "text")
 		source := "User confirmed in chat"
-		if !memory.Grounded(text, a.heardIn(sessionID)) {
+		if !memory.Grounded(text, appHost.app.heardIn(sessionID)) {
 			source = inferredSource
 		}
 		origin := ""
 		if sessionID != "" {
 			origin = "session:" + sessionID
 		}
-		kept := a.Memory.Keep(memory.Item{Kind: kind, Text: text, Source: source, Origin: origin}, strParam(args, "replaces"))
+		kept := appHost.app.Memory.Keep(memory.Item{Kind: kind, Text: text, Source: source, Origin: origin}, strParam(args, "replaces"))
 		if kept.Action != "refused" {
-			a.touchPoi()
+			appHost.app.touchPoi()
 		}
 		return memoryReceipt(kept), nil
 	})
@@ -774,7 +774,7 @@ func memoryReceipt(kept memory.Kept) string {
 }
 
 // memoryForgetTool 按编号忘掉一条。本机清点每一轮都会重写，不从这里忘。
-func (a *App) memoryForgetTool() runtime.ExtraTool {
+func (appHost *routeHost) memoryForgetTool() runtime.ExtraTool {
 	return routeExtra("memory_forget", "按 id 忘掉一条记忆。id 来自 memory_read。本机清点出来的条目不能从这里忘。", map[string]any{
 		"id": map[string]any{"type": "string"},
 	}, false, func(args map[string]any) (string, error) {
@@ -782,7 +782,7 @@ func (a *App) memoryForgetTool() runtime.ExtraTool {
 		if strings.HasPrefix(id, "machine:") {
 			return "这是本机清点出来的，每一轮都会重写，不从这里忘", nil
 		}
-		if !a.MemoryForget(id) {
+		if !appHost.app.MemoryForget(id) {
 			return "", fmt.Errorf("没有编号为 %s 的记忆", id)
 		}
 		return "忘掉了 " + id, nil
@@ -815,22 +815,22 @@ func routeExtra(name, desc string, props map[string]any, readOnly bool, fn func(
 }
 
 // mountWorker 把工作区工具登记到这张工单的代理上。会话授权是 full，避免每条命令都问人。
-func (a *App) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID string) (func() int, func(time.Duration)) {
+func (appHost *routeHost) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID string) (func() int, func(time.Duration)) {
 	id := "ticket-" + ticketID
-	if a != nil {
-		a.applySessionAuth(id, capability.AuthFull)
+	if appHost.app != nil {
+		appHost.app.applySessionAuth(id, capability.AuthFull)
 	}
 	home := ""
 	var caps *capability.Broker
-	if a != nil {
-		caps = a.Caps
-		if a.Home != nil {
-			home = a.Home.Root
+	if appHost.app != nil {
+		caps = appHost.app.Caps
+		if appHost.app.Home != nil {
+			home = appHost.app.Home.Root
 		}
 	}
 	var roots []string
-	if a != nil {
-		roots = a.namedWorkRoots(ticketID, home)
+	if appHost.app != nil {
+		roots = appHost.app.namedWorkRoots(ticketID, home)
 	}
 	tools := &runtime.WorkspaceTools{Workspace: dir, Home: home, SessionID: id, Caps: caps, Roots: roots}
 	return dshdesk.MountWorkspace(reg, agent, tools)
@@ -838,11 +838,11 @@ func (a *App) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID str
 
 // namedWorkRoots 从这张工单已经交给工人的说明里取出可写目录。家目录和过浅的路径不放进来。
 // 任务组成员另加共享目录：它在执行根下，说明里写了也会被当成家目录里的路径挡掉。
-func (a *App) namedWorkRoots(ticketID, home string) []string {
-	if a == nil {
+func (appHost *routeHost) namedWorkRoots(ticketID, home string) []string {
+	if appHost.app == nil {
 		return nil
 	}
-	rt := a.orchestrator()
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return nil
 	}
@@ -859,8 +859,8 @@ func (a *App) namedWorkRoots(ticketID, home string) []string {
 }
 
 // relayNotice 把一条通知写进指定的桌面会话。它不开始新的路由回合。
-func (a *App) relayNotice(sessionID, text string) {
-	if a == nil || a.Traces == nil || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(text) == "" {
+func (appHost *routeHost) relayNotice(sessionID, text string) {
+	if appHost.app == nil || appHost.app.Traces == nil || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(text) == "" {
 		return
 	}
 	// 界面按 id 合并同一条助手消息。每条通知要有自己的 id，否则后一条会把前一条盖掉。
@@ -873,11 +873,11 @@ func (a *App) relayNotice(sessionID, text string) {
 		SessionID: sessionID,
 		Payload:   map[string]any{"text": strings.TrimSpace(text), "id": "notice:" + sessionID + ":" + hex.EncodeToString(sum[:6])},
 	}
-	if err := a.Traces.AppendDurable(ev); err != nil {
+	if err := appHost.app.Traces.AppendDurable(ev); err != nil {
 		return
 	}
-	if a.Hub != nil {
-		a.Hub.Publish(ev)
+	if appHost.app.Hub != nil {
+		appHost.app.Hub.Publish(ev)
 	}
 }
 
@@ -885,8 +885,8 @@ func (a *App) relayNotice(sessionID, text string) {
 // 做完、失败、放下和打断会带上已经报过的阶段性进展，并写进记忆。会话写不进去时，记忆仍然留下。
 // 同一段正文只写一次。后来跟上的会话优先，没有时才回到开工那一条。
 // 外部 agent 做的工单在载荷里写上 agent 和名字；要先登录时加上 need；任务组成员写上 group 和 role。
-func (a *App) relayReport(ticketID, state, summary, question string) {
-	if a == nil {
+func (appHost *routeHost) relayReport(ticketID, state, summary, question string) {
+	if appHost.app == nil {
 		return
 	}
 	// 进行中只留在任务页。主会话只收结束、终止，以及要人接手的报告。
@@ -901,7 +901,7 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 		text += q
 	}
 	if taskEndedState(state) {
-		if rt := a.orchestrator(); rt != nil {
+		if rt := appHost.app.orchestrator(); rt != nil {
 			extra := strings.TrimSpace(rt.StagedProgress(ticketID))
 			if extra != "" && !strings.Contains(text, extra) {
 				if text != "" {
@@ -911,19 +911,19 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 				}
 			}
 		}
-		a.rememberTask(ticketID, state, text)
+		appHost.app.rememberTask(ticketID, state, text)
 	}
-	if a.Traces == nil || text == "" {
+	if appHost.app.Traces == nil || text == "" {
 		return
 	}
-	rt := a.orchestrator()
+	rt := appHost.app.orchestrator()
 	if rt == nil {
 		return
 	}
 	sids := rt.DeskAudiences(ticketID)
 	if len(sids) == 0 {
 		// GitHub、飞书、邮件来的工单没有跟着的桌面会话。要人看的报告仍然回到主会话，不然只能去任务页翻。
-		if meta, ok := a.savedMain(); ok && meta.ID != "" {
+		if meta, ok := appHost.app.savedMain(); ok && meta.ID != "" {
 			sids = []string{meta.ID}
 		}
 	}
@@ -939,7 +939,7 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 	extra := map[string]any{}
 	if agent, ok := rt.TicketAgent(ticketID); ok && agent != superagent.YoyoAgent {
 		extra["agent"] = agent
-		extra["agentName"] = firstNonEmpty(a.buddyName(agent), agent)
+		extra["agentName"] = firstNonEmpty(appHost.app.buddyName(agent), agent)
 	}
 	if need := rt.TicketNeed(ticketID); need != "" {
 		extra["need"] = need
@@ -954,7 +954,7 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 		extra["files"] = files
 	}
 	for _, sid := range sids {
-		if sid == "" || a.traceHasID(sid, id) {
+		if sid == "" || appHost.app.traceHasID(sid, id) {
 			continue
 		}
 		payload := map[string]any{
@@ -969,11 +969,11 @@ func (a *App) relayReport(ticketID, state, summary, question string) {
 			SessionID: sid,
 			Payload:   payload,
 		}
-		if err := a.Traces.AppendDurable(ev); err != nil {
+		if err := appHost.app.Traces.AppendDurable(ev); err != nil {
 			continue
 		}
-		if a.Hub != nil {
-			a.Hub.Publish(ev)
+		if appHost.app.Hub != nil {
+			appHost.app.Hub.Publish(ev)
 		}
 	}
 }
@@ -1070,12 +1070,12 @@ func taskEndedState(state string) bool {
 }
 
 // rememberTask 把工单的结果写成一条情景。同一张工单再写一次会换掉原来的。
-func (a *App) rememberTask(ticketID, state, text string) {
-	if a == nil || a.Memory == nil || strings.TrimSpace(ticketID) == "" {
+func (appHost *routeHost) rememberTask(ticketID, state, text string) {
+	if appHost.app == nil || appHost.app.Memory == nil || strings.TrimSpace(ticketID) == "" {
 		return
 	}
 	label := ticketID
-	if rt := a.orchestrator(); rt != nil {
+	if rt := appHost.app.orchestrator(); rt != nil {
 		if name := rt.TicketLabel(ticketID); name != "" {
 			label = name
 		}
@@ -1093,7 +1093,7 @@ func (a *App) rememberTask(ticketID, state, text string) {
 	case "stopped":
 		line = "停下了。" + line
 	}
-	a.Memory.Write(memory.Item{
+	appHost.app.Memory.Write(memory.Item{
 		ID:     "task:" + ticketID,
 		Kind:   memory.KindEpisodic,
 		Text:   clipTaskMemory(line),
@@ -1113,16 +1113,16 @@ func clipTaskMemory(text string) string {
 }
 
 // connectorTriggers 把邮件和日历收成推断触发。没有真实正文的占位行不收。
-func (a *App) connectorTriggers() []superagent.Trigger {
-	if a == nil || a.Connectors == nil {
+func (appHost *routeHost) connectorTriggers() []superagent.Trigger {
+	if appHost.app == nil || appHost.app.Connectors == nil {
 		return nil
 	}
 	var out []superagent.Trigger
-	for _, acct := range a.Connectors.List() {
+	for _, acct := range appHost.app.Connectors.List() {
 		if acct.Kind != connector.KindMail && acct.Kind != connector.KindCalendar {
 			continue
 		}
-		rows, err := a.Connectors.Read(acct.ID, "")
+		rows, err := appHost.app.Connectors.Read(acct.ID, "")
 		if err != nil {
 			continue
 		}
