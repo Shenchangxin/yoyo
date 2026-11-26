@@ -17,8 +17,8 @@ export type AskQuestion = {
   options: AskOption[];
   recommended: string;
 };
-/** AskForm 一张提问卡的标题和题目。 */
-export type AskForm = { title: string; questions: AskQuestion[] };
+/** AskForm 一张提问卡的标题和题目。hold 为真时要操作者亲手作答，不倒计时，花额度前的确认用它。 */
+export type AskForm = { title: string; questions: AskQuestion[]; hold?: boolean };
 
 /** pendingAsk 找出 ask_user。给了 sessionId 时，只留没有会话或会话相同的那条。approvals 调用 find。 */
 export function pendingAsk(approvals: Approval[], sessionId?: string): Approval | undefined {
@@ -30,9 +30,9 @@ export function parseAskCommand(command: string): AskForm {
   const text = command.trim();
   if (text.startsWith("{")) {
     try {
-      const raw = JSON.parse(text) as { title?: unknown; questions?: unknown };
+      const raw = JSON.parse(text) as { title?: unknown; questions?: unknown; hold?: unknown };
       const questions = normalizeQuestions(raw.questions);
-      if (questions.length) return { title: textOf(raw.title), questions };
+      if (questions.length) return { title: textOf(raw.title), questions, hold: raw.hold === true };
     } catch {
       /* 当成一道普通题，不当表单 */
     }
@@ -40,8 +40,9 @@ export function parseAskCommand(command: string): AskForm {
   return { title: "", questions: [{ id: "q1", prompt: text, options: [], recommended: "" }] };
 }
 
-/** askCanIdle 有题目，且每道题都已有选项时，卡片才能自己继续。form 读取 questions。 */
+/** askCanIdle 不是 hold 卡、有题目，且每道题都已有选项时，卡片才能自己继续。form 读取 hold、questions。 */
 export function askCanIdle(form: AskForm): boolean {
+  if (form.hold) return false;
   return form.questions.length > 0 && form.questions.every((q) => q.options.length > 0);
 }
 

@@ -114,6 +114,8 @@ export function Composer(props: {
   onModel?: (model: string) => void;
   onPickFiles?: () => Promise<Attachment[]>;
   onIngestVideo?: (source: { path?: string; file?: File }) => Promise<void>;
+  /** onRemake 在创作桌的 + 菜单里选翻拍参考片时调用：选一条参考片，建成翻拍稿。 */
+  onRemake?: () => void | Promise<void>;
   onClipboard?: () => Promise<string>;
   onScreenshot?: () => Promise<string>;
   compact?: boolean;
@@ -335,7 +337,10 @@ export function Composer(props: {
     section: copy.composer.sectionSkills,
   }));
   const plusItems: OverlayItem[] = createDesk
-    ? [{ token: "__import_clip__", label: copy.composer.importClip, hint: copy.composer.importClipHint, kind: "attach", section: copy.composer.sectionAdd }]
+    ? [
+      { token: "__import_clip__", label: copy.composer.importClip, hint: copy.composer.importClipHint, kind: "attach", section: copy.composer.sectionAdd },
+      ...(props.onRemake ? [{ token: "__remake__", label: copy.video.conductor.remake, hint: copy.video.conductor.remakeHint, kind: "attach" as const, section: copy.composer.sectionAdd }] : []),
+    ]
     : [
     { token: "__file__", label: copy.composer.attach, hint: "", kind: "attach", section: copy.composer.sectionAdd },
     ...(props.onClipboard ? [{ token: "__clipboard__", label: copy.composer.clipboard, hint: "", kind: "clipboard" as const, section: copy.composer.sectionAdd }] : []),
@@ -550,6 +555,11 @@ export function Composer(props: {
 
   /** __import_clip__ 或创作桌走导入。__file__ 走选文件。剪贴板和截图各走自己的回调。@ 开头插入提及，其余当斜杠命令。item 读取 token、label。 */
   function pickOverlay(item: OverlayItem) {
+    if (item.token === "__remake__") {
+      setHint(null);
+      void props.onRemake?.();
+      return;
+    }
     if (item.token === "__file__" || item.token === "__import_clip__") {
       setHint(null);
       if (item.token === "__import_clip__" || createDesk) void importClip();
@@ -1029,16 +1039,16 @@ export function Composer(props: {
                     </>
                   ) : null}
                   {(props.compact && !props.plus) || (createHome && createMode !== "clip") ? null : (
-                  <Tooltip content={createDesk ? copy.composer.importClip : props.plain && props.plus ? `${copy.composer.attach} · ${copy.composer.sectionSkills}` : copy.composer.addFilesOrCommands}>
+                  <Tooltip content={createDesk ? copy.composer.addSource : props.plain && props.plus ? `${copy.composer.attach} · ${copy.composer.sectionSkills}` : copy.composer.addFilesOrCommands}>
                     <button
                       type="button"
                       className="sc-add"
-                      aria-label={createDesk ? copy.composer.importClip : props.plain && props.plus ? `${copy.composer.attach} · ${copy.composer.sectionSkills}` : copy.composer.addFilesOrCommands}
-                      aria-haspopup={createDesk ? undefined : "listbox"}
-                      aria-expanded={createDesk ? undefined : hint === "plus"}
+                      aria-label={createDesk ? copy.composer.addSource : props.plain && props.plus ? `${copy.composer.attach} · ${copy.composer.sectionSkills}` : copy.composer.addFilesOrCommands}
+                      aria-haspopup="listbox"
+                      aria-expanded={hint === "plus"}
                       data-testid={studioDesk ? "studio-copilot-attach" : "composer-add"}
                       disabled={disabled}
-                      onClick={createDesk ? () => void importClip() : togglePlus}
+                      onClick={togglePlus}
                     >
                       <Plus className="size-3.5" />
                     </button>
@@ -1068,7 +1078,7 @@ export function Composer(props: {
                 </div>
                 <div className="sc-trailing">
                   {props.toolbarTrailing}
-                  {createHome ? null : grouped && props.onModel ? (
+                  {grouped && props.onModel ? (
                     <Select value={groupedValue} onValueChange={(v) => props.onModel?.(v)} disabled={disabled}>
                       <SelectTrigger className="sc-chip-btn max-w-[16rem] border-0 shadow-none max-[799px]:max-w-[7.5rem]" aria-label={copy.composer.model} title={selectedGroup ? `${selectedGroup.providerName} · ${currentModel}` : currentModel}>
                         <span className="truncate">{selectedGroup ? `${selectedGroup.providerName} · ${modelLabel}` : modelLabel}</span>

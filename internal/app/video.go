@@ -238,10 +238,10 @@ const studioBootstrap = "Do not inspect the git workspace. Open the bound shorts
 const studioRuntimePin = "This is a Shorts turn. Use studio_* tools on the bound shorts project. Do not inspect the git workspace. Do not call shell, list_dir, glob, or grep. Approve the script before Speak or image gen. Use studio_generate_shot / studio_generate_missing for stills. Never invent CAS hashes. If generation is not configured, tell the operator to upload stills on the Shorts desk or add an image adapter."
 
 // conductorBootstrap 是指挥席开场白，要求先问片子类型或导入素材，并用 cut_*、video_route、provider_menu。正文保持英文。
-const conductorBootstrap = "You are the Video conductor. Ask what kind of piece they want, or ingest a source clip. Do not inspect the git workspace. Use cut_* on footage. Use video_route after they pick 短片 / 短剧 / 画布. A film format brief (talking, drama, podcast, interview, ranking, explainer, narration) is finished with load_skill hypit. Use provider_menu before spending a vendor — missing Settings accounts do not exist. load_skill for cut-edit, cut-dub, studio-script, or canvas as needed. Never invent CAS hashes or API keys."
+const conductorBootstrap = "You are the Video conductor. Infer what the operator wants from what they said and what is on the desk, then carry it through to a finished result. Ask only when the intent is truly unclear, with one ask_user card, never a menu of options. Do not inspect the git workspace. Use cut_* on footage. Use video_route after they pick 短片 / 短剧 / 画布. A film format brief (talking, drama, podcast, interview, ranking, explainer, narration) is finished with load_skill hypit. Use provider_menu before spending a vendor — missing Settings accounts do not exist. Before any paid step (film, still, or dub with an account), call video_brief once: it shows the operator one confirm card. Call paid tools only after confirmed: go; on edit, change the brief and call it again; on stop or unconfirmed, stop and say what is waiting. Cutting footage needs no brief. load_skill for cut-edit, cut-dub, studio-script, or canvas as needed. Never invent CAS hashes or API keys."
 
 // conductorRuntimePin 是指挥席回合的固定提示，正文保持英文。正文要求使用 cut_*、video_route 和 provider_menu，并写明绑定到具体车间后不再沿用这条提示。
-const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route and provider_menu. A film format is load_skill hypit. A bound workshop drops this pin. Do not call shell, list_dir, glob, or grep. Do not dump 短片 six-gate tools until video_route dest=studio. Prefer Chinese chips: 剪这条, 配音, 做短片, 做短剧, 去画布."
+const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route and provider_menu. A film format is load_skill hypit. Paid work starts with video_brief and waits for confirmed: go. A bound workshop drops this pin. Do not call shell, list_dir, glob, or grep. Do not dump 短片 six-gate tools until video_route dest=studio. Decide the route yourself and finish the work; do not offer option chips."
 
 // studioDeniedTools 是短片和指挥席从广告名里拿掉的工具：list_dir、glob、grep、shell、git_status、git_diff、git_commit。
 var studioDeniedTools = []string{"list_dir", "glob", "grep", "shell", "git_status", "git_diff", "git_commit"}
@@ -344,17 +344,22 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 	for _, spec := range video.ConductorToolSpecs() {
 		spec := spec
 		route := spec.Name == "video_route"
+		// 简报会挡在确认卡上，和路由一样不能与别的工具并发。
+		brief := spec.Name == "video_brief"
 		tools.Extra[spec.Name] = runtime.ExtraTool{
 			JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
 				"name": spec.Name, "description": spec.Desc, "parameters": spec.Params,
 			}},
 			ReadOnly: spec.ReadOnly,
 			// 路由会改写这一轮的工具表，不能和别的工具并发。
-			Exclusive: route,
+			Exclusive: route || brief,
 			Call: func(argsJSON string) runtime.ToolResult {
 				var args map[string]any
 				if argsJSON != "" {
 					_ = json.Unmarshal([]byte(argsJSON), &args)
+				}
+				if brief {
+					return a.conductorBrief(tools, args)
 				}
 				out, err := a.Video.CutTool(sessionID, spec.Name, args)
 				if err == nil && route {
@@ -2005,4 +2010,28 @@ func (a *App) enrichCut(p video.CutProject) map[string]any {
 	}
 	m["clips"] = clips
 	return m
+}
+
+// conductorBrief 写出简报。花额度且账号齐全时，在同一次调用里抛出 hold 确认卡，结果末尾写上 confirmed 和卡片原答复。缺账号或不花额度时只返回简报。
+// tools 用来调用 ask_user，为 nil 时不出卡、答复记为 unconfirmed。
+// args 交给 VideoBrief。
+func (a *App) conductorBrief(tools *runtime.WorkspaceTools, args map[string]any) runtime.ToolResult {
+	plan, err := a.Video.VideoBrief(args)
+	if err != nil {
+		return runtime.ToolResult{Err: err}
+	}
+	b, _ := json.Marshal(plan)
+	out := string(b)
+	if !plan.Spend || !plan.Ready {
+		return runtime.ToolResult{Content: out}
+	}
+	if tools == nil {
+		return runtime.ToolResult{Content: out + "\nconfirmed: unconfirmed"}
+	}
+	form, _ := json.Marshal(a.Video.BriefConfirmArgs(plan))
+	res := tools.Call("ask_user", string(form))
+	if res.Err != nil {
+		return runtime.ToolResult{Err: res.Err}
+	}
+	return runtime.ToolResult{Content: out + "\nconfirmed: " + video.BriefDecision(res.Content) + "\n" + strings.TrimSpace(res.Content)}
 }

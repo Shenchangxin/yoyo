@@ -24,10 +24,12 @@ An operator who wants to run turns against a local workspace, review git hunks, 
 - **Approvals** render in the stream. Review is a queue mirror, not the only Once/Deny surface.
 - **Harness** is one workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote (refs). It is not a chat sibling of equal weight. Chat dock there is opt-in.
 - **Video** is one chrome with four lanes. **创作** is the finish desk:
-  empty, it asks for a clip, a 翻拍 reference, or a workshop, and keeps the packed
-  case catalog on the page (prompts in `creation-inspirations.ts`, covers in
-  `frontend/public/short-drama-styles`; a click fills the conductor and does
-  not generate); with a clip, the
+  empty, it is the robot, one line, the composer with its model chip, three example
+  sentences, and the packed case catalog (prompts in `creation-inspirations.ts`,
+  covers in `frontend/public/short-drama-styles`). A click fills the composer and
+  does not send. The conductor infers the
+  intent and finishes it; paid work starts with one `video_brief` confirm card.
+  Adding a clip and 翻拍 a reference live in the composer `+` menu; with a clip, the
   player and edit list sit beside the conductor. **短片 / 短剧 / 画布** are
   the workshops and still own text-to-video. Shared post
   (`internal/video/cut`: Breakdown, EditList, Stems, Captions) is the

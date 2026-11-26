@@ -13,7 +13,7 @@ function island(page: Page) {
 
 /** openVideo 点名为 Video 的按钮，进入视频轨。page 调用 getByRole。 */
 async function openVideo(page: Page) {
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
 }
 
 /** openVideoChat 打开视频轨，并等到创作桌出现。page 调用 getByTestId，传给 openVideo。 */
@@ -25,7 +25,7 @@ async function openVideoChat(page: Page) {
 test("infinite canvas opens from the video rail", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Video" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Video", exact: true })).toBeVisible();
   await openVideo(page);
   await page.getByTestId("video-shell-canvas").click();
   await expect(island(page)).toBeVisible();
@@ -44,7 +44,7 @@ test("opening the canvas board mounts the canvas studio", async ({ page }) => {
 test("drama workshop still opens from the same switch", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-drama").click();
   await expect(island(page)).toBeVisible();
   await expect(page.getByTestId("drama-agent-page")).toBeVisible({ timeout: 30_000 });
@@ -79,14 +79,14 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   test.setTimeout(60_000);
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await expect(page.getByTestId("video-shell-nav")).toBeVisible();
   await expect(page.getByTestId("video-shell-create")).toBeVisible();
   await expect(page.getByTestId("video-shell-studio")).toBeVisible();
   await expect(page.getByTestId("create-desk")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("empty-turn")).toBeVisible();
   await expect(page.getByRole("heading", { name: "What do you want to make?" })).toBeVisible();
-  await expect(page.getByTestId("create-skill-row")).toBeVisible();
+  await expect(page.getByTestId("create-skill-row")).toHaveCount(0);
   await expect(page.getByTestId("creation-handoff")).toHaveCount(0);
   const history = page.getByTestId("video-rail-history-toggle");
   await expect(history).toBeVisible();
@@ -96,24 +96,18 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await history.click();
   await expect(history).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("composer-input")).toBeVisible();
-  await page.getByTestId("create-skill-cut-edit").click();
-  await expect(page.getByTestId("composer-input")).toContainText("@skill:cut-edit");
-  await page.getByTestId("create-skill-studio-storyboard").click();
-  await expect(page.getByTestId("composer-input")).toContainText("@skill:studio-storyboard");
-  await page.getByTestId("create-skill-hypit").click();
-  await expect(page.getByTestId("composer-input")).toContainText("@skill:hypit");
-  await page.getByTestId("create-skill-cut-dub").click();
-  await expect(page.getByTestId("composer-input")).toContainText("@skill:cut-dub");
+  await page.getByTestId("create-example-0").click();
+  await expect(page.getByTestId("composer-input")).toContainText("ranking");
+  await expect(page.getByTestId("composer-input")).not.toContainText("@skill:");
   await expect(page.getByTestId("creation-cases")).toBeVisible();
-  await expect(page.getByTestId("creation-cases-source")).toContainText("not finished films");
-  await expect(page.getByTestId("creation-cases-source")).not.toContainText("yoyo.creation-cases");
   const rain = page.getByTestId("creation-case-rain-clinic");
   await expect(rain).toBeVisible();
-  await expect(rain).toContainText("cyberpunk-neon.jpg");
-  await expect(rain).toContainText("Opens in Shorts");
+  await expect(rain.locator("img")).toHaveAttribute("src", /cyberpunk-neon\.jpg/);
   await rain.click();
-  await expect(page.getByTestId("composer-input")).toContainText("Open Shorts for this brief");
   await expect(page.getByTestId("composer-input")).toContainText("雨港记忆诊所");
+  await page.getByTestId("composer-add").click();
+  await expect(page.getByText("Remake a reference")).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("profile-chip")).toHaveCount(0);
   await expect(page.getByLabel("Where it runs")).toHaveCount(0);
   await expect(page.getByTestId("create-open-footage")).toHaveCount(0);
@@ -143,7 +137,7 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
 test("assets skills plugins and history open from the video rail", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await expect(page.getByTestId("video-shell-nav")).toBeVisible();
   await expect(page.getByTestId("video-shell-create")).toBeVisible();
   await expect(page.getByTestId("video-shell-assets")).toBeVisible();
@@ -180,7 +174,7 @@ test("assets skills plugins and history open from the video rail", async ({ page
 test("studio workbench opens from the video rail", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await expect(page.getByTestId("video-shell-studio")).toBeVisible();
   await expect(page.getByTestId("video-shell-studio")).toContainText(/Shorts|短片/);
   await page.getByTestId("video-shell-studio").click();
@@ -222,7 +216,7 @@ test("studio workbench opens from the composer mode switch", async ({ page }) =>
 test("studio workbench opens from creation history", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-tasks").click();
   await page.getByTestId("video-history-studio-title").fill("春日通勤");
   await page.getByTestId("video-history-new-studio").click();
@@ -280,7 +274,7 @@ test("assembled short sends to create cut", async ({ page }) => {
     }],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-tasks").click();
   await page.getByTestId("video-history").getByTestId("video-project-studio-studio-cut").click();
   await expect(page.getByTestId("studio-desk")).toBeVisible();
@@ -295,7 +289,7 @@ test("assembled short sends to create cut", async ({ page }) => {
 test("each short keeps its own copilot chat", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-studio").click();
   await page.getByTestId("studio-new-short").click();
   await page.getByTestId("studio-create-title").fill("春日通勤");
@@ -324,7 +318,7 @@ test("each short keeps its own copilot chat", async ({ page }) => {
 test("a topic starts a short project with its own copilot", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-studio").click();
   await expect(page.getByTestId("studio-home")).toBeVisible();
   await expect(page.getByTestId("studio-copilot")).toHaveCount(0);
@@ -353,7 +347,7 @@ test("a topic starts a short project with its own copilot", async ({ page }) => 
 test("several topics can start shorts together", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-studio").click();
   await page.getByTestId("studio-pane-topics").click();
   await page.getByTestId("studio-topic-pick-topic-1").click();
@@ -371,7 +365,7 @@ test("several topics can start shorts together", async ({ page }) => {
 test("topic score stays on the topic card", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-studio").click();
   await page.getByTestId("studio-pane-topics").click();
   const card = page.getByTestId("studio-topic-topic-1");
@@ -387,7 +381,7 @@ test("topic score stays on the topic card", async ({ page }) => {
 test("topic schedule stays on topics and does not steal the desk", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-studio").click();
   await page.getByTestId("studio-pane-topics").click();
   await expect(page.getByTestId("studio-topic-filters")).toBeVisible();
@@ -405,7 +399,7 @@ test("topic schedule stays on topics and does not steal the desk", async ({ page
 test("shorts can be created and a history item can be deleted", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-studio").click();
   await expect(page.getByTestId("studio-new-short")).toBeVisible();
   await page.getByTestId("studio-new-short").click();
@@ -444,7 +438,7 @@ test("shorts can be created and a history item can be deleted", async ({ page })
 test("creation history can delete a short", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-tasks").click();
   await page.getByTestId("video-history-studio-title").fill("春日通勤");
   await page.getByTestId("video-history-new-studio").click();
@@ -462,7 +456,7 @@ test("new canvas appears in creation history and can be opened", async ({ page }
   test.setTimeout(60_000);
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByRole("button", { name: "Video", exact: true }).click();
   await page.getByTestId("video-shell-tasks").click();
   await expect(page.getByTestId("video-history")).toBeVisible();
   await page.getByTestId("video-history-new-canvas").click();

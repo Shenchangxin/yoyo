@@ -1,4 +1,5 @@
-// 本文件拥有空会话的问候、标题和起步按钮。不拥有输入框，输入框是旁边的兄弟节点，从首页进到会话时那块 DOM 还是同一个。App 在没有消息时使用它。
+// 本文件拥有空会话的问候、标题和起步句。不拥有输入框，输入框是旁边的兄弟节点，从首页进到会话时那块 DOM 还是同一个。App 在没有消息时使用它。
+// 创作桌只有机器人、一句话、一行提示和三句例子；做什么由导演自己判断，不靠按钮。
 
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
@@ -8,7 +9,7 @@ import { CreateHome } from "./video/CreateHome";
 import { FeaturedCases } from "./video/FeaturedCases";
 import { useCreateMode } from "./video/create-mode";
 import { isFilmMode, type FilmMode } from "./video/film-cast";
-import { useCutDesk, useCutReadiness } from "./video/cut-desk";
+import { useCutDesk } from "./video/cut-desk";
 import { useFilmDesk } from "./video/film-desk";
 import { useRemakeDesk } from "./video/remake-desk";
 import { cn } from "../lib/utils";
@@ -22,45 +23,7 @@ function hello(copy: Copy): string {
   return copy.transcript.helloEvening;
 }
 
-/** CreateBoundActions 已加载且没有 ffmpeg 时剪辑按钮禁用；已加载且没有语音时配音禁用。提示里的 {id} 和 {hash} 换成当前工程。props 读取 projectId、sourceHash，调用 onPrompt。 */
-function CreateBoundActions(props: {
-  projectId: string;
-  sourceHash: string;
-  onPrompt?: (text: string) => void;
-}) {
-  const copy = useCopy();
-  const c = copy.video.conductor;
-  const ready = useCutReadiness();
-  const cutReason = ready.loaded && !ready.ffmpeg ? c.needFfmpeg : "";
-  const dubReason = ready.loaded && !ready.speech ? c.needSpeech : "";
-  return (
-    <>
-      <div className="mt-3 flex flex-wrap justify-center gap-2">
-        <button
-          type="button"
-          className="starter-tile is-stack"
-          disabled={!!cutReason}
-          title={cutReason || c.clipThis}
-          onClick={() => props.onPrompt?.(c.sendPrompt.replace("{id}", props.projectId).replace("{hash}", props.sourceHash))}
-        >
-          <span className="starter-tile-label">{c.clipThis}</span>
-        </button>
-        <button
-          type="button"
-          className="starter-tile is-stack"
-          disabled={!!dubReason}
-          title={dubReason || c.dub}
-          onClick={() => props.onPrompt?.(c.dubPrompt.replace("{id}", props.projectId).replace("{hash}", props.sourceHash))}
-        >
-          <span className="starter-tile-label">{c.dub}</span>
-          {dubReason ? <span className="starter-tile-hint">{dubReason}</span> : null}
-        </button>
-      </div>
-    </>
-  );
-}
-
-/** startersOf 创作桌没有起步句。不在视频面用普通起步，画布和创作各用自己的，其余视频面用视频起步。copy 读取 transcript。videoing 为假时走另一支。videoMode 与 canvas、creative 比较是否相等。createDesk 为真时才继续。 */
+/** startersOf 创作桌的例子在 HomeStarters 里另取。不在视频面用普通起步，画布和创作各用自己的，其余视频面用视频起步。copy 读取 transcript。videoing 为假时走另一支。videoMode 与 canvas、creative 比较是否相等。createDesk 为真时返回空。 */
 function startersOf(copy: Copy, videoing: boolean, videoMode: string, createDesk: boolean) {
   if (createDesk) return [];
   if (!videoing) return copy.transcript.starters;
@@ -89,7 +52,7 @@ function useHomeCopy() {
   return { copy, videoing, videoMode, createDesk };
 }
 
-/** HomeHero 是空会话的字标块。workspace 和 onBrowseWorkspace 当前不使用。创作桌还没绑定时不画锚点和问候。锚点尺寸在创作桌是 72，窄于 799px 是 96，否则 148。_props 函数体内没有读取。 */
+/** HomeHero 是空会话的字标块。创作桌画机器人、一句标题和一行提示，不画问候。锚点尺寸在创作桌是 72，窄于 799px 是 96，否则 148。_props 函数体内没有读取。 */
 export function HomeHero(_props: {
   workspace?: string;
   onBrowseWorkspace?: () => void;
@@ -121,18 +84,14 @@ export function HomeHero(_props: {
       )}
       data-testid="empty-turn"
     >
-      {createDesk && !bound ? null : (
-        <>
-          <PresenceAnchor id="home" size={createDesk ? 72 : narrow ? 96 : 148} className="mx-auto cursor-pointer" />
-          <p className={cn("text-center text-ui-body tracking-[-0.01em] text-muted", createDesk ? "mt-3" : "mt-5")}>
-            {hello(copy)}
-          </p>
-        </>
+      <PresenceAnchor id="home" size={createDesk ? 72 : narrow ? 96 : 148} className="mx-auto cursor-pointer" />
+      {createDesk ? null : (
+        <p className="mt-5 text-center text-ui-body tracking-[-0.01em] text-muted">{hello(copy)}</p>
       )}
-      {createDesk && (filmOpen || filmLead) ? null : (
+      {createDesk && filmOpen ? null : (
         <h1 className={cn(
-          "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
-          createDesk ? "mt-1 text-ui-display" : "mt-1.5 text-ui-display",
+          "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground text-ui-display",
+          createDesk ? "mt-3" : "mt-1.5",
         )}>
           {bound ? c.copilotTitle : readyOf(copy, videoing, videoMode, createDesk)}
         </h1>
@@ -142,18 +101,16 @@ export function HomeHero(_props: {
           {boundTitle ? <p className="mt-1 text-center text-ui-body text-foreground">{boundTitle}</p> : null}
           <p className="mx-auto mt-1.5 max-w-[40ch] text-center text-ui-footnote leading-[1.5] text-muted">{c.finishHint}</p>
         </>
-      ) : createDesk && !bound && !filmOpen && !filmLead ? (
-        <p className="mx-auto mt-1.5 max-w-[36ch] text-center text-ui-body leading-[1.5] text-muted">
-          {c.lead}
-        </p>
+      ) : createDesk && !filmOpen ? (
+        <p className="mx-auto mt-1.5 max-w-[40ch] text-center text-ui-body leading-[1.5] text-muted">{c.lead}</p>
       ) : null}
     </div>
   );
 }
 
 /**
- * HomeStarters 在创作桌、未绑定且传入打开剪辑时挂 CreateHome，用来接着改已经打开的成片或翻拍稿。案例只在创作桌未绑定且有 onPrompt 时出现。按钮延迟从 80 毫秒起，每个再加 50。
- * props 读取 onContinueLast、onPrompt、onOpenCut，调用 onContinueLast，调用 onPrompt。
+ * HomeStarters 画起步句。创作桌画三句例子：没绑定片子时是想法，绑定后是怎么剪；点一句只放进输入框，不发送。没绑定时下面再画案例目录。成片或翻拍稿打开时不画例子和案例，交给 CreateHome。按钮延迟从 80 毫秒起，每个再加 50。
+ * props 读取 onContinueLast、onPrompt、onOpenCut。创作桌不画「继续上次」。
  */
 export function HomeStarters(props: {
   onPrompt?: (text: string) => void;
@@ -162,22 +119,24 @@ export function HomeStarters(props: {
   draftKey?: string;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
+  const c = copy.video.conductor;
   const project = useCutDesk((s) => (createDesk ? s.project : null));
   const resumeId = useCutDesk((s) => (createDesk && s.parked ? s.resumeId : ""));
   const resumeTitle = useCutDesk((s) => (createDesk && s.parked ? s.resumeTitle : ""));
-  const mode = useCreateMode((s) => s.mode);
   const filmOpen = useFilmDesk((s) => !!s.project?.id);
   const remakeOpen = useRemakeDesk((s) => !!s.draft?.id);
-  const filmMode = isFilmMode(mode);
-  const starters = startersOf(copy, videoing, videoMode, createDesk);
   const bound = !!project?.source_hash && !!project.id;
+  const rows: ReadonlyArray<{ label: string; text: string; hint?: string }> = createDesk
+    ? (filmOpen || remakeOpen ? [] : bound ? c.cutExamples : c.examples)
+    : startersOf(copy, videoing, videoMode, createDesk);
   return (
     <>
       <div className={cn(
         "mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-col px-5 sm:px-8",
         createDesk ? "pb-2" : "pb-8",
       )}>
-        {props.onContinueLast ? (
+        {/* 创作桌不画「继续上次」：历史在左栏的作品列表里。 */}
+        {props.onContinueLast && !createDesk ? (
           <div className="mt-3 flex justify-center">
             <button
               type="button"
@@ -188,43 +147,41 @@ export function HomeStarters(props: {
             </button>
           </div>
         ) : null}
+        {rows.length ? (
+          <div className={cn("starter-row flex flex-wrap justify-center", createDesk ? "mt-3 gap-2" : "mt-4 gap-1.5")}>
+            {rows.map((s, i) => (
+              <button
+                type="button"
+                key={s.label}
+                className="starter-tile"
+                data-testid={createDesk ? `create-example-${i}` : undefined}
+                style={{ animationDelay: `${80 + i * 50}ms` }}
+                title={s.hint || s.text}
+                aria-label={s.hint ? `${s.label}，${s.hint}` : s.label}
+                onClick={() => props.onPrompt?.(s.text)}
+              >
+                <span className="starter-tile-label">{s.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {createDesk && !bound && !filmOpen && !remakeOpen && resumeId && props.onOpenCut ? (
           <div className="mt-3 flex justify-center">
             <button
               type="button"
               data-testid="continue-cut"
               className="text-ui-footnote text-muted hover:text-foreground"
-              title={copy.video.conductor.handoffContinueHint}
+              title={c.handoffContinueHint}
               onClick={() => props.onOpenCut?.(resumeId)}
             >
-              {resumeTitle ? `${copy.video.conductor.handoffContinue} · ${resumeTitle}` : copy.video.conductor.handoffContinue}
+              {resumeTitle ? `${c.handoffContinue} · ${resumeTitle}` : c.handoffContinue}
             </button>
           </div>
         ) : null}
-        {bound && project?.id && project.source_hash ? (
-          <CreateBoundActions projectId={project.id} sourceHash={project.source_hash} onPrompt={props.onPrompt} />
-        ) : null}
-        {starters.length ? (
-        <div className={cn("starter-row flex flex-wrap justify-center", createDesk ? "mt-3 gap-2" : "mt-4 gap-1.5")}>
-          {starters.map((s, i) => (
-            <button
-              type="button"
-              key={s.label}
-              className={cn("starter-tile", createDesk && "is-stack")}
-              style={{ animationDelay: `${80 + i * 50}ms` }}
-              title={s.hint}
-              aria-label={s.hint ? `${s.label}，${s.hint}` : s.label}
-              onClick={() => props.onPrompt?.(s.text)}
-            >
-              <span className="starter-tile-label">{s.label}</span>
-              {createDesk && s.hint ? <span className="starter-tile-hint">{s.hint}</span> : null}
-            </button>
-          ))}
-        </div>
-        ) : null}
       </div>
       {createDesk && !bound && props.onOpenCut ? <CreateHome onOpenCut={props.onOpenCut} /> : null}
-      {createDesk && !bound && !filmOpen && !filmMode && props.onPrompt ? <FeaturedCases onPrompt={props.onPrompt} /> : null}
+      {/* 案例目录留在空的创作桌上，点一张只把做法填进输入框，不生成。 */}
+      {createDesk && !bound && !filmOpen && !remakeOpen && props.onPrompt ? <FeaturedCases onPrompt={props.onPrompt} /> : null}
     </>
   );
 }

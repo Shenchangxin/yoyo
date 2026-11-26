@@ -43,6 +43,8 @@ import type { Approval, Item } from "../lib/protocol";
 import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
 import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
 import { isLearnQuizItem, LearnQuizCard } from "./learn/cards/LearnQuizCard";
+import { BriefCard } from "./video/BriefCard";
+import { isVideoBriefItem } from "../lib/video-brief";
 import { classifyItem, errorCopy } from "../lib/error";
 import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, foldAsks, hasConversation, hydrateLayout, isGroupCard, isGroupCardRow, isWakeReceipt, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig } from "../lib/stream-live";
@@ -2168,6 +2170,9 @@ function ArtifactCard({
   }, [codeChange, pending, view.kind, view.path, view.html, view.diff]);
   if (isLearnQuizItem(call) || isLearnQuizItem(result)) {
     return <LearnQuizCard call={call} result={result} />;
+  }
+  if (isVideoBriefItem(call) || isVideoBriefItem(result)) {
+    return <BriefCard call={call} result={result} />;
   }
   if (isPageReviewItem(call) || isPageReviewItem(result)) {
     return <PageReviewCard item={call} result={result} />;
