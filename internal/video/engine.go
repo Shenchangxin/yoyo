@@ -1,4 +1,4 @@
-// Package video 是视频数据与渲染。短片、短剧、画布和剪辑的文档与成片由这个包保管，画面和声音由本包的 ffmpeg、Remotion 与供应商任务渲染。模型循环仍是 runtime.Run。
+// Package video 是视频数据与渲染。短片、短剧、画布和剪辑的文档与成片由这个包保管，画面和声音由本包的 ffmpeg、Remotion 与供应商任务渲染。本包不跑模型循环：视频会话的代理回合由 app 经 App.sendLocked 交给 desk.Host.Run，由 internal/agentloop 的代理执行。
 package video
 
 import (

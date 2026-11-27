@@ -80,13 +80,6 @@ func (p *pool) remove(w *Worker) {
 	p.mu.Unlock()
 }
 
-// size 返回活着的进程数。
-func (p *pool) size() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return len(p.live)
-}
-
 // closeAll 让此刻打开着的工人都停下、不再连接，并停掉它们的进程，不关会话。之后新开的工人不受影响。
 func (p *pool) closeAll() {
 	p.mu.Lock()

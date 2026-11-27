@@ -58,21 +58,6 @@ type Outcome struct {
 	Background bool
 }
 
-// Run 以 idle 和 block 都为 0 调用 Wait，只把输出和错误交回去。
-// ctx 传给 Wait。
-// cmd 传给 Wait。
-func Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
-	o := Wait(ctx, cmd, 0, 0)
-	return o.Output, o.Err
-}
-
-// Wait 运行 cmd，直到进程退出或 ctx 取消。
-// idle 或 block 大于 0 时，静默或墙钟到达就交还控制权，进程继续留着，对应 Cursor 的 block_until_ms。
-// idle 和 block 都为 0 时一直等到退出或取消，与 Run 相同。ctx 取消一定会杀掉进程。
-func Wait(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration) Outcome {
-	return WaitNotify(ctx, cmd, idle, block, nil)
-}
-
 // liveStdoutCap 是实时界面推送的字节上限，值为 32 * 1024。
 // 完整输出仍留在工具结果里，超过该上限的字节不再作为增量送出。
 const liveStdoutCap = 32 * 1024

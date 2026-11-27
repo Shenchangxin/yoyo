@@ -4,7 +4,6 @@ package expert
 
 import (
 	"crypto/ed25519"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,13 +79,6 @@ func Verify(pub ed25519.PublicKey, p Pack) error {
 		return err
 	}
 	return wasm.Verify(pub, []byte(p.SkillMD), sig)
-}
-
-// Sign 对技能正文调用 wasm.Sign，再把签名编成十六进制。
-// priv 传给 wasm.Sign。
-// skillMD 转成字节后传给 wasm.Sign，返回值再编成十六进制。
-func Sign(priv ed25519.PrivateKey, skillMD string) string {
-	return hex.EncodeToString(wasm.Sign(priv, []byte(skillMD)))
 }
 
 // Admit 先 ParseDir 再 Verify。destRoot 为空时验签通过就返回，不创建目录。

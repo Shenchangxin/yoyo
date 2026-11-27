@@ -5,7 +5,6 @@ package runtime
 
 import (
 	"encoding/json"
-	"strconv"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -236,41 +235,6 @@ func closeUnanswered(msgs []Message) []Message {
 		i = j - 1
 	}
 	return out
-}
-
-// MaxAssistantRound 返回助手事件的 id 或 round 字段里已经出现过的最大 rN。下一次实时回合用更大的序号，避免检查点重建历史后和界面上还在的气泡撞号。没有助手事件时返回 0。
-// evs 只看助手事件，从 id 和 round 里取最大序号。
-func MaxAssistantRound(evs []trace.Event) int {
-	max := 0
-	for _, ev := range evs {
-		if ev.Type != trace.TypeAssistant {
-			continue
-		}
-		if ev.Payload == nil {
-			continue
-		}
-		for _, key := range []string{"id", "round"} {
-			raw, _ := ev.Payload[key].(string)
-			if n := parseRoundIndex(raw); n > max {
-				max = n
-			}
-		}
-	}
-	return max
-}
-
-// parseRoundIndex 取最后一个 :r 后面的非负整数。没有 :r、解析失败或是负数时返回 0。
-// id 取最后一个 :r 后面的整数，没有 :r、解析失败或小于 0 时返回 0。
-func parseRoundIndex(id string) int {
-	i := strings.LastIndex(id, ":r")
-	if i < 0 {
-		return 0
-	}
-	n, err := strconv.Atoi(id[i+2:])
-	if err != nil || n < 0 {
-		return 0
-	}
-	return n
 }
 
 // partsFromPayload 把 payload 里的 parts 解成内容片段。类型、图片地址和文本都空的片段丢掉。解不出来或结果为空时返回 nil。

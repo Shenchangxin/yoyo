@@ -90,81 +90,6 @@ func TestAutoFallsBackToLanesWithoutConnections(t *testing.T) {
 	}
 }
 
-// TestBandsSeparatesGroups 确认每组一条带，带内按泳道上下分开，下一条带在下方且左对齐，整体不重叠。
-func TestBandsSeparatesGroups(t *testing.T) {
-	bands := []Band{
-		{Label: "A", Mode: ModeByLane, Nodes: []Node{node("a1", "image", 0, 0, 720, 405), node("a2", "video", 800, 0, 720, 405)}},
-		{Label: "B", Mode: ModeByLane, Nodes: []Node{node("b1", "image", 0, 3000, 720, 405)}},
-	}
-	positions := Bands(bands, 120)
-	// 带内按泳道排：image 泳道在上，video 泳道在其下方
-	if positions["a1"].Y != 0 {
-		t.Fatalf("第一条带应从顶部开始：%+v", positions["a1"])
-	}
-	if positions["a2"].Y <= positions["a1"].Y {
-		t.Fatalf("带内不同泳道应上下分开：a1=%v a2=%v", positions["a1"], positions["a2"])
-	}
-	// 第二整条带排在第一条带之下，且所有带左对齐
-	if positions["b1"].Y <= positions["a2"].Y+405 {
-		t.Fatalf("第二带应排在第一带下方：a2=%v b1=%v", positions["a2"], positions["b1"])
-	}
-	if positions["b1"].X != positions["a1"].X {
-		t.Fatalf("各带应左对齐：a1=%v b1=%v", positions["a1"], positions["b1"])
-	}
-	applied := append([]Node{}, bands[0].Nodes...)
-	applied = append(applied, bands[1].Nodes...)
-	if pairs := Overlaps(withPositions(applied, positions), 0); len(pairs) != 0 {
-		t.Fatalf("分带后出现重叠：%+v", pairs)
-	}
-}
-
-// TestAlignDistributesAndCenters 确认左对齐后横坐标都是 0，纵向等距后相邻间隙相等。
-func TestAlignDistributesAndCenters(t *testing.T) {
-	nodes := []Node{node("a", "text", 0, 0, 100, 100), node("b", "text", 300, 400, 100, 100), node("c", "text", 900, 900, 100, 100)}
-	left := Align(nodes, AlignLeft)
-	for _, id := range []string{"a", "b", "c"} {
-		if left[id].X != 0 {
-			t.Fatalf("%s 未左对齐：%+v", id, left[id])
-		}
-	}
-	distributed := Align(nodes, AlignDistributeY)
-	gaps := []float64{
-		distributed["b"].Y - (distributed["a"].Y + 100),
-		distributed["c"].Y - (distributed["b"].Y + 100),
-	}
-	if math.Abs(gaps[0]-gaps[1]) > 0.001 {
-		t.Fatalf("纵向等距分布不均匀：%v", gaps)
-	}
-}
-
-// TestFreeSlotAvoidsExistingNodes 确认被占用的优选坐标会让开且不重叠，空闲的优选坐标原样返回，没有节点时落在原点。
-func TestFreeSlotAvoidsExistingNodes(t *testing.T) {
-	occupied := []Node{node("image-1", "image", 0, 0, 720, 405)}
-
-	// 优选坐标被占用时让位
-	preferred := Position{X: 0, Y: 0}
-	slot := FreeSlot(720, 405, "image", occupied, &preferred, 40)
-	if slot.X == 0 && slot.Y == 0 {
-		t.Fatalf("优选坐标被占用时未让位：%+v", slot)
-	}
-	candidate := Node{ID: "new", Lane: "image", X: slot.X, Y: slot.Y, Width: 720, Height: 405}
-	if pairs := Overlaps(append(occupied, candidate), 0); len(pairs) != 0 {
-		t.Fatalf("落位后仍重叠：%+v slot=%+v", pairs, slot)
-	}
-
-	// 空闲的优选坐标直接采用
-	free := Position{X: 2000, Y: 0}
-	if got := FreeSlot(720, 405, "image", occupied, &free, 40); got != free {
-		t.Fatalf("空闲优选坐标未被采用：%+v", got)
-	}
-
-	// 没有任何节点时落在原点附近
-	empty := FreeSlot(340, 240, "text", nil, nil, 40)
-	if empty.X != 0 || empty.Y != 0 {
-		t.Fatalf("空画布落位 = %+v", empty)
-	}
-}
-
 // withPositions 把算好的位置写回节点副本。
 func withPositions(nodes []Node, positions map[string]Position) []Node {
 	applied := make([]Node, 0, len(nodes))
@@ -175,4 +100,29 @@ func withPositions(nodes []Node, positions map[string]Position) []Node {
 		applied = append(applied, item)
 	}
 	return applied
+}
+
+// overlaps 判断两个节点（含额外空隙）是否相交。
+// first 的 X、Y 分别与 second 的 X+width+gap、Y+height+gap 比较。
+// second 的 X、Y 分别与 first 的 X+width+gap、Y+height+gap 比较。
+// gap 加在双方宽高上再比坐标。
+func overlaps(first, second Node, gap float64) bool {
+	return first.X < second.X+second.width()+gap &&
+		second.X < first.X+first.width()+gap &&
+		first.Y < second.Y+second.height()+gap &&
+		second.Y < first.Y+first.height()+gap
+}
+
+// Overlaps 返回相互重叠（含 gap 余量）的节点对，用于回执里的自查提示。
+// nodes 两两传给 overlaps。
+func Overlaps(nodes []Node, gap float64) [][2]string {
+	pairs := make([][2]string, 0)
+	for index := 0; index < len(nodes); index++ {
+		for next := index + 1; next < len(nodes); next++ {
+			if overlaps(nodes[index], nodes[next], gap) {
+				pairs = append(pairs, [2]string{nodes[index].ID, nodes[next].ID})
+			}
+		}
+	}
+	return pairs
 }

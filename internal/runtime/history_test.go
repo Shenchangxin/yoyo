@@ -106,18 +106,6 @@ func TestMessagesFromEventsFoldsMentionAfterUser(t *testing.T) {
 	}
 }
 
-// TestMaxAssistantRound 确认 id 为 s:r1、round 为 s:r12 时最大回合号是 12。
-func TestMaxAssistantRound(t *testing.T) {
-	n := MaxAssistantRound([]trace.Event{
-		{Type: trace.TypeUser, Payload: map[string]any{"text": "hi"}},
-		{Type: trace.TypeAssistant, Payload: map[string]any{"id": "s:r1"}},
-		{Type: trace.TypeAssistant, Payload: map[string]any{"round": "s:r12"}},
-	})
-	if n != 12 {
-		t.Fatalf("got %d", n)
-	}
-}
-
 // TestMessagesFromEventsDedupesToolIDs 确认同一个工具 id 的再次调用和再次结果只留一份。
 func TestMessagesFromEventsDedupesToolIDs(t *testing.T) {
 	evs := []trace.Event{

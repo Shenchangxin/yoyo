@@ -20,6 +20,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/osutil"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
+	"github.com/Shenchangxin/yoyo/internal/worktree"
 )
 
 // RenameSession 改标题并写回 meta。空标题返回错误。
@@ -279,7 +280,7 @@ func (a *App) WorkspaceHunks(workspace string) (map[string]any, error) {
 	}
 	return map[string]any{
 		"diff":  diff,
-		"hunks": runtime.ParseDiffHunks(diff),
+		"hunks": worktree.ParseHunks(diff),
 	}, nil
 }
 
@@ -294,7 +295,7 @@ func (a *App) ApplyWorkspaceHunks(workspace string, ids []string) error {
 	if err != nil {
 		return err
 	}
-	return runtime.ApplyHunks(workspace, diff, ids)
+	return worktree.ApplyHunks(workspace, diff, ids)
 }
 
 // ReverseWorkspaceHunks 按快照把选中的 hunk 撤回去。没有快照则返回错误。
@@ -308,7 +309,7 @@ func (a *App) ReverseWorkspaceHunks(workspace string, ids []string, snapshot str
 	if strings.TrimSpace(snapshot) == "" {
 		return fmt.Errorf("missing snapshot for undo")
 	}
-	return runtime.ReverseApplyHunks(workspace, snapshot, ids)
+	return worktree.ReverseApplyHunks(workspace, snapshot, ids)
 }
 
 // forkCutIndex 按 seq:、用户事件 id 或正文片段找到分叉起点。找不到返回 -1。

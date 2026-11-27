@@ -193,3 +193,11 @@ func TestProbeChatCompletionsFailsAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestProbeErrorReadsGatewayMsg 锁住 401 网关 JSON 的 msg 被收成 HTTP 401: Authorization header is required。
+func TestProbeErrorReadsGatewayMsg(t *testing.T) {
+	got := ProbeError(401, `{"code":401,"msg":"Authorization header is required","error_key":"error.auth.authorization_required"}`)
+	if got != "HTTP 401: Authorization header is required" {
+		t.Fatal(got)
+	}
+}

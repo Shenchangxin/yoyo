@@ -251,7 +251,7 @@ func TestScanRejectsPipeToShell(t *testing.T) {
 	}
 }
 
-// TestLoadFromHTTP 确认 Load 能从测试服务器读到 browser 这一条，并且它的 SKILL.md 能过扫描。
+// TestLoadFromHTTP 确认 LoadHub 能从测试服务器读到 browser 这一条，并且它的 SKILL.md 能过扫描。
 func TestLoadFromHTTP(t *testing.T) {
 	md := "## 1. 技能包 skills/\n\n### Tools（1）\n\n| 目录 | 名称 | 用来做什么 | 前置条件 |\n|------|------|------------|----------|\n| `browser` | browser | headless | 无 |\n"
 	skill := "---\nname: browser\ndescription: Simple headless browser notes.\n---\n\nUse sparingly.\n"
@@ -269,7 +269,7 @@ func TestLoadFromHTTP(t *testing.T) {
 	old := Base
 	Base = srv.URL
 	t.Cleanup(func() { Base = old })
-	c, err := Load(t.TempDir(), true)
+	c, err := LoadHub(t.TempDir(), LoadOpts{Hub: HubWorkBuddy, Refresh: true})
 	if err != nil || len(c.Items) != 1 || c.Items[0].Slug != "browser" {
 		t.Fatalf("%+v %v", c, err)
 	}
@@ -288,4 +288,13 @@ func TestSanitizeSlug(t *testing.T) {
 	if SanitizeSlug("../etc") != "" || SanitizeSlug("skills/github/") != "github" {
 		t.Fatal("sanitize")
 	}
+}
+
+// Install 以空记录调用 InstallRecord。
+// homeSkills 交给 InstallRecord。
+// slug 交给 InstallRecord。
+// scan 交给 InstallRecord。
+// files 交给 InstallRecord。
+func Install(homeSkills, slug string, scan Scan, files []PackFile) (string, error) {
+	return InstallRecord(homeSkills, slug, scan, files, Record{})
 }

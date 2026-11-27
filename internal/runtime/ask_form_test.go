@@ -56,20 +56,6 @@ func TestAskIdleWithoutOptionsDoesNotInventAChoice(t *testing.T) {
 	}
 }
 
-// TestWaitsForNodMatchesDesignHold 确认设计稿里的等待确认用语命中，已经做完的句子不命中。
-func TestWaitsForNodMatchesDesignHold(t *testing.T) {
-	letter := "请确认两件事：\n1. 这个方向对吗？\n你点头我就开工。"
-	if !waitsForNod(letter) {
-		t.Fatal("expected the design hold")
-	}
-	if waitsForNod("难度档已全部落码并通过验证。") {
-		t.Fatal("a finished status is not a hold")
-	}
-	if !waitsForNod("Please confirm the direction before I write the files.") {
-		t.Fatal("english hold")
-	}
-}
-
 // TestChosenOptionReadsCardLine 确认从卡片行读出 ink，并跳过 note: 行。
 func TestChosenOptionReadsCardLine(t *testing.T) {
 	ans := "choice: b — Beta\nnote: operator answered"

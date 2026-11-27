@@ -25,15 +25,6 @@ type Record struct {
 	Scan      Scan      `json:"scan"`
 }
 
-// Install 以空记录调用 InstallRecord。
-// homeSkills 交给 InstallRecord。
-// slug 交给 InstallRecord。
-// scan 交给 InstallRecord。
-// files 交给 InstallRecord。
-func Install(homeSkills, slug string, scan Scan, files []PackFile) (string, error) {
-	return InstallRecord(homeSkills, slug, scan, files, Record{})
-}
-
 // InstallRecord 把文件写到 homeSkills/<slug>。先写到该目录加 .install-tmp，放上 .market.json，再改名换上。scan.OK 为假返回 "scan blocked"。没有根上的 SKILL.md 返回 "pack missing SKILL.md"。脚本用 0o755，其余用 0o644。来源为空时记成 HubWorkBuddy。
 // files 交给 packHasSkillMD，再逐个写入临时目录。
 // rec 的 Source 为空时改成 HubWorkBuddy，再写入 .market.json。

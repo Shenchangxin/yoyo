@@ -6,8 +6,6 @@ package runtime
 import (
 	"sort"
 	"strings"
-
-	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 // 运行时插进用户角色的催促、计划和附件标记。isControlUser 把它们排除出笔记目标。
@@ -109,6 +107,21 @@ func isResumeUser(text string) bool {
 	}
 }
 
+// 停滞催促的前缀。现在的代理循环已经不再发这些催促，但旧会话的 JSONL 里还留着，isControlUser 靠它们把这些行挡在笔记目标之外。
+// errorRepeatPrefixEN 和 agentloop/desk/guard.go 的重复错误提醒同前缀，桌面的提醒也按控制行处理。
+const (
+	rewriteStallPrefixEN = "You have rewritten "
+	rewriteStallPrefixZH = "你已经反复整文件覆盖 "
+	errorRepeatPrefixEN  = "The same tool error keeps repeating"
+	errorRepeatPrefixZH  = "同一个工具错误在重复"
+	waitLoopPrefixEN     = "You have been waiting in a poll loop"
+	waitLoopPrefixZH     = "你已经在空转等待"
+	checkFailPrefixEN    = "The same check still FAILs"
+	checkFailPrefixZH    = "检查项仍以同样方式失败"
+	instrumentPrefixEN   = "The failing check cites the product"
+	instrumentPrefixZH   = "失败检查指向产品文件"
+)
+
 // isControlUser 把运行时催促、检查点、占位、提及和 steer 当成控制行。空文本也算。这些行不进入笔记目标。
 // text 去掉空白后为空则返回 true，否则与这些催促、前缀和 Context checkpoint 比较。
 func isControlUser(text string) bool {
@@ -174,60 +187,6 @@ func isControlUser(text string) bool {
 		return true
 	}
 	return false
-}
-
-// ExtractNotes 从轨迹事件收集笔记。steer 来源的用户事件跳过。目标、文件、工具、错误和 spill id 各有条数上限。
-// evs 只看用户、工具调用和工具结果三类事件。
-func ExtractNotes(evs []trace.Event) SessionNotes {
-	n := SessionNotes{}
-	files := map[string]bool{}
-	tools := map[string]bool{}
-	spills := map[string]bool{}
-	for _, ev := range evs {
-		switch ev.Type {
-		case trace.TypeUser:
-			if ev.Source == "steer" {
-				continue
-			}
-			if t, _ := ev.Payload["text"].(string); t != "" && !isControlUser(t) && !isResumeUser(t) {
-				stickObjective(&n, t)
-			}
-		case trace.TypeToolCall:
-			name, _ := ev.Payload["name"].(string)
-			if name != "" {
-				tools[name] = true
-			}
-			args, _ := ev.Payload["arguments"].(string)
-			for _, p := range extractJSONPaths(args) {
-				files[p] = true
-			}
-		case trace.TypeToolResult:
-			content, _ := ev.Payload["content"].(string)
-			id, _ := ev.Payload["id"].(string)
-			if id != "" && strings.Contains(content, "[elided ") {
-				spills[id] = true
-			}
-			if strings.HasPrefix(content, "ERROR:") {
-				n.Errors = appendUnique(n.Errors, capRunes(content, 240))
-			}
-		}
-	}
-	n.Files = keys(files)
-	n.Tools = keys(tools)
-	n.SpillIDs = keys(spills)
-	if len(n.Files) > 24 {
-		n.Files = n.Files[:24]
-	}
-	if len(n.Tools) > 24 {
-		n.Tools = n.Tools[:24]
-	}
-	if len(n.Errors) > 12 {
-		n.Errors = n.Errors[:12]
-	}
-	if len(n.SpillIDs) > 32 {
-		n.SpillIDs = n.SpillIDs[:32]
-	}
-	return n
 }
 
 // NotesFromMessages 从消息收集笔记。控制行和继续短句不改目标。文件和工具的条数上限在 mergeNotes。

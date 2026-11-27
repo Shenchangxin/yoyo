@@ -821,26 +821,3 @@ func stripHeld(s string, held map[string]bool) string {
 	}
 	return s
 }
-
-// overlayEvidenceBlob 把证据路径、INV、DOM 和经验字段接成一段，供测试查看 held 编号是否还在。
-// res 的 Evidence 每条一行，再接上 INV 的 Audit、Expected、SkillMD、InstructionText，以及 DOM 的 Audit、Expected、SkillMD；Experience 非空时再接 Cue、Lesson、Evidence。
-func overlayEvidenceBlob(res OverlayResult) string {
-	var b strings.Builder
-	for _, e := range res.Evidence {
-		b.WriteString(e)
-		b.WriteByte('\n')
-	}
-	b.WriteString(res.INV.Audit)
-	b.WriteString(res.INV.Expected)
-	b.WriteString(res.INV.SkillMD)
-	b.WriteString(res.INV.InstructionText)
-	b.WriteString(res.DOM.Audit)
-	b.WriteString(res.DOM.Expected)
-	b.WriteString(res.DOM.SkillMD)
-	if res.Experience != nil {
-		b.WriteString(res.Experience.Cue)
-		b.WriteString(res.Experience.Lesson)
-		b.WriteString(res.Experience.Evidence)
-	}
-	return b.String()
-}

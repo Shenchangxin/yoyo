@@ -63,3 +63,8 @@ evals/.materialized/
 
 # Research PDF cache (fetch with scripts/fetch-research-originals.ps1)
 docs/research/originals/*.pdf
+
+# Local review/refactor scratch scripts and logs
+/.review-tmp/
+# Browser-verify output written by runtime tests into the package dir
+/internal/runtime/qa/

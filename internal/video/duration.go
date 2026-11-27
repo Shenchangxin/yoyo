@@ -13,10 +13,6 @@ const (
 	CharsPerMinute = 500
 	// SecondsPerShot 是估算段数时每段按 12 秒计。
 	SecondsPerShot = 12
-	// CharsPerSecond 是对白下限用的每秒 4.5 个字符。
-	CharsPerSecond = 4.5
-	// PerformancePad 是对白秒数上再加的 2 秒。
-	PerformancePad = 2
 	// MinSegment 是单段最短 8 秒。
 	MinSegment = 8
 	// MaxSegment 是单段最长 15 秒。
@@ -54,23 +50,6 @@ func PlanDuration(script string) DurationPlan {
 		MinTotal:      int(float64(sec) * 0.8),
 		MaxTotal:      int(float64(sec) * 1.2),
 	}
-}
-
-// DialogueFloor 用字符数除以 CharsPerSecond 四舍五入，再加上 PerformancePad，然后夹进 MinSegment 和 MaxSegment。字符数小于等于 0 时返回 MinSegment。
-// dialogueChars 小于等于 0 时返回 MinSegment，否则除以 CharsPerSecond 并加上 PerformancePad，再夹进 MinSegment 和 MaxSegment。
-func DialogueFloor(dialogueChars int) int {
-	if dialogueChars <= 0 {
-		return MinSegment
-	}
-	sec := int(float64(dialogueChars)/CharsPerSecond + 0.5)
-	sec += PerformancePad
-	if sec < MinSegment {
-		return MinSegment
-	}
-	if sec > MaxSegment {
-		return MaxSegment
-	}
-	return sec
 }
 
 // ClampSegment 按种类夹秒数：transition 是 8 到 10，narrative 是 10 到 15，beat 是 12 到 15，其余是 MinSegment 到 MaxSegment。

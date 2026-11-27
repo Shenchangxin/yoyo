@@ -166,7 +166,7 @@ func (rt *Runtime) runNotice(payload any) error {
 }
 
 // recoverRejectedAsks 把上次被拒的「做完同时提问」按等人补记一次，并写回主会话。
-// 已经记过的同一问题不重复。没有数据库时什么都不做。
+// 先扫出带被拒提问的日志，再逐条交给 applyRejectedAsk；每条补记前都重查一次，同一问题只补一次。没有数据库时什么都不做。
 func (rt *Runtime) recoverRejectedAsks() {
 	if rt == nil || rt.db == nil || rt.eng == nil {
 		return
@@ -177,7 +177,8 @@ func (rt *Runtime) recoverRejectedAsks() {
 	}
 	defer rows.Close()
 	type pending struct {
-		id, summary, question string
+		id   string
+		body []byte
 	}
 	var found []pending
 	for rows.Next() {
@@ -185,22 +186,21 @@ func (rt *Runtime) recoverRejectedAsks() {
 		if rows.Scan(&id, &body) != nil {
 			continue
 		}
-		summary, question, ok := rejectedAsk([]byte(body))
-		if !ok || askedQuestion(rt.eng, id, question) {
-			continue
+		if _, _, ok := rejectedAsk([]byte(body)); ok {
+			found = append(found, pending{id, []byte(body)})
 		}
-		found = append(found, pending{id, summary, question})
 	}
 	if rows.Err() != nil {
 		return
 	}
 	changed := false
 	for _, item := range found {
-		if rt.eng.Report(item.id, Report{State: "blocked", Summary: item.summary, Question: item.question}) != nil {
+		summary, question, ok := applyRejectedAsk(rt.eng, item.id, item.body)
+		if !ok {
 			continue
 		}
 		changed = true
-		rt.queueReport(item.id, "blocked", item.summary, item.question)
+		rt.queueReport(item.id, "blocked", summary, question)
 	}
 	if changed {
 		rt.save()

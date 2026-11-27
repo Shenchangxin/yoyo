@@ -143,6 +143,3 @@ func emptyToolAnchor(name string) string {
 
 // toolOutcomeUnknown 用于调用已经记下、但结果还不知道的情况。不把它说成成功的空完成。尚未派发的调用用 toolAbortedBeforeDispatch。
 const toolOutcomeUnknown = "ERROR: TOOL_OUTCOME_UNKNOWN: this call was recorded but its outcome is unknown. Retry only if it is read-only or idempotent. If it may have changed files or state, check that state or ask the user before retrying."
-
-// toolAbortedBeforeDispatch 表示调用在派发前被中止。
-const toolAbortedBeforeDispatch = "ERROR: ABORTED_BEFORE_DISPATCH: tool call aborted before dispatch. Retry it if it is still needed."

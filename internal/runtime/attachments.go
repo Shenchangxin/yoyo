@@ -231,7 +231,7 @@ func MaterializeAttachments(workspace string, atts []Attachment) ([]Attachment, 
 	return out, nil
 }
 
-// StampFileMentions 为非图片附件追加 @file:<相对路径>，让用户气泡剥出芯片，并让 ExpandMentions 能预览文件。已有的 @file 和图片不重复添加。
+// StampFileMentions 为非图片附件追加 @file:<相对路径>，让用户气泡剥出芯片，并让 ExpandMentionsPacks 能预览文件。已有的 @file 和图片不重复添加。
 // message 先交给 ParseMentions 收集已有的 @file；没有新标记时原样返回，去掉空白后为空则只返回新标记。
 // atts 逐条取 Path，跳过控制附件、图片和去掉空白后为空的路径。
 func StampFileMentions(message string, atts []Attachment) string {

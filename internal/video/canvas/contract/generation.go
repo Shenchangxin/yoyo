@@ -1,5 +1,7 @@
 // generation.go 定义不含密钥的画布生成合同。供应商配置属于执行，不写进这里。
-// 校验和投影函数没有调用方。画布按字段读取已经解析好的 GenerationSpec。
+// 这里只有类型：video/canvas_protocol.go 把节点上的 generationSpec JSON 解成 GenerationSpec，再按字段取提示词、选项和参考。
+// 除 json 以外的结构体 tag（node、task、modes、enum）只作文档，记录画布节点字段、任务字段、适用模式和取值范围的对应关系，
+// 运行时没有代码通过反射读取它们。改字段或取值时要同步前端画布的生成表单，tag 也随之更新。
 
 package contract
 

@@ -1,0 +1,36 @@
+# 换行符约定：仓库里一律存 LF，工作区默认也检出 LF，不受各人 core.autocrlf 设置影响。
+# 这样 gofmt -l、prettier 和 shell 脚本在 Windows 上和 CI 上看到的是同一份内容；
+# .sh 拷进 Linux 容器时也不会因为 CRLF 报 bad interpreter。
+* text=auto eol=lf
+
+# Windows 原生脚本在工作区检出为 CRLF（仓库里仍存 LF），老版本 cmd.exe 和 Windows PowerShell 5.1 对 LF 不总是友好。
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制资源：不做换行转换，也不做文本 diff。
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.ico    binary
+*.icns   binary
+*.ttf    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+*.mp3    binary
+*.mp4    binary
+*.wav    binary
+*.webm   binary
+*.wasm   binary
+*.syso   binary
+*.exe    binary
+*.dll    binary
+*.zip    binary
+*.gz     binary
+*.pdf    binary
+*.docx   binary
+*.xlsx   binary
+*.pptx   binary

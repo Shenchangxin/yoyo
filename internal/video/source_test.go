@@ -9,21 +9,6 @@ import (
 	"unicode/utf8"
 )
 
-// TestLooksLikeSeries 确认短句返回假，同一句重复 280 次或出现两章时返回真。
-func TestLooksLikeSeries(t *testing.T) {
-	if LooksLikeSeries("林小雨在巷口等车。") {
-		t.Fatal("short prose should stay on the one-episode path")
-	}
-	long := strings.Repeat("林小雨在巷口等车。", 280)
-	if !LooksLikeSeries(long) {
-		t.Fatal("long text should look like a series")
-	}
-	chapters := "第一章 雨\n" + strings.Repeat("她等了很久。", 50) + "\n第二章 夜\n" + strings.Repeat("他没有来。", 50)
-	if !LooksLikeSeries(chapters) {
-		t.Fatal("two chapters should look like a series")
-	}
-}
-
 // TestIngestProposeCommitSlices 确认导入后字数至少 400，草案不创建分集，提交后至少 2 集且每集正文是原文里的非空片段，已提交后再导入会失败。
 func TestIngestProposeCommitSlices(t *testing.T) {
 	e := testEngine(t)

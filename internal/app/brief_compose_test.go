@@ -87,7 +87,7 @@ func TestQuietBriefIsKeptButNotPushed(t *testing.T) {
 
 func TestParseTodayCardsKeepsGroundedShape(t *testing.T) {
 	raw := "```json\n{\"cards\":[{\"id\":\"job\",\"title\":\"简历还差目标岗位\",\"lede\":\"你刚问过投递\",\"layout\":\"evidence\",\"items\":[{\"title\":\"缺口\",\"detail\":\"方向和城市还没定\"}],\"primary\":\"补上再筛\",\"task\":\"按我上次说的找工作，先列还缺的条件\"},{\"id\":\"\",\"title\":\"丢掉\"}]}\n```"
-	cards := parseTodayCards(raw)
+	cards, _ := parseTodayBrief(raw)
 	if len(cards) != 1 || cards[0].ID != "job" || cards[0].Task == "" || cards[0].Layout != "evidence" {
 		t.Fatalf("%+v", cards)
 	}
@@ -113,7 +113,7 @@ func TestParseTodayCardsKeepsEveryCard(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		cards = append(cards, `{"id":"c`+string(rune('0'+i))+`","title":"第`+string(rune('0'+i))+`张","layout":"plain"}`)
 	}
-	got := parseTodayCards(`{"cards":[` + strings.Join(cards, ",") + `]}`)
+	got, _ := parseTodayBrief(`{"cards":[` + strings.Join(cards, ",") + `]}`)
 	if len(got) != 6 {
 		t.Fatalf("len %d", len(got))
 	}
@@ -121,7 +121,7 @@ func TestParseTodayCardsKeepsEveryCard(t *testing.T) {
 
 func TestParseTodayCardsKeepsLetterStatsAndNumbers(t *testing.T) {
 	raw := `{"cards":[{"id":"gap","title":"手上有的和还没有的","layout":"Letter","leftLabel":"有","rightLabel":"没有","items":[{"title":"概念","detail":"已起稿"}],"choices":[{"id":"city","title":"城市","detail":"还没定"}]},{"id":"n","title":"数得出来","layout":"stats","stats":[{"label":"工程","value":3},{"label":"空","value":""}]},{"id":"odd","title":"交给界面","layout":"poster"}]}`
-	got := parseTodayCards(raw)
+	got, _ := parseTodayBrief(raw)
 	if len(got) != 3 {
 		t.Fatalf("%+v", got)
 	}

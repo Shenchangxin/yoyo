@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 // ensureWorkDir 准备 ticketID 的目录。没有准备命令时建一个空目录。准备失败时返回错误，调用方结束工单。
@@ -44,10 +44,11 @@ func (e *Executor) ensureWorkDir(ticketID string) (string, error) {
 				env[k] = v
 			}
 		}
-		env["DSH_SUPERAGENT_DIR"] = dir
-		env["DSH_SUPERAGENT_NAME"] = id
-		env["DSH_SUPERAGENT_TICKET"] = ticketID
-		out, err := e.RunPrepare(ctx, e.Root, e.PrepareCmd, env)
+		env[envDir] = dir
+		env[envName] = id
+		env[envTicket] = ticketID
+		// 准备脚本可能还在读废弃的 DSH_SUPERAGENT_* 旧名，进程环境里两套都给。
+		out, err := e.RunPrepare(ctx, e.Root, e.PrepareCmd, withLegacyEnv(env))
 		if err != nil {
 			text := strings.TrimSpace(out)
 			if text == "" {
@@ -129,7 +130,7 @@ func openCodeAgent(agent string) bool {
 	}
 }
 
-// writePromptContext 写操作者画像和这张工单的 DSH_SUPERAGENT_* 变量。没有画像或变量时什么都不写。
+// writePromptContext 写操作者画像和这张工单的 YOYO_SUPERAGENT_* 变量（见 env.go，只写新名、只写非空值）。没有画像或变量时什么都不写。
 func writePromptContext(b *strings.Builder, e *Executor, dir, ticketID string) {
 	if e != nil && e.Profile != nil {
 		if pin := strings.TrimSpace(e.Profile()); pin != "" {
@@ -140,11 +141,7 @@ func writePromptContext(b *strings.Builder, e *Executor, dir, ticketID string) {
 	}
 	if e != nil && e.Env != nil {
 		env := e.Env(dir, ticketID)
-		for _, key := range []string{
-			"DSH_SUPERAGENT_DIR", "DSH_SUPERAGENT_NAME", "DSH_SUPERAGENT_TICKET",
-			"DSH_SUPERAGENT_GITHUB_REPOSITORY", "DSH_SUPERAGENT_GITHUB_ACCOUNT",
-			"DSH_SUPERAGENT_FEISHU_BOT", "DSH_SUPERAGENT_FEISHU_CHAT",
-		} {
+		for _, key := range envKeys {
 			if env[key] != "" {
 				fmt.Fprintf(b, "%s=%s\n", key, env[key])
 			}
@@ -153,89 +150,89 @@ func writePromptContext(b *strings.Builder, e *Executor, dir, ticketID string) {
 }
 
 // replyTool 把正文交回触发原来的渠道。
-func (e *Executor) replyTool(ticketID string) dsh.Tool {
-	return dsh.Tool{
+func (e *Executor) replyTool(ticketID string) agentloop.Tool {
+	return agentloop.Tool{
 		Name:        "orchestrator_reply",
 		Description: "把回复交回触发原来的渠道。purpose 取 acknowledgement、answer、result 或 attention。trigger 是相关触发编号。text 是正文。",
-		Mode:        func(dsh.ToolCall) string { return dsh.ModeExclusive },
-		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
+		Mode:        func(agentloop.ToolCall) string { return agentloop.ModeExclusive },
+		Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
 			var body struct {
 				Purpose string `json:"purpose"`
 				Trigger string `json:"trigger"`
 				Text    string `json:"text"`
 			}
 			if err := json.Unmarshal([]byte(call.Arguments), &body); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
 			if _, err := e.Engine.Reply(ticketID, body.Purpose, body.Trigger, body.Text); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
-			return dsh.Result{Text: "queued " + body.Purpose}, nil
+			return agentloop.Result{Text: "queued " + body.Purpose}, nil
 		},
 	}
 }
 
 // handbackTool 把超出范围的触发交还主循环。
-func (e *Executor) handbackTool(ticketID string) dsh.Tool {
-	return dsh.Tool{
+func (e *Executor) handbackTool(ticketID string) agentloop.Tool {
+	return agentloop.Tool{
 		Name:        "orchestrator_handback",
 		Description: "这条人的消息超出本工单范围时交还。trigger 是触发编号。reason 说明为什么。",
-		Mode:        func(dsh.ToolCall) string { return dsh.ModeExclusive },
-		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
+		Mode:        func(agentloop.ToolCall) string { return agentloop.ModeExclusive },
+		Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
 			var body struct {
 				Trigger string `json:"trigger"`
 				Reason  string `json:"reason"`
 			}
 			if err := json.Unmarshal([]byte(call.Arguments), &body); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
 			if _, err := e.Engine.Handback(ticketID, body.Trigger, body.Reason); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
-			return dsh.Result{Text: "handed back"}, nil
+			return agentloop.Result{Text: "handed back"}, nil
 		},
 	}
 }
 
 // followTool 只为上下文跟随一条线程，不取得人的后续消息。
-func (e *Executor) followTool(ticketID string) dsh.Tool {
-	return dsh.Tool{
+func (e *Executor) followTool(ticketID string) agentloop.Tool {
+	return agentloop.Tool{
 		Name:        "orchestrator_follow",
 		Description: "只为上下文跟随 thread。这不让工单拥有该线程上的人的后续消息。",
-		Mode:        func(dsh.ToolCall) string { return dsh.ModeExclusive },
-		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
+		Mode:        func(agentloop.ToolCall) string { return agentloop.ModeExclusive },
+		Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
 			var body struct {
 				Thread string `json:"thread"`
 			}
 			if err := json.Unmarshal([]byte(call.Arguments), &body); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
 			if _, err := e.Engine.FollowForContext(ticketID, body.Thread); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
-			return dsh.Result{Text: "following " + body.Thread}, nil
+			return agentloop.Result{Text: "following " + body.Thread}, nil
 		},
 	}
 }
 
 // unrelatedTool 标记一条线程和这张工单无关。
-func (e *Executor) unrelatedTool(ticketID string) dsh.Tool {
-	return dsh.Tool{
+func (e *Executor) unrelatedTool(ticketID string) agentloop.Tool {
+	return agentloop.Tool{
 		Name:        "orchestrator_unrelated",
 		Description: "标记 thread 与本工单无关。reason 说明原因。",
-		Mode:        func(dsh.ToolCall) string { return dsh.ModeExclusive },
-		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
+		Mode:        func(agentloop.ToolCall) string { return agentloop.ModeExclusive },
+		Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
 			var body struct {
 				Thread string `json:"thread"`
 				Reason string `json:"reason"`
 			}
 			if err := json.Unmarshal([]byte(call.Arguments), &body); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
 			if err := e.Engine.MarkUnrelated(ticketID, body.Thread, body.Reason); err != nil {
-				return dsh.Result{Text: err.Error(), IsError: true}, nil
+				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}
-			return dsh.Result{Text: "unrelated"}, nil
+			return agentloop.Result{Text: "unrelated"}, nil
 		},
 	}
 }

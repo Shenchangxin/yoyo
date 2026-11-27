@@ -8,19 +8,19 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/eval"
 )
 
-// TestSelectParentPrefersUnderexploredWinners 要求 BestParent 选子节点更少且已接受的 b，而不是子节点更多的 a。
+// TestSelectParentPrefersUnderexploredWinners 要求子节点更少的已接受胜者 b 权重高于子节点更多的 a，零通过又未接受的 c 权重最低。
+// SelectParentSeeded 按这份权重抽样，所以权重的高低就是抽中的偏向。
 func TestSelectParentPrefersUnderexploredWinners(t *testing.T) {
 	nodes := []Node{
 		{ID: "a", Metrics: eval.Metrics{HeldInPass: 2, HeldOutPass: 2}, Accepted: true},
 		{ID: "b", Parent: "a", Metrics: eval.Metrics{HeldInPass: 2, HeldOutPass: 2}, Accepted: true},
 		{ID: "c", Parent: "a", Metrics: eval.Metrics{HeldInPass: 0, HeldOutPass: 0}},
 	}
-	got := BestParent(nodes, "a")
-	if got != "b" {
-		t.Fatalf("got %s", got)
-	}
 	if ParentWeight(nodes[1], 0) <= ParentWeight(nodes[0], 2) {
 		t.Fatal("underexplored winner should weigh more")
+	}
+	if ParentWeight(nodes[2], 0) >= ParentWeight(nodes[1], 0) {
+		t.Fatal("unaccepted zero-pass node should weigh least")
 	}
 }
 

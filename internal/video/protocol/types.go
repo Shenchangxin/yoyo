@@ -13,7 +13,7 @@ type Capability string
 // 协议能力只有这四种取值。
 const (
 	// CapabilityText 是文本能力 text。
-	CapabilityText  Capability = "text"
+	CapabilityText Capability = "text"
 	// CapabilityImage 是图像能力 image。
 	CapabilityImage Capability = "image"
 	// CapabilityVideo 是视频能力 video。
@@ -30,13 +30,13 @@ const (
 	// SurfaceAdminSystemChannel 是管理端系统频道 admin.system-channel。
 	SurfaceAdminSystemChannel Surface = "admin.system-channel"
 	// SurfaceUserCustomChannel 是用户自定义频道 user.custom-channel。
-	SurfaceUserCustomChannel  Surface = "user.custom-channel"
+	SurfaceUserCustomChannel Surface = "user.custom-channel"
 	// SurfaceCanvas 是画布使用面 canvas。
-	SurfaceCanvas             Surface = "canvas"
+	SurfaceCanvas Surface = "canvas"
 	// SurfaceCreation 是创作使用面 creation。
-	SurfaceCreation           Surface = "creation"
+	SurfaceCreation Surface = "creation"
 	// SurfaceAgent 是代理使用面 agent。
-	SurfaceAgent              Surface = "agent"
+	SurfaceAgent Surface = "agent"
 )
 
 // Status 是生成任务的状态文本。
@@ -45,15 +45,15 @@ type Status string
 // 任务状态使用这五种文本。
 const (
 	// StatusPending 是排队状态 pending。
-	StatusPending    Status = "pending"
+	StatusPending Status = "pending"
 	// StatusProcessing 是处理中 processing。
 	StatusProcessing Status = "processing"
 	// StatusSucceeded 是成功 succeeded。
-	StatusSucceeded  Status = "succeeded"
+	StatusSucceeded Status = "succeeded"
 	// StatusFailed 是失败 failed。
-	StatusFailed     Status = "failed"
+	StatusFailed Status = "failed"
 	// StatusCancelled 是取消 cancelled。
-	StatusCancelled  Status = "cancelled"
+	StatusCancelled Status = "cancelled"
 )
 
 // MediaReference 是一条素材引用，可以是地址、data URL 或带顺序和权重的附件。

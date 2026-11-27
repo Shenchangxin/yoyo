@@ -19,6 +19,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillmarket"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 	"github.com/Shenchangxin/yoyo/internal/version"
+	"github.com/Shenchangxin/yoyo/internal/worktree"
 )
 
 // bundledSkillsDir 由评测目录推出旁边的 skills 目录。评测路径为空时返回 skills。
@@ -132,11 +133,11 @@ func (a *App) DeleteSession(id string) error {
 	delete(a.steers, id)
 	a.queueMu.Unlock()
 	ws := ""
-	worktree := ""
+	tree := ""
 	origin := ""
 	if m, err := a.GetSession(id); err == nil {
 		ws = m.Workspace
-		worktree = m.Worktree
+		tree = m.Worktree
 		origin = m.ProjectRoot()
 	}
 	root := a.Home.Sessions()
@@ -153,8 +154,8 @@ func (a *App) DeleteSession(id string) error {
 		}
 	}
 	runtime.RemoveSessionContext(a.Home.Root, ws, id)
-	if worktree != "" {
-		runtime.RemoveWorktree(origin, worktree)
+	if tree != "" {
+		worktree.Remove(origin, tree)
 	}
 	return first
 }
@@ -311,7 +312,7 @@ func (a *App) SetSessionWorkspace(id, workspace string) (SessionMeta, error) {
 			return m, err
 		}
 		if oldTree != "" && oldTree != workspace {
-			runtime.RemoveWorktree(oldOrigin, oldTree)
+			worktree.Remove(oldOrigin, oldTree)
 		}
 		return a.EnsureSessionWorktree(id)
 	}

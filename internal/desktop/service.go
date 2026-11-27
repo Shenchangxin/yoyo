@@ -1,4 +1,4 @@
-// desktop 是绑到 Wails 窗口的服务。RPC 非空时界面经 JSON-RPC 跟工作者说话，否则直接用同进程的 App。
+// Package desktop 是绑到 Wails 窗口的服务。RPC 非空时界面经 JSON-RPC 跟工作者说话，否则直接用同进程的 App。
 // YOYO_ISOLATE=1 时 OpenIsolated 再启动同一可执行文件并带 YOYO_WORKER=1。health 超过 8 秒或调用失败则退回同进程。这不是安全沙箱，工作者仍握有 vault 和工具。
 package desktop
 

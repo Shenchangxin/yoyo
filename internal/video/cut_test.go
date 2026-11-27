@@ -232,7 +232,7 @@ func TestVideoRouteNoticeStaysCompact(t *testing.T) {
 // ffmpegBin 寻找 ffmpeg 和 ffprobe，找不到 ffmpeg 时跳过测试。
 func ffmpegBin(t *testing.T) (string, string) {
 	t.Helper()
-	ff, probe := LookFFmpeg()
+	ff, probe := LookFFmpegIn(nil)
 	if ff == "" {
 		if p, err := exec.LookPath("ffmpeg"); err == nil {
 			ff = p

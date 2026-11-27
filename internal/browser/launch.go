@@ -78,13 +78,6 @@ func resetChromeSession(profile string) {
 	}
 }
 
-// waitDevToolsPort 等到 DevToolsActivePort 里的端口在本机上可访问。等价于 hint 为 0 的 waitChromeDebug。
-// profile 传给 waitChromeDebug。
-// deadline 传给 waitChromeDebug。
-func waitDevToolsPort(profile string, deadline time.Time) (int, error) {
-	return waitChromeDebug(profile, 0, deadline)
-}
-
 // waitChromeDebug 在截止时间前等调试端口。hint 大于 0 时先看 127.0.0.1:hint 是否已在听；否则读 DevToolsActivePort，并确认那个端口真的在听。超时错误文案是 chrome debug port did not come up。
 // profile 用来拼 DevToolsActivePort 的路径。
 // deadline 之前循环检查端口，过了就返回带 chrome debug port did not come up 的错误。

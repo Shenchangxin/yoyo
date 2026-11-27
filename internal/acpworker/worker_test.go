@@ -15,7 +15,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/acp"
 	"github.com/Shenchangxin/yoyo/internal/acp/acptest"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
 
@@ -90,26 +90,26 @@ func newWorkerIn(t *testing.T, p *pool, d *dialer, edit func(*Config)) *Worker {
 }
 
 // run 发一条消息，等这一轮跑完，返回回合结束。
-func run(w *Worker, text string) dsh.TurnEnd {
-	w.Followup(dsh.UserMessage{Text: text})
+func run(w *Worker, text string) agentloop.TurnEnd {
+	w.Followup(agentloop.UserMessage{Text: text})
 	w.WhenIdle()
 	return lastEnd(w)
 }
 
-func lastEnd(w *Worker) dsh.TurnEnd {
+func lastEnd(w *Worker) agentloop.TurnEnd {
 	events := w.Session().Events()
 	for i := len(events) - 1; i >= 0; i-- {
-		if end, ok := events[i].Data.(dsh.TurnEnd); ok && events[i].Type == dsh.EventTurnEnd {
+		if end, ok := events[i].Data.(agentloop.TurnEnd); ok && events[i].Type == agentloop.EventTurnEnd {
 			return end
 		}
 	}
-	return dsh.TurnEnd{}
+	return agentloop.TurnEnd{}
 }
 
 func turnStarts(w *Worker) int {
 	n := 0
 	for _, ev := range w.Session().Events() {
-		if ev.Type == dsh.EventTurnStart {
+		if ev.Type == agentloop.EventTurnStart {
 			n++
 		}
 	}
@@ -166,12 +166,12 @@ func slowTurn(started chan<- struct{}) func(*acptest.Turn) acp.StopReason {
 }
 
 // priorTurn 是一轮已经做完的旧日志。
-func priorTurn(said string) []dsh.Event {
-	s := dsh.NewSession()
-	s.Append(dsh.EventTurnStart, 1, 0, nil)
-	s.Append(dsh.EventUser, 1, 0, dsh.UserMessage{Text: "做三步"})
-	s.Append(dsh.EventAssistant, 1, 1, dsh.Assistant{Text: said, Finish: "stop"})
-	s.Append(dsh.EventTurnEnd, 1, 0, dsh.TurnEnd{Kind: "completed"})
+func priorTurn(said string) []agentloop.Event {
+	s := agentloop.NewSession()
+	s.Append(agentloop.EventTurnStart, 1, 0, nil)
+	s.Append(agentloop.EventUser, 1, 0, agentloop.UserMessage{Text: "做三步"})
+	s.Append(agentloop.EventAssistant, 1, 1, agentloop.Assistant{Text: said, Finish: "stop"})
+	s.Append(agentloop.EventTurnEnd, 1, 0, agentloop.TurnEnd{Kind: "completed"})
 	return s.Events()
 }
 
@@ -364,7 +364,7 @@ func TestHandoverStartsWithoutContinuationNote(t *testing.T) {
 	d := scripted(acptest.Script{OnPrompt: echoTurns(&texts, "好")})
 	w := newWorker(t, d, nil)
 	w.Restore(nil, 3)
-	w.Session().Append(dsh.EventUser, 3, 0, dsh.UserMessage{ID: "handover-asg-2", Source: "handover", Text: "改由 Codex 接手"})
+	w.Session().Append(agentloop.EventUser, 3, 0, agentloop.UserMessage{ID: "handover-asg-2", Source: "handover", Text: "改由 Codex 接手"})
 	if end := run(w, "派工正文"); end.Kind != "completed" {
 		t.Fatalf("turn end = %+v", end)
 	}
@@ -377,10 +377,10 @@ func TestWorkerCancelDropsQueuedInput(t *testing.T) {
 	started := make(chan struct{}, 4)
 	d := scripted(acptest.Script{OnPrompt: slowTurn(started)})
 	w := newWorker(t, d, nil)
-	w.Followup(dsh.UserMessage{Text: "慢慢做"})
+	w.Followup(agentloop.UserMessage{Text: "慢慢做"})
 	<-started
-	w.Followup(dsh.UserMessage{Text: "排队的"})
-	w.Cancel(dsh.CancelCause{Kind: "user", Reason: "换方向"}, false)
+	w.Followup(agentloop.UserMessage{Text: "排队的"})
+	w.Cancel(agentloop.CancelCause{Kind: "user", Reason: "换方向"}, false)
 	w.WhenIdle()
 	if end := lastEnd(w); end.Kind != "aborted" || end.Reason != "user: 换方向" {
 		t.Fatalf("turn end = %+v", end)
@@ -407,10 +407,10 @@ func TestWorkerCancelKeepsInboxForNextTurn(t *testing.T) {
 		return echoTurns(&texts, "收到")(t)
 	}})
 	w := newWorker(t, d, nil)
-	w.Followup(dsh.UserMessage{Text: "慢慢做"})
+	w.Followup(agentloop.UserMessage{Text: "慢慢做"})
 	<-started
-	w.Followup(dsh.UserMessage{Text: "补一句"})
-	w.Cancel(dsh.CancelCause{Kind: "steer"}, true)
+	w.Followup(agentloop.UserMessage{Text: "补一句"})
+	w.Cancel(agentloop.CancelCause{Kind: "steer"}, true)
 	w.WhenIdle()
 	if n := turnStarts(w); n != 2 {
 		t.Fatalf("turns = %d, want 2", n)
@@ -497,7 +497,7 @@ func TestWorkerStallWaitsOutAnOpenTool(t *testing.T) {
 		return acp.StopEndTurn
 	}})
 	w := newWorker(t, d, nil)
-	w.Followup(dsh.UserMessage{Text: "读一下"})
+	w.Followup(agentloop.UserMessage{Text: "读一下"})
 	select {
 	case <-started:
 	case <-time.After(2 * time.Second):
@@ -507,7 +507,7 @@ func TestWorkerStallWaitsOutAnOpenTool(t *testing.T) {
 	if w.Status() != "running" {
 		t.Fatalf("status = %s, an open tool was stalled on the model budget", w.Status())
 	}
-	w.Cancel(dsh.CancelCause{Kind: "steer"}, false)
+	w.Cancel(agentloop.CancelCause{Kind: "steer"}, false)
 	w.WhenIdle()
 }
 
@@ -526,7 +526,7 @@ func TestWorkerStallWaitsWhileApprovalIsOpen(t *testing.T) {
 			return false, ctx.Err()
 		}
 	})
-	w.Followup(dsh.UserMessage{Text: "要批准"})
+	w.Followup(agentloop.UserMessage{Text: "要批准"})
 	select {
 	case <-started:
 	case <-time.After(2 * time.Second):
@@ -536,7 +536,7 @@ func TestWorkerStallWaitsWhileApprovalIsOpen(t *testing.T) {
 	if w.Status() != "running" {
 		t.Fatalf("status = %s, approval wait was treated as a stall", w.Status())
 	}
-	w.Cancel(dsh.CancelCause{Kind: "steer"}, false)
+	w.Cancel(agentloop.CancelCause{Kind: "steer"}, false)
 	w.WhenIdle()
 }
 
@@ -709,9 +709,9 @@ func TestPermissionCancelledWithTurn(t *testing.T) {
 			return false, ctx.Err()
 		}
 	})
-	w.Followup(dsh.UserMessage{Text: "清理"})
+	w.Followup(agentloop.UserMessage{Text: "清理"})
 	<-asked
-	w.Cancel(dsh.CancelCause{Kind: "user"}, false)
+	w.Cancel(agentloop.CancelCause{Kind: "user"}, false)
 	w.WhenIdle()
 	if end := lastEnd(w); end.Kind != "aborted" || end.Reason != "user" {
 		t.Fatalf("turn end = %+v", end)
@@ -769,14 +769,14 @@ func TestPoolNeverStopsBusyWorkers(t *testing.T) {
 	d1, d2 := scripted(acptest.Script{OnPrompt: slowTurn(started)}), scripted(acptest.Script{})
 	w1 := newWorkerIn(t, p, d1, nil)
 	w2 := newWorkerIn(t, p, d2, nil)
-	w1.Followup(dsh.UserMessage{Text: "慢慢做"})
+	w1.Followup(agentloop.UserMessage{Text: "慢慢做"})
 	<-started
 	run(w2, "二")
 	time.Sleep(30 * time.Millisecond)
 	if !connected(w1) || p.size() != 2 {
 		t.Fatalf("busy worker stopped: connected %v, live %d", connected(w1), p.size())
 	}
-	w1.Cancel(dsh.CancelCause{Kind: "user"}, false)
+	w1.Cancel(agentloop.CancelCause{Kind: "user"}, false)
 	w1.WhenIdle()
 }
 
@@ -793,7 +793,7 @@ func TestCloseEndsSessionOnce(t *testing.T) {
 	if !slices.Contains(d.agent(0).Calls(), "session/close") {
 		t.Fatalf("calls = %v, want session/close", d.agent(0).Calls())
 	}
-	w.Followup(dsh.UserMessage{Text: "二"})
+	w.Followup(agentloop.UserMessage{Text: "二"})
 	w.WhenIdle()
 	if turnStarts(w) != 1 || w.pool.size() != 0 || d.count() != 1 {
 		t.Fatalf("closed worker ran again: turns %d, live %d, dials %d", turnStarts(w), w.pool.size(), d.count())
@@ -804,14 +804,14 @@ func TestCloseAllHaltsWithoutReconnecting(t *testing.T) {
 	started := make(chan struct{}, 4)
 	d := scripted(acptest.Script{Caps: closeCaps, OnPrompt: slowTurn(started)})
 	w := newWorker(t, d, nil)
-	w.Followup(dsh.UserMessage{Text: "慢慢做"})
+	w.Followup(agentloop.UserMessage{Text: "慢慢做"})
 	<-started
 	w.pool.closeAll()
 	w.WhenIdle()
 	if end := lastEnd(w); end.Kind != "aborted" || end.Reason != "shutdown" {
 		t.Fatalf("turn end = %+v", end)
 	}
-	w.Followup(dsh.UserMessage{Text: "再来"})
+	w.Followup(agentloop.UserMessage{Text: "再来"})
 	w.WhenIdle()
 	if d.count() != 1 || turnStarts(w) != 1 {
 		t.Fatalf("worker ran after CloseAll: dials %d, turns %d", d.count(), turnStarts(w))
@@ -880,4 +880,11 @@ func TestWorkerSkipsACPWhenMCPDirect(t *testing.T) {
 	if servers := d.agent(0).Sessions()[0].McpServers; len(servers) != 0 {
 		t.Fatalf("direct config was also registered over ACP: %+v", servers)
 	}
+}
+
+// size 返回活着的进程数。只给测试看空闲回收和进程上限，生产代码不需要它。
+func (p *pool) size() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.live)
 }

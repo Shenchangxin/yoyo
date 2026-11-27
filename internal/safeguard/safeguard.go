@@ -10,14 +10,7 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
-	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
-
-// RedactText 交给 diaglog.Redact，供诊断日志和支持包共用。
-// s 传给 diaglog.Redact。
-func RedactText(s string) string {
-	return diaglog.Redact(s)
-}
 
 // LooksExfil 用整段小写文本做外传猜测。命中时第二个返回值是原因。
 // 含 webhook.site、requestbin 或 pipedream.net 时原因是 exfil sink host。

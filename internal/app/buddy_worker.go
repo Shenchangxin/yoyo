@@ -17,10 +17,10 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/acp"
 	"github.com/Shenchangxin/yoyo/internal/acpworker"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/buddy"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/mcpserve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
@@ -161,8 +161,8 @@ func openCodeBuddy(id string) bool {
 }
 
 // controlTools 只留 orchestrator_* 工具。控制面不给外部 agent 别的东西。
-func controlTools(tools []dsh.Tool) []dsh.Tool {
-	var out []dsh.Tool
+func controlTools(tools []agentloop.Tool) []agentloop.Tool {
+	var out []agentloop.Tool
 	for _, tool := range tools {
 		if strings.HasPrefix(tool.Name, "orchestrator_") {
 			out = append(out, tool)

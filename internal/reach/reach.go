@@ -6,7 +6,6 @@ package reach
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"regexp"
 	"strings"
 	"time"
@@ -130,34 +129,6 @@ func Choose(items []Item, seen map[string]bool) *Item {
 		return &copy
 	}
 	return nil
-}
-
-// ParseEnvelope 读取一行 JSON 结果。ok 不为真时返回空。主动检索不调用外部命令。
-func ParseEnvelope(raw string) []Item {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	line := raw
-	if i := strings.LastIndex(raw, "\n"); i >= 0 {
-		line = strings.TrimSpace(raw[i+1:])
-	}
-	var env struct {
-		OK    bool `json:"ok"`
-		Items []struct {
-			Title string `json:"title"`
-			URL   string `json:"url"`
-			Text  string `json:"text"`
-		} `json:"items"`
-	}
-	if json.Unmarshal([]byte(line), &env) != nil || !env.OK {
-		return nil
-	}
-	var out []Item
-	for _, item := range env.Items {
-		out = append(out, Item{Title: item.Title, URL: item.URL, Snippet: item.Text})
-	}
-	return out
 }
 
 // ParseHost 读取宿主检索格式化后的标题、链接和摘要。

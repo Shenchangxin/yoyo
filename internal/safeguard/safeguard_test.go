@@ -3,17 +3,8 @@
 package safeguard
 
 import (
-	"strings"
 	"testing"
 )
-
-// TestRedactText 锁住 Bearer 密钥经过 RedactText 后不再含 sk-abcdefgh 这一段。
-func TestRedactText(t *testing.T) {
-	out := RedactText("Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz")
-	if out == "" || strings.Contains(out, "sk-abcdefgh") {
-		t.Fatalf("%s", out)
-	}
-}
 
 // TestLooksExfil 锁住 connector_send 加 webhook.site 会被 LooksExfil 判成外传。
 func TestLooksExfil(t *testing.T) {

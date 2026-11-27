@@ -26,6 +26,9 @@ func skillCategories() []map[string]any {
 	}
 }
 
+// canvasSkillDef 是一条内置画布技能。ID 是稳定的技能 id；Name、Desc 是展示名和简介；Tag 取 skillCategories 里的 value；
+// Cover 是封面图路径，为空时没有展示图；Body 是技能正文（skillMD 拼出的 Markdown）；Likes 和 Added 是初始喜欢数和添加数，Added 同时作排序权重。
+// 转成前端技能对象的 toMap 在 canvas_skills.go。
 type canvasSkillDef struct {
 	ID, Name, Tag, Desc, Cover, Body string
 	Likes, Added                     int

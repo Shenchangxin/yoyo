@@ -13,6 +13,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/idol"
+	"github.com/Shenchangxin/yoyo/internal/idol/media"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
@@ -421,9 +422,9 @@ func (appHost *idolHost) idolSpeak(ctx context.Context, idolID, text, cue string
 		spokenLang = it.SpokenLang
 	}
 	provider := idol.NormalizeServices(st.Services).SpeechProvider
-	return synthesize(ctx, speechCall{
-		route: mediaRoute(provider, base), base: base, key: key, model: model,
-		voice: appHost.app.idolVoice(idolID), text: text, cue: cue, lang: spokenLang,
+	return media.Synthesize(ctx, media.Speech{
+		Route: media.Route(provider, base), Base: base, Key: key, Model: model,
+		Voice: appHost.app.idolVoice(idolID), Text: text, Cue: cue, Lang: spokenLang,
 	})
 }
 
@@ -468,9 +469,9 @@ func (appHost *idolHost) idolTranscribe(ctx context.Context, filename string, au
 		return "", err
 	}
 	provider := idol.NormalizeServices(appHost.app.Idols.View().Services).ASRProvider
-	return transcribe(ctx, transcribeCall{
-		route: mediaRoute(provider, base), base: base, key: key, model: model,
-		filename: firstNonEmpty(filename, "audio.webm"), audio: audio, hint: hint,
+	return media.Transcribe(ctx, media.Transcription{
+		Route: media.Route(provider, base), Base: base, Key: key, Model: model,
+		Filename: firstNonEmpty(filename, "audio.webm"), Audio: audio, Hint: hint,
 	})
 }
 
@@ -505,7 +506,7 @@ func (appHost *idolHost) idolPaint(ctx context.Context, prompt string) ([]byte, 
 		return nil, err
 	}
 	provider := idol.NormalizeServices(appHost.app.Idols.View().Services).ImageProvider
-	return paint(ctx, paintCall{route: mediaRoute(provider, base), base: base, key: key, model: model, prompt: prompt})
+	return media.Paint(ctx, media.Painting{Route: media.Route(provider, base), Base: base, Key: key, Model: model, Prompt: prompt})
 }
 
 // idolCanPaint 判断有没有配好能用的生图服务。没有时她会说现在发不了照片，而不是答应了却发不出来。
@@ -665,7 +666,7 @@ func (appHost *idolHost) idolPing(payload string) (string, error) {
 		}
 		return idolJSON(map[string]any{"ok": true})
 	case "asr":
-		if _, err := appHost.app.idolTranscribe(ctx, "ping.wav", silentWAV(), ""); err != nil {
+		if _, err := appHost.app.idolTranscribe(ctx, "ping.wav", media.SilentWAV(), ""); err != nil {
 			return "", err
 		}
 		return idolJSON(map[string]any{"ok": true})

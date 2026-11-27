@@ -75,13 +75,6 @@ func SkillURL(slug string) string {
 	return strings.TrimRight(Base, "/") + "/skills/" + slug + "/SKILL.md"
 }
 
-// Load 加载 Work Buddy 目录，等价于 LoadHub 且 Hub 为 HubWorkBuddy。
-// cacheDir 交给 LoadHub。
-// refresh 写入 LoadOpts 的 Refresh，再交给 LoadHub。
-func Load(cacheDir string, refresh bool) (Catalog, error) {
-	return LoadHub(cacheDir, LoadOpts{Hub: HubWorkBuddy, Refresh: refresh})
-}
-
 // loadWorkBuddy 读 cacheDir/catalog-v2.json。未要求刷新且缓存未过期时直接返回。拉取失败但有旧条目时在 Source 后加 " (stale)"。成功后解析 CATALOG.md、补树和前言，并写回缓存。
 // refresh 为假且 readCache 成功时直接返回 stampWorkBuddy 的结果；否则继续拉取。
 func loadWorkBuddy(cacheDir string, refresh bool) (Catalog, error) {

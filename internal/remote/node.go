@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/skip2/go-qrcode"
@@ -99,15 +98,9 @@ type Node struct {
 	mdnsStop  func()
 }
 
-// current 是本进程 Bind 存下的节点。
-var current atomic.Pointer[Node]
-
-// Current 返回本进程里 Bind 存下的节点。还没有就是 nil。
-func Current() *Node { return current.Load() }
-
 // Bind 在主目录下建 remote/devices，权限 0o700，载入设备和 state.json，并向 API 登记 handle。
 // 磁盘上 enabled 为真就 listen。听失败只写进 listenErr，仍然返回这个节点和空错误。
-// home 为空时返回错误，不登记，也不写入 current。
+// home 为空时返回错误，也不登记。
 func Bind(a *app.App) (*Node, error) {
 	if a == nil || a.HomeRoot() == "" {
 		return nil, errors.New("remote needs a home")
@@ -129,7 +122,6 @@ func Bind(a *app.App) (*Node, error) {
 	n.loadDevices()
 	n.loadState()
 	api.SetRemoteHandler(n.handle)
-	current.Store(n)
 	if n.enabled {
 		if err := n.listen(); err != nil {
 			n.listenErr = err.Error()

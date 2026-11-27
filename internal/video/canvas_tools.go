@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Shenchangxin/yoyo/internal/video/canvas/capability"
 	"github.com/Shenchangxin/yoyo/internal/video/canvas/layout"
+	"github.com/Shenchangxin/yoyo/internal/video/canvas/nodecap"
 )
 
 // CanvasToolNames 返回 CanvasToolSpecs 里的工具名。
@@ -76,7 +76,7 @@ func (e *Engine) CanvasTool(sessionID, name string, args map[string]any) (string
 	}
 	switch name {
 	case "canvas_list_node_types":
-		reg := capability.BuiltinRegistry()
+		reg := nodecap.BuiltinRegistry()
 		out := []map[string]any{}
 		for _, d := range reg.List() {
 			out = append(out, map[string]any{

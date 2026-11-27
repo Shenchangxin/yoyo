@@ -167,10 +167,6 @@ func TestLooksLikePowerShell(t *testing.T) {
 	if looksLikePowerShell(`ls $(pwd)`) {
 		t.Fatal("posix subshell is not powershell")
 	}
-	got := powershellCommandArg(`powershell -NoProfile -Command Start-Process x`)
-	if got != "Start-Process x" {
-		t.Fatalf("unwrap %q", got)
-	}
 }
 
 // TestShellDeniedAllowsLoopbackCurl 确认回环 curl 放行，https://example.com 与无主机的 curl 拒绝。

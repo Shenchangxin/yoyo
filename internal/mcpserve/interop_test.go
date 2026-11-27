@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
@@ -37,7 +37,7 @@ func serveWorkerTools(t *testing.T) (*Server, string) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	tools := make([]dsh.Tool, 0, len(names))
+	tools := make([]agentloop.Tool, 0, len(names))
 	for _, name := range names {
 		tools = append(tools, echo(name))
 	}

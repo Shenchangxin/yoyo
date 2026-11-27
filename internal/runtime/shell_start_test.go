@@ -5,7 +5,6 @@ package runtime
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestCmdStartWouldHang 确认 cmd //c start、裸 start /MIN 和 start 带标题算挂起，Start-Process、npm start、cmd /c echo 和 net start 不算。
@@ -111,7 +110,7 @@ func TestRewriteCmdStartWaitStaysError(t *testing.T) {
 
 // TestChatConductDoesNotTeachOSTrivia 确认聊天行为片段不含 Start-Process 和 cmd start，中文任务用中文，并含 web_fetch 和 leftover。
 func TestChatConductDoesNotTeachOSTrivia(t *testing.T) {
-	text := fragmentText(ChatConductFragments(false))
+	text := fragmentText(ChatConduct(ConductOpts{}))
 	if strings.Contains(text, "Start-Process") || strings.Contains(text, "cmd start") || strings.Contains(text, "中文任务用中文") {
 		t.Fatalf("trivia leaked into conduct: %s", text)
 	}
@@ -131,21 +130,5 @@ func TestLanguagePinFollowsHan(t *testing.T) {
 	}
 	if LanguagePin("find papers on agents").Text != "" {
 		t.Fatal("english")
-	}
-}
-
-// TestChatShellFuse 确认非叠层不熔断；叠层且超时为 5 秒不熔断；叠层且超时一分钟则空闲和阻塞用聊天阈值。
-func TestChatShellFuse(t *testing.T) {
-	idle, block, fuse := chatShellFuse(false, time.Minute)
-	if fuse || idle != 0 || block != 0 {
-		t.Fatalf("harbor must wait for timeout: idle=%s block=%s fuse=%v", idle, block, fuse)
-	}
-	_, _, fuse = chatShellFuse(true, 5*time.Second)
-	if fuse {
-		t.Fatal("short timeout_sec must still kill")
-	}
-	idle, block, fuse = chatShellFuse(true, time.Minute)
-	if !fuse || idle != chatShellIdle || block != chatShellBlock {
-		t.Fatalf("chat long wait must fuse idle=%s block=%s", idle, block)
 	}
 }

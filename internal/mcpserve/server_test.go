@@ -12,16 +12,16 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 // echo 造一个名为 name 的工具，回 "name 参数"。
-func echo(name string) dsh.Tool {
-	return dsh.Tool{
+func echo(name string) agentloop.Tool {
+	return agentloop.Tool{
 		Name:        name,
 		Description: "echo " + name,
-		Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
-			return dsh.Result{Text: name + " " + call.Arguments}, nil
+		Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
+			return agentloop.Result{Text: name + " " + call.Arguments}, nil
 		},
 	}
 }
@@ -37,7 +37,7 @@ func serveEcho(t *testing.T) (*Server, string) {
 		"properties": map[string]any{"state": map[string]any{"type": "string"}},
 		"required":   []string{"state"},
 	}}
-	if err := s.Register(token, "t1", []dsh.Tool{echo("orchestrator_report"), echo("orchestrator_follow")}, schemas); err != nil {
+	if err := s.Register(token, "t1", []agentloop.Tool{echo("orchestrator_report"), echo("orchestrator_follow")}, schemas); err != nil {
 		t.Fatal(err)
 	}
 	return s, token
@@ -221,22 +221,22 @@ func TestTokenOnlyReachesItsTicket(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 	var mu sync.Mutex
 	var ran []string
-	record := func(ticket, name string) dsh.Tool {
-		return dsh.Tool{Name: name, Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
+	record := func(ticket, name string) agentloop.Tool {
+		return agentloop.Tool{Name: name, Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
 			mu.Lock()
 			ran = append(ran, ticket+" "+name+" "+call.Arguments)
 			mu.Unlock()
-			return dsh.Result{Text: "ok " + ticket}, nil
+			return agentloop.Result{Text: "ok " + ticket}, nil
 		}}
 	}
 	a, b := NewToken(), NewToken()
 	if a == b || len(a) != 64 {
 		t.Fatalf("tokens %q %q", a, b)
 	}
-	if err := s.Register(a, "ta", []dsh.Tool{record("ta", "orchestrator_report")}, nil); err != nil {
+	if err := s.Register(a, "ta", []agentloop.Tool{record("ta", "orchestrator_report")}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Register(b, "tb", []dsh.Tool{record("tb", "orchestrator_report"), record("tb", "only_b")}, nil); err != nil {
+	if err := s.Register(b, "tb", []agentloop.Tool{record("tb", "orchestrator_report"), record("tb", "only_b")}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -267,12 +267,12 @@ func TestRequestsNeedAValidBearerToken(t *testing.T) {
 	s := New()
 	t.Cleanup(func() { _ = s.Close() })
 	var runs atomic.Int32
-	tool := dsh.Tool{Name: "orchestrator_report", Run: func(context.Context, dsh.ToolCall) (dsh.Result, error) {
+	tool := agentloop.Tool{Name: "orchestrator_report", Run: func(context.Context, agentloop.ToolCall) (agentloop.Result, error) {
 		runs.Add(1)
-		return dsh.Result{Text: "ran"}, nil
+		return agentloop.Result{Text: "ran"}, nil
 	}}
 	token := NewToken()
-	if err := s.Register(token, "t1", []dsh.Tool{tool}, nil); err != nil {
+	if err := s.Register(token, "t1", []agentloop.Tool{tool}, nil); err != nil {
 		t.Fatal(err)
 	}
 	body := rpcBody(1, "tools/call", map[string]any{"name": "orchestrator_report"})
@@ -291,7 +291,7 @@ func TestRequestsNeedAValidBearerToken(t *testing.T) {
 	if resp, _ := do(t, s, req{auth: "bearer " + token}, http.MethodPost, body); resp.StatusCode != http.StatusOK || runs.Load() != 1 {
 		t.Fatalf("lower-case scheme = %d runs %d", resp.StatusCode, runs.Load())
 	}
-	if err := s.Register("  ", "t2", []dsh.Tool{tool}, nil); err == nil {
+	if err := s.Register("  ", "t2", []agentloop.Tool{tool}, nil); err == nil {
 		t.Fatal("blank token registered")
 	}
 }
@@ -301,12 +301,12 @@ func TestForeignOriginAndHostAreForbidden(t *testing.T) {
 	s := New()
 	t.Cleanup(func() { _ = s.Close() })
 	var runs atomic.Int32
-	tool := dsh.Tool{Name: "orchestrator_report", Run: func(context.Context, dsh.ToolCall) (dsh.Result, error) {
+	tool := agentloop.Tool{Name: "orchestrator_report", Run: func(context.Context, agentloop.ToolCall) (agentloop.Result, error) {
 		runs.Add(1)
-		return dsh.Result{Text: "ran"}, nil
+		return agentloop.Result{Text: "ran"}, nil
 	}}
 	token := NewToken()
-	if err := s.Register(token, "t1", []dsh.Tool{tool}, nil); err != nil {
+	if err := s.Register(token, "t1", []agentloop.Tool{tool}, nil); err != nil {
 		t.Fatal(err)
 	}
 	u, err := url.Parse(s.URL())
@@ -361,7 +361,7 @@ func TestUnregisterRevokesTokenAndSessions(t *testing.T) {
 		t.Fatalf("revoked token = %d", resp.StatusCode)
 	}
 	fresh := NewToken()
-	if err := s.Register(fresh, "t1", []dsh.Tool{echo("orchestrator_report")}, nil); err != nil {
+	if err := s.Register(fresh, "t1", []agentloop.Tool{echo("orchestrator_report")}, nil); err != nil {
 		t.Fatal(err)
 	}
 	stale := as(fresh)
@@ -378,7 +378,7 @@ func TestUnregisterRevokesTokenAndSessions(t *testing.T) {
 func TestDeleteEndsOnlyYourOwnSession(t *testing.T) {
 	s, token := serveEcho(t)
 	other := NewToken()
-	if err := s.Register(other, "t2", []dsh.Tool{echo("orchestrator_report")}, nil); err != nil {
+	if err := s.Register(other, "t2", []agentloop.Tool{echo("orchestrator_report")}, nil); err != nil {
 		t.Fatal(err)
 	}
 	resp, _ := do(t, s, as(token), http.MethodPost, rpcBody(1, "initialize", nil))
@@ -431,12 +431,12 @@ func TestOversizedBodyIsRejected(t *testing.T) {
 	s := New()
 	t.Cleanup(func() { _ = s.Close() })
 	var runs atomic.Int32
-	tool := dsh.Tool{Name: "orchestrator_report", Run: func(context.Context, dsh.ToolCall) (dsh.Result, error) {
+	tool := agentloop.Tool{Name: "orchestrator_report", Run: func(context.Context, agentloop.ToolCall) (agentloop.Result, error) {
 		runs.Add(1)
-		return dsh.Result{}, nil
+		return agentloop.Result{}, nil
 	}}
 	token := NewToken()
-	if err := s.Register(token, "t1", []dsh.Tool{tool}, nil); err != nil {
+	if err := s.Register(token, "t1", []agentloop.Tool{tool}, nil); err != nil {
 		t.Fatal(err)
 	}
 	body := rpcBody(1, "tools/call", map[string]any{"name": "orchestrator_report", "arguments": map[string]any{"summary": strings.Repeat("a", MaxBody)}})
@@ -450,13 +450,13 @@ func TestToolFailuresComeBackAsResults(t *testing.T) {
 	s := New()
 	t.Cleanup(func() { _ = s.Close() })
 	seen := make(chan string, 4)
-	tools := []dsh.Tool{
-		{Name: "soft", Run: func(_ context.Context, call dsh.ToolCall) (dsh.Result, error) {
+	tools := []agentloop.Tool{
+		{Name: "soft", Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
 			seen <- call.Arguments
-			return dsh.Result{Text: "bad_report", IsError: true}, nil
+			return agentloop.Result{Text: "bad_report", IsError: true}, nil
 		}},
-		{Name: "hard", Run: func(context.Context, dsh.ToolCall) (dsh.Result, error) {
-			return dsh.Result{}, errors.New("engine gone")
+		{Name: "hard", Run: func(context.Context, agentloop.ToolCall) (agentloop.Result, error) {
+			return agentloop.Result{}, errors.New("engine gone")
 		}},
 		{Name: "no-run"},
 	}

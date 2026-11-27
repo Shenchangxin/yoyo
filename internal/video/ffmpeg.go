@@ -21,11 +21,6 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-// LookFFmpeg 在默认目录里找 ffmpeg 和 ffprobe。
-func LookFFmpeg() (ffmpeg, ffprobe string) {
-	return LookFFmpegIn(nil)
-}
-
 // LookFFmpegIn 先读 FFMPEG_BIN 和 FFPROBE_BIN。没有再在 extra、可执行文件旁、用户目录 .yoyo/video/bin、LOCALAPPDATA/yoyo/video/bin，以及 C:\ffmpeg\bin、C:\Program Files\ffmpeg\bin、/usr/local/bin、/opt/homebrew/bin 里找。Windows 上文件名带 .exe。extra 优先于 PATH。
 func LookFFmpegIn(extra []string) (ffmpeg, ffprobe string) {
 	if v := os.Getenv("FFMPEG_BIN"); v != "" {

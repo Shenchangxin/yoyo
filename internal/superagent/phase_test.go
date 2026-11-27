@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 // TestClaimBranchFollowsOwnPull 锁住短名对上的开着的工单会跟随那条拉取请求。
@@ -122,9 +122,9 @@ func TestRecoverHostRetriesADroppedConnection(t *testing.T) {
 func TestPrepareFailureDoesNotRetry(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	id := accept(t, eng, "m1")
-	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(context.Context, dsh.Request) (dsh.Assistant, error) {
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(context.Context, agentloop.Request) (agentloop.Assistant, error) {
 		t.Errorf("model should not run")
-		return dsh.Assistant{}, nil
+		return agentloop.Assistant{}, nil
 	}})
 	ex.Root = t.TempDir()
 	ex.PrepareCmd = "exit 1"
@@ -224,9 +224,9 @@ func TestOrderedRelayWaits(t *testing.T) {
 
 // TestHostRestartContinuesWithoutNewBrief 锁住宿主重启只接上已有日志，不再把工单说明重发一遍。
 func TestHostRestartContinuesWithoutNewBrief(t *testing.T) {
-	sess := dsh.NewSession()
-	sess.Append(dsh.EventUser, 1, 1, dsh.UserMessage{Text: "已改过 README", Source: "assignment"})
-	sess.Append(dsh.EventTurnEnd, 1, 0, dsh.TurnEnd{Kind: "completed"})
+	sess := agentloop.NewSession()
+	sess.Append(agentloop.EventUser, 1, 1, agentloop.UserMessage{Text: "已改过 README", Source: "assignment"})
+	sess.Append(agentloop.EventTurnEnd, 1, 0, agentloop.TurnEnd{Kind: "completed"})
 	body, _ := encodeLog(sess.Events())
 	eng := NewEngine(autoPolicy())
 	id := accept(t, eng, "m1")
@@ -238,11 +238,11 @@ func TestHostRestartContinuesWithoutNewBrief(t *testing.T) {
 		t.Fatalf("ids %v", ids)
 	}
 	var seen []string
-	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(_ context.Context, req dsh.Request) (dsh.Assistant, error) {
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(_ context.Context, req agentloop.Request) (agentloop.Assistant, error) {
 		for _, msg := range req.Messages {
 			seen = append(seen, msg.Text)
 		}
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 			ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"ok"}`,
 		}}}, nil
 	}})
@@ -263,18 +263,18 @@ func TestHostRestartContinuesWithoutNewBrief(t *testing.T) {
 
 // TestRestartKeepsWorkerWords 锁住重启后的新派工还能看见上次会话里已经说过的话，回合号接着上次。
 func TestRestartKeepsWorkerWords(t *testing.T) {
-	sess := dsh.NewSession()
-	sess.Append(dsh.EventUser, 1, 1, dsh.UserMessage{Text: "已改过 README", Source: "assignment"})
-	sess.Append(dsh.EventTurnEnd, 1, 0, dsh.TurnEnd{Kind: "completed"})
+	sess := agentloop.NewSession()
+	sess.Append(agentloop.EventUser, 1, 1, agentloop.UserMessage{Text: "已改过 README", Source: "assignment"})
+	sess.Append(agentloop.EventTurnEnd, 1, 0, agentloop.TurnEnd{Kind: "completed"})
 	body, _ := encodeLog(sess.Events())
 	eng := NewEngine(autoPolicy())
 	id := accept(t, eng, "m1")
 	seen := ""
-	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(_ context.Context, req dsh.Request) (dsh.Assistant, error) {
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(_ context.Context, req agentloop.Request) (agentloop.Assistant, error) {
 		for _, msg := range req.Messages {
 			seen += msg.Text
 		}
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 			ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"ok"}`,
 		}}}, nil
 	}})

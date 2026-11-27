@@ -5,7 +5,7 @@ package app
 import (
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dshdesk"
+	"github.com/Shenchangxin/yoyo/internal/agentloop/desk"
 	"github.com/Shenchangxin/yoyo/internal/initiative"
 	"github.com/Shenchangxin/yoyo/internal/poi"
 	"github.com/Shenchangxin/yoyo/internal/reach"
@@ -66,7 +66,7 @@ func (a *App) sealBriefs() {
 }
 
 // agentDesk 转发到 deskHost。
-func (a *App) agentDesk() *dshdesk.Host {
+func (a *App) agentDesk() *desk.Host {
 	return (&deskHost{app: a}).agentDesk()
 }
 

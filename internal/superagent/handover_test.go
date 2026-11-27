@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 // memLog 是内存里的工人日志，代替数据库。
@@ -72,10 +72,10 @@ func TestReassignRestartsWithNewAgent(t *testing.T) {
 	logs := &memLog{}
 	ex.LogLoad, ex.LogSave = logs.load, logs.save
 	release := make(chan struct{})
-	late := make(chan dsh.Result, 1)
+	late := make(chan agentloop.Result, 1)
 	opened := make(chan *fakeWorker, 2)
 	ex.Opener = func(_ context.Context, spec WorkerSpec) (Worker, error) {
-		w := newFakeWorker(spec, func(w *fakeWorker, msg dsh.UserMessage) {
+		w := newFakeWorker(spec, func(w *fakeWorker, msg agentloop.UserMessage) {
 			if msg.Source != "assignment" {
 				return
 			}
@@ -143,8 +143,8 @@ func TestReassignRestartsWithNewAgent(t *testing.T) {
 		t.Fatalf("the old worker was nudged: %+v", got)
 	}
 	events := claude.session.Events()
-	first, _ := events[0].Data.(dsh.UserMessage)
-	if events[0].Type != dsh.EventUser || first.Source != "handover" || first.Text != "改由 Claude 接手" {
+	first, _ := events[0].Data.(agentloop.UserMessage)
+	if events[0].Type != agentloop.EventUser || first.Source != "handover" || first.Text != "改由 Claude 接手" {
 		t.Fatalf("first event %+v", events[0])
 	}
 	got := claude.messages()
@@ -163,14 +163,14 @@ func TestHandoverPrefixKeepsDisplay(t *testing.T) {
 	logs := &memLog{}
 	ex.LogLoad, ex.LogSave = logs.load, logs.save
 	id := "t1"
-	old := dsh.NewSession()
-	old.Append(dsh.EventUser, 1, 0, dsh.UserMessage{Text: "工单 t1\n改 README\n完成后调用 orchestrator_report。", Source: "assignment"})
-	old.Append(dsh.EventAssistant, 1, 1, dsh.Assistant{ToolCalls: []dsh.ToolCall{{ID: "t1-c1", Name: "read_file", Arguments: `{"path":"README.md"}`}}})
-	old.Append(dsh.EventToolResult, 1, 1, dsh.ToolResultEvent{ID: "t1-c1", Name: "read_file", Text: "# readme"})
-	old.Append(dsh.EventTurnEnd, 1, 1, dsh.TurnEnd{Kind: "completed"})
+	old := agentloop.NewSession()
+	old.Append(agentloop.EventUser, 1, 0, agentloop.UserMessage{Text: "工单 t1\n改 README\n完成后调用 orchestrator_report。", Source: "assignment"})
+	old.Append(agentloop.EventAssistant, 1, 1, agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{ID: "t1-c1", Name: "read_file", Arguments: `{"path":"README.md"}`}}})
+	old.Append(agentloop.EventToolResult, 1, 1, agentloop.ToolResultEvent{ID: "t1-c1", Name: "read_file", Text: "# readme"})
+	old.Append(agentloop.EventTurnEnd, 1, 1, agentloop.TurnEnd{Kind: "completed"})
 	body, _ := encodeLog(old.Events())
 	logs.save(id, body)
-	marker := &dsh.UserMessage{ID: handoverID("asg-2"), Source: "handover", Text: "改由 yoyo 接手"}
+	marker := &agentloop.UserMessage{ID: handoverID("asg-2"), Source: "handover", Text: "改由 yoyo 接手"}
 
 	first := newFakeWorker(WorkerSpec{}, nil)
 	if ex.restoreAgent(first, id, marker) {
@@ -179,7 +179,7 @@ func TestHandoverPrefixKeepsDisplay(t *testing.T) {
 	if evs := first.session.Events(); len(evs) != 1 || !hasMessage(evs, marker.ID) {
 		t.Fatalf("new worker starts with %+v", evs)
 	}
-	first.Followup(dsh.UserMessage{Text: "接着改", Source: "assignment"})
+	first.Followup(agentloop.UserMessage{Text: "接着改", Source: "assignment"})
 	first.say("改好了")
 	ex.storeAgent(first, id)
 	want := []string{"user assignment 改 README", "tool_call read_file " + `{"path":"README.md"}`, "tool_result read_file # readme", "user handover asg-2 改由 yoyo 接手", "user assignment 接着改", "assistant 改好了"}
@@ -199,7 +199,7 @@ func TestHandoverPrefixKeepsDisplay(t *testing.T) {
 		t.Fatalf("restart starts with %+v", evs)
 	}
 	for _, ev := range evs {
-		if a, ok := ev.Data.(dsh.Assistant); ok && len(a.ToolCalls) > 0 {
+		if a, ok := ev.Data.(agentloop.Assistant); ok && len(a.ToolCalls) > 0 {
 			t.Fatalf("the new worker read the old agent's calls: %+v", a)
 		}
 	}
@@ -278,13 +278,13 @@ func TestOfflineUnpinnedFallsBack(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	var mu sync.Mutex
 	var seen []string
-	model := scriptModel{fn: func(_ context.Context, req dsh.Request) (dsh.Assistant, error) {
+	model := scriptModel{fn: func(_ context.Context, req agentloop.Request) (agentloop.Assistant, error) {
 		mu.Lock()
 		for _, msg := range req.Messages {
 			seen = append(seen, msg.Text)
 		}
 		mu.Unlock()
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"yoyo 做完了"}`}}}, nil
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"yoyo 做完了"}`}}}, nil
 	}}
 	ex := NewExecutor(eng, NewSlots(1), model)
 	ex.AgentName = agentNames

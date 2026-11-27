@@ -13,12 +13,10 @@ func TestLinesDropSecretsAndKeepAShortProfile(t *testing.T) {
 	}
 }
 
-func TestParseEnvelopeAndChooseSkipsSeen(t *testing.T) {
-	raw := `noise
-{"ok":true,"items":[{"title":"Step 5","url":"https://example.com/step","text":"免费到 25 日"},{"title":"nope","url":"http://insecure.example"}]}`
-	items := ParseEnvelope(raw)
-	if len(items) != 2 {
-		t.Fatalf("%#v", items)
+func TestChooseSkipsSeen(t *testing.T) {
+	items := []Item{
+		{Title: "Step 5", URL: "https://example.com/step", Snippet: "免费到 25 日"},
+		{Title: "nope", URL: "http://insecure.example"},
 	}
 	seen := map[string]bool{}
 	first := Choose(items, seen)

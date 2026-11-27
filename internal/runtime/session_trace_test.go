@@ -137,20 +137,3 @@ func TestProjectTraceUsageCarriesLatencyAndCache(t *testing.T) {
 		t.Fatalf("summary %q", ev.Summary)
 	}
 }
-
-// TestIngestReturnsSpillID 确认超长工具结果被省略，spill 里仍能取回全文。
-func TestIngestReturnsSpillID(t *testing.T) {
-	sp := NewSpill(t.TempDir())
-	full := strings.Repeat("TAIL", 20_000)
-	preview, id := ingestToolResult(sp, "call-1", "shell", full, 0, false)
-	if id != "call-1" {
-		t.Fatalf("id %q", id)
-	}
-	if !strings.Contains(preview, "elided") {
-		t.Fatalf("preview %s", preview[:min(80, len(preview))])
-	}
-	got, err := sp.Get("call-1")
-	if err != nil || got != full {
-		t.Fatalf("spill err=%v len=%d", err, len(got))
-	}
-}

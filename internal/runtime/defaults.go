@@ -24,25 +24,11 @@ const (
 	ChatTaskMaxTurns = 40
 	// ChatTaskMaxTools 是 60。ApplyChatHorizon 只在 TaskMaxToolMessages 小于它时才抬高。
 	ChatTaskMaxTools = 60
-	// ChatSoftGuardTurns 是 192。softGuard 只在 turn 不小于它时才返回复位或停止。
+	// ChatSoftGuardTurns 是 192。agentloop/desk 的轮数保护在一轮步数到达它时复位或停止，见 agentloop/desk/guard.go。
 	ChatSoftGuardTurns = 192
-	// ChatStallWindow 是 24。softGuard 用 sinceProgress 和它比较：小于则复位，不小于则停止。
+	// ChatStallWindow 是 24。步数到达 ChatSoftGuardTurns 时，最近这么多步里有过进展就复位，否则停止。
 	ChatStallWindow = 24
-	// shapeLogEvery 是 16。回合序号能被它整除时，才把当轮投影账本写进轨迹。
-	shapeLogEvery = 16
 )
-
-// softGuard 在 turn 到达 ChatSoftGuardTurns 时返回复位或停止。ChatSoftGuardTurns 小于等于 0，或 turn 小于 192，reset 和 stop 都是 false。
-// turn 不小于 192 且 sinceProgress 小于 ChatStallWindow（24）时，reset 为 true、stop 为 false。turn 不小于 192 且 sinceProgress 不小于 24 时，stop 为 true、reset 为 false。
-func softGuard(turn, sinceProgress int) (reset, stop bool) {
-	if ChatSoftGuardTurns <= 0 || turn < ChatSoftGuardTurns {
-		return false, false
-	}
-	if sinceProgress < ChatStallWindow {
-		return true, false
-	}
-	return false, true
-}
 
 // ApplyChatHorizon 调整一份循环预设。MaxTurns、MaxToolMessages、MicroKeep、CompactionKeep、KeepTokens、TaskMaxTurns、TaskMaxToolMessages 只在小于对应常量时抬高，已经更大的值保持不变。ContextBuffer 只在小于等于 0 时写成 ChatContextBuffer。
 // RulesTokens 直接赋成 ChatRulesTokens（1600），不论原来更大还是更小；保存下来的 8k 或 32k 会被盖掉。StackAgentsMD 写成 false，嵌套 AGENTS.md 改由读取时发现。AllowLLMCompact 写成 true。评测入口和子代理会在别处把它改回 false。

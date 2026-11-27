@@ -146,41 +146,6 @@ func TestCapLoadedSkillsPinsBootstrap(t *testing.T) {
 	}
 }
 
-// TestChatConductMethodologyYieldsWriteNow 锁住默认行为含立即写产物，方法论为真时改成先 load_skill。子会话叠加把方法论行为换回立即写。
-func TestChatConductMethodologyYieldsWriteNow(t *testing.T) {
-	plain := fragmentText(ChatConduct(ConductOpts{}))
-	if !strings.Contains(plain, "start writing those workspace artifacts this turn") {
-		t.Fatal("default conduct must keep write-now")
-	}
-	if strings.Contains(plain, "invoke the matching process skill") {
-		t.Fatal("default must not require process skills")
-	}
-	if !strings.Contains(plain, "load_skill for that skill before writing") {
-		t.Fatal("default must load a matching catalog skill")
-	}
-	if !strings.Contains(plain, "Do not load methodology process skills") {
-		t.Fatal("default must keep process skills methodology-only")
-	}
-	meth := fragmentText(ChatConduct(ConductOpts{Methodology: true}))
-	if strings.Contains(meth, "start writing those workspace artifacts this turn") {
-		t.Fatal("methodology must yield write-now")
-	}
-	if !strings.Contains(meth, "load_skill") || !strings.Contains(meth, "Do not skip a skill") {
-		t.Fatal(meth)
-	}
-	if !strings.Contains(meth, "read_skill_file") {
-		t.Fatal("methodology conduct must name read_skill_file")
-	}
-	child := OverlayConduct(ChatConduct(ConductOpts{Methodology: true}), ConductOpts{Methodology: false})
-	joined := fragmentText(child)
-	if strings.Contains(joined, "invoke the matching process skill") {
-		t.Fatal("child must not inherit methodology conduct")
-	}
-	if !strings.Contains(joined, "start writing those workspace artifacts this turn") {
-		t.Fatal("child must get write-now")
-	}
-}
-
 // TestPlanFirstOverlaySkippedWhenMethodology 锁住 Methodology 为真时 planFirstOverlay 为空，为假时含计划技能正文。
 func TestPlanFirstOverlaySkippedWhenMethodology(t *testing.T) {
 	tools := &WorkspaceTools{
@@ -287,20 +252,17 @@ func TestDomainRoutingPinSkipsMethodology(t *testing.T) {
 	}
 }
 
-// TestWithoutNovelGamePack 锁住小说改游戏包和技能名被去掉，game-world-qa 和 yoyo-game 留着。
-func TestWithoutNovelGamePack(t *testing.T) {
-	got := WithoutNovelGamePack([]PackSession{
-		{ID: "superpowers", Methodology: true},
-		{ID: "novel-to-game"},
-	})
-	if len(got) != 1 || got[0].ID != "superpowers" {
-		t.Fatalf("%+v", got)
+// TestIsNovelGameSkill 锁住小说改游戏家族的名字（novel-to-game、game-qa、game-build）能认出来，game-world-qa 和 yoyo-game 这类相近的名字不算。
+func TestIsNovelGameSkill(t *testing.T) {
+	for _, name := range []string{"novel-to-game", "game-qa", "game-build"} {
+		if !IsNovelGameSkill(name) {
+			t.Fatalf("%s should be a novel-game skill", name)
+		}
 	}
-	if !IsNovelGameSkill("game-qa") || IsNovelGameSkill("game-world-qa") {
-		t.Fatal("sibling names")
-	}
-	if names := WithoutNovelGameSkills([]string{"yoyo-game", "novel-to-game", "game-build"}); len(names) != 1 || names[0] != "yoyo-game" {
-		t.Fatalf("%v", names)
+	for _, name := range []string{"game-world-qa", "yoyo-game", "superpowers"} {
+		if IsNovelGameSkill(name) {
+			t.Fatalf("%s should not be a novel-game skill", name)
+		}
 	}
 }
 

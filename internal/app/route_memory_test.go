@@ -128,7 +128,7 @@ func TestRouterPauseAndDoneAreNotAStop(t *testing.T) {
 	}
 	defer rt.Stop()
 	a := &App{orch: rt}
-	stop := a.routerExtras()["task_stop"]
+	stop := a.routerExtrasFor("", "")["task_stop"]
 	if paused := stop.Call(`{"ticket":"tkt-9","mode":"pause"}`); paused.Err != nil || !strings.Contains(paused.Content, "没有在跑") {
 		t.Fatalf("pause = %+v", paused)
 	}

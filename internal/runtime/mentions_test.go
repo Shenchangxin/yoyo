@@ -3,12 +3,10 @@
 package runtime
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf8"
 )
 
 // TestParseMentionsAgent 锁住 @agent:<编号> 认成 agent 提及：小写、按出现顺序去重，句末标点不算进编号，不合格式的不认。
@@ -40,73 +38,6 @@ func TestBareMentionsSkipAgent(t *testing.T) {
 	}
 }
 
-// TestExpandMentionsIgnoresAgent 锁住 agent 提及不注入任何内容，也不挤掉同一句里的文件注入。
-func TestExpandMentionsIgnoresAgent(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pin.txt"), []byte("hello pin"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	inject, refs := ExpandMentions(dir, "@agent:codex 读 @file:pin.txt", "", 2400)
-	if strings.Contains(inject, "codex") || !strings.Contains(inject, "hello pin") || len(refs) != 2 {
-		t.Fatalf("inject=%q refs=%+v", inject, refs)
-	}
-	if inject, _ := ExpandMentions(dir, "@agent:codex", "", 2400); inject != "" {
-		t.Fatalf("agent alone injected %q", inject)
-	}
-}
-
-// TestExpandMentionsFileAndJail 锁住 @file 和 @harness 会注入正文，@skill 能展开技能，逃出工作区的路径会报 escapes。
-func TestExpandMentionsFileAndJail(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pin.txt"), []byte("hello pin"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	inject, refs := ExpandMentions(dir, "see @file:pin.txt and @harness", "snap-abc note", 2400)
-	if len(refs) != 2 {
-		t.Fatalf("refs=%+v", refs)
-	}
-	if !strings.Contains(inject, "hello pin") || !strings.Contains(inject, "snap-abc") {
-		t.Fatalf("inject=%s", inject)
-	}
-	skills := map[string]string{"plan-first": "keep a plan"}
-	inject, refs = ExpandMentionsSkills(dir, "@skill:plan-first", "", skills, 2400)
-	if len(refs) != 1 || !strings.Contains(inject, "keep a plan") {
-		t.Fatalf("skill inject=%s refs=%+v", inject, refs)
-	}
-	outside := filepath.Join(dir, "..", "nope.txt")
-	inject, _ = ExpandMentions(dir, "@file:"+filepath.ToSlash(outside), "", 2400)
-	if !strings.Contains(inject, "escapes") {
-		t.Fatalf("expected jail, got %s", inject)
-	}
-}
-
-// TestExpandMentionsPrimarySourceOutline 锁住超过主文件门槛的正文只注入提纲和字节数，不把全文塞进注入块。
-func TestExpandMentionsPrimarySourceOutline(t *testing.T) {
-	dir := t.TempDir()
-	var b strings.Builder
-	b.WriteString("# 西游记\n\n")
-	for i := 1; i <= 12; i++ {
-		fmt.Fprintf(&b, "第%d回 标题\n这段正文要写得很长以便超过主源阈值。%s\n", i, strings.Repeat("文", 400))
-	}
-	name := "novel.txt"
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(b.String()), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	inject, refs := ExpandMentions(dir, "@file:novel.txt 做成游戏", "", 3200)
-	if len(refs) != 1 {
-		t.Fatalf("refs=%+v", refs)
-	}
-	if !strings.Contains(inject, "source of truth") || !strings.Contains(inject, "read_file") {
-		t.Fatalf("inject=%s", inject)
-	}
-	if !strings.Contains(inject, "第1回") || !strings.Contains(inject, "Outline:") {
-		t.Fatalf("missing outline: %s", inject)
-	}
-	if utf8.RuneCountInString(inject) < 1000 {
-		t.Fatalf("primary inject too small: %d", utf8.RuneCountInString(inject))
-	}
-}
-
 // TestExpandMentionsPacksDecoratesAndNames 锁住带技能目录的 @skill 会装饰包路径，MentionSkillNames 能取出技能名。
 func TestExpandMentionsPacksDecoratesAndNames(t *testing.T) {
 	dir := t.TempDir()
@@ -134,81 +65,6 @@ func TestExpandMentionsPacksDecoratesAndNames(t *testing.T) {
 	inject, refs = ExpandMentionsPacks(dir, "@skill:ARXIV-WATCHER", "", skills, dirs, 3200)
 	if len(refs) != 1 || !strings.Contains(inject, "search_arxiv.sh") {
 		t.Fatalf("case-insensitive mention failed: %s refs=%+v", inject, refs)
-	}
-}
-
-// TestExpandBareAtPathAndSession 锁住裸 @路径和 @"路径"。唯一基名会展开，两个同名则不展开，根上的精确路径优先。当前会话的 @session 不倒出消息。
-func TestExpandBareAtPathAndSession(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pin.txt"), []byte("hello pin"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(dir, "src"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	inject, refs := ExpandMentions(dir, "see @pin.txt and @src/", "", 2400)
-	if len(refs) != 2 {
-		t.Fatalf("refs=%+v", refs)
-	}
-	if !strings.Contains(inject, "hello pin") || !strings.Contains(inject, "## @folder:src") {
-		t.Fatalf("inject=%s", inject)
-	}
-	_, refs = ExpandMentions(dir, "see @file:pin.txt and @pin.txt", "", 2400)
-	if len(refs) != 1 {
-		t.Fatalf("dedupe refs=%+v", refs)
-	}
-	inject, refs = ExpandMentions(dir, "mail a@b.test @missing", "", 2400)
-	if len(refs) != 0 {
-		t.Fatalf("email/missing should not expand: refs=%+v inject=%s", refs, inject)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "src", "loop.go"), []byte("package src\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	inject, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
-	if len(refs) != 1 || refs[0].Ref != "src/loop.go" {
-		t.Fatalf("unique basename refs=%+v", refs)
-	}
-	if !strings.Contains(inject, "package src") {
-		t.Fatalf("unique basename inject=%s", inject)
-	}
-	if err := os.Mkdir(filepath.Join(dir, "pkg"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "pkg", "loop.go"), []byte("package pkg\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	inject, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
-	if len(refs) != 0 {
-		t.Fatalf("ambiguous basename should not expand: refs=%+v inject=%s", refs, inject)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "loop.go"), []byte("package root\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
-	if len(refs) != 1 || refs[0].Ref != "loop.go" {
-		t.Fatalf("exact root path must win over unique walk: refs=%+v", refs)
-	}
-	_, refs = ExpandMentions(dir, `see @"pin.txt"`, "", 2400)
-	if len(refs) != 1 || refs[0].Ref != "pin.txt" {
-		t.Fatalf("quoted refs=%+v", refs)
-	}
-	_, refs = ExpandMentions(dir, "continue @session:s2", "", 2400)
-	if len(refs) != 1 || refs[0].Kind != "session" {
-		t.Fatalf("session refs=%+v", refs)
-	}
-	tools := &WorkspaceTools{
-		ListThreads: func() []ThreadRef { return []ThreadRef{{ID: "s2", Title: "Earlier chat"}} },
-		Sessions: func(id string) []Message {
-			return []Message{{Role: RoleUser, Content: "remember the parser"}, {Role: RoleAssistant, Content: "fixed loop.go"}}
-		},
-	}
-	extra := FormatSessionMentions(refs, "s1", tools, 1600)
-	if !strings.Contains(extra, "Earlier chat") || !strings.Contains(extra, "remember the parser") || !strings.Contains(extra, "read_thread") {
-		t.Fatalf("session overlay=%s", extra)
-	}
-	self := FormatSessionMentions(refs, "s2", tools, 1600)
-	if !strings.Contains(self, "current chat") || strings.Contains(self, "remember the parser") {
-		t.Fatalf("current session should not dump: %s", self)
 	}
 }
 

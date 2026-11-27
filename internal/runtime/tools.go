@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/browser"
@@ -57,16 +56,6 @@ type FileChange struct {
 	Created bool
 }
 
-// prefetchHit 是流式阶段提前执行的只读结果。在最终 dispatchTools 发出之前不能单独记成一条轨迹。
-type prefetchHit struct {
-	content   string
-	elapsedMs int
-	spillID   string
-	ok        bool
-	change    *FileChange
-	parts     []ContentPart
-}
-
 // ExtraTool 是宿主桥接的扩展工具，例如 MCP 或 WASM，走同一套能力闸门。Call 是实现。ReadOnly、OpenWorld、Exclusive、Destructive 描述该工具的副作用。
 type ExtraTool struct {
 	JSON        ToolJSON
@@ -88,7 +77,6 @@ type WorkspaceTools struct {
 	Loaded       []string
 	ExtraEnabled []string
 	ExtraLive    []string
-	pendingHost  []string
 	Policy       artifact.PolicyPack
 	PlanMode     bool
 	// ReadOnly 用于 explore 或 qa 子代理：拒绝写入，但不套用计划模式那句「先产出计划」。计划模式和只读不是一回事。
@@ -99,8 +87,6 @@ type WorkspaceTools struct {
 	Roots []string
 	// RouteOnly 为真时只广告 Extra 里的路由工具。写文件、shell 和浏览器不在这张表里。
 	RouteOnly bool
-	// DshShell 为真时，聊天叠加层的空闲和阻塞熔断不杀掉 shell。命令仍受自己的超时限制。
-	DshShell bool
 	// FileHooks 是工作区 .yoyo/hooks.json 的 pre_tool。匹配到 Deny 时 Call 不执行工具。
 	FileHooks []FileHook
 	// StopHooks 是同一份文件里的 stop。模型准备结束时由桌面回合拿去决定要不要继续。
@@ -126,7 +112,6 @@ type WorkspaceTools struct {
 	ToolJail          bool
 	AskUser           func(question string) (string, error)
 	SkillMeta         map[string]artifact.Skill
-	prefetch          map[string]prefetchHit
 	mu                *sync.Mutex // 只经 lock() 取；见 lock 的说明
 	MaxParallel       int
 	SearchAPI         func(query string) (string, error)
@@ -147,9 +132,6 @@ type WorkspaceTools struct {
 	AllowedConnectors []string
 	Takeover          func(question string) (string, error)
 	OnLive            func(trace.Event)
-	liveCall          string
-	liveRound         string
-	liveOut           int
 	// Packs 是本回合控制器启用的方法论或内容包。
 	Packs []PackSession
 	// Methodology 为真时，聊天行为改成先加载技能，计划优先的叠加也会让开。
@@ -159,9 +141,7 @@ type WorkspaceTools struct {
 	// BootstrapPin 是可缓存的一行方法论提示。正文要通过 load_skill 加载。
 	BootstrapPin string
 	// CatalogLane 是 agent 或 video。agent 车道会藏起 studio、drama、cut 的目录行。
-	CatalogLane  string
-	pathRules    string
-	pathRuleSeen map[string]bool
+	CatalogLane string
 	// SkillAutoInvoke 是 off、hint 或 on。空串按 on。
 	SkillAutoInvoke string
 	// SkillCatalogBudget 按字节限制钉住的目录行。零使用默认预算。
@@ -170,17 +150,47 @@ type WorkspaceTools struct {
 	SkillHints []SkillSuggestion
 	// Autoloaded 是宿主按隐式 @skill 注入的那一部分技能名。
 	Autoloaded []string
-	// repeatScript 拦住下一次会执行该脚本的命令。删除、移动或阅读这条路径不拦截。repeatRefusal 是不执行时返回的工具结果。
-	repeatScript string
-	// repeatRefusal 是 repeatScript 命中时直接返回的文本。
-	repeatRefusal string
+	// toolsState 是运行中积累的私有状态。内嵌是为了让包内代码直接以 t.xxx 访问，调用方的字面量也不受影响。
+	toolsState
+}
+
+// toolsState 收拢 WorkspaceTools 在一次运行里积累、不对包外暴露的状态。
+// 除 prefetch 外都受 lock() 保护；prefetch 只在 dispatch 的调用方协程里读写。
+// 子代理通过 forChild 拿到自己的一份，不和父级共用 map 或 slice。
+type toolsState struct {
+	// pendingHost 是聊天里 tool_search 命中、要等本轮结束才解锁广告的宿主工具名。
+	pendingHost []string
+	// liveCall、liveRound 是正在执行的 shell 调用 id 和轮次；liveOut 是已转发给 OnLive 的标准输出字节数。
+	liveCall  string
+	liveRound string
+	liveOut   int
+	// pathRules 是已吸收的嵌套规则正文；pathRuleSeen 记下收过的规则路径，避免重复追加。
+	pathRules    string
+	pathRuleSeen map[string]bool
+}
+
+// forChild 返回给子代理用的状态。
+// 路径规则和待解锁的宿主工具继承下来，但复制成独立的 map 和 slice，父子各自追加不会互相踩到。
+// 预取结果、当前 shell 调用和重复脚本拦截只属于父级这一次调用，子代理从零开始。
+func (s toolsState) forChild() toolsState {
+	child := toolsState{
+		pendingHost: append([]string(nil), s.pendingHost...),
+		pathRules:   s.pathRules,
+	}
+	if len(s.pathRuleSeen) > 0 {
+		child.pathRuleSeen = make(map[string]bool, len(s.pathRuleSeen))
+		for k, v := range s.pathRuleSeen {
+			child.pathRuleSeen[k] = v
+		}
+	}
+	return child
 }
 
 // toolsMuInit 只用来让 lock() 惰性建锁时不竞争。建好之后 mu 不再改写。
 var toolsMuInit sync.Mutex
 
 // lock 返回这份工具集的锁，第一次调用时创建。字面量构造的 WorkspaceTools 不必显式初始化。
-// 锁保护 Advertised、Loaded、ExtraEnabled、ExtraLive、pendingHost、PlanText、LastBrowser、live* 和路径规则。
+// 锁保护 Advertised、Loaded、ExtraEnabled、ExtraLive、PlanText、LastBrowser，以及 toolsState 里除 prefetch 外的字段。
 // mu 是指针，复制结构体不会连锁一起复制；子代理用 clone() 拿到自己的锁。
 func (t *WorkspaceTools) lock() *sync.Mutex {
 	toolsMuInit.Lock()
@@ -191,11 +201,14 @@ func (t *WorkspaceTools) lock() *sync.Mutex {
 	return t.mu
 }
 
-// clone 在持锁时浅复制工具集，副本拿到一把新锁。切片和 map 仍与原件共享，调用方要改就先换成新值。
+// clone 在持锁时浅复制工具集，副本拿到一把新锁。
+// 导出字段里的切片和 map 仍与原件共享，调用方要改就先换成新值。
+// 私有运行状态经 forChild 换成独立副本，父子代理各自写入不会并发改同一个 map。
 func (t *WorkspaceTools) clone() *WorkspaceTools {
 	m := t.lock()
 	m.Lock()
 	cp := *t
+	cp.toolsState = t.toolsState.forChild()
 	m.Unlock()
 	cp.mu = nil
 	return &cp
@@ -397,7 +410,7 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 			return ToolResult{Err: fmt.Errorf("%s", hook.Reason)}
 		}
 	}
-	// 桌面工具不经过 runtime.Run 的事件总线。破坏性删除、外传和往浏览器粘贴密钥在这里拒绝。
+	// agentloop 上的代理（桌面、编排工单、子代理、评测 Harbor）都经这里执行工具，没有别的安全拦截：破坏性删除、外传和往浏览器粘贴密钥在这里拒绝。
 	if deny, reason := safeguard.PreTool(name, argsJSON); deny {
 		return ToolResult{Err: fmt.Errorf("%s", reason)}
 	}
@@ -420,7 +433,7 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 		if extra, ok := t.Extra[name]; ok {
 			res := extra.Call(argsJSON)
 			if res.Halt {
-				// 评测循环看 HaltAfter，桌面的 dsh 循环看结果上的 Halt。两边都要收轮。
+				// 评测循环看 HaltAfter，桌面的 agentloop 循环看结果上的 Halt。两边都要收轮。
 				t.HaltAfter = true
 			}
 			return res
@@ -1076,44 +1089,10 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 	return ToolResult{Content: note + hits}
 }
 
-// setRepeatBlock 记下要拦住的脚本片段和拒绝时返回的文本。
-// script 记到 repeatScript。
-// refusal 记到 repeatRefusal。
-func (t *WorkspaceTools) setRepeatBlock(script, refusal string) {
-	if t == nil {
-		return
-	}
-	t.repeatScript = script
-	t.repeatRefusal = refusal
-}
-
-// repeatBlocked 在 repeatScript 为空、拒绝文本为空，或脚本是 browser_verify 时返回假。只有会执行该脚本的命令才返回拒绝文本。路径出现在删除、移动、阅读或列目录里仍然执行。
-// command 交给 commandRerunsScript，和 repeatScript 比较。
-func (t *WorkspaceTools) repeatBlocked(command string) (string, bool) {
-	if t == nil || t.repeatScript == "" || t.repeatRefusal == "" || t.repeatScript == "browser_verify" {
-		return "", false
-	}
-	if commandRerunsScript(command, t.repeatScript) {
-		return t.repeatRefusal, true
-	}
-	return "", false
-}
-
-// repeatVerifyBlocked 只在 repeatScript 为 browser_verify 且拒绝文本非空时返回该文本。
-func (t *WorkspaceTools) repeatVerifyBlocked() (string, bool) {
-	if t == nil || t.repeatScript != "browser_verify" || t.repeatRefusal == "" {
-		return "", false
-	}
-	return t.repeatRefusal, true
-}
-
-// shell 先看重复拦截，再展开技能脚本、修理工作区路径并去掉多余的 cd。Windows 上把 unix find 转成 glob，聊天叠加层把 cat 或 sed 读文件转成 readFile。超时小于等于 0 时用 60 秒。ChatOverlay 且没有 DshShell、并且超时大于 chatShellBlock 时启用空闲和阻塞熔断，熔断后不再给命令加超时上下文。能力级别是 Shell。
-// command 先交给 repeatBlocked，再展开技能脚本、修理路径、去掉多余 cd，并作为最终要执行的命令。
-// timeoutSec 小于等于 0 时改成 60 秒；聊天叠加层下再交给 chatShellFuse。
+// shell 先展开技能脚本、修理工作区路径并去掉多余的 cd。Windows 上把 unix find 转成 glob，聊天叠加层把 cat 或 sed 读文件转成 readFile。超时小于等于 0 时用 60 秒。命令始终跑在带超时的上下文里，到时或这一轮取消时停掉；没有空闲或阻塞熔断，桌面上的长命令由 agentloop/desk 转入后台。能力级别是 Shell。
+// command 先展开技能脚本、修理路径、去掉多余 cd，再作为最终要执行的命令。
+// timeoutSec 小于等于 0 时改成 60 秒，再换算成这条命令的超时。
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
-	if msg, ok := t.repeatBlocked(command); ok {
-		return ToolResult{Content: msg}
-	}
 	command = t.expandSkillScripts(command)
 	ws := ""
 	if t != nil {
@@ -1193,20 +1172,11 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		parent = context.Background()
 	}
 	timeout := time.Duration(timeoutSec) * time.Second
-	idle, block, fuse := chatShellFuse(t != nil && t.ChatOverlay && !t.DshShell, timeout)
-	var ctx context.Context
-	var cancel context.CancelFunc
-	if fuse {
-		ctx = parent
-	} else {
-		ctx, cancel = context.WithTimeout(parent, timeout)
-		defer cancel()
-	}
-	bindCtx := ctx
-	if fuse {
-		bindCtx = nil
-	}
-	cmd, cleanup, err := bindShell(bindCtx, command, argv, posix, ws)
+	// 命令只受 timeout_sec 和这一轮的取消限制，到时连同进程树一起停掉。没有空闲或阻塞熔断：
+	// 桌面上的长命令由 agentloop/desk 在前台预算后转入后台，不需要在这里提前放手。
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	cmd, cleanup, err := bindShell(ctx, command, argv, posix, ws)
 	if cleanup != nil {
 		defer cleanup()
 	}
@@ -1214,90 +1184,18 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		return ToolResult{Err: err}
 	}
 	cmd.Dir = t.Workspace
-	out := runShell(ctx, cmd, idle, block, t.emitStdout)
+	// idle 和 block 都是 0：只等命令结束或 ctx 到期，标准输出增量交给 emitStdout 推给界面。
+	out := isolation.WaitNotify(ctx, cmd, 0, 0, t.emitStdout)
 	if out.Err != nil && runtime.GOOS == "windows" && !posix && !looksPosixUnix(command) && !shellNeedsWrapper(command, argv) && isExecNotFound(out.Err) {
-		if fuse {
-			cmd = exec.Command("cmd", "/S", "/C", command)
-		} else {
-			cmd = exec.CommandContext(ctx, "cmd", "/S", "/C", command)
-		}
+		cmd = exec.CommandContext(ctx, "cmd", "/S", "/C", command)
 		cmd.Dir = t.Workspace
-		out = runShell(ctx, cmd, idle, block, t.emitStdout)
+		out = isolation.WaitNotify(ctx, cmd, 0, 0, t.emitStdout)
 	}
 	content := rewriteNote + string(out.Output)
-	if out.Background {
-		stopFusedPID(out.PID)
-		content = fmt.Sprintf("stopped pid=%d after idle/block fuse (no output). Do not poll with wait/tasklist. For public HTTP use web_fetch; if https returns 406, retry the http URL.\n%s", out.PID, content)
-		return ToolResult{Content: content}
-	}
 	if out.Err != nil {
 		return ToolResult{Content: content, Err: out.Err}
 	}
 	return ToolResult{Content: content}
-}
-
-// chatShellBlock 是 30 秒，chatShellIdle 是 10 秒。聊天 shell 的熔断用这两个时长。
-const (
-	// chatShellBlock 是 30 秒。聊天命令的超时大于它才启用熔断，熔断后的阻塞上限也是它。
-	chatShellBlock = 30 * time.Second
-	// chatShellIdle 是 10 秒。熔断时这么久没有输出就停掉进程。
-	chatShellIdle = 10 * time.Second
-)
-
-// chatShellFuse 在不是聊天叠加层，或超时不超过 chatShellBlock 时关闭熔断。否则返回 chatShellIdle 和 chatShellBlock。
-// overlay 为假时关闭熔断。
-// timeout 不超过 chatShellBlock 时关闭熔断。
-func chatShellFuse(overlay bool, timeout time.Duration) (idle, block time.Duration, fuse bool) {
-	if !overlay || timeout <= chatShellBlock {
-		return 0, 0, false
-	}
-	return chatShellIdle, chatShellBlock, true
-}
-
-// stopFusedPID 在 pid 小于等于 0 时返回。Windows 上用 taskkill /T /F。其他系统 FindProcess 后 Kill。
-func stopFusedPID(pid int) {
-	if pid <= 0 {
-		return
-	}
-	if runtime.GOOS == "windows" {
-		cmd := exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F")
-		hideConsole(cmd)
-		_ = cmd.Run()
-		return
-	}
-	p, err := os.FindProcess(pid)
-	if err == nil {
-		_ = p.Kill()
-	}
-}
-
-// runShell 在 idle 或 block 大于 0，或有输出回调时用 isolation.WaitNotify。否则用 isolation.Run。
-// ctx 交给 isolation.WaitNotify 或 isolation.Run。
-// cmd 交给 isolation.WaitNotify 或 isolation.Run。
-// onChunk 非 nil，或 idle、block 大于 0 时交给 WaitNotify。
-func runShell(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, onChunk func([]byte)) isolation.Outcome {
-	if idle > 0 || block > 0 {
-		return isolation.WaitNotify(ctx, cmd, idle, block, onChunk)
-	}
-	if onChunk != nil {
-		return isolation.WaitNotify(ctx, cmd, 0, 0, onChunk)
-	}
-	out, err := isolation.Run(ctx, cmd)
-	return isolation.Outcome{Output: out, Err: err}
-}
-
-// setLiveCall 记下当前工具调用 ID、轮次，并把已转发的标准输出字节数清零。
-// id 写入 liveCall。
-// round 写入 liveRound。
-func (t *WorkspaceTools) setLiveCall(id, round string) {
-	if t == nil {
-		return
-	}
-	t.lock().Lock()
-	t.liveCall = id
-	t.liveRound = round
-	t.liveOut = 0
-	t.lock().Unlock()
 }
 
 // emitStdout 把 shell 的标准输出增量发给 OnLive。单次调用累计最多 8000 字节，超出的丢掉。载荷标成 delta 和 untrusted。
@@ -1607,16 +1505,6 @@ func pageSpill(id, s string, offset, limit int) string {
 		b.WriteString("\n[page capped — pass offset/limit to page further]")
 	}
 	return b.String()
-}
-
-// recallNoStub 只对 recall_context 为真，且正文 rune 数不超过 2000。
-// name 不是 recall_context 时返回假。
-// content 的 rune 数不超过 2000 时，并且 name 是 recall_context，才返回真。
-func recallNoStub(name, content string) bool {
-	if name != "recall_context" {
-		return false
-	}
-	return utf8.RuneCountInString(content) <= 2000
 }
 
 // extraSearchHit 在描述里包含查询，或查询中长度至少 3 的词出现在工具名里时返回真。

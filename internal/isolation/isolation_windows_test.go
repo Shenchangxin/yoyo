@@ -42,7 +42,8 @@ func TestSuccessfulRunLeavesBackgroundChild(t *testing.T) {
 	flag := filepath.Join(dir, "alive.txt")
 	cmd := backgroundWriteCmd(t, dir, flag)
 	start := time.Now()
-	out, err := Run(context.Background(), cmd)
+	outcome := WaitNotify(context.Background(), cmd, 0, 0, nil)
+	out, err := outcome.Output, outcome.Err
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("start: %v\n%s", err, out)

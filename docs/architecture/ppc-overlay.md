@@ -140,11 +140,11 @@ instruction text over 2_000 runes. Middleware is not always-on.
 
 Probes are **not** the operator workspace.
 
-1. Copy the session tool root with `runtime.PersistWorktree` into a temp dir
+1. Copy the session tool root with `worktree.Isolate` (internal/worktree) into a temp dir
    (reuse `ScratchGit` only when the tool root is already a git repo you can
    worktree; do not `git init` a user’s documents folder).
 2. Each label (`base` if live, `inv1`, `dom1`, `c1`) gets its own copy.
-3. Run `runtime.Run` with `HarnessPolicy` effectively pinned, packs off,
+3. Run the Harbor loop (`eval` `runTask` → `desk.Host.Run`; this was `runtime.Run` before it was removed) with `HarnessPolicy` effectively pinned, packs off,
    profiles/pages off (same as Harbor: overlay is harness search, not Personal
    OS). Capability stays deny-first; HighRisk / `send_as_you` stay off.
 4. Dispose copies. Probe files never merge back.

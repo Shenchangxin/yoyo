@@ -205,13 +205,6 @@ func assignRegions(shots []Shot, boxes []Box) []Shot {
 	return shots
 }
 
-// ApplyRegions 换上检测出的区域框，并重算待办。检测可以给出脸或主体。
-// boxes 传给 assignRegions。
-func ApplyRegions(p Project, boxes []Box) Project {
-	p.Shots = assignRegions(p.Shots, boxes)
-	return rehash(p)
-}
-
 // ranking 建一部排行榜。标题空着写成「本机工具排行」。最后会填待办。
 // title 经 clean 后为空时写成「本机工具排行」，再传给 base。
 func ranking(title string) Project {

@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
@@ -62,7 +62,7 @@ type Server struct {
 type entry struct {
 	ticket   string
 	names    []string
-	tools    map[string]dsh.Tool
+	tools    map[string]agentloop.Tool
 	schemas  map[string]any
 	sessions []string
 }
@@ -81,11 +81,11 @@ func NewToken() string {
 
 // Register 登记 ticketID 的工具，token 是调用它们的唯一凭据。schemas 按工具名给参数 schema，缺的退回工具自带的 Parameters。
 // 第一次登记时开始监听。同一 token 再登记会整组替换工具，已开的会话保留。没有名字或 Run 的工具跳过。
-func (s *Server) Register(token, ticketID string, tools []dsh.Tool, schemas map[string]any) error {
+func (s *Server) Register(token, ticketID string, tools []agentloop.Tool, schemas map[string]any) error {
 	if strings.TrimSpace(token) == "" {
 		return errors.New("mcpserve: empty token")
 	}
-	e := &entry{ticket: ticketID, tools: map[string]dsh.Tool{}, schemas: schemas}
+	e := &entry{ticket: ticketID, tools: map[string]agentloop.Tool{}, schemas: schemas}
 	for _, tool := range tools {
 		if tool.Name == "" || tool.Run == nil {
 			continue
@@ -328,7 +328,7 @@ func (e *entry) call(ctx context.Context, m message) reply {
 	if len(args) == 0 || bytes.Equal(args, []byte("null")) {
 		args = []byte("{}")
 	}
-	res, err := tool.Run(ctx, dsh.ToolCall{ID: "mcp-" + strings.Trim(string(m.ID), `"`), Name: p.Name, Arguments: string(args)})
+	res, err := tool.Run(ctx, agentloop.ToolCall{ID: "mcp-" + strings.Trim(string(m.ID), `"`), Name: p.Name, Arguments: string(args)})
 	text, isErr := res.Text, res.IsError
 	if err != nil {
 		text, isErr = err.Error(), true

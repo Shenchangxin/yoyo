@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Shenchangxin/yoyo/internal/video/canvas/capability"
+	"github.com/Shenchangxin/yoyo/internal/video/canvas/nodecap"
 )
 
 // applyCanvasOps 在画布上执行增删改节点、连线和移动，最多 40 条，然后按当前修订号保存。
@@ -27,7 +27,7 @@ func (e *Engine) applyCanvasOps(canvasID string, ops []any) (string, error) {
 	doc := e.projectDocFromRow(row)
 	nodes := asSlice(doc["nodes"])
 	conns := asSlice(doc["connections"])
-	reg := capability.BuiltinRegistry()
+	reg := nodecap.BuiltinRegistry()
 	changed := 0
 	for _, raw := range ops {
 		op := asMap(raw)

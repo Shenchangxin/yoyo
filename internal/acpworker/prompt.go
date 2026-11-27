@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/acp"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
 
@@ -81,7 +81,7 @@ func instructionsBlock(text string) string {
 
 // continuationNote 是续接不上、只能新开会话时放在第一条消息前的说明：上次的摘要加最后三行记录。events 只含这一轮之前的事件，没有可说的时返回空串。
 // 交接那一行不算记录：刚接手的工人没有做过什么，交接说明已经在派工正文里。
-func continuationNote(events []dsh.Event) string {
+func continuationNote(events []agentloop.Event) string {
 	summary := lastReportSummary(events)
 	var lines []superagent.TranscriptLine
 	for _, line := range superagent.TranscriptLines(events) {
@@ -114,10 +114,10 @@ func continuationNote(events []dsh.Event) string {
 }
 
 // lastReportSummary 返回日志里最后一次 orchestrator_report 的摘要。没有报告时用最后一段助手正文。
-func lastReportSummary(events []dsh.Event) string {
+func lastReportSummary(events []agentloop.Event) string {
 	for i := len(events) - 1; i >= 0; i-- {
-		msg, ok := events[i].Data.(dsh.Assistant)
-		if events[i].Type != dsh.EventAssistant || !ok {
+		msg, ok := events[i].Data.(agentloop.Assistant)
+		if events[i].Type != agentloop.EventAssistant || !ok {
 			continue
 		}
 		for j := len(msg.ToolCalls) - 1; j >= 0; j-- {
@@ -134,7 +134,7 @@ func lastReportSummary(events []dsh.Event) string {
 		}
 	}
 	for i := len(events) - 1; i >= 0; i-- {
-		if msg, ok := events[i].Data.(dsh.Assistant); ok && events[i].Type == dsh.EventAssistant && strings.TrimSpace(msg.Text) != "" {
+		if msg, ok := events[i].Data.(agentloop.Assistant); ok && events[i].Type == agentloop.EventAssistant && strings.TrimSpace(msg.Text) != "" {
 			return strings.TrimSpace(msg.Text)
 		}
 	}
@@ -142,7 +142,7 @@ func lastReportSummary(events []dsh.Event) string {
 }
 
 // promptBlocks 把前言和这一轮领到的消息拼成一段文字。多条消息之间空一行。
-func promptBlocks(preface string, msgs []dsh.UserMessage) []acp.ContentBlock {
+func promptBlocks(preface string, msgs []agentloop.UserMessage) []acp.ContentBlock {
 	var parts []string
 	if p := strings.TrimSpace(preface); p != "" {
 		parts = append(parts, p)

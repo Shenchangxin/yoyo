@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/initiative"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/poi"
@@ -144,8 +144,8 @@ func (appHost *deskHost) ComposeToday(slot string) TodayBrief {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	out, err := liveModel{app: appHost.app}.Complete(ctx, dsh.Request{
-		Messages: []dsh.Message{
+	out, err := liveModel{app: appHost.app}.Complete(ctx, agentloop.Request{
+		Messages: []agentloop.Message{
 			{Role: "system", Text: briefPrompt},
 			{Role: "user", Text: briefAsk(slot, packet)},
 		},
@@ -590,12 +590,6 @@ type rawBriefCard struct {
 type rawBriefStat struct {
 	Label string `json:"label"`
 	Value any    `json:"value"`
-}
-
-// parseTodayCards 从模型正文里取出卡片。认不出或没有标题时为空。
-func parseTodayCards(text string) []BriefCard {
-	cards, _ := parseTodayBrief(text)
-	return cards
 }
 
 // parseTodayBrief 从模型正文里取出卡片，最多 briefMaxCards 张。ok 为真表示正文里确实是一个带 cards 的对象，空数组也算。

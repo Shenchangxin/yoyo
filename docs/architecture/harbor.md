@@ -44,7 +44,7 @@ Inside a task container, Harbor should exec the same CLI the Go engine uses:
 yoyo run --workspace /app "$(cat /instruction.md)"
 ```
 
-`internal/eval.AgentArgs(workspace, instruction)` returns that argv. Wrappers live in `evals/yoyo-agent/`:
+The workspace defaults to `/app`. Wrappers live in `evals/yoyo-agent/`:
 
 ```
 evals/yoyo-agent/run.sh /app instruction.md

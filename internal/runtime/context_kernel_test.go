@@ -7,9 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Shenchangxin/yoyo/internal/artifact"
-	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 // TestLegalizePairsToolCalls 确认缺了结果的 tool call 会被补上配对。
@@ -60,67 +57,6 @@ func TestSnipDoesNotBreakPairing(t *testing.T) {
 	}
 	if len(pending) != 0 {
 		t.Fatalf("unpaired tool_calls after snip: %v\n%+v", pending, out)
-	}
-}
-
-// TestSpillBeforeCapIsLossless 确认预览被截成占位时，spill 里仍是全文。
-func TestSpillBeforeCapIsLossless(t *testing.T) {
-	dir := t.TempDir()
-	sp := NewSpill(filepath.Join(dir, "spill"))
-	full := strings.Repeat("TAIL", 20_000)
-	preview, _ := ingestToolResult(sp, "big", "shell", full, 0, false)
-	if !strings.Contains(preview, "elided") {
-		t.Fatalf("expected preview stub, got %s", preview[:min(120, len(preview))])
-	}
-	got, err := sp.Get("big")
-	if err != nil || got != full {
-		t.Fatalf("spill lost bytes: err=%v len=%d", err, len(got))
-	}
-}
-
-// TestAssemblePrefixStableWhenSkillsLoad 确认同一材料的前缀字节稳定，加载技能正文只出现在前缀之后。
-func TestAssemblePrefixStableWhenSkillsLoad(t *testing.T) {
-	loop := DefaultLoop()
-	skills := []artifact.Skill{{Name: "b", Description: "two", Body: "BBB"}, {Name: "a", Description: "one", Body: "AAA"}}
-	p1 := AssemblePrefix(loop, nil, artifact.Playbook{}, skills, "tabs", "YOYO.md")
-	p2 := AssemblePrefix(loop, nil, artifact.Playbook{}, skills, "tabs", "YOYO.md")
-	if p1 != p2 {
-		t.Fatal("prefix not deterministic")
-	}
-	full := Assemble(loop, nil, artifact.Playbook{}, skills, "tabs", "YOYO.md", []string{"## Skill: a\nAAA"})
-	if !strings.HasPrefix(full, p1) {
-		t.Fatal("loaded skills mutated prefix bytes")
-	}
-	if !strings.Contains(full[len(p1):], "AAA") {
-		t.Fatal("dynamic tail missing loaded skill")
-	}
-}
-
-// TestCheckpointRebuildsFromTail 确认检查点之前的用户句不再出现，摘要、保留尾和新用户句还在。
-func TestCheckpointRebuildsFromTail(t *testing.T) {
-	dir := t.TempDir()
-	st := trace.NewStore(dir)
-	_ = st.Append(trace.Event{Type: trace.TypeUser, SessionID: "s", Payload: map[string]any{"text": "old user"}})
-	_ = st.Append(trace.Event{Type: trace.TypeAssistant, SessionID: "s", Payload: map[string]any{"text": "old asst"}})
-	tail := []Message{{Role: RoleUser, Content: "kept user"}, {Role: RoleAssistant, Content: "kept asst"}}
-	if err := PersistCheckpoint(st, "s", "test", "## Objective\nkeep going", tail, true); err != nil {
-		t.Fatal(err)
-	}
-	_ = st.Append(trace.Event{Type: trace.TypeUser, SessionID: "s", Payload: map[string]any{"text": "new"}})
-	evs, err := st.Read("s")
-	if err != nil {
-		t.Fatal(err)
-	}
-	msgs := MessagesFromEvents(evs)
-	joined := ""
-	for _, m := range msgs {
-		joined += m.Content + "\n"
-	}
-	if strings.Contains(joined, "old user") {
-		t.Fatalf("pre-checkpoint leaked: %s", joined)
-	}
-	if !strings.Contains(joined, "keep going") || !strings.Contains(joined, "kept user") || !strings.Contains(joined, "new") {
-		t.Fatalf("missing checkpoint pieces: %s", joined)
 	}
 }
 
@@ -191,33 +127,6 @@ func TestHarborIgnoresModelWindow(t *testing.T) {
 	chat := effectiveBudget(ShapeOpts{Loop: loop, ModelWindow: 128_000})
 	if chat <= b || chat >= 128_000 {
 		t.Fatalf("chat budget %d", chat)
-	}
-}
-
-// TestChatPromptKeepsWriteArguments 确认聊天投影和原始消息都保留 write_file 的完整参数。
-func TestChatPromptKeepsWriteArguments(t *testing.T) {
-	body := strings.Repeat("x", 4000)
-	origArgs := `{"path":"a.ts","content":"` + body + `"}`
-	msgs := []Message{
-		{Role: RoleSystem, Content: "sys"},
-		{Role: RoleUser, Content: "u"},
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "w1", Name: "write_file", Arguments: origArgs}}},
-		{Role: RoleTool, ToolCallID: "w1", Name: "write_file", Content: "wrote a.ts"},
-	}
-	req := &RunRequest{SoftHorizon: true, Loop: ApplyChatHorizon(DefaultLoop()), ModelWindow: 1_000_000, Tools: &WorkspaceTools{}}
-	k := newContextKernel(req)
-	out, _, _ := k.prompt(msgs, false)
-	if msgs[2].ToolCalls[0].Arguments != origArgs {
-		t.Fatal("live messages must keep full write")
-	}
-	shaped := ""
-	for _, m := range out {
-		if m.Role == RoleAssistant && len(m.ToolCalls) > 0 {
-			shaped = m.ToolCalls[0].Arguments
-		}
-	}
-	if shaped != origArgs {
-		t.Fatalf("chat prompt must keep the model's own write arguments, got %s", shaped[:min(180, len(shaped))])
 	}
 }
 

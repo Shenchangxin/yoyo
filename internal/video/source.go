@@ -22,10 +22,6 @@ const (
 	sliceOverlap = 200
 	// maxReadWindow 是一次读取的上限，2400 个字符。
 	maxReadWindow = 2400
-	// seriesRuneMin 是直接当成连续剧的字符数，2000。
-	seriesRuneMin = 2000
-	// chapterMinRunes 是靠章节标题判定连续剧时的最少字符数，400。
-	chapterMinRunes = 400
 	// episodeWindow 是分集切分窗口，4000 个字符。
 	episodeWindow = 4000
 	// maxEpisodeRunes 是单集上限，8000 个字符。
@@ -42,16 +38,6 @@ const (
 
 // chapterRe 匹配「第…章节回部卷」或 Chapter 加数字，忽略大小写。
 var chapterRe = regexp.MustCompile(`(?mi)(?:^|\n)[ \t]*((第[0-9一二三四五六七八九十百千零两]+[章节回部卷])|(Chapter\s+\d+))`)
-
-// LooksLikeSeries 在去掉空白后不少于 2000 字，或至少两个章节标题且不少于 400 字时返回真。
-// text 去掉首尾空白后计 rune 数，并传给 chapterStarts。
-func LooksLikeSeries(text string) bool {
-	n := utf8.RuneCountInString(strings.TrimSpace(text))
-	if n >= seriesRuneMin {
-		return true
-	}
-	return len(chapterStarts(text)) >= 2 && n >= chapterMinRunes
-}
 
 // IngestSource 写入原文。剧不存在、文本为空，或方案已经是 committed 时失败。同一剧已有原文时沿用原标识。
 // dramaID 传给 GetDrama、GetPlan 和 GetSource，并写入 DramaID。

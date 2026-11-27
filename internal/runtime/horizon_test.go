@@ -1,5 +1,5 @@
 // 锁住 DefaultLoop 的评测数字不被 ApplyChatHorizon 改写，偏小的聊天视界被抬高，RulesTokens 被写成 1600。
-// 同一文件还锁住行为文案不改 Harbor 循环，以及身份、语言和环境提示的几条拼装结果。childLoopFor 的实现在 tools_task.go。
+// 同一文件还锁住行为文案不改 Harbor 循环，以及身份、语言和环境提示的几条拼装结果。子代理的工具集裁剪见 tools_task_child.go。
 
 package runtime
 
@@ -80,7 +80,7 @@ func TestApplyChatHorizon(t *testing.T) {
 // TestChatConductDoesNotTouchHarborLoop 确认聊天行为文案不改 DefaultLoop 的 Execution、Bootstrap 和 MaxTurns 32。
 func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	base := DefaultLoop()
-	frags := ChatConductFragments(false)
+	frags := ChatConduct(ConductOpts{})
 	joined := fragmentText(frags)
 	if !strings.Contains(joined, "same language") {
 		t.Fatalf("%+v", frags)
@@ -108,7 +108,7 @@ func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	if got.Execution != base.Execution || got.Bootstrap != base.Bootstrap || got.MaxTurns != 32 {
 		t.Fatalf("harbor loop mutated: %+v", got)
 	}
-	plan := ChatConductFragments(true)
+	plan := ChatConduct(ConductOpts{Plan: true})
 	if strings.Contains(fragmentText(plan), "start writing those workspace artifacts") {
 		t.Fatal("plan mode must not force writes")
 	}
@@ -125,32 +125,6 @@ func fragmentText(frags []artifact.PromptFragment) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
-}
-
-// TestChildLoopProfiles 确认 explore 和 qa 不进计划模式，explore 的 MaxTurns 不小于 24，且 childLoopFor 不改 DefaultLoop 的 32 轮。
-func TestChildLoopProfiles(t *testing.T) {
-	parent := RunRequest{Loop: DefaultLoop(), SoftHorizon: true}
-	explore := childLoopFor(parent, "explore")
-	if explore.PlanMode {
-		t.Fatal("explore must return findings, not enter plan mode")
-	}
-	if explore.MaxTurns < 24 || !strings.Contains(explore.TaskInstruction, "explore") {
-		t.Fatalf("explore %+v", explore)
-	}
-	qa := childLoopFor(parent, "qa")
-	if qa.PlanMode {
-		t.Fatal("qa evaluates; it is not plan mode")
-	}
-	if !strings.Contains(qa.TaskInstruction, "evaluator") {
-		t.Fatalf("qa %+v", qa)
-	}
-	impl := childLoopFor(parent, "implement")
-	if impl.PlanMode {
-		t.Fatal("implement must not force plan mode")
-	}
-	if DefaultLoop().MaxTurns != 32 || DefaultLoop().PlanMode {
-		t.Fatal("childLoopFor mutated DefaultLoop")
-	}
 }
 
 // TestOperatorVoiceSkipsControl 确认控制行 toolBudgetNudge 不盖住操作者原文「完善前端」。
@@ -208,14 +182,6 @@ func TestAssembleIdentitySingleBootstrap(t *testing.T) {
 	}
 }
 
-// TestChatDoesNotPinALanguage 确认动态段不含 ## Voice，也不含「用中文回复」。
-func TestChatDoesNotPinALanguage(t *testing.T) {
-	dyn := AssembleDynamic("", nil, "## Objective\n完善前端\n", "", "")
-	if strings.Contains(dyn, "## Voice") || strings.Contains(dyn, "用中文回复") {
-		t.Fatalf("language must follow the user message, not a voice pin: %s", dyn)
-	}
-}
-
 // TestChatConductLandsInRuntimeSlot 确认没有聊天片段时身份不含交付判断，加上片段后落在 ## runtime，并带上 chatBootstrap。
 func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	loop := DefaultLoop()
@@ -223,7 +189,7 @@ func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	if strings.Contains(plain, "You decide the deliverable") {
 		t.Fatal("harbor identity picked up chat conduct")
 	}
-	s := AssembleIdentity(loop, ChatConductFragments(false))
+	s := AssembleIdentity(loop, ChatConduct(ConductOpts{}))
 	if !strings.Contains(s, "You decide the deliverable") {
 		t.Fatal("chat conduct dropped")
 	}
@@ -249,16 +215,6 @@ func TestLanguagePinLeadsIdentity(t *testing.T) {
 	}
 	if !strings.Contains(pin.Text, "progress") {
 		t.Fatal("pin must cover progress narration, not only the final letter")
-	}
-}
-
-// TestRefreshDynamicRepeatsLanguagePin 确认 SoftHorizon 的工作记忆再次钉上中文输出。
-func TestRefreshDynamicRepeatsLanguagePin(t *testing.T) {
-	req := RunRequest{User: "帮我查询一下关于agent自进化的论文", SoftHorizon: true}
-	k := newContextKernel(&req)
-	_ = k.refreshDynamic(nil)
-	if !strings.Contains(k.dyn, "Output language") || !strings.Contains(k.dyn, "Chinese") {
-		t.Fatalf("working memory must re-pin Chinese output:\n%s", k.dyn)
 	}
 }
 

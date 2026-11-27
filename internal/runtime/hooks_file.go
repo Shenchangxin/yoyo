@@ -1,5 +1,5 @@
 // 从工作区 .yoyo/hooks.json 读取确定性的文件钩子，按工具名做全名或前缀匹配。
-// 不是模型策略。session.go 调用 LoadHookFile。loop.go 把 pre_tool 交给 applyFileHooks。
+// 不是模型策略。session.go 调用 LoadHookFile。WorkspaceTools.Call 在执行工具前把 pre_tool 交给 applyFileHooks。
 // pre_compact 只被读出；压缩路径把匹配名放进事件载荷，不把 Deny 交给 applyFileHooks。
 
 package runtime

@@ -1,5 +1,5 @@
 // worker_schema.go 拥有五个 orchestrator_* 工具的参数 JSON schema，只给外部工人的 MCP 控制面用。
-// 不拥有工具本身（executor.go、worker_tools.go），dsh 工人的工具定义不变。app 把它和 WorkerSpec.Tools 一起交给 mcpserve。
+// 不拥有工具本身（executor.go、worker_tools.go），agentloop 工人的工具定义不变。app 把它和 WorkerSpec.Tools 一起交给 mcpserve。
 
 package superagent
 

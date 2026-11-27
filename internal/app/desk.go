@@ -1,4 +1,4 @@
-// desk.go 持有桌面会话的 dsh 宿主，以及编排台的运行时。
+// desk.go 持有桌面会话的 agentloop 宿主，以及编排台的运行时。
 // 发送回合调用 agentDesk。编排台的快照、决定和来源轮询调用 orchestrator。
 
 package app
@@ -11,21 +11,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
+	"github.com/Shenchangxin/yoyo/internal/agentloop/desk"
 	"github.com/Shenchangxin/yoyo/internal/buddy"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
-	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
 
 // agentDesk 返回进程内的桌面代理宿主。第一次调用时创建。
-func (appHost *deskHost) agentDesk() *dshdesk.Host {
+func (appHost *deskHost) agentDesk() *desk.Host {
 	if appHost.app == nil {
-		return dshdesk.New()
+		return desk.New()
 	}
 	appHost.app.deskMu.Lock()
 	defer appHost.app.deskMu.Unlock()
 	if appHost.app.desk == nil {
-		appHost.app.desk = dshdesk.New()
+		appHost.app.desk = desk.New()
 	}
 	return appHost.app.desk
 }
@@ -241,24 +241,24 @@ func (appHost *deskHost) OrchestratorAdmission(listedUnaddressed, unlistedAddres
 	return rt.SetAdmission(listedUnaddressed, unlistedAddressed, unlistedUnaddressed)
 }
 
-// liveModel 每次补全都取当前配置的客户端。占位模型名 yoyo-dsh 换成配置里的模型。
+// liveModel 每次补全都取当前配置的客户端。模型名为空或是 superagent.BuiltinModelPlaceholder 时换成配置里的模型。
 type liveModel struct {
 	app *App
 }
 
 // Complete 调用当前客户端。req 的消息原样交给桥。ctx 取消时停。
-func (m liveModel) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant, error) {
+func (m liveModel) Complete(ctx context.Context, req agentloop.Request) (agentloop.Assistant, error) {
 	if m.app == nil {
-		return dsh.Assistant{}, errString("orchestrator unavailable")
+		return agentloop.Assistant{}, errString("orchestrator unavailable")
 	}
 	client, err := m.app.ClientFor(SessionMeta{})
 	if err != nil {
-		return dsh.Assistant{}, err
+		return agentloop.Assistant{}, err
 	}
-	if req.Model == "" || req.Model == "yoyo-dsh" {
+	if req.Model == "" || req.Model == superagent.BuiltinModelPlaceholder {
 		req.Model = m.app.Config.Model
 	}
-	bridge := &dshdesk.Bridge{Client: client, Model: m.app.Config.Model, ShowThinking: m.app.Config.ShowThinking}
+	bridge := &desk.Bridge{Client: client, Model: m.app.Config.Model, ShowThinking: m.app.Config.ShowThinking}
 	return bridge.Complete(ctx, req)
 }
 

@@ -696,36 +696,6 @@ func shotDurations(shots []StudioShot, spans []float64, total float64) []float64
 	return base
 }
 
-// parseSRTDurations 读出 SRT 里每一条的时长。没有箭头的行会跳过。结束不大于开始的也跳过。
-func parseSRTDurations(s string) []float64 {
-	var out []float64
-	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
-	for _, line := range lines {
-		if !strings.Contains(line, "-->") {
-			continue
-		}
-		parts := strings.Split(line, "-->")
-		if len(parts) != 2 {
-			continue
-		}
-		a := parseSRTStamp(strings.TrimSpace(parts[0]))
-		b := parseSRTStamp(strings.TrimSpace(parts[1]))
-		if b > a {
-			out = append(out, b-a)
-		}
-	}
-	return out
-}
-
-// parseSRTStamp 把 SRT 时间戳换成秒。逗号会先换成小数点。
-func parseSRTStamp(s string) float64 {
-	s = strings.ReplaceAll(s, ",", ".")
-	var h, m int
-	var sec float64
-	fmt.Sscanf(s, "%d:%d:%f", &h, &m, &sec)
-	return float64(h*3600+m*60) + sec
-}
-
 // ProbeSeconds 用 ffprobe 读一份内容库媒体的时长。没有 ffprobe 或取不出文件就返回错误。
 // hash 以扩展名 .bin 传给 materialize。
 func (e *Engine) ProbeSeconds(hash string) (float64, error) {

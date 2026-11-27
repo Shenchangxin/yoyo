@@ -3,8 +3,6 @@
 package runtime
 
 import (
-	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -111,48 +109,6 @@ func TestReadFileOverflow(t *testing.T) {
 	}
 	if !strings.Contains(res.Content, ".yoyo/overflow") {
 		t.Fatalf("expected overflow path, got %s", res.Content[:min(200, len(res.Content))])
-	}
-}
-
-// TestBudgetStopsLoop 锁住费用超过 MaxBudgetUSD 时 Run 返回 ErrBudget。
-func TestBudgetStopsLoop(t *testing.T) {
-	dir := t.TempDir()
-	loop := DefaultLoop()
-	loop.MaxBudgetUSD = 0.5
-	meter := &Meter{USDPerMTok: 1e6}
-	_, err := Run(context.Background(), RunRequest{
-		User:      "Write hello.txt containing hello",
-		Workspace: dir,
-		Tools:     &WorkspaceTools{Workspace: dir},
-		Client:    HeuristicSolver{},
-		Loop:      loop,
-		Meter:     meter,
-	})
-	var b ErrBudget
-	if !errors.As(err, &b) {
-		t.Fatalf("want budget stop, got %v", err)
-	}
-}
-
-// TestFileHookDeniesTool 锁住 FileHook 拒绝 write_file 时，目标文件不会出现。
-func TestFileHookDeniesTool(t *testing.T) {
-	dir := t.TempDir()
-	client := &ScriptedClient{Steps: []Message{
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "1", Name: "write_file", Arguments: `{"path":"x.txt","content":"no"}`}}},
-		{Role: RoleAssistant, Content: "ok"},
-	}}
-	_, err := Run(context.Background(), RunRequest{
-		User:      "write",
-		Tools:     &WorkspaceTools{Workspace: dir},
-		Client:    client,
-		Loop:      DefaultLoop(),
-		FileHooks: []FileHook{{Match: "write_file", Deny: true, Reason: "blocked"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "x.txt")); err == nil {
-		t.Fatal("write should have been denied")
 	}
 }
 

@@ -57,12 +57,6 @@ type ShapeOpts struct {
 	Aggressive    bool
 }
 
-// Compact 是评测用的稳定入口，只做确定性整形，不调用模型。返回投影和 Shape 的 Note。
-func Compact(msgs []Message, loop artifact.LoopPreset) ([]Message, string) {
-	out, rep := Shape(msgs, ShapeOpts{Loop: loop})
-	return out, rep.Note
-}
-
 // projectChat 是桌面聊天的投影。在副本上按条截断工具结果，压力够了再把旧的可重读结果换成回执，最后 Legalize。
 // 不做 snip，也不 forceFit，写操作的参数保持原样。不改调用方的消息，因此不改 JSONL。
 func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
@@ -94,7 +88,7 @@ func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 // chatKeepReads 是桌面投影里保留原文的最新只读结果条数。更旧的在有压力时换成回执。
 const chatKeepReads = 12
 
-// chatReadClearAt 是开始把旧读换成回执的预算比例。低于它时每条读都保持原文。chatCompactAt 更靠后，压力先到这里时用回执换出空间。
+// chatReadClearAt 是开始把旧读换成回执的预算比例。低于它时每条读都保持原文，到了就用回执换出空间。
 const chatReadClearAt = 0.5
 
 // chatReadClearBatch 是一次清除的条数。只清除 batch 的整数倍，两次清除之间已处理前缀的字节保持不变。
@@ -505,16 +499,6 @@ func stubTool(id, name string, bytes int) string {
 
 // heavyCallRunes 是界面缩短写操作参数的阈值。模型投影不用它。压缩摘要在送进摘要模型之前用同一阈值。
 const heavyCallRunes = 800
-
-// appendLayer 在同名层尚未出现时追加。
-func appendLayer(layers []string, name string) []string {
-	for _, l := range layers {
-		if l == name {
-			return layers
-		}
-	}
-	return append(layers, name)
-}
 
 // heavyCallName 判断这些写操作的参数算不算重。Shape 不拿它改发给模型的参数。
 func heavyCallName(name string) bool {

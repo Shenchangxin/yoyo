@@ -5,7 +5,6 @@ package update
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
@@ -84,8 +83,8 @@ func TestCheckFallsBackFromEmptyLatest(t *testing.T) {
 	}
 }
 
-// TestCheckAndStage 确认直接给出的清单能验过，Stage 接受匹配的 SHA-256 并拒绝错误摘要。
-func TestCheckAndStage(t *testing.T) {
+// TestCheckVerifiesDirectManifest 确认直接给出的清单能验过。
+func TestCheckVerifiesDirectManifest(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -98,18 +97,6 @@ func TestCheckAndStage(t *testing.T) {
 	}
 	if !res.Verified || !res.Newer || res.Manifest.Version != "9.0.0" {
 		t.Fatalf("%+v", res)
-	}
-	bin := []byte("fake-binary")
-	sum := sha256.Sum256(bin)
-	path, err := Stage(t.TempDir(), bin, hex.EncodeToString(sum[:]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if path == "" {
-		t.Fatal("empty stage path")
-	}
-	if _, err := Stage(t.TempDir(), bin, "deadbeef"); err == nil {
-		t.Fatal("bad sha accepted")
 	}
 }
 

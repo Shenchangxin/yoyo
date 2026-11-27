@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
@@ -41,10 +41,10 @@ func TestHumanSlotAndBusyLaunch(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var once sync.Once
-	model := scriptModel{fn: func(context.Context, dsh.Request) (dsh.Assistant, error) {
+	model := scriptModel{fn: func(context.Context, agentloop.Request) (agentloop.Assistant, error) {
 		once.Do(func() { close(started) })
 		<-release
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 			ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"ok"}`,
 		}}}, nil
 	}}
@@ -73,8 +73,8 @@ func TestHumanSlotAndBusyLaunch(t *testing.T) {
 // TestLaunchReportEndsTicket 锁住接受后的派工会跑到 ready，工单以 completed 结束。
 func TestLaunchReportEndsTicket(t *testing.T) {
 	eng := NewEngine(autoPolicy())
-	ex := NewExecutor(eng, NewSlots(2), scriptModel{fn: func(context.Context, dsh.Request) (dsh.Assistant, error) {
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+	ex := NewExecutor(eng, NewSlots(2), scriptModel{fn: func(context.Context, agentloop.Request) (agentloop.Assistant, error) {
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 			ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"done"}`,
 		}}}, nil
 	}})
@@ -93,25 +93,25 @@ func TestBackgroundShellThenReport(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var once sync.Once
-	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(_ context.Context, req dsh.Request) (dsh.Assistant, error) {
-		last := dsh.Message{}
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(_ context.Context, req agentloop.Request) (agentloop.Assistant, error) {
+		last := agentloop.Message{}
 		if len(req.Messages) > 0 {
 			last = req.Messages[len(req.Messages)-1]
 		}
 		if last.Role == "user" && strings.Contains(last.Text, "finished") {
-			return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+			return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 				ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"saw job"}`,
 			}}}, nil
 		}
 		if last.Role == "tool" && strings.Contains(last.Text, "output") {
-			return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+			return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 				ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"saw output"}`,
 			}}}, nil
 		}
 		if last.Role == "tool" && strings.Contains(last.Text, "background") {
-			return dsh.Assistant{Text: "ack"}, nil
+			return agentloop.Assistant{Text: "ack"}, nil
 		}
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 			ID: "s1", Name: "shell", Arguments: `{"command":"echo hi"}`,
 		}}}, nil
 	}})
@@ -182,7 +182,7 @@ func TestReadyWaitsForOpenPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime.WritePlanFile(dir, "ticket-"+id, "1. [in_progress] 同步到目标目录\n")
-	res, err := ex.reportTool(id).Run(context.Background(), dsh.ToolCall{
+	res, err := ex.reportToolWith(id, true).Run(context.Background(), agentloop.ToolCall{
 		Arguments: `{"state":"ready","summary":"写好了"}`,
 	})
 	if err != nil || !res.IsError {
@@ -193,7 +193,7 @@ func TestReadyWaitsForOpenPlan(t *testing.T) {
 		t.Fatal("ended")
 	}
 	runtime.WritePlanFile(dir, "ticket-"+id, "1. [complete] 同步到目标目录\n")
-	res, err = ex.reportTool(id).Run(context.Background(), dsh.ToolCall{
+	res, err = ex.reportToolWith(id, true).Run(context.Background(), agentloop.ToolCall{
 		Arguments: `{"state":"ready","summary":"可以试玩了"}`,
 	})
 	if err != nil || res.IsError || !res.Concludes {
@@ -210,15 +210,15 @@ func TestTurnWithoutReportContinues(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	var mu sync.Mutex
 	n := 0
-	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(context.Context, dsh.Request) (dsh.Assistant, error) {
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(context.Context, agentloop.Request) (agentloop.Assistant, error) {
 		mu.Lock()
 		n++
 		call := n
 		mu.Unlock()
 		if call == 1 {
-			return dsh.Assistant{Text: "先更新计划"}, nil
+			return agentloop.Assistant{Text: "先更新计划"}, nil
 		}
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{
 			ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"done"}`,
 		}}}, nil
 	}})
@@ -240,7 +240,7 @@ func TestTurnWithoutReportContinues(t *testing.T) {
 func TestReadyQuestionStaysOpen(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	id := accept(t, eng, "m1")
-	res, err := (&Executor{Engine: eng}).reportTool(id).Run(context.Background(), dsh.ToolCall{
+	res, err := (&Executor{Engine: eng}).reportToolWith(id, true).Run(context.Background(), agentloop.ToolCall{
 		Arguments: `{"state":"ready","summary":"写好了","question":"是原作吗？"}`,
 	})
 	if err != nil || res.IsError || res.Text != "recorded blocked" {
@@ -254,10 +254,10 @@ func TestReadyQuestionStaysOpen(t *testing.T) {
 
 // scriptModel 把测试函数当成一次模型完成。
 type scriptModel struct {
-	fn func(context.Context, dsh.Request) (dsh.Assistant, error)
+	fn func(context.Context, agentloop.Request) (agentloop.Assistant, error)
 }
 
 // Complete 调用 fn。ctx 与 req 原样传进去。
-func (m scriptModel) Complete(ctx context.Context, req dsh.Request) (dsh.Assistant, error) {
+func (m scriptModel) Complete(ctx context.Context, req agentloop.Request) (agentloop.Assistant, error) {
 	return m.fn(ctx, req)
 }

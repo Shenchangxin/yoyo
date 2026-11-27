@@ -617,14 +617,6 @@ func TestStudioCatalogAndTools(t *testing.T) {
 	}
 }
 
-// TestParseSRTDurations 锁住两条 SRT 各读出大约 2.5 秒。
-func TestParseSRTDurations(t *testing.T) {
-	got := parseSRTDurations("1\n00:00:00,000 --> 00:00:02,500\nhi\n\n2\n00:00:02,500 --> 00:00:05,000\nthere\n")
-	if len(got) != 2 || got[0] < 2.4 || got[0] > 2.6 || got[1] < 2.4 {
-		t.Fatalf("%v", got)
-	}
-}
-
 // TestSaveTopicKeepsAngle 锁住只改标题时，角度、状态和备注还在。
 func TestSaveTopicKeepsAngle(t *testing.T) {
 	e := testEngine(t)

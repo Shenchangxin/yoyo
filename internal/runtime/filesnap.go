@@ -56,13 +56,6 @@ func writeSnapFile(spillDir, mirror, stamp, rel string, body []byte) {
 	_ = os.WriteFile(m, body, 0o644)
 }
 
-// RestoreFileSnapshots 调用 RestoreFileSnapshotsAfter，after 为零值，因此不按时间跳过。
-// spillDir 传给 RestoreFileSnapshotsAfter。
-// workspace 传给 RestoreFileSnapshotsAfter。
-func RestoreFileSnapshots(spillDir, workspace string) (int, error) {
-	return RestoreFileSnapshotsAfter(spillDir, workspace, time.Time{})
-}
-
 // RestoreFileSnapshotsAfter 按时间戳目录名从早到晚走。after 非零时，解析失败或早于 after 的目录跳过。同一相对路径只处理第一次遇到的快照。带 createdSnapSuffix 的项会删除工作区里的对应文件，其余项覆盖写回。
 // spillDir 与 files 拼成时间戳目录的根。
 // workspace 与相对路径拼成恢复目标。
