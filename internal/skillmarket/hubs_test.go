@@ -558,11 +558,8 @@ func TestLiveCatalogSize(t *testing.T) {
 		hub, query string
 		min        int
 	}{
-		{HubWorkBuddy, "", 20},
-		{HubClawHub, "", 200},
 		{HubSkillHubCN, "", 200},
 		{HubAnthropic, "", 8},
-		{HubClawSkillHub, "", 20},
 	}
 	ok := 0
 	dir := t.TempDir()

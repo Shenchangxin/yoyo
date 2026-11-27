@@ -64,8 +64,8 @@ type PackResult struct {
 	Owner   string
 }
 
-// HubCatalog 返回内置技能站列表，顺序就是界面里的顺序。
-func HubCatalog() []HubInfo {
+// knownHubs 返回 yoyo 认得的全部技能站。市场只列其中几个（见 listed.go），其余留着认出已装技能的来源，好按记录修复和更新。
+func knownHubs() []HubInfo {
 	return []HubInfo{
 		{
 			ID:          HubWorkBuddy,
@@ -174,7 +174,8 @@ func LookupHub(id string) (HubInfo, bool) {
 	if id == "" {
 		return HubInfo{}, false
 	}
-	for _, h := range HubCatalog() {
+	// 按认得的全部站查，不只是市场列出的两个：下线站装好的技能要能认回原来的来源。
+	for _, h := range knownHubs() {
 		if h.ID == id {
 			return h, true
 		}
@@ -436,21 +437,6 @@ func getJSON(rawURL string, dest any) error {
 		return fmt.Errorf("json: %w", err)
 	}
 	return nil
-}
-
-// joinURL 用斜杠接上路径段，去掉每段两侧的斜杠。
-// base 去掉末尾斜杠后作为开头。
-// parts 每段把反斜杠换成斜杠并去掉两端斜杠，空段跳过，其余用斜杠接上。
-func joinURL(base string, parts ...string) string {
-	u := strings.TrimRight(base, "/")
-	for _, p := range parts {
-		p = strings.Trim(strings.ReplaceAll(p, "\\", "/"), "/")
-		if p == "" {
-			continue
-		}
-		u += "/" + p
-	}
-	return u
 }
 
 // clip 去掉首尾空白。n 小于等于 0 或字符串不长于 n 时原样返回，否则截到 n 并加上省略号。

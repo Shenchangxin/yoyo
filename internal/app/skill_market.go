@@ -16,7 +16,8 @@ import (
 // query 写入 LoadOpts.Query。
 func (a *App) SkillMarket(refresh bool, hub, query string) (skillmarket.Catalog, error) {
 	dir := filepath.Join(a.Home.Root, "skill-market")
-	return skillmarket.LoadHub(dir, skillmarket.LoadOpts{Hub: hub, Query: query, Refresh: refresh})
+	// 市场只列两个站。空串、下线的站和认不出的 id 都回到默认站。
+	return skillmarket.LoadHub(dir, skillmarket.LoadOpts{Hub: skillmarket.MarketHub(hub), Query: query, Refresh: refresh})
 }
 
 // InstallMarketSkill 按 slug 下载技能包。缺少 SKILL.md 或扫描不通过则不安装。正文提到 scripts/ 但包里没有时写入警告。元数据里的 mcp 或 mcp_url 会 StartMCPHTTP。
