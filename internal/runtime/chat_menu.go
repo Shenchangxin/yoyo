@@ -112,8 +112,8 @@ func (t *WorkspaceTools) unlockAdvertised(names []string) {
 	if t == nil || len(names) == 0 {
 		return
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	have := map[string]bool{}
 	for _, n := range t.Advertised {
 		have[n] = true

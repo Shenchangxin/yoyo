@@ -23,6 +23,9 @@ type guid struct {
 	data4 [8]byte
 }
 
+//lint:file-ignore U1000 COM vtable 的槽位按 ITaskbarList 顺序排列，没调用的也必须留着占位。
+
+// iTaskbarListVtbl 按 ITaskbarList 的槽位顺序排列。没调用的槽位也必须留着，否则后面的方法偏移就错了。
 type iTaskbarListVtbl struct {
 	queryInterface uintptr
 	addRef         uintptr

@@ -6,7 +6,6 @@ package diaglog
 import (
 	"regexp"
 	"strings"
-	"unicode/utf8"
 )
 
 var (
@@ -43,20 +42,6 @@ func Redact(s string) string {
 // b 转成字符串交给 Redact，结果再转回字节。
 func RedactBytes(b []byte) []byte {
 	return []byte(Redact(string(b)))
-}
-
-// PayloadPreview 先脱敏，再把连续空白收成一个空格。maxRunes 小于等于 0 时用 512。
-// 符文数不超过上限时原样返回，否则截断并在末尾加省略号。
-func PayloadPreview(s string, maxRunes int) string {
-	s = Redact(s)
-	s = strings.Join(strings.Fields(s), " ")
-	if maxRunes <= 0 {
-		maxRunes = 512
-	}
-	if utf8.RuneCountInString(s) <= maxRunes {
-		return s
-	}
-	return string([]rune(s)[:maxRunes]) + "…"
 }
 
 // LooksSecretKey 判断字段名像不像密钥。比较前转成小写并去掉空白。

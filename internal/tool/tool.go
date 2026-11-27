@@ -62,15 +62,3 @@ func AnnFromSpec(s artifact.ToolSpec) Annotations {
 		Exclusive:       s.Exclusive,
 	}
 }
-
-// ConcurrencyClass 在 Exclusive 或 OpenWorld 时返回 "exclusive"。只读且 ConcurrencySafe 时返回 "read"。其余返回 "write"。
-// ann 先看 Exclusive 或 OpenWorld，再看 ReadOnly 且 ConcurrencySafe。
-func ConcurrencyClass(ann Annotations) string {
-	if ann.Exclusive || ann.OpenWorld {
-		return "exclusive"
-	}
-	if ann.ReadOnly && ann.ConcurrencySafe {
-		return "read"
-	}
-	return "write"
-}

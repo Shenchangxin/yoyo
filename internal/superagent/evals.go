@@ -25,10 +25,7 @@ func (e *Engine) evaluateDueLocked() []string {
 	if e.policy.Paused {
 		return nil
 	}
-	var launches []string
-	for _, id := range e.wakePausedLocked() {
-		launches = append(launches, id)
-	}
+	launches := e.wakePausedLocked()
 	for _, key := range keys {
 		th := e.threads[key]
 		if th == nil || th.Evaluating != nil || len(th.Queued) == 0 {

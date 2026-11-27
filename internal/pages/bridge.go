@@ -1,8 +1,8 @@
-// 把笔记库的规范化、截断和审阅哈希交给 learn。文件库自己的读写仍在 pages.go。
+// 把笔记库的规范化、截断和审阅哈希交给 learn。
 
 package pages
 
-// Catalog 是笔记的读写面。文件库和 learn 都实现它，桌面应用只依赖这一面。
+// Catalog 是笔记的读写面。learn 实现它，桌面应用和 runtime 只依赖这一面。
 type Catalog interface {
 	List(spaceID string) []Meta
 	Search(q, spaceID string) []Meta

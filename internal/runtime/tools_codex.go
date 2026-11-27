@@ -48,11 +48,11 @@ func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 		}
 		fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, st, step.Step)
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	t.PlanText = b.String()
 	plan := t.PlanText
 	ws, sid := t.Workspace, t.SessionID
-	t.mu.Unlock()
+	t.lock().Unlock()
 	WritePlanFile(ws, sid, plan)
 	return ToolResult{Content: plan}
 }

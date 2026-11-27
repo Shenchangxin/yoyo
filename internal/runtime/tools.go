@@ -127,7 +127,7 @@ type WorkspaceTools struct {
 	AskUser           func(question string) (string, error)
 	SkillMeta         map[string]artifact.Skill
 	prefetch          map[string]prefetchHit
-	mu                sync.Mutex
+	mu                *sync.Mutex // 只经 lock() 取；见 lock 的说明
 	MaxParallel       int
 	SearchAPI         func(query string) (string, error)
 	Sessions          func(id string) []Message
@@ -174,6 +174,31 @@ type WorkspaceTools struct {
 	repeatScript string
 	// repeatRefusal 是 repeatScript 命中时直接返回的文本。
 	repeatRefusal string
+}
+
+// toolsMuInit 只用来让 lock() 惰性建锁时不竞争。建好之后 mu 不再改写。
+var toolsMuInit sync.Mutex
+
+// lock 返回这份工具集的锁，第一次调用时创建。字面量构造的 WorkspaceTools 不必显式初始化。
+// 锁保护 Advertised、Loaded、ExtraEnabled、ExtraLive、pendingHost、PlanText、LastBrowser、live* 和路径规则。
+// mu 是指针，复制结构体不会连锁一起复制；子代理用 clone() 拿到自己的锁。
+func (t *WorkspaceTools) lock() *sync.Mutex {
+	toolsMuInit.Lock()
+	defer toolsMuInit.Unlock()
+	if t.mu == nil {
+		t.mu = &sync.Mutex{}
+	}
+	return t.mu
+}
+
+// clone 在持锁时浅复制工具集，副本拿到一把新锁。切片和 map 仍与原件共享，调用方要改就先换成新值。
+func (t *WorkspaceTools) clone() *WorkspaceTools {
+	m := t.lock()
+	m.Lock()
+	cp := *t
+	m.Unlock()
+	cp.mu = nil
+	return &cp
 }
 
 // BuiltinToolJSON 把 tool.HostSpecs 转成工具 JSON 列表。
@@ -250,11 +275,11 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	// schemaCap 是 8。额外工具多于这个数时，未启用的不放进开场 schema。
 	const schemaCap = 8
 	enabled := map[string]bool{}
-	t.mu.Lock()
+	t.lock().Lock()
 	for _, n := range t.ExtraEnabled {
 		enabled[n] = true
 	}
-	t.mu.Unlock()
+	t.lock().Unlock()
 	var deferred []string
 	freezeExtra := t.ChatOverlay
 	for _, name := range names {
@@ -483,8 +508,8 @@ func (t *WorkspaceTools) advertisedCopy() []string {
 	if t == nil {
 		return nil
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	return append([]string(nil), t.Advertised...)
 }
 
@@ -504,7 +529,7 @@ func (t *WorkspaceTools) CommitToolUnlocks() {
 	if t == nil {
 		return
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	have := map[string]bool{}
 	for _, n := range t.ExtraEnabled {
 		have[n] = true
@@ -519,7 +544,7 @@ func (t *WorkspaceTools) CommitToolUnlocks() {
 	t.ExtraLive = nil
 	host := append([]string(nil), t.pendingHost...)
 	t.pendingHost = nil
-	t.mu.Unlock()
+	t.lock().Unlock()
 	t.unlockAdvertised(host)
 }
 
@@ -1268,11 +1293,11 @@ func (t *WorkspaceTools) setLiveCall(id, round string) {
 	if t == nil {
 		return
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	t.liveCall = id
 	t.liveRound = round
 	t.liveOut = 0
-	t.mu.Unlock()
+	t.lock().Unlock()
 }
 
 // emitStdout 把 shell 的标准输出增量发给 OnLive。单次调用累计最多 8000 字节，超出的丢掉。载荷标成 delta 和 untrusted。
@@ -1281,12 +1306,12 @@ func (t *WorkspaceTools) emitStdout(p []byte) {
 	if t == nil || t.OnLive == nil || len(p) == 0 {
 		return
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	id := t.liveCall
 	round := t.liveRound
 	session := t.SessionID
 	if id == "" || t.liveOut >= 8_000 {
-		t.mu.Unlock()
+		t.lock().Unlock()
 		return
 	}
 	remain := 8_000 - t.liveOut
@@ -1294,7 +1319,7 @@ func (t *WorkspaceTools) emitStdout(p []byte) {
 		p = p[:remain]
 	}
 	t.liveOut += len(p)
-	t.mu.Unlock()
+	t.lock().Unlock()
 	payload := map[string]any{
 		"id": id, "name": "shell", "content": string(p), "delta": true, "untrusted": true,
 	}
@@ -1473,14 +1498,14 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 	if t.Skills == nil && (t.BootstrapBodies == nil || t.BootstrapBodies[name] == "") {
 		return ToolResult{Err: fmt.Errorf("no skills")}
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	if t.BootstrapBodies != nil {
 		if wrapped := strings.TrimSpace(t.BootstrapBodies[name]); wrapped != "" {
-			t.mu.Unlock()
+			t.lock().Unlock()
 			return ToolResult{Content: wrapped}
 		}
 	}
-	t.mu.Unlock()
+	t.lock().Unlock()
 	if t.Skills == nil {
 		return ToolResult{Err: fmt.Errorf("no skills")}
 	}
@@ -1489,8 +1514,8 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 		return ToolResult{Err: fmt.Errorf("unknown skill %s", name)}
 	}
 	content := t.decorateSkillBody(name, body)
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	for _, n := range t.Loaded {
 		if n == name {
 			return ToolResult{Content: content}
@@ -1517,7 +1542,7 @@ func (t *WorkspaceTools) MarkSkillsLoaded(names ...string) {
 		if name == "" {
 			continue
 		}
-		t.mu.Lock()
+		t.lock().Lock()
 		dup := false
 		for _, n := range t.Loaded {
 			if n == name {
@@ -1528,7 +1553,7 @@ func (t *WorkspaceTools) MarkSkillsLoaded(names ...string) {
 		if !dup {
 			t.Loaded = append(t.Loaded, name)
 		}
-		t.mu.Unlock()
+		t.lock().Unlock()
 	}
 }
 
@@ -1664,7 +1689,7 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 		return ToolResult{Content: "no matches"}
 	}
 	if t != nil && t.Extra != nil {
-		t.mu.Lock()
+		t.lock().Lock()
 		for _, name := range matched {
 			if t.ChatOverlay {
 				seen := false
@@ -1690,10 +1715,10 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 				}
 			}
 		}
-		t.mu.Unlock()
+		t.lock().Unlock()
 	}
 	if t != nil && t.ChatOverlay && len(hostHits) > 0 {
-		t.mu.Lock()
+		t.lock().Lock()
 		have := map[string]bool{}
 		for _, n := range t.pendingHost {
 			have[n] = true
@@ -1705,7 +1730,7 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 			t.pendingHost = append(t.pendingHost, n)
 			have[n] = true
 		}
-		t.mu.Unlock()
+		t.lock().Unlock()
 	} else {
 		t.unlockAdvertised(hostHits)
 	}
@@ -1717,11 +1742,11 @@ func (t *WorkspaceTools) loadedBodies() []string {
 	if t == nil {
 		return nil
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	names := append([]string(nil), t.Loaded...)
 	skills := t.Skills
 	boot := t.BootstrapBodies
-	t.mu.Unlock()
+	t.lock().Unlock()
 	var out []string
 	for _, name := range names {
 		body := ""
@@ -1747,8 +1772,8 @@ func (t *WorkspaceTools) Pins() (loaded []string, plan string) {
 	if t == nil {
 		return nil, ""
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	return append([]string(nil), t.Loaded...), t.PlanText
 }
 

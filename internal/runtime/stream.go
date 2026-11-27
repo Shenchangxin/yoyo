@@ -133,31 +133,6 @@ func textFromBlocks(blocks []ContentBlock) string {
 	return b.String()
 }
 
-// reasoningFromBlocks 按顺序拼出推理块。空文本不进入结果。
-// blocks 里 Type 为推理且 Text 非空的块按顺序拼起来。
-func reasoningFromBlocks(blocks []ContentBlock) string {
-	var b strings.Builder
-	for _, bl := range blocks {
-		if bl.Type == BlockReasoning && bl.Text != "" {
-			b.WriteString(bl.Text)
-		}
-	}
-	return b.String()
-}
-
-// toolCallsFromBlocks 按块顺序抽出工具调用。没有工具块时返回 nil。
-// blocks 里 Type 为工具调用的块按顺序收成 ToolCall。
-func toolCallsFromBlocks(blocks []ContentBlock) []ToolCall {
-	var out []ToolCall
-	for _, bl := range blocks {
-		if bl.Type != BlockToolCall {
-			continue
-		}
-		out = append(out, ToolCall{ID: bl.ID, Name: bl.Name, Arguments: bl.Arguments})
-	}
-	return out
-}
-
 // blocksFromMessage 把一条助手消息收成块。正文去掉空白后非空时先放文本块，再按原顺序放工具调用。没有正文也没有工具调用时返回 nil。
 // msg 的 Content 去掉空白后非空时先放文本块，再按 ToolCalls 的原顺序放工具调用块。
 func blocksFromMessage(msg Message) []ContentBlock {

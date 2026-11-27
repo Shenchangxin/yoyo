@@ -153,7 +153,7 @@ func TestExpandBareAtPathAndSession(t *testing.T) {
 	if !strings.Contains(inject, "hello pin") || !strings.Contains(inject, "## @folder:src") {
 		t.Fatalf("inject=%s", inject)
 	}
-	inject, refs = ExpandMentions(dir, "see @file:pin.txt and @pin.txt", "", 2400)
+	_, refs = ExpandMentions(dir, "see @file:pin.txt and @pin.txt", "", 2400)
 	if len(refs) != 1 {
 		t.Fatalf("dedupe refs=%+v", refs)
 	}
@@ -184,15 +184,15 @@ func TestExpandBareAtPathAndSession(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "loop.go"), []byte("package root\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	inject, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
+	_, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
 	if len(refs) != 1 || refs[0].Ref != "loop.go" {
 		t.Fatalf("exact root path must win over unique walk: refs=%+v", refs)
 	}
-	inject, refs = ExpandMentions(dir, `see @"pin.txt"`, "", 2400)
+	_, refs = ExpandMentions(dir, `see @"pin.txt"`, "", 2400)
 	if len(refs) != 1 || refs[0].Ref != "pin.txt" {
 		t.Fatalf("quoted refs=%+v", refs)
 	}
-	inject, refs = ExpandMentions(dir, "continue @session:s2", "", 2400)
+	_, refs = ExpandMentions(dir, "continue @session:s2", "", 2400)
 	if len(refs) != 1 || refs[0].Kind != "session" {
 		t.Fatalf("session refs=%+v", refs)
 	}

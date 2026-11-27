@@ -135,14 +135,6 @@ func loadPriv(explicit string) (ed25519.PrivateKey, error) {
 	return update.ParsePrivateKey(raw)
 }
 
-// parseChannels 忽略传入的频道原文，按版本返回要发布的频道。
-// raw 没有被读取，只赋给空白标识符。
-// version 传给 update.ChannelsForVersion。
-func parseChannels(raw, version string) []update.Channel {
-	_ = raw
-	return update.ChannelsForVersion(version)
-}
-
 // readSHA256SUMS 解析校验和文件。空文件返回错误。文件名只保留基名，校验和转成小写。
 // path 交给 os.ReadFile。
 func readSHA256SUMS(path string) (map[string]string, error) {

@@ -19,6 +19,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/boot"
 	"github.com/Shenchangxin/yoyo/internal/desktop"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/home"
@@ -44,17 +45,15 @@ func fail(err error) {
 	os.Exit(1)
 }
 
-// attachRemoteUI 先找磁盘上的 frontend/dist：当前目录，以及可执行文件旁边的 frontend/dist。index.html 是文件就交给 node.UseStatic。两处都没有时，用编译进二进制的 frontend/dist。
+// attachRemoteUI 优先用磁盘上的前端（见 boot.DiskFrontend），没有时用编译进二进制的 frontend/dist。
 func attachRemoteUI(node *remote.Node) {
 	if node == nil {
 		return
 	}
-	// 手机端在磁盘上已经有前端文件时直接读它们，所以前端重新构建后，进程一重启就能到微信。打包的程序没有这份目录时，退回编译进二进制的 frontend/dist。
-	for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(executablePath()), "frontend", "dist")} {
-		if st, err := os.Stat(filepath.Join(dir, "index.html")); err == nil && !st.IsDir() {
-			node.UseStatic(http.FileServer(http.Dir(dir)))
-			return
-		}
+	// 磁盘上有前端时直接读它，前端重新构建后进程一重启手机端就能拿到。
+	if h := boot.DiskFrontend(); h != nil {
+		node.UseStatic(h)
+		return
 	}
 	sub, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
@@ -73,15 +72,6 @@ func runMCPBridge() int {
 	return 0
 }
 
-// executablePath 返回 os.Executable 的路径。取失败时返回 "."。
-func executablePath() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "."
-	}
-	return exe
-}
-
 // main 先让 update.HandleNSISHelper 处理安装器辅助进程，接管则直接返回。
 // YOYO_MCP_BRIDGE=1 时只跑 runMCPBridge 然后退出：不创建窗口，不抢单实例锁，也不设 YOYO_DESKTOP。其余情况先设置 YOYO_DESKTOP=1。
 // YOYO_WORKER=1 时不创建窗口：打开 App，remote.Bind 成功就用 attachRemoteUI 挂上静态页，再把 stdin 和 stdout 交给 api.ServeRPC。stdout 是协议。
@@ -94,7 +84,7 @@ func main() {
 		os.Exit(runMCPBridge())
 	}
 	_ = os.Setenv("YOYO_DESKTOP", "1")
-	evals := resolveEvals()
+	evals := boot.EvalsDir()
 	home := os.Getenv("YOYO_HOME")
 	if os.Getenv("YOYO_WORKER") == "1" {
 		core, err := app.Open(home, evals)
@@ -284,30 +274,4 @@ func skinAssetMiddleware(core *app.App, homeRoot string) func(http.Handler) http
 			idol.StandMiddleware(standDir, skin.Middleware(store, next)),
 		))
 	}
-}
-
-// resolveEvals 优先返回 YOYO_EVALS。否则依次看当前目录和可执行文件目录下的 evals 子目录，都不是目录时返回相对路径 evals。
-func resolveEvals() string {
-	if v := os.Getenv("YOYO_EVALS"); v != "" {
-		return v
-	}
-	evals := "evals"
-	if wd, err := os.Getwd(); err == nil {
-		if p := filepath.Join(wd, "evals"); dirExists(p) {
-			evals = p
-		}
-	}
-	if exe, err := os.Executable(); err == nil {
-		if p := filepath.Join(filepath.Dir(exe), "evals"); dirExists(p) {
-			evals = p
-		}
-	}
-	return evals
-}
-
-// dirExists 在路径存在且是目录时返回真。
-// p 交给 os.Stat，错误为 nil 且 IsDir 时返回 true。
-func dirExists(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.IsDir()
 }

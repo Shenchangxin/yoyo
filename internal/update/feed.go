@@ -80,13 +80,6 @@ func Revision() string {
 	return DefaultRevision
 }
 
-// NormalizeChannel 忽略传入值，总是返回 DefaultChannel。
-// ch 赋给空白标识符，不另作使用。
-func NormalizeChannel(ch string) Channel {
-	_ = ch
-	return DefaultChannel
-}
-
 // FeedURL 忽略通道参数，返回 channels/latest.json 在当前数据集上的 resolve 地址。
 func FeedURL(ch Channel) string {
 	_ = ch
@@ -97,21 +90,6 @@ func FeedURL(ch Channel) string {
 func ResolveURL(file string) string {
 	file = strings.TrimPrefix(strings.ReplaceAll(file, "\\", "/"), "/")
 	return Endpoint() + "/datasets/" + RepoID() + "/resolve/" + Revision() + "/" + file
-}
-
-// APIFileURL 拼出数据集 API：/api/v1/datasets/<repo>/repo，查询参数 Revision 和 FilePath。
-// file 把反斜杠换成斜杠并去掉开头的斜杠，写入查询的 FilePath。
-func APIFileURL(file string) string {
-	file = strings.TrimPrefix(strings.ReplaceAll(file, "\\", "/"), "/")
-	u, err := url.Parse(Endpoint() + "/api/v1/datasets/" + RepoID() + "/repo")
-	if err != nil {
-		return ""
-	}
-	q := u.Query()
-	q.Set("Revision", Revision())
-	q.Set("FilePath", file)
-	u.RawQuery = q.Encode()
-	return u.String()
 }
 
 // SigURL 在清单地址末尾加上 .sig。

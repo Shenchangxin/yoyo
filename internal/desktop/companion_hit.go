@@ -191,32 +191,6 @@ func companionScale(winW, winH float64, caption bool) (sx, sy, s float64) {
 	return sx, sy, min(sx, sy)
 }
 
-// companionBlobEllipse 给出包住宠物绘制范围的椭圆，上方留弹跳，下方留下巴，水平方向按 companionShapeFillX 放大。
-// winW 用来算圆心横坐标，也和 winH、caption 传给 companionScale。
-// winH 用来把下边界夹住，也传给 companionScale。
-// caption 传给 companionScale。
-func companionBlobEllipse(winW, winH float64, caption bool) (cx, cy, rx, ry float64) {
-	_, sy, s := companionScale(winW, winH, caption)
-	cx = winW * 0.5
-	boxTop := float64(companionPetTop) * sy
-	boxH := float64(companionPet) * sy
-	inset := float64(companionPet) * companionBlobInset * sy
-	paintTop := boxTop + inset
-	paintBot := boxTop + boxH - inset
-	top := paintTop - float64(companionBounceHead)*sy
-	if top < 0 {
-		top = 0
-	}
-	bot := paintBot + float64(companionChinPad)*sy
-	if bot > winH {
-		bot = winH
-	}
-	cy = (top + bot) * 0.5
-	ry = (bot - top) * 0.5
-	rx = float64(companionPet) * 0.5 * companionShapeFillX * s
-	return cx, cy, rx, ry
-}
-
 // companionPetRegionRect 是宠物 HWND 占位：168 像素宠物框再加上弹跳、下巴和左右倾斜。这是圆角矩形，身体、弹跳和飘带留在区域里。左右至少留 18 倍缩放的空，避免把圆的左边削掉。
 // winW 用来算水平中心，并把矩形右边界夹在窗口内。
 // winH 把矩形下边界夹在窗口内。
@@ -352,20 +326,6 @@ func companionCaptionRect(winW, winH float64, caption bool) (x, y, w, h float64)
 		h = winH - y
 	}
 	return x, y, w, h
-}
-
-// inEllipse 用归一化坐标判断点是否在椭圆内。rx 或 ry 小于 1 时返回假。
-// px 减去 cx 后除以 rx。
-// py 减去 cy 后除以 ry。
-// cx 从 px 里减去。
-// cy 从 py 里减去。
-func inEllipse(px, py, cx, cy, rx, ry float64) bool {
-	if rx < 1 || ry < 1 {
-		return false
-	}
-	dx := (px - cx) / rx
-	dy := (py - cy) / ry
-	return dx*dx+dy*dy <= 1
 }
 
 // dist2ToBox 返回点到矩形的平方距离。点在矩形内时为 0。

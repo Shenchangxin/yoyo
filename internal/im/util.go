@@ -28,10 +28,6 @@ func modeOf(a Account, def string) string {
 	return m
 }
 
-func joinURL(base, path string) string {
-	return strings.TrimRight(strings.TrimSpace(base), "/") + "/" + strings.TrimLeft(path, "/")
-}
-
 func clipText(s string) string {
 	return clipRunes(strings.TrimSpace(s), 3500)
 }

@@ -28,13 +28,6 @@ type hookFile struct {
 	PreCompact []FileHook `json:"pre_compact"`
 }
 
-// LoadFileHooks 只返回 pre_tool 规则。工作区为空、文件不存在或 JSON 无效时返回 nil。
-// workspace 传给 LoadHookFile。
-func LoadFileHooks(workspace string) []FileHook {
-	pre, _, _ := LoadHookFile(workspace)
-	return pre
-}
-
 // LoadHookFile 返回 pre_tool、stop 和 pre_compact 三组规则。读失败或 JSON 无效时三组都是 nil。
 // workspace 为空时返回三组 nil，否则读取其下的 .yoyo/hooks.json。
 func LoadHookFile(workspace string) (pre, stop, preCompact []FileHook) {

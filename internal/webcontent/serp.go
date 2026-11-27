@@ -16,8 +16,6 @@ var (
 	reResultSnippet = regexp.MustCompile(`(?is)<(?:a|span)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</(?:a|span)>`)
 	// reLiteLink 匹配 rel="nofollow" 且 href 为 http(s) 的链接。
 	reLiteLink = regexp.MustCompile(`(?is)<a[^>]*rel="nofollow"[^>]*href="(https?://[^"]+)"[^>]*>(.*?)</a>`)
-	// reHref 匹配 href 属性。本文件目前没有使用它。
-	reHref = regexp.MustCompile(`(?i)href="([^"]+)"`)
 )
 
 // ParseDuckDuckGoHTML 从 html.duckduckgo.com 或 lite 页面抽出结果。空白页面返回 nil。result__a 没有命中时改用 lite 链接。

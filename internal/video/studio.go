@@ -251,10 +251,7 @@ func aspectSize(aspect string) (w, h int) {
 
 // ListStudioProjects 按更新时间从新到旧列出短片工程。没有时返回空切片。
 func (e *Engine) ListStudioProjects() []StudioProject {
-	var out []StudioProject
-	for _, p := range loadCol[StudioProject](e, colStudioProjects) {
-		out = append(out, p)
-	}
+	out := loadCol[StudioProject](e, colStudioProjects)
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
 	if out == nil {
 		return []StudioProject{}

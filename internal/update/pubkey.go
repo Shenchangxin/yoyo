@@ -76,8 +76,3 @@ func ParsePrivateKey(raw string) (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("update: private key length %d", len(b))
 	}
 }
-
-// PrivateKeyFromEnv 解析 YOYO_UPDATE_PRIVKEY。
-func PrivateKeyFromEnv() (ed25519.PrivateKey, error) {
-	return ParsePrivateKey(os.Getenv(EnvPrivkey))
-}

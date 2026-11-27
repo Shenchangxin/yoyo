@@ -328,10 +328,7 @@ func endpointKey(raw string) string {
 	s = strings.TrimPrefix(s, "https://")
 	s = strings.TrimPrefix(s, "http://")
 	s = strings.TrimRight(s, "/")
-	if strings.HasSuffix(s, "/v1") {
-		s = strings.TrimSuffix(s, "/v1")
-	}
-	return s
+	return strings.TrimSuffix(s, "/v1")
 }
 
 // MediaURL 把 API 根和一段 OpenAI 风格路径接起来。根上已经有版本（…/v1 或 …/v4）时不再加第二个 /v1。后缀已经在根末尾时直接返回根。

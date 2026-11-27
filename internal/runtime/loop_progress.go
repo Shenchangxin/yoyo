@@ -40,14 +40,12 @@ const waitLoopPrefixZH = "你已经在空转等待"
 const waitLoopNudgeEN = "You have been waiting in a poll loop. Stop wait/tasklist. If the shell was idle/block fused, it is already stopped. For public HTTP use web_fetch (retry http if https is 406), or finish with what you have."
 const waitLoopNudgeZH = "你已经在空转等待。停止 wait/tasklist。若 shell 已 idle/block fuse，进程已被停掉。公开 HTTP 用 web_fetch（https 返回 406 就改 http），或用已有结果收束。"
 
-const idleActionPrefixEN = "You already opened this page"
 const idleActionPrefixZH = "你已经反复打开同一页面"
 const idleActionNudgeEN = "You already opened this page (%s, %d times). browser_open reloads and wipes clicks. Call browser_snapshot then browser_act (ref=) for the remaining path — they do not reload. Do not browser_open the same HTML unless the file changed."
 const idleActionNudgeZH = "你已经反复打开同一页面（%s，%d 次）。browser_open 会整页重载并清掉点击。剩余路径先 browser_snapshot，再用 browser_act（ref=）——它们不会重载。除非文件改过，不要再 browser_open 同一份 HTML。"
 
 // clickMicroHits 是 8。连续微步点击达到 8 次才催促收成一次 browser_act。
 const clickMicroHits = 8
-const clickMicroPrefixEN = "You have been clicking one selector per turn"
 const clickMicroPrefixZH = "你已经连续微步点击"
 const clickMicroNudgeEN = "You have been clicking one selector per turn (%d times). Pack the remaining path into one browser_act (click/fill/wait/assert/scroll/press). Snapshot then ref=. Do not open a new model round for each known click."
 const clickMicroNudgeZH = "你已经连续微步点击（%d 轮）。把剩余路径放进一次 browser_act（click/fill/wait/assert/scroll/press）。先 snapshot 再点 ref=。不要为已知点击再开一轮模型。"
@@ -1350,8 +1348,8 @@ func skillOverlay(t *WorkspaceTools, name string, cond bool) string {
 	if t == nil || !t.ChatOverlay || !cond || name == "" {
 		return ""
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	for _, n := range t.Loaded {
 		if n == name {
 			return ""

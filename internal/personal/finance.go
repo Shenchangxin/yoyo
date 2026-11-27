@@ -55,9 +55,7 @@ func analyzeSpending(csv string) (SpendReport, error) {
 	if len(csv) > 500000 {
 		return zero, fmt.Errorf("personal: import at most 500 KB of transaction CSV")
 	}
-	if strings.HasPrefix(csv, "\ufeff") {
-		csv = strings.TrimPrefix(csv, "\ufeff")
-	}
+	csv = strings.TrimPrefix(csv, "\ufeff")
 	rows, err := parseCSV(csv)
 	if err != nil {
 		return zero, err

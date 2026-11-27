@@ -18,6 +18,8 @@ func shQuote(s string) string {
 }
 
 // shJoin 把命令和参数拼成一行。已经是 sh -c 形式的直接取那一行。
+//
+//lint:ignore U1000 terminal_darwin.go 和 terminal_linux.go 在用；Windows 构建里看不到调用方。
 func shJoin(l acp.Launch) string {
 	if l.Command == "/bin/sh" && len(l.Args) == 2 && l.Args[0] == "-c" {
 		return l.Args[1]

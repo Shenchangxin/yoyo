@@ -11,16 +11,6 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
-// askUser 把一句问题收成单题表单，再交给 askForm。空白问题返回错误。
-// question 去掉空白，空串返回错误；否则作为唯一一题的 Prompt 交给 askForm。
-func (t *WorkspaceTools) askUser(question string) ToolResult {
-	question = strings.TrimSpace(question)
-	if question == "" {
-		return ToolResult{Err: fmt.Errorf("ask_user: empty question")}
-	}
-	return t.askForm(AskForm{Questions: []AskQuestion{{ID: "q1", Prompt: question}}})
-}
-
 // askUserArgs 用 parseAskForm 解析参数后交给 askForm。
 // args 交给 parseAskForm，结果再交给 askForm。
 func (t *WorkspaceTools) askUserArgs(args map[string]any) ToolResult {
@@ -72,8 +62,4 @@ func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 		argv = append(argv, SplitShellArgv(args)...)
 	}
 	return t.shell(joinShellArgv(argv), 30)
-}
-
-// applyAllowedFromSkills 是空函数，不改已加载技能的允许列表。
-func (t *WorkspaceTools) applyAllowedFromSkills() {
 }

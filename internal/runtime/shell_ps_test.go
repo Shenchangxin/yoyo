@@ -24,7 +24,7 @@ func TestParsePowerShellInvocation(t *testing.T) {
 		t.Fatalf("file %q extra=%v body=%q encoded=%v", file, extra, body, encoded)
 	}
 
-	file, extra, body, encoded = parsePowerShellInvocation(`pwsh C:\packs\scripts\foo.ps1 arg1`)
+	file, extra, body, _ = parsePowerShellInvocation(`pwsh C:\packs\scripts\foo.ps1 arg1`)
 	if file != `C:\packs\scripts\foo.ps1` || extra[0] != "arg1" || body != "" {
 		t.Fatalf("implied file %q extra=%v body=%q", file, extra, body)
 	}

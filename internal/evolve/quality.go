@@ -73,29 +73,6 @@ func surfaceKey(p Proposal) string {
 	}
 }
 
-// ModuleOf 把 surface 收成 observation、completion、agent_loop 或 context。middleware 是 observation。verification 槽的 instruction 是 completion，其他 instruction 是 agent_loop。playbook、prompt_fragment 和 skill 是 context。
-func ModuleOf(p Proposal) string {
-	switch p.Surface {
-	case "middleware":
-		return "observation"
-	case "instruction":
-		if p.InstructionSlot == "verification" {
-			return "completion"
-		}
-		return "agent_loop"
-	case "playbook", "prompt_fragment", "skill":
-		return "context"
-	default:
-		if p.MiddlewareText != "" {
-			return "observation"
-		}
-		if p.InstructionText != "" && p.InstructionSlot == "verification" {
-			return "completion"
-		}
-		return "context"
-	}
-}
-
 // AdmitQuality 在花评测之前拒绝提议。载荷多于一种、surface 为 tool_use、正文含 held 编号、像仓库概览、照抄 held-in 说明的前 80 个字节（说明折叠空白后至少 40 字节）、剧本 rune 数超过上限，或技能被 fluffSkill 判为无效时返回错误。
 // playbookTokens 小于等于 0 时按 2000 计。
 // pb 只在有 PlaybookBullet 时用来 ApplyDelta，再交给 renderPlaybook 数 rune。

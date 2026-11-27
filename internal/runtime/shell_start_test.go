@@ -140,7 +140,7 @@ func TestChatShellFuse(t *testing.T) {
 	if fuse || idle != 0 || block != 0 {
 		t.Fatalf("harbor must wait for timeout: idle=%s block=%s fuse=%v", idle, block, fuse)
 	}
-	idle, block, fuse = chatShellFuse(true, 5*time.Second)
+	_, _, fuse = chatShellFuse(true, 5*time.Second)
 	if fuse {
 		t.Fatal("short timeout_sec must still kill")
 	}

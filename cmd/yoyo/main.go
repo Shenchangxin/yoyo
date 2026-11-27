@@ -1,6 +1,6 @@
 // Package main 是 yoyo 命令行。root 挂上这些 cobra 子命令：version、init、run、harness、eval、evolve、session、replay、trace、serve、daemon、update、doctor、logs、pack。
 // harness 再挂 list、show、lineage、reveal、checkout、rollback、diff。session 再挂 list、dump。update 再挂 check、apply。pack 再挂 list、install、uninstall、enable、update。
-// bundledEvals 按这个顺序找评测目录：相对路径 evals，可执行文件目录下的 evals，该目录上一级的 evals，当前工作目录下的 evals。第一个是目录的转成绝对路径返回；都不是目录就返回字符串 evals。
+// 评测目录和磁盘前端的查找规则在 internal/boot，和窗口进程共用。
 package main
 
 import (
@@ -19,6 +19,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/boot"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/remote"
@@ -41,30 +42,9 @@ func main() {
 	}
 }
 
-// openApp 用环境变量 YOYO_HOME 和 bundledEvals 的目录打开应用。
+// openApp 用环境变量 YOYO_HOME 和 boot.EvalsDir 打开应用。
 func openApp() (*app.App, error) {
-	evals := bundledEvals()
-	return app.Open(os.Getenv("YOYO_HOME"), evals)
-}
-
-// bundledEvals 按这个顺序找评测目录：相对路径 evals；能拿到可执行文件时，再加上它所在目录的 evals，以及该目录上一级的 evals；能拿到工作目录时，再加上工作目录下的 evals。
-// 第一个 Stat 成功且是目录的候选用 Abs 后返回。Abs 的错误被丢掉。一个都不是目录时返回字符串 evals。
-func bundledEvals() string {
-	candidates := []string{"evals"}
-	if exe, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "evals"))
-		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "..", "evals"))
-	}
-	if wd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, filepath.Join(wd, "evals"))
-	}
-	for _, c := range candidates {
-		if st, err := os.Stat(c); err == nil && st.IsDir() {
-			abs, _ := filepath.Abs(c)
-			return abs
-		}
-	}
-	return "evals"
+	return app.Open(os.Getenv("YOYO_HOME"), boot.EvalsDir())
 }
 
 // root 建立 yoyo 命令，并按这个顺序挂上 version、init、run、harness、eval、evolve、session、replay、trace、serve、daemon、update、doctor、logs、pack。
@@ -862,7 +842,7 @@ func traceCmd() *cobra.Command {
 	}
 }
 
-// serveCmd 是 serve。--addr 默认 127.0.0.1:3080。--stdio 为真时走 api.ServeRPC，不再 ListenAndServe。静态文件来自 frontendStatic。remote.Bind 成功且节点非空时把静态目录交给它。
+// serveCmd 是 serve。--addr 默认 127.0.0.1:3080。--stdio 为真时改走 stdin/stdout 上的 JSON-RPC。
 func serveCmd() *cobra.Command {
 	var addr string
 	var stdio bool
@@ -870,21 +850,7 @@ func serveCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Serve the local HTTP API and UI (or JSON-RPC on stdio)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := openApp()
-			if err != nil {
-				return err
-			}
-			defer a.Close()
-			static := frontendStatic()
-			if node, err := remote.Bind(a); err == nil && node != nil {
-				node.UseStatic(static)
-				defer node.Close()
-			}
-			if stdio {
-				return api.ServeRPC(cmd.Context(), a, os.Stdin, os.Stdout)
-			}
-			fmt.Println("listening", addr, "active", a.ActiveHash())
-			return http.ListenAndServe(addr, api.Handler(a, static))
+			return serveApp(cmd.Context(), addr, stdio, "listening")
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:3080", "listen address")
@@ -892,47 +858,40 @@ func serveCmd() *cobra.Command {
 	return cmd
 }
 
-// daemonCmd 是 daemon，和 serve 用同一套 HTTP 处理。--addr 默认 127.0.0.1:3080。没有 --stdio。
+// daemonCmd 是 daemon：和 serve 同一套处理，只多一句提醒机器要保持唤醒。
 func daemonCmd() *cobra.Command {
 	var addr string
 	cmd := &cobra.Command{
 		Use:   "daemon",
 		Short: "Always-on local daemon (same JSON-RPC/HTTP as serve; sleeps skip jobs)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := openApp()
-			if err != nil {
-				return err
-			}
-			defer a.Close()
-			static := frontendStatic()
-			if node, err := remote.Bind(a); err == nil && node != nil {
-				node.UseStatic(static)
-				defer node.Close()
-			}
-			fmt.Println("yoyo daemon", addr, "active", a.ActiveHash())
-			fmt.Println("honest always-on: this machine must stay awake; sleep skips scheduled jobs")
-			return http.ListenAndServe(addr, api.Handler(a, static))
+			return serveApp(cmd.Context(), addr, false, "yoyo daemon",
+				"honest always-on: this machine must stay awake; sleep skips scheduled jobs")
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:3080", "listen address")
 	return cmd
 }
 
-// mustExe 返回当前可执行文件路径。os.Executable 失败时返回 .。
-func mustExe() string {
-	e, err := os.Executable()
+// serveApp 打开应用，把磁盘上的前端（boot.DiskFrontend）交给远程节点和 HTTP。
+// stdio 为真时在 stdin/stdout 上跑 JSON-RPC；否则打印 banner、地址和当前 harness，再逐行打印 notes，然后在 addr 上监听。
+func serveApp(ctx context.Context, addr string, stdio bool, banner string, notes ...string) error {
+	a, err := openApp()
 	if err != nil {
-		return "."
+		return err
 	}
-	return e
-}
-
-// frontendStatic 先看相对路径 frontend/dist，再看可执行文件目录下的 frontend/dist。第一个是目录的交给 FileServer。都不是目录时返回 nil。
-func frontendStatic() http.Handler {
-	for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(mustExe()), "frontend", "dist")} {
-		if st, err := os.Stat(dir); err == nil && st.IsDir() {
-			return http.FileServer(http.Dir(dir))
-		}
+	defer a.Close()
+	static := boot.DiskFrontend()
+	if node, err := remote.Bind(a); err == nil && node != nil {
+		node.UseStatic(static)
+		defer node.Close()
 	}
-	return nil
+	if stdio {
+		return api.ServeRPC(ctx, a, os.Stdin, os.Stdout)
+	}
+	fmt.Println(banner, addr, "active", a.ActiveHash())
+	for _, n := range notes {
+		fmt.Println(n)
+	}
+	return http.ListenAndServe(addr, api.Handler(a, static))
 }

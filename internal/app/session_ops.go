@@ -376,16 +376,6 @@ func forkCutIndex(evs []trace.Event, from string, store *trace.Store, srcID stri
 	return -1
 }
 
-// eventTimeFrom 查找分叉点的事件时间。找不到则返回零值。
-// evs 传给 lookupEventTime。
-// from 传给 lookupEventTime。
-// store 传给 lookupEventTime。
-// srcID 传给 lookupEventTime。
-func eventTimeFrom(evs []trace.Event, from string, store *trace.Store, srcID string) time.Time {
-	t, _ := lookupEventTime(evs, from, store, srcID)
-	return t
-}
-
 // lookupEventTime 解析时间戳、序号或正文，找到则返回该事件的时间。
 // evs 传给 forkCutIndex，命中后取该条的 TS。
 // from 先 TrimSpace，空串返回零时间和 true；能解析成时间戳则直接返回，否则传给 forkCutIndex。

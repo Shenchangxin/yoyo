@@ -121,13 +121,6 @@ func Plan(p Project) Project {
 	return p
 }
 
-// Quote 先重新计划，再返回可能产生花费的步骤。代码画面的花费写成无模型花费。
-// p 先传给 Plan，再返回 Needs。
-func Quote(p Project) []Need {
-	p = Plan(p)
-	return p.Needs
-}
-
 // Swap 把简介里非空的字段写上，并重算待办。换开头时只重写第一行的词。
 // patch 的 Host、Product、Language、Aspect、Price、CTA、Hook 经 clean 后非空才写进 Brief；Hook 非空时再传给 ReplaceLine。
 func Swap(p Project, patch Brief) Project {

@@ -692,8 +692,7 @@ func (a *App) ExportDiagnostics(dest string) (string, error) {
 	} else if a.Home != nil {
 		dir = a.Home.Logs()
 	}
-	var heldOut []string
-	heldOut = eval.SealedHeldOutIDs()
+	heldOut := eval.SealedHeldOutIDs()
 	spans := ""
 	if a.Observe != nil {
 		spans = a.Observe.Path()

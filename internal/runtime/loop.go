@@ -765,12 +765,12 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 	}
 	runExec := func(i int) {
 		if req.Tools != nil {
-			req.Tools.mu.Lock()
+			req.Tools.lock().Lock()
 			pre, ok := req.Tools.prefetch[jobs[i].tc.ID]
 			if ok {
 				delete(req.Tools.prefetch, jobs[i].tc.ID)
 			}
-			req.Tools.mu.Unlock()
+			req.Tools.lock().Unlock()
 			// 流式阶段已经跑过的只读调用按 id 取缓存，这里不再执行第二次。
 			if ok {
 				jobs[i].content = pre.content
@@ -875,7 +875,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		// recordTrace 为假是预取。结果先放进 prefetch，正式派发时按调用 id 取走，不写工具轨迹。
 		if !recordTrace {
 			if req.Tools != nil {
-				req.Tools.mu.Lock()
+				req.Tools.lock().Lock()
 				if req.Tools.prefetch == nil {
 					req.Tools.prefetch = map[string]prefetchHit{}
 				}
@@ -887,7 +887,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 					change:    j.change,
 					parts:     j.parts,
 				}
-				req.Tools.mu.Unlock()
+				req.Tools.lock().Unlock()
 			}
 			out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content, Parts: j.parts}
 			continue
@@ -982,8 +982,8 @@ func planTextOf(t *WorkspaceTools) string {
 	if t == nil {
 		return ""
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	return t.PlanText
 }
 

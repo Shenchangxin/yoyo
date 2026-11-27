@@ -417,50 +417,6 @@ func sessionPlanText(meta SessionMeta, toolRoot string) string {
 	return runtime.LoadPlanFile(toolRoot, meta.ID)
 }
 
-// noteChildRun 在子运行开始时记下槽并写子会话 meta，结束时删掉槽。子会话继承父会话的 Isolate 副本标记，harness 策略钉住。
-// parentID 写入子会话的 ParentID。
-// childID 先 TrimSpace，空串则返回；done 为真时从 runs 删掉，否则用作 runs 的键并写入子会话 ID。
-// prompt 经 titleFrom 写入标题。
-// parent 用来抄 Channel、Workspace、OriginWorkspace、Worktree、Isolate、Harness、ModelFingerprint、Model、ConnectionID 和 AuthMode。
-// done 为真时只删掉该子会话的运行槽。
-func (a *App) noteChildRun(parentID, childID, prompt string, parent SessionMeta, done bool) {
-	childID = strings.TrimSpace(childID)
-	if childID == "" {
-		return
-	}
-	if done {
-		a.mu.Lock()
-		delete(a.runs, childID)
-		a.mu.Unlock()
-		return
-	}
-	a.mu.Lock()
-	if a.runs[childID] == nil {
-		a.runs[childID] = &runSlot{started: time.Now().UTC(), lastTool: "task"}
-	}
-	a.mu.Unlock()
-	title := "task · " + titleFrom(prompt)
-	child := SessionMeta{
-		ID:               childID,
-		ParentID:         parentID,
-		CreatedAt:        time.Now().UTC(),
-		UpdatedAt:        time.Now().UTC(),
-		Channel:          parent.Channel,
-		Workspace:        parent.Workspace,
-		OriginWorkspace:  parent.OriginWorkspace,
-		Worktree:         parent.Worktree,
-		Isolate:          parent.Isolate,
-		Harness:          parent.Harness,
-		HarnessPolicy:    session.Pin,
-		ModelFingerprint: parent.ModelFingerprint,
-		Title:            title,
-		Model:            parent.Model,
-		ConnectionID:     parent.ConnectionID,
-		AuthMode:         parent.AuthMode,
-	}
-	_ = a.writeSession(child)
-}
-
 // noteRunTool 把运行槽的最后工具名设成这一次调用。
 // sessionID 用作 runs 的键。
 // name 先 TrimSpace，空串则返回，否则写入槽的 lastTool。
@@ -554,13 +510,6 @@ func WithRequestID(atts []Attachment, id string) []Attachment {
 	}
 	kept, _ := takeRequestID(atts)
 	return append(kept, Attachment{Name: requestIDName, Path: id})
-}
-
-// requestIDOf 返回附件里带着的乐观发送 id。
-// atts 传给 takeRequestID。
-func requestIDOf(atts []Attachment) string {
-	_, id := takeRequestID(atts)
-	return id
 }
 
 // takeRequestID 从附件里拆出乐观发送 id，其余附件照旧返回。

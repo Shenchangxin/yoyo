@@ -111,13 +111,13 @@ func TestApplyPackBootstrapOnceAndSkipChild(t *testing.T) {
 	if loaded.Err != nil || !strings.Contains(loaded.Content, "You must load_skill before acting.") {
 		t.Fatalf("%+v", loaded)
 	}
-	child := *tools
+	child := tools.clone()
 	child.Depth = 1
 	child.BootstrapBodies = nil
 	child.BootstrapPin = ""
 	child.Loaded = nil
 	child.Methodology = false
-	ApplyPackBootstrap(&child)
+	ApplyPackBootstrap(child)
 	if child.Methodology || child.BootstrapPin != "" || len(child.BootstrapBodies) != 0 {
 		t.Fatal("child must skip bootstrap")
 	}

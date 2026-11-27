@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"path"
 	"strings"
 )
 
@@ -29,27 +27,6 @@ func joinURL(base, prefix, suffix string) string {
 		suffix = "/" + suffix
 	}
 	return base + suffix
-}
-
-// httpGet 构造 GET。路径为空或只有斜杠时改成 models。key 非空时同时写上 Authorization Bearer 和 x-goog-api-key。
-// raw 传给 url.Parse；解析出的路径为空或只有斜杠时改成 models。
-func httpGet(raw, key string) (*http.Request, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return nil, err
-	}
-	if u.Path == "" || u.Path == "/" {
-		u.Path = path.Join(u.Path, "models")
-	}
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-		req.Header.Set("x-goog-api-key", key)
-	}
-	return req, nil
 }
 
 // doRaw 用 Engine.HTTP 发请求，客户端为空时用 http.DefaultClient。limit 小于等于 0 时按 32 MiB 截断正文。状态码大于等于 400 时返回正文或状态文本作为错误，同时仍带回状态码、Content-Type 和正文。

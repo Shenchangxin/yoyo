@@ -241,6 +241,7 @@ func (s *Store) markNotesStale() error {
 	}
 	if !s.spawn(func(<-chan struct{}) {
 		s.mu.Lock()
+		//lint:ignore SA2001 只等保存方放开锁再开工，见上方注释。
 		s.mu.Unlock()
 		s.launchIndex(NotesLibrary, job)
 	}) {

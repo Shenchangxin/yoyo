@@ -117,7 +117,7 @@ func parseBrowserStep(v any) (BrowserStep, error) {
 	st.Op = normalizeBrowserOp(st.Op)
 	st.Selector = stepHandle(st.Selector, st.Ref)
 	st.Path = strings.TrimSpace(st.Path)
-	st.Text = st.Text
+	// Text 不去空白：要输入的文字里，首尾空格也算内容。
 	st.Value = strings.TrimSpace(st.Value)
 	st.Contains = strings.TrimSpace(st.Contains)
 	st.URL = strings.TrimSpace(st.URL)

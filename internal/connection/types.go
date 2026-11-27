@@ -116,20 +116,6 @@ func ModelFor(c Connection, cap string) string {
 	return ""
 }
 
-// ModelsJSON 把模型列表编成 JSON 数组。列表为空时，若 ModelFor 有值就编成单元素数组，否则是 []。
-// c 的 Models 为空时改用 ModelFor 的结果编成单元素数组，那个结果也空则返回 []。否则把 Models 编成 JSON 数组。
-func ModelsJSON(c Connection) string {
-	if len(c.Models) == 0 {
-		if m := ModelFor(c, ""); m != "" {
-			b, _ := json.Marshal([]string{m})
-			return string(b)
-		}
-		return "[]"
-	}
-	b, _ := json.Marshal(c.Models)
-	return string(b)
-}
-
 // ParseModels 解析 JSON 数组或逗号分隔的模型名。空白返回 nil。
 // raw 去掉空白后为空则返回 nil。以 [ 开头时按 JSON 字符串数组解析并交给 compact。否则按逗号拆开、去掉空白后交给 compact。
 func ParseModels(raw string) []string {

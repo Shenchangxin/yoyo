@@ -289,15 +289,6 @@ func chatVendorUsesGoogleKey(vendor, base string) bool {
 	return strings.Contains(strings.ToLower(base), "generativelanguage.googleapis.com")
 }
 
-// truncateProbe 按字节把字符串截到 n。本文件没有调用它。
-// s 的字节长度不大于 n 时原样返回，否则截到前 n 个字节。
-func truncateProbe(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
-}
-
 // needsKey 对 cas 和 otel 返回假。搜索里 tavily、brave、serper、bocha、exa 要钥匙，其余搜索协议不要。其他协议要钥匙。
 func needsKey(c Connection) bool {
 	if c.Protocol == "cas" {

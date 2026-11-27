@@ -5,6 +5,7 @@ package diaglog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -123,8 +124,8 @@ func TestDebugCategoryFilter(t *testing.T) {
 	}
 	defer l.Close()
 	l.Logger().Debug("hidden", "component", "mcp", "cat", "mcp")
-	l.Logger().InfoContext(With(nil, Fields{Cat: "rpc", Component: "rpc"}), "rpc ok")
-	l.Logger().DebugContext(With(nil, Fields{Cat: "rpc", Component: "rpc"}), "rpc debug")
+	l.Logger().InfoContext(With(context.Background(), Fields{Cat: "rpc", Component: "rpc"}), "rpc ok")
+	l.Logger().DebugContext(With(context.Background(), Fields{Cat: "rpc", Component: "rpc"}), "rpc debug")
 	body, _ := os.ReadFile(l.Path())
 	s := string(body)
 	if strings.Contains(s, "hidden") {

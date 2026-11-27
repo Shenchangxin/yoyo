@@ -108,7 +108,7 @@ func TestAssessOverdueSpeaksOnceAndMuteHolds(t *testing.T) {
 	if held.Speak || !held.Signals[0].Held {
 		t.Fatalf("three ignores should hold, %#v", held.Signals)
 	}
-	book, forget = Feedback(book, "calendar", "mem-1", "wrong", "2026-11-06")
+	_, forget = Feedback(book, "calendar", "mem-1", "wrong", "2026-11-06")
 	if forget != "mem-1" {
 		t.Fatalf("wrong = %q", forget)
 	}

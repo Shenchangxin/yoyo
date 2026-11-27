@@ -61,13 +61,6 @@ func ProjectPageKeep(raw trace.Page, hubSeq int64, byteCap int, keepSeq int64) T
 	}
 }
 
-// capTrajectoryBytes 按字节预算从最旧的用户回合删起。
-// evs 交给 capTrajectoryBytesKeep。
-// byteCap 交给 capTrajectoryBytesKeep。
-func capTrajectoryBytes(evs []trace.Event, byteCap int) ([]trace.Event, bool) {
-	return capTrajectoryBytesKeep(evs, byteCap, 0)
-}
-
 // capTrajectoryBytesKeep 在 JSON 超过 byteCap 时按用户回合整段删除，直到不超或只剩一段。keepSeq 为 0 时只删最旧段。
 // evs 长度为 0 时原样返回；否则整段序列化，超长时按 userRanges 删掉若干用户回合。
 func capTrajectoryBytesKeep(evs []trace.Event, byteCap int, keepSeq int64) ([]trace.Event, bool) {

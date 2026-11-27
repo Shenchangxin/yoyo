@@ -295,11 +295,6 @@ func (b blockRow) public() BookBlock {
 	}
 }
 
-// kept 在重写这一章时要留下这一块时为真：读者的笔记，或读者改过的块。
-func (b blockRow) kept() bool {
-	return b.Kind == BlockUserNote || b.Edited
-}
-
 // loadBookProgress 用 q 读出读者在 bookID 里的进度。chapters 是这本书现有的章节，已经不存在的章节不算。
 // 旧库只记了读到哪一章，那一章也算读过。
 func loadBookProgress(q querier, bookID string, chapters []chapterRow) BookProgress {

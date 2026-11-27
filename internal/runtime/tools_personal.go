@@ -280,9 +280,9 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 				t.Browser.SetPreview(abs)
 			}
 		}
-		t.mu.Lock()
+		t.lock().Lock()
 		t.LastBrowser = "workspace:" + rel
-		t.mu.Unlock()
+		t.lock().Unlock()
 		abs := ""
 		if p, rerr := t.resolve(rel); rerr == nil {
 			abs = p
@@ -294,9 +294,9 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 				return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane. Isolated Chrome did not start (%v), so browser_click and browser_type are unavailable until it does; browser_screenshot retries Chrome once. Do not call browser_open again for this path — reopening reloads and wipes clicks. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel, err)}
 			}
 			snap.Errors = t.Browser.PageErrors()
-			t.mu.Lock()
+			t.lock().Lock()
 			t.LastBrowser = snap.Text
-			t.mu.Unlock()
+			t.lock().Unlock()
 			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_snapshot then browser_click a ref= from the list (neither reloads).\n\n%s", rel, snap.URL, withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors))}
 		}
 		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome is unavailable. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel)}
@@ -313,9 +313,9 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 	if err != nil {
 		return ToolResult{Err: err}
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	t.LastBrowser = snap.Text
-	t.mu.Unlock()
+	t.lock().Unlock()
 	level := browser.NormalizeSnapshotLevel("", snap.URL)
 	body := browser.FormatSnapshot(browser.Snapshot{
 		URL: snap.URL, Title: snap.Title, Text: snap.Text, Actions: snap.Actions,
@@ -350,15 +350,15 @@ func (t *WorkspaceTools) browserSnapshot(level string) ToolResult {
 	if t.Browser != nil {
 		snap, live := t.Browser.Refresh()
 		if snap.URL != "" {
-			t.mu.Lock()
+			t.lock().Lock()
 			t.LastBrowser = snap.Text
-			t.mu.Unlock()
+			t.lock().Unlock()
 			return ToolResult{Content: browser.FormatSnapshot(snap, level, live)}
 		}
 	}
-	t.mu.Lock()
+	t.lock().Lock()
 	s := t.LastBrowser
-	t.mu.Unlock()
+	t.lock().Unlock()
 	if s == "" {
 		return ToolResult{Content: "no snapshot"}
 	}

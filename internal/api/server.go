@@ -287,7 +287,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		if len(parts) > 1 && parts[1] == "retry" && r.Method == http.MethodPost {
 			if err := a.RetrySession(id); err != nil {
-				http.Error(w, err.Error(), 409)
+				http.Error(w, err.Error(), http.StatusConflict)
 				return
 			}
 			writeJSON(w, map[string]any{"ok": true})
@@ -422,7 +422,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 						writeJSON(w, map[string]any{"ok": true, "queued": true})
 						return
 					}
-					http.Error(w, err.Error(), 409)
+					http.Error(w, err.Error(), http.StatusConflict)
 					return
 				}
 				writeJSON(w, map[string]any{"ok": true, "async": true})
@@ -744,7 +744,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		c, err := a.SkillMarket(r.URL.Query().Get("refresh") == "1", r.URL.Query().Get("hub"), r.URL.Query().Get("q"))
 		if err != nil {
-			http.Error(w, err.Error(), 502)
+			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 		writeJSON(w, c)
@@ -1213,7 +1213,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	})
 	mux.HandleFunc("/api/key", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "POST", 405)
+			http.Error(w, "POST", http.StatusMethodNotAllowed)
 			return
 		}
 		b, _ := io.ReadAll(r.Body)
@@ -1269,7 +1269,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 				http.Error(w, "unknown op", 400)
 			}
 		default:
-			http.Error(w, "method", 405)
+			http.Error(w, "method", http.StatusMethodNotAllowed)
 		}
 	})
 	if a != nil && a.Skins != nil {

@@ -175,7 +175,7 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 	mux.HandleFunc("/api/hooks/", func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimPrefix(r.URL.Path, "/api/hooks/")
 		if r.Method != http.MethodPost || id == "" {
-			http.Error(w, "method", 405)
+			http.Error(w, "method", http.StatusMethodNotAllowed)
 			return
 		}
 		if err := a.TriggerWebhook(id); err != nil {
@@ -195,7 +195,7 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 	})
 	mux.HandleFunc("/api/browser/takeover", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method", 405)
+			http.Error(w, "method", http.StatusMethodNotAllowed)
 			return
 		}
 		var body struct {

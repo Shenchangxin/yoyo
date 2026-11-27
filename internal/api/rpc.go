@@ -169,7 +169,7 @@ func ServeRPC(ctx context.Context, a *app.App, r io.Reader, w io.Writer) error {
 func handleRPC(a *app.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "POST", 405)
+			http.Error(w, "POST", http.StatusMethodNotAllowed)
 			return
 		}
 		var req RPCRequest

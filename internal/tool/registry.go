@@ -127,13 +127,3 @@ func alwaysAllowed(name string) bool {
 		return false
 	}
 }
-
-// ParseAllowedTools 按空白拆允许列表。空白则返回 nil。
-// raw 去掉两端空白，空则返回 nil，否则按 strings.Fields 拆开。
-func ParseAllowedTools(raw string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	return strings.Fields(raw)
-}

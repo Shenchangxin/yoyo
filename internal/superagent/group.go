@@ -303,19 +303,6 @@ func (e *Engine) depsStateLocked(t *Ticket) string {
 	return state
 }
 
-// heldCheck 在 t 不是一张还挂着的工单时返回错误短码。
-func heldCheck(t *Ticket) error {
-	switch {
-	case t == nil:
-		return errCode("unknownTicket")
-	case t.Ended != nil:
-		return errCode("ticketEnded")
-	case t.Held == "":
-		return errCode("notHeld")
-	}
-	return nil
-}
-
 // releaseLocked 清掉 t 的 Held 并追加 note。note 为空时用前置任务的结果。调用时要已持有锁。
 func (e *Engine) releaseLocked(t *Ticket, note string, names map[string]string) {
 	t.Held = ""

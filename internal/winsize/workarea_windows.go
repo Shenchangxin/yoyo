@@ -27,11 +27,6 @@ const (
 	smCYVIRTUALSCREEN = 79
 )
 
-// point 是传给 MonitorFromPoint 的点。本文件实际把中心坐标拆成两个 uintptr，没有使用这个类型的值。
-type point struct {
-	X, Y int32
-}
-
 // PlatformWorkArea 返回主显示器工作区的 DIP 宽高。SystemParametersInfoW 失败，或宽高小于等于 0 时返回 0, 0。
 func PlatformWorkArea() (int, int) {
 	var r windows.Rect

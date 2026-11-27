@@ -133,16 +133,6 @@ func (r *Registry) List() []Descriptor {
 	return out
 }
 
-// Types 返回已排序的节点类型。
-func (r *Registry) Types() []string {
-	items := r.List()
-	out := make([]string, 0, len(items))
-	for _, d := range items {
-		out = append(out, d.Type)
-	}
-	return out
-}
-
 // GenerationModeNames 返回去重并排序的生成模式。
 func (r *Registry) GenerationModeNames() []string {
 	seen := map[string]struct{}{}

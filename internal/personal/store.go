@@ -445,15 +445,6 @@ func (s *Store) choice(id string) (Choice, bool) {
 	return Choice{}, false
 }
 
-// setTick 写下 LastTickAt 并 flush。
-// at 写入 LastTickAt。
-func (s *Store) setTick(at time.Time) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.doc.LastTickAt = at
-	_ = s.flush()
-}
-
 // setIdeasAt 写下 LastIdeasAt 并 flush。
 // at 写入 LastIdeasAt。
 func (s *Store) setIdeasAt(at time.Time) {

@@ -58,18 +58,17 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 	emit(parent, trace.TypeSubagent, "runtime", map[string]any{
 		"prompt": prompt, "isolate": isolate, "child": childID, "phase": "start", "profile": profile,
 	})
-	cleanup := func() {}
 	if isolate && ws != "" {
-		var err error
-		ws, cleanup, err = IsolateWorkspace(parent.Workspace)
+		iso, cleanup, err := IsolateWorkspace(parent.Workspace)
 		if err != nil {
 			return "", err
 		}
 		defer cleanup()
+		ws = iso
 	}
 	var childTools *WorkspaceTools
 	if parent.Tools != nil {
-		cp := *parent.Tools
+		cp := parent.Tools.clone()
 		cp.Workspace = ws
 		cp.SessionID = childID
 		cp.Depth = parent.Tools.Depth + 1
@@ -86,11 +85,11 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		if cp.ReadOnly {
 			cp.Advertised = readOnlyAdvertised(cp.Advertised)
 		}
-		StripPackBootstrap(&cp)
+		StripPackBootstrap(cp)
 		cp.SkillHints = nil
 		cp.Autoloaded = nil
 		cp.SkillAutoInvoke = "off"
-		childTools = &cp
+		childTools = cp
 	}
 	user := prompt
 	if strings.TrimSpace(parent.Loop.TaskInstruction) != "" {

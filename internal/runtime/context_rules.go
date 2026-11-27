@@ -189,8 +189,8 @@ func (t *WorkspaceTools) absorbPathRules(rel string) {
 	if len(blocks) == 0 {
 		return
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	if t.pathRuleSeen == nil {
 		t.pathRuleSeen = map[string]bool{}
 	}
@@ -219,8 +219,8 @@ func (t *WorkspaceTools) PathRules() string {
 	if t == nil {
 		return ""
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.lock().Lock()
+	defer t.lock().Unlock()
 	return t.pathRules
 }
 

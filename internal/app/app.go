@@ -735,6 +735,9 @@ func (a *App) Close() error {
 	if a.Video != nil {
 		_ = a.Video.Close()
 	}
+	if a.Computer != nil {
+		_ = a.Computer.Close()
+	}
 	_ = a.MCP.Close()
 	_ = a.WASM.Close()
 	if a.Log != nil {

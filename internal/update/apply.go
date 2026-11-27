@@ -60,16 +60,6 @@ func ReadPending(dir string) (Pending, error) {
 	return p, json.Unmarshal(b, &p)
 }
 
-// ClearPending 删除 pending.json。文件本来就不存在时返回 nil。
-// dir 交给 pendingPath。
-func ClearPending(dir string) error {
-	err := os.Remove(pendingPath(dir))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
 // StagingName 返回暂存文件名 yoyo.staging。
 func StagingName() string { return "yoyo.staging" }
 

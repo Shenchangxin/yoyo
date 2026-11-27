@@ -156,9 +156,6 @@ func (r *ReplyStream) Finish(flush bool) (Parsed, []StreamEvent) {
 	return p, r.events(p)
 }
 
-// Text 返回到目前为止收到的全部原文。
-func (r *ReplyStream) Text() string { return r.buf.String() }
-
 // events 把新写完的段和第一次出现的照片描述变成事件。
 func (r *ReplyStream) events(p Parsed) []StreamEvent {
 	var out []StreamEvent

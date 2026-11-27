@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -80,9 +81,9 @@ func (a *App) feedURL() string {
 	return update.FeedURL(update.DefaultChannel)
 }
 
-// startUpdateLoop 只在桌面系统启动 updateLoop。App 为空则返回。
+// startUpdateLoop 只在桌面系统启动 updateLoop。App 为空或在 go test 里则返回：测试不该去连 ModelScope。
 func (a *App) startUpdateLoop() {
-	if a == nil || !update.DesktopOS() {
+	if a == nil || !update.DesktopOS() || testing.Testing() {
 		return
 	}
 	if a.updateStop == nil {

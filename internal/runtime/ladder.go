@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/Shenchangxin/yoyo/internal/connector"
 )
 
 // ActionLadderPin 是动作阶梯提示：先工作区文件和连接器，再隔离浏览器，computer_act 放在最后。
@@ -156,14 +154,4 @@ func urlHost(raw string) string {
 		return "slack.com"
 	}
 	return ""
-}
-
-// connectorProviders 返回账户的 Provider 列表，顺序与入参相同。
-// list 按原顺序取出每个账户的 Provider。
-func connectorProviders(list []connector.Account) []string {
-	var out []string
-	for _, a := range list {
-		out = append(out, a.Provider)
-	}
-	return out
 }

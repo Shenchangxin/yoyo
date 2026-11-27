@@ -48,6 +48,15 @@ func Open(dir string) (*Host, error) {
 	return h, nil
 }
 
+// Close 释放 Open 时建的虚拟桌面句柄。可重复调用；非 Windows 上什么也不做。
+func (h *Host) Close() error {
+	if h == nil {
+		return nil
+	}
+	h.closeVirtual()
+	return nil
+}
+
 // Allow 把应用名转成小写后放进允许表，并写回 allow.json。
 // app 转成小写后作为允许表的键。
 func (h *Host) Allow(app string) {

@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -541,15 +539,4 @@ func newID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
-}
-
-// DirOfHome 返回 root 下的 connections 目录。调用方决定 root 是不是主目录。
-func DirOfHome(root string) string {
-	return filepath.Join(root, "connections")
-}
-
-// MustExist 按 0o755 创建目录。
-// dir 传给 os.MkdirAll，权限 0o755。
-func MustExist(dir string) error {
-	return os.MkdirAll(dir, 0o755)
 }

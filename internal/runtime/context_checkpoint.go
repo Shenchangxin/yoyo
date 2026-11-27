@@ -123,20 +123,6 @@ type CompactProfile struct {
 	Digest func(dropped, kept []Message) string
 }
 
-// MaybeCheckpoint 在历史加上一条假系统消息后仍超过整形预算时才做检查点，触发原因是 budget。否则原样返回。
-// store 为 nil 时返回 hist，否则传给 forceCheckpoint。
-// sessionID 传给 forceCheckpoint。
-// hist 长度为 0 时原样返回，否则前面加一条假系统消息再计量。
-// loop 放进 ShapeOpts。
-// spill 放进 ShapeOpts，并传给 forceCheckpoint。
-// client 传给 forceCheckpoint。
-// model 传给 forceCheckpoint。
-// window 放进 ShapeOpts 的 ModelWindow。
-// fragments 传给 forceCheckpoint。
-func MaybeCheckpoint(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, fragments []artifact.PromptFragment) []Message {
-	return MaybeCheckpointOpts(store, sessionID, hist, loop, spill, client, model, window, fragments, CompactOpts{})
-}
-
 // MaybeCheckpointOpts 和 MaybeCheckpoint 一样，另带 opt。opt.Trigger 为空时写成 budget；opt.Profile 决定摘要的形状。
 func MaybeCheckpointOpts(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, fragments []artifact.PromptFragment, opt CompactOpts) []Message {
 	if store == nil || len(hist) == 0 {
@@ -577,12 +563,6 @@ func slimCompactMessage(m Message) Message {
 		tc.Arguments = compactCallArgs(tc.Name, tc.Arguments, heavyCallRunes)
 	}
 	return out
-}
-
-// validCompactMarkdown 要求六个小节标题都在，比较时忽略大小写。
-// s 转成小写后检查六个小节标题是否都在。
-func validCompactMarkdown(s string) bool {
-	return hasSections(s, compactSections)
 }
 
 // messagesToAny 把消息收成可放进 JSON 的行，含工具调用。
