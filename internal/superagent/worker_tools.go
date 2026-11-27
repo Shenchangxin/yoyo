@@ -114,6 +114,7 @@ func externalWorkerPrompt(e *Executor, spec WorkerSpec) string {
 	b.WriteString("后来补来的消息可能只是一个变化、一个答案或下一步，沿着已有的进展继续，不要要求把整张工单重写一遍。\n")
 	b.WriteString("回复原处用 orchestrator_reply。超出范围用 orchestrator_handback。只跟随上下文用 orchestrator_follow。无关线程用 orchestrator_unrelated。\n")
 	b.WriteString("和别的 agent 共用任务组的共享目录时，开工前先读那里的 NOTES.md；做完把你的产出、接口和约定追加进去，不改别人写的段落。\n")
+	writeSkillCatalog(&b, spec.Skills)
 	writePromptContext(&b, e, spec.Dir, spec.TicketID)
 	return b.String()
 }

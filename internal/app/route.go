@@ -833,6 +833,12 @@ func (appHost *routeHost) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, 
 		roots = appHost.app.namedWorkRoots(ticketID, home)
 	}
 	tools := &runtime.WorkspaceTools{Workspace: dir, Home: home, SessionID: id, Caps: caps, Roots: roots}
+	if appHost.app != nil {
+		// 工人说明要求 @skill 时先 load_skill；不接上技能，这个工具找不到任何技能。
+		tools.Skills, tools.SkillDirs, tools.SkillMeta = runtime.MapSkills(appHost.app.collectSkills(""))
+		tools.SkillAutoInvoke = runtime.NormalizeAutoInvoke(appHost.app.Config.Skills.AutoInvoke)
+		tools.SkillCatalogBudget = appHost.app.Config.Skills.CatalogBudgetChars
+	}
 	return dshdesk.MountWorkspace(reg, agent, tools)
 }
 

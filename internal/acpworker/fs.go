@@ -84,7 +84,8 @@ func (w *Worker) fsPath(raw string, write bool) (string, error) {
 		}
 		return "", fmt.Errorf("writing outside the ticket directories is not allowed: %s", path)
 	}
-	if inWrite || inRead {
+	// 技能目录只放读，不放写，也不压过可写目录。
+	if inWrite || inRead || withinAny(skillDirs(w.spec.Skills), path) {
 		return path, nil
 	}
 	return "", fmt.Errorf("reading outside the ticket directories is not allowed: %s", path)

@@ -54,6 +54,7 @@ type Runtime struct {
 	agentLimit   func(agent string) int
 	agentName    func(agent string) string
 	roots        func(ticketID string) []string
+	skills       func() []SkillRef
 	onWake       func(session, group, state, digest string) error
 	// wakes 是每个会话最近一小时里唤醒路由的时刻，只在内存里。
 	wakes map[string][]time.Time
@@ -144,6 +145,7 @@ func (rt *Runtime) attachExec() {
 	rt.exec.AgentLimit = rt.agentLimit
 	rt.exec.AgentName = rt.agentName
 	rt.exec.Roots = rt.roots
+	rt.exec.Skills = rt.skills
 }
 
 // wireEffects 登记七类先落盘再执行的副作用。调用时要已持有锁。
@@ -446,6 +448,19 @@ func (rt *Runtime) SetProfile(fn func() string) {
 	rt.profile = fn
 	if rt.exec != nil {
 		rt.exec.Profile = fn
+	}
+}
+
+// SetSkills 接上操作者装好的技能。fn 在每次打开外部工人时调用，结果写进说明并作为只读目录交给外部会话。
+func (rt *Runtime) SetSkills(fn func() []SkillRef) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.skills = fn
+	if rt.exec != nil {
+		rt.exec.Skills = fn
 	}
 }
 

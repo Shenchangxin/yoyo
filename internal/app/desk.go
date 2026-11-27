@@ -67,6 +67,7 @@ func (appHost *deskHost) orchestrator() *superagent.Runtime {
 	rt.SetAgentName(appHost.app.buddyName)
 	rt.SetRoots(func(ticketID string) []string { return appHost.app.namedWorkRoots(ticketID, dir) })
 	rt.SetProfile(appHost.app.workerProfile)
+	rt.SetSkills(appHost.workerSkills)
 	rt.SetOnReport(appHost.app.relayReport)
 	rt.SetOnNotice(appHost.app.relayNotice)
 	rt.SetOnWake(appHost.app.wakeRouter)
@@ -96,6 +97,22 @@ func (appHost *deskHost) workerProfile() string {
 		return ""
 	}
 	return appHost.app.Memory.OperatorPin(workerProfileBytes)
+}
+
+// workerSkills 是交给外部工人的技能清单。只收有目录的技能：外部 agent 要能自己读到 SKILL.md。
+// 每次派工时现取，装上或卸掉的技能下一张工单就能看到。
+func (appHost *deskHost) workerSkills() []superagent.SkillRef {
+	if appHost.app == nil {
+		return nil
+	}
+	var out []superagent.SkillRef
+	for _, s := range appHost.app.collectSkills("") {
+		if s.Name == "" || s.Dir == "" {
+			continue
+		}
+		out = append(out, superagent.SkillRef{Name: s.Name, Description: s.Description, Dir: s.Dir})
+	}
+	return out
 }
 
 // relayWaiting 把还等人的工单补进当前主会话。已经写过的同一段正文不会再写。

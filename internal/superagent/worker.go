@@ -63,6 +63,8 @@ type WorkerSpec struct {
 	Roots []string
 	// ReadRoots 是只读目录，例如前置任务的目录。
 	ReadRoots []string
+	// Skills 是操作者装好的技能。说明里列出 SKILL.md 路径，技能目录只读交给外部会话。
+	Skills []SkillRef
 	// System 是工人说明。
 	System string
 	// Tools 是这张工单的 orchestrator_* 工具，外部工人经 MCP 调用它们。

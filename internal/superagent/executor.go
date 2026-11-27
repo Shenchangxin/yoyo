@@ -135,6 +135,8 @@ type Executor struct {
 	AgentName func(agent string) string
 	// Roots 返回这张工单除工作目录外可读写的目录，例如任务说明里点名的目录。外部工人的说明和目录限制都用它。
 	Roots func(ticketID string) []string
+	// Skills 返回操作者装好的技能，外部工人的说明和只读目录都用它。为 nil 时外部工人看不到技能。
+	Skills func() []SkillRef
 
 	mu sync.Mutex
 	// agents 是 yoyo 自带工人的代理，workers 是外部工人。同一张工单只在其中一张表里。
@@ -534,6 +536,9 @@ func (e *Executor) openWorker(ticketID, asgID, agent string, ticket Ticket, dir 
 			spec.Roots = e.Roots(ticketID)
 		}
 		_, spec.ReadRoots = e.Engine.MemberDirs(ticketID)
+		if e.Skills != nil {
+			spec.Skills = e.Skills()
+		}
 		spec.System = externalWorkerPrompt(e, spec)
 		w, err := e.Opener(context.Background(), spec)
 		if err != nil {

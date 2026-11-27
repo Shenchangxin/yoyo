@@ -55,6 +55,22 @@ func extraDirs(caps acp.AgentCapabilities, spec superagent.WorkerSpec) []string 
 	var out []string
 	out = append(out, spec.Roots...)
 	out = append(out, spec.ReadRoots...)
+	out = append(out, skillDirs(spec.Skills)...)
+	return out
+}
+
+// skillDirs 返回技能所在目录，去掉空串和重复。外部会话只能读这些目录。
+func skillDirs(skills []superagent.SkillRef) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range skills {
+		dir := strings.TrimSpace(s.Dir)
+		if dir == "" || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		out = append(out, dir)
+	}
 	return out
 }
 
