@@ -353,6 +353,8 @@ export function Transcript(props: {
                 <div
                   key={part.key}
                   className={cn(
+                    // 子组件可能什么都不画（turn_end、system、被链接收起的产出等）。空壳不留顶距，否则推理过程中间距会忽大忽小。
+                    "empty:hidden",
                     partSpace(row.parts, pi),
                     part.kind === "item" && part.item.type === "assistant" && "assistant-block min-w-0",
                     part.kind === "stream" && "assistant-stream min-w-0",
@@ -639,7 +641,7 @@ function TurnWork({
           <ProcessGroup items={processItems} live={false} running={false} compact={compact} grouped liveDetail={liveDetail} />
         ) : null}
         {inner.map((p) => p.kind === "artifact" ? (
-          <div key={p.key} className="pt-2">
+          <div key={p.key} className="pt-2 empty:hidden">
             <ArtifactTimeline items={p.items} running={running} workspace={workspace} onOpenReview={onOpenReview} />
           </div>
         ) : null)}
@@ -652,6 +654,8 @@ function TurnWork({
         <div
           key={p.key}
           className={cn(
+            // 子组件可能什么都不画，空壳不留顶距。
+            "empty:hidden",
             partSpace(inner, pi),
             p.kind === "item" && p.item.type === "assistant" && "assistant-block min-w-0",
             p.kind === "stream" && "assistant-stream min-w-0",
@@ -1042,7 +1046,8 @@ function TranscriptLane({
     followCtl.current?.setFollowing(true);
     followEnd("instant");
   }, [latestNonce, followEnd]);
-  // 跟底时虚拟列表会跳过一部分测量。占位一旦比内容高出一截，空白就留在这条和下一跳之间，而且会随着字数变大。只把明显偏高的行收回内容高度。
+  // 跟底时虚拟列表会跳过一部分测量。占位和内容高度对不上时，空白（或重叠）就留在这条和下一条之间。
+  // 偏高、偏低都收回真实高度；空壳行（empty:hidden）高度为 0，也一并收起，避免间距忽大忽小。
   useLayoutEffect(() => {
     const root = listRef.current;
     if (!root) return;
@@ -1054,7 +1059,7 @@ function TranscriptLane({
         const index = Number(el.dataset.index);
         const height = el.offsetHeight;
         const slot = slots.find((item) => item.index === index);
-        if (slot && Number.isInteger(index) && height > 0 && slot.size - height > 48) {
+        if (slot && Number.isInteger(index) && height >= 0 && Math.abs(slot.size - height) > 1) {
           virtualizer.resizeItem(index, height);
         }
       });
@@ -1417,7 +1422,8 @@ function TranscriptLane({
                 data-index={v.index}
                 {...(row.turnKey ? { "data-turn-key": row.turnKey } : {})}
                 ref={virtualizer.measureElement}
-                className={cn("bg-background", row.space)}
+                // 整行什么都不画（solo 的 turn_end、system 等）时连同顶距一起收起，否则主会话里会凭空多出一段空白。
+                className={cn("bg-background empty:hidden", row.space)}
                 style={{
                   position: "absolute",
                   top: 0,
