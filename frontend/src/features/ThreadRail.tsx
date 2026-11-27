@@ -58,7 +58,6 @@ import { useCutDesk } from "./video/cut-desk";
 import type { FilmProject } from "./video/film-desk";
 import { useFilmDesk } from "./video/film-desk";
 import { LearnRailNav } from "./learn/LearnRailNav";
-import { SkillsRailNav } from "./skills/SkillsRailNav";
 import { HarnessRailNav } from "./harness/HarnessRailNav";
 import { shownSeriesTitle } from "./video/drama-lib";
 import type { Copy } from "../lib/copy";
@@ -236,7 +235,6 @@ export function ThreadRail(props: {
   onLab: (lab: Lab) => void;
   onChats: () => void;
   onHarness: () => void;
-  onSkills: () => void;
   onPages: () => void;
   onIdol: () => void;
   onVideo: () => void;
@@ -451,11 +449,6 @@ export function ThreadRail(props: {
           <LearnRailNav />
         </div>
       ) : null}
-      {body === "skills" ? (
-        <div className="rail-scroll-fade min-h-0 flex-1 overflow-auto pb-16">
-          <SkillsRailNav />
-        </div>
-      ) : null}
       {body === "harness" ? (
         <div className="rail-scroll-fade min-h-0 flex-1 overflow-auto pb-16">
           <HarnessRailNav />
@@ -491,7 +484,6 @@ export function ThreadRail(props: {
           mark={dirty || canary}
           needs={props.needs}
           onChats={props.onChats}
-          onSkills={props.onSkills}
           onVideo={props.onVideo}
           onPages={props.onPages}
           onIdol={props.onIdol}

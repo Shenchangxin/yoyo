@@ -18,7 +18,7 @@ func SuperpowersKnown() Known {
 	return Known{
 		ID:             SuperpowersID,
 		Name:           "Superpowers",
-		Description:    "Composable software-development methodology: brainstorm, spec, plan, TDD/SDD, review, and finish. Session-start bootstrap requires invoking matching skills before acting.",
+		Description:    "Software-development skills that work together: brainstorm, spec, plan, TDD, review, and finish. When on, the agent loads the matching skill before writing code.",
 		License:        "MIT",
 		DefaultRepo:    "obra/superpowers",
 		DefaultRef:     "main",
@@ -33,7 +33,7 @@ func NovelToGameKnown() Known {
 	return Known{
 		ID:          NovelToGameID,
 		Name:        "NovelToGame",
-		Description: "Source-grounded novel-to-game workflow: deconstruct a novel, pick a playable concept, design world and art, build for the approved runtime, and QA with recorded play evidence. Domain pack — not a session-start methodology. Enable per workspace; the host matches the intent and load_skill novel-to-game. @skill:novel-to-game is an override, not a prerequisite.",
+		Description: "Turn a novel into a playable game: deconstruct the story, pick a playable concept, design world and art, build it, and QA with recorded play evidence. Just describe what you want; the agent picks the right skill.",
 		License:     "MIT",
 		DefaultRepo: "zenstory-ai/novel-to-game",
 		DefaultRef:  "main",

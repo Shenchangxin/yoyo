@@ -50,11 +50,13 @@ async function rpc(page: Page, method: string, act: () => Promise<void>) {
   return (await sent).postDataJSON().params;
 }
 
-test("buddy is a tab beside today, tasks and memory, and the dock is back to seven icons", async ({ page }) => {
+test("buddy is a tab beside today, tasks and memory, and the dock is down to six icons", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", { buddies: [YOYO_BUDDY, CLAUDE, CODEX, GEMINI, QWEN] });
   await page.goto("/");
-  await expect(page.locator(".rail-dock .glass-icon")).toHaveCount(7);
+  // 技能移进了会话的输入框，Dock 里不再有技能图标。
+  await expect(page.locator(".rail-dock .glass-icon")).toHaveCount(6);
   await expect(page.locator(".rail-dock").getByRole("button", { name: /^Buddy\b/ })).toHaveCount(0);
+  await expect(page.locator(".rail-dock").getByRole("button", { name: /^Skills\b/ })).toHaveCount(0);
   const tabs = page.getByTestId("work-pane").getByRole("tablist").getByRole("tab");
   await expect(tabs).toHaveCount(4);
   await expect(tab(page)).toHaveText(/Buddy\s*1/);

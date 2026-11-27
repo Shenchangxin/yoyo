@@ -19,7 +19,6 @@ describe("channel identity", () => {
     assert.equal(channelForSurface("pages"), "learn");
     assert.equal(channelForSurface("video"), "video");
     assert.equal(channelForSurface("agent"), "agent");
-    assert.equal(channelForSurface("skills"), "agent");
     assert.equal(threadChannel({ channel: "learn" }), "learn");
     assert.equal(threadChannel({ channel: "video" }), "video");
     assert.equal(threadChannel({ channel: "agent" }), "agent");

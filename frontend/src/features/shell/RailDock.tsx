@@ -4,7 +4,7 @@
  * 不拥有：切到哪一面。点下去只调用外面传入的回调。
  */
 import { useLayoutEffect, useRef, useState } from "react";
-import { BookOpen, Clapperboard, FileText, GitBranch, Heart, MessageSquare, Settings } from "lucide-react";
+import { Clapperboard, FileText, GitBranch, Heart, MessageSquare, Settings } from "lucide-react";
 import GlassIcons from "./GlassIcons";
 import { useTheme } from "../../lib/theme";
 import type { Copy } from "../../lib/copy";
@@ -60,7 +60,7 @@ function useDockTokens() {
   };
 }
 
-const DOCK_COUNT = 7;
+const DOCK_COUNT = 6;
 const DOCK_MAX = 44;
 const DOCK_MIN = 18;
 /** 间距大约是图标边长的这个比例，宽栏时图标到顶后间距继续拉开。 */
@@ -108,7 +108,6 @@ export function RailDock(props: {
   mark?: boolean;
   needs?: number;
   onChats: () => void;
-  onSkills: () => void;
   onVideo: () => void;
   onPages: () => void;
   onIdol: () => void;
@@ -127,7 +126,6 @@ export function RailDock(props: {
   const needs = props.needs || 0;
   const items = [
     { id: "sessions", icon: <MessageSquare />, color: tokens.accent, label: label.sessions, onClick: props.onChats, current: props.surface === "agent", badge: needs, badgeLabel: label.needsBadge.replace("{n}", String(needs)) },
-    { id: "skills", icon: <BookOpen />, color: tokens.mark, label: label.skills, onClick: props.onSkills, current: props.surface === "skills" },
     { id: "video", icon: <Clapperboard />, color: tokens.warning, label: label.video, onClick: props.onVideo, current: props.surface === "video" },
     { id: "pages", icon: <FileText />, color: tokens.muted, label: label.pages, onClick: props.onPages, current: props.surface === "pages" },
     { id: "idol", icon: <Heart />, color: tokens.markDeep, label: label.idol, onClick: props.onIdol, current: props.surface === "idol" },

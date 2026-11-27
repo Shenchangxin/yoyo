@@ -53,6 +53,7 @@ import { FilePreviewPane } from "./features/BrowserPane";
 import { CompanionApp, PresenceLayer } from "./features/presence";
 import { IdolStage } from "./features/idol/IdolStage";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
 import { Kbd } from "./components/ui/kbd";
 import { browserSurface } from "./lib/chrome";
@@ -120,7 +121,7 @@ function WorkstationApp() {
   const sheetInspect = useMedia("(max-width: 799px)");
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
-  const skills = !popout && ws.surface === "skills";
+  const skillsOpen = useUI((s) => s.skillsOpen);
   const paging = !popout && ws.surface === "pages";
   const idling = !popout && ws.surface === "idol";
   const videoing = !popout && ws.surface === "video";
@@ -241,7 +242,7 @@ function WorkstationApp() {
   const agentLoop = ws.surface === "agent";
   // 主会话是那一条常驻的对话。人在今天栏点开别的代理对话时，表面还是 agent，但那不是主会话。
   const mainChat = agentLoop && !popout && (!ws.activeId || !ws.mainId || ws.activeId === ws.mainId);
-  const sessionShown = !staged && !finishDesk && !talkDesk && !settings && !skills && !paging && !idling && !harnessing && !(agent && focusTicket) && !(agent && focusGroup);
+  const sessionShown = !staged && !finishDesk && !talkDesk && !settings && !paging && !idling && !harnessing && !(agent && focusTicket) && !(agent && focusGroup);
   const keepSession = !finishDesk && !talkDesk && !studioDesk;
   const detailView = ["detailed", "verbose"].includes(coerceTranscriptView(ws.savedCfg.transcriptView));
   const home = !agentLoop && !staged && (agent || videoing) && (createEntrance || ((ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0));
@@ -871,11 +872,6 @@ function WorkstationApp() {
         if (ws.surface === "harness") ws.showConversation();
         else ws.openHarness("overview");
       }}
-      onSkills={() => {
-        leaveRail();
-        if (ws.surface === "skills") ws.closeSkills();
-        else ws.openSkills();
-      }}
       onPages={() => {
         leaveRail();
         if (ws.surface === "pages") ws.closePages();
@@ -1004,8 +1000,6 @@ function WorkstationApp() {
 
   const headerTitle = settings
     ? null
-    : skills
-      ? <span className="text-ui-body font-medium">{copy.skills.title}</span>
     : paging
       ? <span className="text-ui-body font-medium">{copy.rail.pages}</span>
     : idling
@@ -1085,8 +1079,8 @@ function WorkstationApp() {
       installed={ws.skills}
       loaded={ws.active?.loadedSkills || []}
       workspace={ws.active?.workspace || ws.savedCfg.workspace}
-      navInRail={navInRail}
       onRefreshInstalled={() => { void ws.reloadSkills(); }}
+      onClose={() => useUI.getState().closeSkills()}
     />
   );
 
@@ -1140,10 +1134,6 @@ function WorkstationApp() {
       <div className="no-drag flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <SettingsSurface ws={ws} navInRail={navInRail} />
       </div>
-    </Suspense>
-  ) : skills ? (
-    <Suspense fallback={null}>
-      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{skillsPane}</div>
     </Suspense>
   ) : paging ? (
     <Suspense fallback={null}>
@@ -1265,6 +1255,13 @@ function WorkstationApp() {
             onRunCycle={() => { void ws.runEvolve(); }}
             onRunOverlay={() => { void ws.runOverlay(); }}
           />
+          <Dialog open={skillsOpen && !popout} onOpenChange={(open) => { if (!open) useUI.getState().closeSkills(); }}>
+            <DialogContent className="no-drag backdrop-blur-xl" data-testid="skills-sheet" data-skin-pane>
+              <DialogTitle className="sr-only">{copy.skills.title}</DialogTitle>
+              <DialogDescription className="sr-only">{copy.skills.sheetHint}</DialogDescription>
+              <Suspense fallback={null}>{skillsOpen ? skillsPane : null}</Suspense>
+            </DialogContent>
+          </Dialog>
           <About open={ws.aboutOpen} info={ws.aboutInfo} onClose={() => ws.setAboutOpen(false)} />
           <ConfirmDialog
             open={!!ws.pendingDelete}

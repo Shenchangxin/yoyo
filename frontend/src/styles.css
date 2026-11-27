@@ -2634,6 +2634,113 @@ details[open] > .fold-summary::before {
   margin-top: var(--space-item);
 }
 
+/* 居中对话框的开合。遮罩只淡入淡出；面板从下方 6px、98% 浮起，关闭反向且更快。Radix 会等 animationend 再卸载。 */
+.dialog-scrim[data-state="open"] {
+  animation: yoyo-scrim-in var(--duration) var(--ease-out) both;
+}
+.dialog-scrim[data-state="closed"] {
+  animation: yoyo-scrim-out var(--duration-fast) var(--ease-out) both;
+}
+.dialog-pop[data-state="open"] {
+  animation: yoyo-dialog-in var(--duration-shell) var(--ease-out) both;
+}
+.dialog-pop[data-state="closed"] {
+  animation: yoyo-dialog-out var(--duration-fast) var(--ease-out) both;
+}
+@keyframes yoyo-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes yoyo-scrim-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes yoyo-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes yoyo-dialog-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(4px) scale(0.985); }
+}
+
+/* 技能对话框左栏：比面板略深一档，导航项选中时用 lift 底加左侧 accent 细条。 */
+.skills-aside {
+  background: color-mix(in srgb, var(--sidebar) 70%, var(--popover));
+  border-right: 1px solid var(--border);
+}
+.skills-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-align: left;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.skills-nav-item:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--lift) 55%, transparent);
+}
+.skills-nav-item[aria-selected="true"] {
+  color: var(--foreground);
+  background: var(--lift);
+}
+.skills-nav-item[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+.skills-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 窄窗口：左栏收成顶部一条横向页签，标题和底部提示让位给内容。 */
+@media (max-width: 640px) {
+  .skills-shell {
+    flex-direction: column;
+  }
+  .skills-aside {
+    width: 100%;
+    padding: var(--space-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .skills-aside [role="tablist"] {
+    flex-direction: row;
+  }
+  .skills-aside .skills-nav-item {
+    width: auto;
+    flex: 1 1 0;
+    justify-content: center;
+  }
+  .skills-aside .skills-nav-item[aria-selected="true"]::before {
+    left: 50%;
+    top: auto;
+    bottom: 0;
+    width: 1rem;
+    height: 2px;
+    transform: translateX(-50%);
+  }
+  .skills-aside-head,
+  .skills-aside-foot {
+    display: none;
+  }
+}
+
 .scroll-fade {
   mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }

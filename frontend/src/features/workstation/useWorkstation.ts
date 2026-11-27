@@ -2311,7 +2311,7 @@ export function useWorkstation() {
           }
           return;
         }
-        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol") {
+        if (useUI.getState().surface === "settings" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages" || useUI.getState().surface === "idol") {
           showConversation();
           return;
         }

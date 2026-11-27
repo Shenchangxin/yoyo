@@ -14,7 +14,7 @@ import type { VoicePhase } from "../features/presence/types";
 /** InspTab 检查器的四个页签。 */
 export type InspTab = "files" | "browser" | "trace" | "context";
 /** SkillsTab 技能表面的三个页签。 */
-export type SkillsTab = "installed" | "market" | "packs";
+export type SkillsTab = "installed" | "market";
 
 /** coerceInspTab 识别四个页签。旧的改动、差异、队列和记忆页都归到文件页，其余返回空。v 与 files、browser、trace、context、changes、diff 等比较是否相等，有的分支原样返回。 */
 export function coerceInspTab(v: string | null | undefined): InspTab | null {
@@ -59,6 +59,8 @@ type UIState = {
   showConversation: () => void;
   openSettings: (tab?: SettingsTab, section?: string) => void;
   closeSettings: () => void;
+  /** 技能面板是否打开。技能只在会话里生效，所以它是会话上的滑出面板，不是单独的表面。 */
+  skillsOpen: boolean;
   openSkills: () => void;
   openPacks: () => void;
   closeSkills: () => void;
@@ -358,12 +360,19 @@ export const useUI = create<UIState>((set, get) => ({
     })),
   /** 关掉设置，回到对话。 */
   closeSettings: () => get().showConversation(),
-  /** 打开技能表面。 */
-  openSkills: () => set({ surface: "skills" }),
-  /** 打开技能表面并落到技能包页。 */
-  openPacks: () => set({ surface: "skills", skillsTab: "packs" }),
-  /** 关掉技能表面，回到对话。 */
-  closeSkills: () => get().showConversation(),
+  skillsOpen: false,
+  /** 在会话上打开技能面板。不在会话表面时先回到会话，技能只在这里生效。 */
+  openSkills: () => {
+    if (get().surface !== "agent") get().showConversation();
+    set({ skillsOpen: true });
+  },
+  /** 打开技能面板并落到市场页，技能合集排在最上面。 */
+  openPacks: () => {
+    if (get().surface !== "agent") get().showConversation();
+    set({ skillsOpen: true, skillsTab: "market" });
+  },
+  /** 关掉技能面板，留在当前会话。 */
+  closeSkills: () => set({ skillsOpen: false }),
   /** 打开页面表面。 */
   openPages: () => set({ surface: "pages" }),
   /** 关掉页面表面，回到对话。 */

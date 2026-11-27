@@ -18,7 +18,6 @@ describe("railBody", () => {
   /** 学习、技能、Harness 和偶像各用自己的侧栏。 */
   it("gives every other module its own sidebar", () => {
     assert.equal(railBody("pages"), "learn");
-    assert.equal(railBody("skills"), "skills");
     assert.equal(railBody("harness"), "harness");
     assert.equal(railBody("idol"), "idol");
   });
@@ -28,8 +27,8 @@ describe("railBody", () => {
    * 所以七个表面各有各的侧栏，里面没有 buddy 这一种。
    */
   it("has no sidebar of its own for buddy", () => {
-    const bodies = (["agent", "video", "settings", "pages", "skills", "harness", "idol"] as const).map((surface) => railBody(surface));
-    assert.deepEqual(bodies, ["home", "video", "settings", "learn", "skills", "harness", "idol"]);
+    const bodies = (["agent", "video", "settings", "pages", "harness", "idol"] as const).map((surface) => railBody(surface));
+    assert.deepEqual(bodies, ["home", "video", "settings", "learn", "harness", "idol"]);
     assert.equal(bodies.includes("buddy" as never), false);
   });
 });

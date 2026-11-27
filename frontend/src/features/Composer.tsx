@@ -1054,6 +1054,20 @@ export function Composer(props: {
                     </button>
                   </Tooltip>
                   )}
+                  {surface === "agent" && !props.compact ? (
+                    <Tooltip content={copy.skills.title}>
+                      <button
+                        type="button"
+                        className="sc-add"
+                        aria-label={copy.skills.title}
+                        aria-haspopup="dialog"
+                        data-testid="composer-skills"
+                        onClick={() => useUI.getState().openSkills()}
+                      >
+                        <BookOpen className="size-3.5" />
+                      </button>
+                    </Tooltip>
+                  ) : null}
                   <input
                     ref={fileRef}
                     type="file"

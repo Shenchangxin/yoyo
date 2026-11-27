@@ -138,13 +138,13 @@ test("user bubble shows an attached markdown next to a skill chip", async ({ pag
     ],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: /Demo thread/ }).click();
-  const bubble = page.locator(".user-bubble");
+  // 侧栏默认停在「今天」页签，会话列表不在屏上；启动时会恢复上次的会话，直接看气泡。
+  const bubble = page.getByTestId("conversation-column").locator(".user-bubble");
   await expect(bubble.getByTestId("user-mention-chip")).toContainText("novel-to-game");
   await expect(bubble.getByTestId("user-attach-chip")).toContainText("novel.md");
 });
 
-test("clicking a session leaves skills for that chat", async ({ page }) => {
+test("skills dialog closes back to the same chat", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     events: [
@@ -152,12 +152,23 @@ test("clicking a session leaves skills for that chat", async ({ page }) => {
     ],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
-  await expect(page.getByTestId("skills-workspace")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Back to chat" })).toHaveCount(0);
-  await page.getByRole("button", { name: /Demo thread/ }).click();
+  const chat = page.getByTestId("conversation-column").getByText("hello from demo");
+  await expect(chat).toBeVisible();
+  const opener = page.getByTestId("composer-skills");
+  const dialog = page.getByRole("dialog", { name: "Skills" });
+  // Escape 关闭，留在原会话。
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("skills-workspace")).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
-  await expect(page.getByTestId("conversation-column").getByText("hello from demo")).toBeVisible();
+  await expect(chat).toBeVisible();
+  // 关闭按钮同样回到原会话。
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Back to chat" }).click();
+  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
+  await expect(chat).toBeVisible();
 });
 
 test("clicking a session leaves harness for that chat", async ({ page }) => {
@@ -180,16 +191,8 @@ test("module docks toggle back to chat", async ({ page }) => {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
-  await expect(page.getByTestId("skills-workspace")).toBeVisible();
-  await page.getByRole("button", { name: "Sessions", exact: true }).click();
-  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
-  await expect(page.getByTestId("conversation-column")).toBeVisible();
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
-  await expect(page.getByTestId("skills-workspace")).toBeVisible();
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
-  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
-  await expect(page.getByTestId("conversation-column")).toBeVisible();
+  // 技能不再是 Dock 模块，它是会话上的对话框，见下一条用例。
+  await expect(page.getByRole("button", { name: "Skills", exact: true }).and(page.locator("[data-testid='composer-skills']"))).toHaveCount(1);
   await page.getByRole("button", { name: /^Lab\b/ }).click();
   await expect(page.getByTestId("harness-workspace")).toBeVisible();
   await page.getByRole("button", { name: /^Lab\b/ }).click();
@@ -197,17 +200,31 @@ test("module docks toggle back to chat", async ({ page }) => {
   await expect(page.getByTestId("conversation-column")).toBeVisible();
 });
 
-test("new chat from skills opens the conversation", async ({ page }) => {
+test("skills open as a modal dialog with side tabs over the chat", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    skills: [{ name: "arxiv-watcher", description: "watch papers", source: "market" }],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
-  await expect(page.getByTestId("skills-workspace")).toBeVisible();
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
+  await page.getByTestId("composer-skills").click();
+  const dialog = page.getByRole("dialog", { name: "Skills" });
+  await expect(dialog).toBeVisible();
+  const tabs = dialog.getByRole("tablist", { name: "Skills" });
+  await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
+  await expect(tabs.getByRole("tab")).toHaveCount(2);
+  // 页签切换：工具栏标题跟着走，市场页才有搜索。
+  await tabs.getByRole("tab", { name: /Installed/ }).click();
+  await expect(tabs.getByRole("tab", { name: /Installed/ })).toHaveAttribute("aria-selected", "true");
+  await expect(dialog.getByText("arxiv-watcher")).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: /Search/ })).toHaveCount(0);
+  await tabs.getByRole("tab", { name: /Market/ }).click();
+  await expect(dialog.getByRole("textbox", { name: /Search/ })).toBeVisible();
+  // 模态：背后的侧栏按钮不在无障碍树里。
+  await expect(page.getByRole("button", { name: "Sessions", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Back to chat" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sessions", exact: true })).toBeVisible();
   await expect(page.getByTestId("conversation-column")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
 });
 
 test("session hover card shows copyable session id", async ({ page }) => {
@@ -818,7 +835,7 @@ test("insert mention keeps the popup open and pins a file token", async ({ page 
     ],
   });
   await page.goto("/");
-  const box = page.getByRole("textbox", { name: "Message" });
+  const box = page.getByTestId("composer-input");
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.click();
   await box.pressSequentially("@");
@@ -859,7 +876,7 @@ test("installed skills appear in @skill and keyboard highlight stays in view", a
     skills,
   });
   await page.goto("/");
-  const box = page.getByRole("textbox", { name: "Message" });
+  const box = page.getByTestId("composer-input");
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.click();
   await box.pressSequentially("/");
@@ -890,9 +907,9 @@ test("installed skills do not need pinning to a chat", async ({ page }) => {
     skills: [{ name: "arxiv-watcher", description: "watch papers", source: "market" }],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await page.getByTestId("composer-skills").click();
   await expect(page.getByTestId("skills-workspace")).toBeVisible();
-  await page.getByRole("tab", { name: "Installed" }).click();
+  await page.getByRole("tab", { name: /Installed/ }).click();
   await expect(page.getByText("arxiv-watcher")).toBeVisible();
   await expect(page.getByRole("button", { name: "Pin to chat" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "钉到对话" })).toHaveCount(0);
