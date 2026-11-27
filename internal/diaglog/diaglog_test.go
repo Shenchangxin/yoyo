@@ -4,6 +4,7 @@
 package diaglog
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -199,4 +200,26 @@ func TestConsoleMirrorsGUI(t *testing.T) {
 	if !strings.Contains(string(body), `"msg":"boot"`) {
 		t.Fatalf("file missing json: %s", body)
 	}
+}
+
+// ZipContains 在 zip 的成员名或成员正文里查找 needle。打开失败返回假。任一成员读失败则跳过该成员。
+// path 交给 zip.OpenReader，打开失败返回 false。
+func ZipContains(path, needle string) bool {
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		return false
+	}
+	defer r.Close()
+	for _, f := range r.File {
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+		b, _ := io.ReadAll(rc)
+		_ = rc.Close()
+		if strings.Contains(string(b), needle) || strings.Contains(f.Name, needle) {
+			return true
+		}
+	}
+	return false
 }

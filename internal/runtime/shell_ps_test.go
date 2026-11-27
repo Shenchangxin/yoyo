@@ -51,11 +51,3 @@ func TestMaterializePowerShellWritesFile(t *testing.T) {
 		t.Fatalf("args %v", args)
 	}
 }
-
-// TestPowershellCommandArgStillUnwraps 确认 powershellCommandArg 仍能解出 -Command 的正文。
-func TestPowershellCommandArgStillUnwraps(t *testing.T) {
-	got := powershellCommandArg(`powershell -NoProfile -Command Start-Process x`)
-	if got != "Start-Process x" {
-		t.Fatalf("unwrap %q", got)
-	}
-}

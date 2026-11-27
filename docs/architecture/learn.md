@@ -79,7 +79,7 @@ A path has modules; a module has knowledge points. A point has a kind (`memory`,
 | book | `learn_book_outline`, `learn_book_chapter` |
 | path | `learn_status`, `learn_mode`, `learn_profile`, `learn_build`, `learn_revise`, `learn_quiz`, `learn_grade`, `learn_assess`, `learn_skip`, `learn_repair`, `learn_defer` |
 
-`learn_quiz` returns `Halt`: the batch ends the turn in both loops (`runtime` via `HaltAfter`, desktop via `dsh.Result.Concludes`). `learn_grade` and `learn_assess` read the learner's actual message (`OperatorVoice`), not a model-supplied answer.
+`learn_quiz` returns `Halt`: the batch ends the turn in both loops (`runtime` via `HaltAfter`, desktop via `agentloop.Result.Concludes`). `learn_grade` and `learn_assess` read the learner's actual message (`OperatorVoice`), not a model-supplied answer.
 
 The system prompt for a learn chat is the chat identity with the bootstrap replaced and pins added by `applyLearnLanePrompt`: tutoring conduct always, the mastery playbook when a path is bound, source rules when a library, material, or book is bound. Each turn's inject carries `learnTurnBrief`: a `<learning_state>` JSON block with mode, counts, next step, and any card answer the engine graded since the last turn (reported once), plus the reader viewport and book chapter when bound.
 

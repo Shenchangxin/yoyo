@@ -23,7 +23,6 @@ type MeasureOpts struct {
 	ModelWindow   int
 	PlanText      string
 	Notes         string
-	SoftHorizon   bool
 	PageContext   string
 	ProfileMemory string
 	// Chat 为真时按桌面发出的系统提示计量，不把 playbook、规则、目录和笔记算进这一轮。
@@ -47,10 +46,6 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 	if opts.Tools != nil {
 		suggested = FormatSkillHints(opts.Tools.SkillHints)
 	}
-	soft := opts.SoftHorizon
-	if opts.Tools != nil && opts.Tools.ChatOverlay {
-		soft = true
-	}
 	bill := buildBill(billInput{
 		Loop:      loop,
 		Fragments: opts.Fragments,
@@ -58,7 +53,6 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 		Skills:    opts.Skills,
 		Workspace: opts.Workspace,
 		Tools:     opts.Tools,
-		Soft:      soft,
 		Page:      opts.PageContext,
 		Profile:   opts.ProfileMemory,
 		Plan:      plan,

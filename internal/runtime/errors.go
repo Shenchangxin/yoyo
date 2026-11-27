@@ -40,9 +40,9 @@ const (
 	ErrKindUnknown = "unknown"
 )
 
-// maxTurnsInfo 是轮数用尽的终局卡片，可重试。继续这一轮会从历史接着走，不再另起一条用户消息。
+// MaxTurnsInfo 是轮数用尽的终局卡片，可重试。继续这一轮会从历史接着走，不再另起一条用户消息。
 // limit 写进 Detail 的括号里。
-func maxTurnsInfo(limit int) ErrorInfo {
+func MaxTurnsInfo(limit int) ErrorInfo {
 	return ErrorInfo{
 		Kind:      ErrKindMaxTurns,
 		Title:     "Reached the turn limit",
@@ -52,7 +52,7 @@ func maxTurnsInfo(limit int) ErrorInfo {
 	}
 }
 
-// stuckLoopInfo 是 SoftHorizon 上同一失败或同一条检查 FAIL 停住后的卡片，可重试。detail 去掉空白后为空时，改成 the same tool failure kept repeating。
+// stuckLoopInfo 是原地打转停住后的卡片，可重试。ClassifyError 遇到 StuckLoopErr 时用它，桌面的停止来自 agentloop/desk/guard.go。detail 去掉空白后为空时，改成 the same tool failure kept repeating。
 func stuckLoopInfo(detail string) ErrorInfo {
 	if strings.TrimSpace(detail) == "" {
 		detail = "the same tool failure kept repeating"

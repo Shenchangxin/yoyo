@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 // TestWorkerSchemasCoverTools 锁住五个 orchestrator 工具各有一份 schema，没有多余的；每份都是不许多余字段的对象，必填字段都在属性里，并且能编成 JSON。
@@ -23,7 +23,7 @@ func TestWorkerSchemasCoverTools(t *testing.T) {
 			t.Fatalf("no schema for %s", tool.Name)
 		}
 		if tool.Parameters != nil {
-			t.Fatalf("%s grew dsh parameters; the schema is only for MCP", tool.Name)
+			t.Fatalf("%s grew agentloop parameters; the schema is only for MCP", tool.Name)
 		}
 		if schema["type"] != "object" || schema["additionalProperties"] != false {
 			t.Fatalf("%s schema = %v", tool.Name, schema)
@@ -96,7 +96,7 @@ func TestSchemaArgumentsParse(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res, err := tool.Run(context.Background(), dsh.ToolCall{ID: "c1", Name: tool.Name, Arguments: string(data)})
+		res, err := tool.Run(context.Background(), agentloop.ToolCall{ID: "c1", Name: tool.Name, Arguments: string(data)})
 		if err != nil {
 			t.Fatalf("%s: %v", tool.Name, err)
 		}

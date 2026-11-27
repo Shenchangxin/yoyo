@@ -3,158 +3,26 @@
 package runtime
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// TestTaskSubagentSummaryOnly 锁住父级最终输出含 parent done，子级写入的 hello.txt 在工作区里。
-func TestTaskSubagentSummaryOnly(t *testing.T) {
-	dir := t.TempDir()
-	client := &ScriptedClient{Steps: []Message{
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "1", Name: "task", Arguments: `{"prompt":"Write hello.txt containing hello","isolate":false}`}}},
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "2", Name: "write_file", Arguments: `{"path":"hello.txt","content":"hello"}`}}},
-		{Role: RoleAssistant, Content: "child done"},
-		{Role: RoleAssistant, Content: "parent done"},
-	}}
-	out, err := Run(context.Background(), RunRequest{
-		User:      "delegate the write",
-		Workspace: dir,
-		Tools:     &WorkspaceTools{Workspace: dir},
-		Client:    client,
-		Loop:      DefaultLoop(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "parent done") {
-		t.Fatalf("out=%s", out)
-	}
-	b, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(b) != "hello" {
-		t.Fatalf("%q", b)
-	}
-}
-
-// TestSubagentOwnJSONL 锁住父轨迹里没有子级的 write_file 调用，但有带 child 的子代理 start 和 complete 事件。
-func TestSubagentOwnJSONL(t *testing.T) {
-	dir := t.TempDir()
-	home := t.TempDir()
-	st := trace.NewStore(filepath.Join(home, "sessions"))
-	client := &ScriptedClient{Steps: []Message{
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "1", Name: "task", Arguments: `{"prompt":"Write hello.txt containing hello","isolate":false}`}}},
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "2", Name: "write_file", Arguments: `{"path":"hello.txt","content":"hello"}`}}},
-		{Role: RoleAssistant, Content: "child done"},
-		{Role: RoleAssistant, Content: "parent done"},
-	}}
-	parentID := "parent"
-	_, err := Run(context.Background(), RunRequest{
-		SessionID: parentID,
-		User:      "delegate the write",
-		Workspace: dir,
-		Home:      home,
-		Tools:     &WorkspaceTools{Workspace: dir},
-		Client:    client,
-		Loop:      DefaultLoop(),
-		Trace:     st,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent, err := st.Read(parentID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ev := range parent {
-		if ev.Type == trace.TypeToolCall {
-			if name, _ := ev.Payload["name"].(string); name == "write_file" {
-				t.Fatal("child tool_call leaked into parent JSONL")
-			}
-		}
-	}
-	found := false
-	sawStart := false
-	for _, ev := range parent {
-		if ev.Type != trace.TypeSubagent {
-			continue
-		}
-		found = true
-		phase, _ := ev.Payload["phase"].(string)
-		if phase == "start" {
-			sawStart = true
-		}
-		if _, ok := ev.Payload["child"].(string); !ok {
-			t.Fatal("subagent event missing child")
-		}
-	}
-	if !found {
-		t.Fatal("missing parent subagent summary")
-	}
-	if !sawStart {
-		t.Fatal("missing subagent start event")
-	}
-}
-
-// TestChildSessionIDIsPathSafe 锁住子会话 ID 不含斜杠，IsChildSessionID 和 ParentOfSession 能来回解析，旧的 /tasks/ 形式仍能认出父 ID。
+// TestChildSessionIDIsPathSafe 锁住子会话 ID 不含斜杠，以父 ID 加 taskSep 开头，IsChildSessionID 能认出它；旧的 /tasks/ 形式也仍被认成子会话。
 func TestChildSessionIDIsPathSafe(t *testing.T) {
 	id := ChildSessionID("parent")
 	if strings.Contains(id, "/") || strings.Contains(id, "\\") {
 		t.Fatalf("child id must not split HTTP paths: %s", id)
 	}
-	if !IsChildSessionID(id) || ParentOfSession(id) != "parent" {
-		t.Fatalf("%s parent=%s", id, ParentOfSession(id))
+	if !IsChildSessionID(id) || !strings.HasPrefix(id, "parent"+taskSep) {
+		t.Fatalf("child id %s", id)
 	}
-	legacy := "abc/tasks/x"
-	if !IsChildSessionID(legacy) || ParentOfSession(legacy) != "abc" {
+	if legacy := "abc/tasks/x"; !IsChildSessionID(legacy) {
 		t.Fatalf("legacy %s", legacy)
 	}
-}
-
-// TestSubagentLiveEventsUseChildSession 锁住子级工具的实时事件使用子会话 ID，而不是父会话 ID。
-func TestSubagentLiveEventsUseChildSession(t *testing.T) {
-	dir := t.TempDir()
-	var live []trace.Event
-	client := &ScriptedClient{Steps: []Message{
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "1", Name: "task", Arguments: `{"prompt":"Write hello.txt containing hello","isolate":false}`}}},
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "2", Name: "write_file", Arguments: `{"path":"hello.txt","content":"hello"}`}}},
-		{Role: RoleAssistant, Content: "child done"},
-		{Role: RoleAssistant, Content: "parent done"},
-	}}
-	_, err := Run(context.Background(), RunRequest{
-		SessionID: "parent",
-		User:      "delegate",
-		Workspace: dir,
-		Tools:     &WorkspaceTools{Workspace: dir},
-		Client:    client,
-		Loop:      DefaultLoop(),
-		OnEvent: func(ev trace.Event) {
-			live = append(live, ev)
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	childLive := 0
-	for _, ev := range live {
-		if ev.Type == trace.TypeToolCall {
-			name, _ := ev.Payload["name"].(string)
-			if name == "write_file" && !IsChildSessionID(ev.SessionID) {
-				t.Fatal("child tool_call live event used parent session")
-			}
-		}
-		if IsChildSessionID(ev.SessionID) {
-			childLive++
-		}
-	}
-	if childLive == 0 {
-		t.Fatal("expected child live events on Hub")
+	if IsChildSessionID("parent") {
+		t.Fatal("plain session id read as a child")
 	}
 }
 
@@ -211,51 +79,5 @@ func TestTaskListedAtDepthOne(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("depth 1 must still advertise task (nesting cap is 2)")
-	}
-}
-
-// TestIsolateWorkspaceCopy 锁住 IsolateWorkspace 的目标里能读到源文件。
-func TestIsolateWorkspaceCopy(t *testing.T) {
-	src := t.TempDir()
-	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("ok"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	dst, cleanup, err := IsolateWorkspace(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
-	b, err := os.ReadFile(filepath.Join(dst, "keep.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(b) != "ok" {
-		t.Fatalf("%q", b)
-	}
-}
-
-// TestPersistWorktreeCopy 锁住 PersistWorktree 能复制文件，目标已存在时再次调用成功，RemoveWorktree 会删掉目标。
-func TestPersistWorktreeCopy(t *testing.T) {
-	src := t.TempDir()
-	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("ok"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	dest := filepath.Join(t.TempDir(), "wt")
-	if err := PersistWorktree(src, dest); err != nil {
-		t.Fatal(err)
-	}
-	b, err := os.ReadFile(filepath.Join(dest, "keep.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(b) != "ok" {
-		t.Fatalf("%q", b)
-	}
-	if err := PersistWorktree(src, dest); err != nil {
-		t.Fatal(err)
-	}
-	RemoveWorktree(src, dest)
-	if _, err := os.Stat(dest); !os.IsNotExist(err) {
-		t.Fatalf("worktree still present: %v", err)
 	}
 }

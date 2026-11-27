@@ -65,8 +65,6 @@
 
 ### `internal/api`
 
-- [x] `internal/api/acp.go`
-- [x] `internal/api/acp_test.go`
 - [x] `internal/api/client.go`
 - [x] `internal/api/idol_http.go`
 - [x] `internal/api/remote_hook.go`
@@ -96,6 +94,7 @@
 - [x] `internal/app/hub_coalesce_test.go`
 - [x] `internal/app/hub_seq_test.go`
 - [x] `internal/app/idol_app.go`
+- [x] `internal/app/idol_live_test.go`
 - [x] `internal/app/idol_media.go`
 - [x] `internal/app/model_catalog.go`
 - [x] `internal/app/model_catalog_test.go`
@@ -320,8 +319,6 @@
 
 ### `internal/eval`
 
-- [x] `internal/eval/agent.go`
-- [x] `internal/eval/agent_test.go`
 - [x] `internal/eval/catalog.go`
 - [x] `internal/eval/catalog_test.go`
 - [x] `internal/eval/docker.go`
@@ -335,7 +332,6 @@
 - [x] `internal/eval/promote.go`
 - [x] `internal/eval/promote_test.go`
 - [x] `internal/eval/quiet.go`
-- [x] `internal/eval/replay.go`
 
 ### `internal/evolve`
 
@@ -407,6 +403,11 @@
 - [x] `internal/idol/store.go`
 - [x] `internal/idol/types.go`
 - [x] `internal/idol/world.go`
+
+### `internal/idol/media`
+
+- [x] `internal/idol/media/media.go`
+- [x] `internal/idol/media/media_test.go`
 
 ### `internal/inbox`
 
@@ -663,8 +664,6 @@
 - [x] `internal/runtime/horizon_test.go`
 - [x] `internal/runtime/html_guard.go`
 - [x] `internal/runtime/html_guard_test.go`
-- [x] `internal/runtime/hunks.go`
-- [x] `internal/runtime/hunks_test.go`
 - [x] `internal/runtime/internet_reach_skill_test.go`
 - [x] `internal/runtime/ladder.go`
 - [x] `internal/runtime/ladder_test.go`
@@ -745,13 +744,13 @@
 - [x] `internal/runtime/tools_skill_test.go`
 - [x] `internal/runtime/tools_task.go`
 - [x] `internal/runtime/tools_task_test.go`
+- [x] `internal/runtime/tools_clone_test.go`
 - [x] `internal/runtime/tools_test.go`
 - [x] `internal/runtime/tools_thread.go`
 - [x] `internal/runtime/tools_thread_test.go`
 - [x] `internal/runtime/truncation.go`
 - [x] `internal/runtime/webnet.go`
 - [x] `internal/runtime/webnet_test.go`
-- [x] `internal/runtime/worktree.go`
 
 ### `internal/safeguard`
 
@@ -817,6 +816,11 @@
 - [x] `internal/skin/validate.go`
 - [x] `internal/skin/wallpaper.go`
 
+### `internal/textdiff`
+
+- [x] `internal/textdiff/textdiff.go`
+- [x] `internal/textdiff/textdiff_test.go`
+
 ### `internal/tool`
 
 - [x] `internal/tool/registry.go`
@@ -872,19 +876,22 @@
 
 - [x] `internal/video/assets.go`
 
-### `internal/video/canvas/capability`
+### `internal/video/canvas/nodecap`
 
-- [x] `internal/video/canvas/capability/builtin.go`
-- [x] `internal/video/canvas/capability/descriptor.go`
-- [x] `internal/video/canvas/capability/registry.go`
-- [x] `internal/video/canvas/capability/registry_test.go`
+- [x] `internal/video/canvas/nodecap/doc.go`
+- [x] `internal/video/canvas/nodecap/builtin.go`
+- [x] `internal/video/canvas/nodecap/descriptor.go`
+- [x] `internal/video/canvas/nodecap/registry.go`
+- [x] `internal/video/canvas/nodecap/registry_test.go`
 
 ### `internal/video/canvas/contract`
 
+- [x] `internal/video/canvas/contract/doc.go`
 - [x] `internal/video/canvas/contract/generation.go`
 
 ### `internal/video/canvas/layout`
 
+- [x] `internal/video/canvas/layout/doc.go`
 - [x] `internal/video/canvas/layout/layout.go`
 - [x] `internal/video/canvas/layout/layout_test.go`
 
@@ -917,6 +924,7 @@
 
 ### `internal/video/cut`
 
+- [x] `internal/video/cut/doc.go`
 - [x] `internal/video/cut/audio.go`
 - [x] `internal/video/cut/audio_test.go`
 - [x] `internal/video/cut/captions.go`
@@ -948,8 +956,8 @@
 
 ### `internal/video/film`
 
+- [x] `internal/video/film/doc.go`
 - [x] `internal/video/film/assemble.go`
-- [x] `internal/video/film/contract.go`
 - [x] `internal/video/film/film_test.go`
 - [x] `internal/video/film/font.go`
 - [x] `internal/video/film/plan.go`
@@ -979,9 +987,9 @@
 
 ### `internal/video/protocol`
 
+- [x] `internal/video/protocol/doc.go`
 - [x] `internal/video/protocol/adapter.go`
 - [x] `internal/video/protocol/builtin.go`
-- [x] `internal/video/protocol/documentation.go`
 - [x] `internal/video/protocol/errors.go`
 - [x] `internal/video/protocol/expression.go`
 - [x] `internal/video/protocol/manifest.go`
@@ -1060,21 +1068,31 @@
 - [x] `internal/winsize/workarea_other.go`
 - [x] `internal/winsize/workarea_windows.go`
 
+### `internal/worktree`
+
+- [x] `internal/worktree/hunks.go`
+- [x] `internal/worktree/hunks_test.go`
+- [x] `internal/worktree/worktree.go`
+- [x] `internal/worktree/worktree_test.go`
+
 ### `(根目录)`
 
 - [x] `main.go`
 
 ### `scripts/genicon`
 
+- [x] `scripts/genicon/doc.go`
 - [x] `scripts/genicon/main.go`
 
 ### `scripts/ota`
 
+- [x] `scripts/ota/doc.go`
 - [x] `scripts/ota/main.go`
 - [x] `scripts/ota/main_test.go`
 
 ### `scripts/stampversion`
 
+- [x] `scripts/stampversion/doc.go`
 - [x] `scripts/stampversion/main.go`
 - [x] `scripts/stampversion/main_test.go`
 
@@ -1628,6 +1646,7 @@
 - [ ] `frontend/src/features/buddy/BuddyWorkspace.tsx`
 - [ ] `frontend/e2e/buddy-mock.ts`
 - [ ] `frontend/e2e/buddy.spec.ts`
+- [x] `internal/mcpserve/doc.go`
 - [ ] `internal/mcpserve/server.go`
 - [ ] `internal/mcpserve/bridge.go`
 - [ ] `internal/mcpserve/server_test.go`

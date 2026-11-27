@@ -4,50 +4,12 @@ package runtime
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
-
-// TestPrefixStableAcrossToolRounds 确认连续工具回合里，后一轮热前缀仍以前一轮的字节为开头。
-func TestPrefixStableAcrossToolRounds(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var steps []Message
-	for i := 0; i < 8; i++ {
-		id := "r" + itoa(i)
-		steps = append(steps, Message{Role: RoleAssistant, ToolCalls: []ToolCall{{
-			ID: id, Name: "read_file", Arguments: `{"path":"a.go"}`,
-		}}})
-	}
-	steps = append(steps, Message{Role: RoleAssistant, Content: "done"})
-	client := &prefixClient{ScriptedClient: ScriptedClient{Steps: steps}}
-	_, err := Run(context.Background(), RunRequest{
-		SessionID:   "s",
-		User:        "inspect a.go",
-		Workspace:   dir,
-		Tools:       &WorkspaceTools{Workspace: dir},
-		Client:      client,
-		Loop:        DefaultLoop(),
-		SoftHorizon: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(client.hots) < 8 {
-		t.Fatalf("rounds %d", len(client.hots))
-	}
-	for i := 1; i < len(client.hots); i++ {
-		if !strings.HasPrefix(client.hots[i], client.hots[i-1]) {
-			t.Fatalf("prefix broke at %d prev=%d next=%d", i, len(client.hots[i-1]), len(client.hots[i]))
-		}
-	}
-}
 
 // TestCheckpointBreaksPrefixOnce 确认检查点之后的热前缀和检查点之前不同。
 func TestCheckpointBreaksPrefixOnce(t *testing.T) {
@@ -105,26 +67,6 @@ func TestRecallIsPaged(t *testing.T) {
 	}
 }
 
-// TestHotFileHydrate 确认检查点补水会带上刚写过的文件路径和磁盘上的正文。
-func TestHotFileHydrate(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "hot.go"), []byte("package hot\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	msgs := []Message{
-		{Role: RoleUser, Content: "edit"},
-		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "w1", Name: "write_file", Arguments: `{"path":"hot.go","content":"x"}`}}},
-		{Role: RoleTool, ToolCallID: "w1", Name: "write_file", Content: "wrote hot.go"},
-	}
-	extra, n := hydrateAfterCheckpoint(dir, msgs, SessionNotes{Files: []string{"hot.go"}}, nil)
-	if n == 0 || extra.Role != RoleUser {
-		t.Fatal("expected hydrate")
-	}
-	if !strings.Contains(extra.Content, "hot.go") || !strings.Contains(extra.Content, "package hot") {
-		t.Fatalf("%s", extra.Content)
-	}
-}
-
 // TestHarborShapeUnchanged 确认 Compact 不调用模型；AllowLLMCompact 为真但 window 为 0 时，检查点也不做模型摘要。
 func TestHarborShapeUnchanged(t *testing.T) {
 	loop := DefaultLoop()
@@ -171,17 +113,6 @@ func TestDynamicLivesAtTail(t *testing.T) {
 	if out[2].Role != RoleUser {
 		t.Fatal("user displaced")
 	}
-}
-
-type prefixClient struct {
-	ScriptedClient
-	hots []string
-}
-
-// Chat 记下每次请求的热前缀，再交给脚本客户端。
-func (p *prefixClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
-	p.hots = append(p.hots, hotPrefixBytes(req.Messages))
-	return p.ScriptedClient.Chat(ctx, req)
 }
 
 // ClientFunc 把函数适配成 Client，测试用它替换模型调用。

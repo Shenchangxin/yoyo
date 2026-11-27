@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 // deskAsk 造一条桌面会话 s1 里操作者的话。agents 是人 @ 过的 agent。
@@ -752,7 +752,7 @@ func TestRunLaunchSkipsHeld(t *testing.T) {
 	opened := make(chan WorkerSpec, 2)
 	ex.Opener = func(_ context.Context, spec WorkerSpec) (Worker, error) {
 		opened <- spec
-		return newFakeWorker(spec, func(w *fakeWorker, msg dsh.UserMessage) {
+		return newFakeWorker(spec, func(w *fakeWorker, msg agentloop.UserMessage) {
 			if msg.Source == "assignment" {
 				w.report("ready", "好了")
 			}
@@ -801,7 +801,7 @@ func TestTwoYoyoPartsRunInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	fronts := make(chan string, 4)
-	model := scriptModel{fn: func(_ context.Context, req dsh.Request) (dsh.Assistant, error) {
+	model := scriptModel{fn: func(_ context.Context, req agentloop.Request) (agentloop.Assistant, error) {
 		var b strings.Builder
 		for _, msg := range req.Messages {
 			b.WriteString(msg.Text + "\n")
@@ -811,7 +811,7 @@ func TestTwoYoyoPartsRunInOrder(t *testing.T) {
 			summary = "前端页面写好了"
 			fronts <- text
 		}
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"` + summary + `"}`}}}, nil
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"` + summary + `"}`}}}, nil
 	}}
 	rt.SetWorkRoot(t.TempDir())
 	rt.Bind(nil, model, nil)
@@ -957,16 +957,16 @@ func TestReadTicketForRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := g.Tickets[0]
-	sess := dsh.NewSession()
-	sess.Append(dsh.EventUser, 1, 0, dsh.UserMessage{Text: "工单 " + id + "\n做一个登录页", Source: "assignment"})
-	sess.Append(dsh.EventAssistant, 1, 1, dsh.Assistant{Text: "先写页面"})
-	sess.Append(dsh.EventToolResult, 1, 1, dsh.ToolResultEvent{ID: "c1", Name: "write_file", Text: "wrote login.html"})
-	sess.Append(dsh.EventToolResult, 1, 1, dsh.ToolResultEvent{ID: "c2", Name: "shell", Text: "wrote fake.txt"})
-	sess.Append(dsh.EventToolResult, 1, 1, dsh.ToolResultEvent{ID: "c3", Name: "write_file", Text: "wrote broken.css", IsError: true})
-	sess.Append(dsh.EventToolResult, 1, 1, dsh.ToolResultEvent{ID: "c4", Name: "edit_file", Text: "wrote login.css\ndiff login.css: 1 -> 2 lines"})
-	sess.Append(dsh.EventToolResult, 1, 1, dsh.ToolResultEvent{ID: "c5", Name: "write_file", Text: "wrote login.html"})
-	sess.Append(dsh.EventAssistant, 1, 2, dsh.Assistant{Text: strings.Repeat("页面做好了。", 500)})
-	sess.Append(dsh.EventTurnEnd, 1, 2, dsh.TurnEnd{Kind: "completed"})
+	sess := agentloop.NewSession()
+	sess.Append(agentloop.EventUser, 1, 0, agentloop.UserMessage{Text: "工单 " + id + "\n做一个登录页", Source: "assignment"})
+	sess.Append(agentloop.EventAssistant, 1, 1, agentloop.Assistant{Text: "先写页面"})
+	sess.Append(agentloop.EventToolResult, 1, 1, agentloop.ToolResultEvent{ID: "c1", Name: "write_file", Text: "wrote login.html"})
+	sess.Append(agentloop.EventToolResult, 1, 1, agentloop.ToolResultEvent{ID: "c2", Name: "shell", Text: "wrote fake.txt"})
+	sess.Append(agentloop.EventToolResult, 1, 1, agentloop.ToolResultEvent{ID: "c3", Name: "write_file", Text: "wrote broken.css", IsError: true})
+	sess.Append(agentloop.EventToolResult, 1, 1, agentloop.ToolResultEvent{ID: "c4", Name: "edit_file", Text: "wrote login.css\ndiff login.css: 1 -> 2 lines"})
+	sess.Append(agentloop.EventToolResult, 1, 1, agentloop.ToolResultEvent{ID: "c5", Name: "write_file", Text: "wrote login.html"})
+	sess.Append(agentloop.EventAssistant, 1, 2, agentloop.Assistant{Text: strings.Repeat("页面做好了。", 500)})
+	sess.Append(agentloop.EventTurnEnd, 1, 2, agentloop.TurnEnd{Kind: "completed"})
 	body, _ := encodeLog(sess.Events())
 	rt.saveWorkerLog(id, body)
 	rt.eng.SetDirectory(id, `D:\work\`+id, "")

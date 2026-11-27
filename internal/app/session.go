@@ -1,4 +1,4 @@
-// 会话元数据、发送回合，以及评测和演进入口。桌面发送和会话 overlay 都进入 dsh 代理。
+// 会话元数据、发送回合，以及评测和演进入口。桌面发送和会话 overlay 都进入 agentloop 代理。
 
 package app
 
@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/agentloop/desk"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/observe"
@@ -347,7 +347,7 @@ func (a *App) ClientFor(meta SessionMeta) (runtime.Client, error) {
 	return nil, fmt.Errorf("missing API key — paste the token in Settings")
 }
 
-// Send 发送一轮，不进入计划模式。模型循环是 dsh 代理。
+// Send 发送一轮，不进入计划模式。模型循环是 agentloop 代理。
 func (a *App) Send(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event)) (string, error) {
 	return a.SendOpts(ctx, sessionID, message, client, onEvent, false)
 }
@@ -619,12 +619,12 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil, false, false, "")
 }
 
-// sendLocked 在运行槽已经占用后执行这一轮，并调用 dshdesk.Host.Run。模型调用发生在 Run 里。
+// sendLocked 在运行槽已经占用后执行这一轮，并调用 desk.Host.Run。模型调用发生在 Run 里。
 // 进入 Run 之前会解析 harness：按会话的 HarnessPolicy、钉住的哈希和当前 ActiveHash 调用 session.ResolveHarness，再装入快照和材料。
-// 然后对循环预设调用 runtime.ApplyChatHorizon。历史用 ReadFromCheckpoint 取出；超预算时 runtime.MaybeCheckpoint 做检查点。
+// 然后对循环预设调用 runtime.ApplyChatHorizon。历史用 ReadFromCheckpoint 取出；超预算时 runtime.MaybeCheckpointOpts 做检查点。
 // Hub 非空时包装 onEvent，事件先 Publish 进 Hub，再交给原来的回调。
-// 非 resume 且用户行尚未落盘时，commitUser 先把用户事件写入 JSONL。交给 Run 的 UserCommitted 仅在该用户行已经写入且不是 resume 时为真，避免再发第二条用户事件。resume 不写新用户行，UserCommitted 为假。
-// Isolate 为真时先确保 Worktree 这份工作区副本，工具用 ToolRoot。PullSteer 指向 pullSteer：Steer 只在会话仍在跑时追加文本，Run 在下一次模型调用前把它一次收走，不取消回合。StopTurn 才取消运行槽的 context。
+// 非 resume 且用户行尚未落盘时，commitUser 先把用户事件写入 JSONL。agentloop/desk 不会为 Turn.User 再发一条用户事件（来源为空的用户消息不投影），所以这里只需在用户行已经落盘时（本函数刚写入，或调用方已经写过），从历史末尾去掉同一句，避免模型看见两条。resume 不写新用户行。
+// Isolate 为真时先确保 Worktree 这份工作区副本，工具用 ToolRoot。PullSteer 指向 pullSteer：Steer 只在会话仍在跑时追加文本，agentloop/desk 每 50 毫秒取一次，作为下一步消息交给代理，不取消回合。StopTurn 才取消运行槽的 context。
 // ctx 带着唤醒（launchWake）时按续跑走：不收这一轮的桌面消息，任务组摘要交给 Turn.Wake。
 func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume, alreadyCommitted bool, turnID string) (out string, runErr error) {
 	if turnID == "" {
@@ -793,7 +793,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		return nil
 	}
 	userCommitted := alreadyCommitted
-	// 先把用户行写入轨迹，再告诉 Run 不要重写。resume 和已经提交过的回合跳过。
+	// 先把用户行写入轨迹。agentloop/desk 不会为 Turn.User 再写一条用户事件，这里只需记下它已落盘，下面从历史末尾去掉同一句。resume 和已经提交过的回合跳过。
 	if !resume && !alreadyCommitted {
 		if err := a.commitUser(sessionID, message, atts, turnID); err != nil {
 			return "", err
@@ -977,11 +977,11 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			pageCtx += journal
 		}
 	}
-	// 这一轮交给 dsh 代理。停止看模型自己停、取消和 max-tokens，不再用 192 的软地平线。
-	out, runErr = a.agentDesk().Run(ctx, dshdesk.Turn{
+	// 这一轮交给 agentloop 代理。停止看模型自己停、取消和 max-tokens，不再用 192 的软地平线。
+	out, runErr = a.agentDesk().Run(ctx, desk.Turn{
 		SessionID:        sessionID,
 		TurnID:           turnID,
-		Prompt:           dshdesk.PromptText([]artifact.PromptFragment{{Text: runtime.AssembleIdentity(loop, frags)}}, profile, pageCtx),
+		Prompt:           desk.PromptText([]artifact.PromptFragment{{Text: runtime.AssembleIdentity(loop, frags)}}, profile, pageCtx),
 		User:             message,
 		Inject:           inject,
 		Model:            model,

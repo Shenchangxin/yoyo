@@ -1,5 +1,5 @@
 // Package eval 按 Harbor 布局加载任务、在隔离工作区里跑智能体，并用验证器打分。
-// copyDir 跳过 tests/，智能体工作区拿不到评分脚本。runTask 只把循环副本的 AllowLLMCompact 写成 false；RunRequest 不填 ModelWindow，所以是 0；CompactionTokens 保持调用方循环上的原值。
+// copyDir 跳过 tests/，智能体工作区拿不到评分脚本。runTask 经 agentloop/desk 跑每一题，提示和步数上限见 runTask 的注释。
 // ShouldPromote 要求 held-in 与 held-out 的差值都大于等于 0，且至少一边大于 0，不读 SafetyFail。Promote 在 SafetyFail 大于 0 时先拒绝，然后再调用 ShouldPromote。
 package eval
 
@@ -15,10 +15,13 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/Shenchangxin/yoyo/internal/agentloop/desk"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	rt "github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
+	"github.com/Shenchangxin/yoyo/internal/worktree"
 )
 
 // Task 是一道 Harbor 任务：目录名、说明和可选的 task.toml 时限。
@@ -100,7 +103,7 @@ type RunOpts struct {
 	Model         string
 	AllowShell    bool
 	RevealHeldOut bool
-	// IsolateRoot 非空时，每个任务经 runtime.IsolateWorkspace 进入分离工作区，再盖上 Harbor 任务，隔离标记为 git-worktree。
+	// IsolateRoot 非空时，每个任务经 worktree.Isolate 进入分离工作区，再盖上 Harbor 任务，隔离标记为 git-worktree。
 	// 为空时用临时复制目录，标记为 copy。两条路径都经 copyDir，智能体都拿不到 tests/。
 	IsolateRoot string
 	Meter       *rt.Meter
@@ -229,12 +232,11 @@ func repeatSession(base, taskID string, i int) string {
 }
 
 // runTask 在准备好的工作区里跑一轮，再用验证器决定 Pass。
-// 关掉模型摘要：只把这份循环副本的 AllowLLMCompact 写成 false。下面的 RunRequest 不填 ModelWindow，所以是 0。CompactionTokens 不在这里赋值，调用方循环上是多少就传多少。
-// ctx 和 timeout 一起交给 context.WithTimeout，得到的上下文传给 rt.Run。
-// task 的 Dir 交给 prepareWork，ID 写入结果，Instruction 写入 RunRequest 的 User。
-// timeout 作为 context.WithTimeout 的时长。
-// opts 的 IsolateRoot 交给 prepareWork；Skills 的 Name 和 Body 放进工具；Snapshot.EvalTools 非空时用它做广告工具，否则用 Snapshot.Tools；Loop 复制后把 AllowLLMCompact 写成 false；Snapshot、Hash、Model、Fragments、Playbook、Skills、Client、Trace、Meter 写入 RunRequest。
-// sessionID 写入 WorkspaceTools 和 RunRequest。
+// 这一轮经 agentloop/desk 跑，和桌面聊天、编排工单是同一套代理循环。提示用 runtime.HarborPrompt 拼完整前缀（身份、环境、手册、技能目录、规则、记忆），evolve 改的片段才进得了模型。
+// 步数上限取 opts.Loop.MaxTurns（小于等于 0 时 24），到了以 max_turns 停下。agentloop 不做模型摘要式的检查点，所以 AllowLLMCompact 在这里不起作用。
+// ctx 和 timeout 一起交给 context.WithTimeout。task 的 Dir 交给 prepareWork，ID 写入结果和轨迹，Instruction 是这一轮的用户消息。
+// opts 的 IsolateRoot 交给 prepareWork；Skills 的 Name 和 Body 放进工具；Snapshot.EvalTools 非空时用它做广告工具，否则用 Snapshot.Tools。
+// sessionID 是这一题这一次重复的会话编号，写入工具和轨迹。
 func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, opts RunOpts, sessionID string) TaskResult {
 	work, cleanup, isolate, err := prepareWork(task.Dir, opts.IsolateRoot)
 	if err != nil {
@@ -258,26 +260,39 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 	}
 	tools := &rt.WorkspaceTools{
 		Workspace: work, Home: work, SessionID: sessionID, Caps: caps, Skills: skillBodies,
-		Advertised: advertised,
+		Advertised: advertised, MaxParallel: opts.Loop.MaxParallel,
 	}
-	loop := opts.Loop
-	loop.AllowLLMCompact = false
-	_, runErr := rt.Run(tctx, rt.RunRequest{
+	tools.Spill = rt.BindSpill(work, work, sessionID)
+	tools.OperatorVoice = rt.OperatorVoice(task.Instruction, nil)
+	// 和桌面会话一样先写规则索引，模型按索引去读工作区里的路径规则。
+	rt.WriteRulesIndex(work)
+	maxSteps := opts.Loop.MaxTurns
+	if maxSteps <= 0 {
+		maxSteps = 24
+	}
+	turnID := diaglog.NewTurnID()
+	// desk 不把来源为空的用户消息写进轨迹（桌面由 App.commitUser 先写），这里先记下题目。
+	if opts.Trace != nil {
+		_ = opts.Trace.Append(trace.Event{
+			TS: time.Now().UTC(), Type: trace.TypeUser, Source: "user",
+			SessionID: sessionID, TurnID: turnID, TaskID: task.ID,
+			HarnessSnapshot: opts.Hash, ModelFingerprint: opts.Snapshot.ModelFingerprint,
+			Payload: map[string]any{"text": task.Instruction, "turn_id": turnID},
+		})
+	}
+	_, runErr := desk.New().Run(tctx, desk.Turn{
 		SessionID:        sessionID,
+		TurnID:           turnID,
 		TaskID:           task.ID,
+		Prompt:           rt.HarborPrompt(opts.Loop, opts.Fragments, opts.Playbook, opts.Skills, tools),
 		User:             task.Instruction,
-		Workspace:        work,
-		Harness:          opts.Snapshot,
+		Model:            opts.Model,
+		MaxSteps:         maxSteps,
+		Client:           opts.Client,
+		Tools:            tools,
+		Trace:            opts.Trace,
 		HarnessHash:      opts.Hash,
 		ModelFingerprint: opts.Snapshot.ModelFingerprint,
-		Model:            opts.Model,
-		Loop:             loop,
-		Fragments:        opts.Fragments,
-		Playbook:         opts.Playbook,
-		Skills:           opts.Skills,
-		Tools:            tools,
-		Client:           opts.Client,
-		Trace:            opts.Trace,
 		Meter:            opts.Meter,
 	})
 	res := TaskResult{ID: task.ID, Output: "", Isolate: isolate}
@@ -474,15 +489,15 @@ func containsID(ids []string, id string) bool {
 	return false
 }
 
-// prepareWork 准备智能体工作区。IsolateRoot 非空时调用 runtime.IsolateWorkspace，再盖上任务文件，标记为 git-worktree。
-// git worktree 失败时 IsolateWorkspace 会改成复制该根目录，标记仍然是 git-worktree。
+// prepareWork 准备智能体工作区。IsolateRoot 非空时调用 worktree.Isolate，再盖上任务文件，标记为 git-worktree。
+// git worktree 失败时 worktree.Isolate 会改成复制该根目录，标记仍然是 git-worktree。
 // IsolateRoot 为空时创建前缀为 yoyo-eval- 的临时目录，标记为 copy。两条路径都经 copyDir，都不会带上 tests/。
 // taskDir 交给 copyDir，作为拷进工作区的来源。
-// isolateRoot 非空时交给 rt.IsolateWorkspace，成功后再盖上任务文件，标记返回 git-worktree；为空时改用前缀 yoyo-eval- 的临时目录，标记返回 copy。
+// isolateRoot 非空时交给 worktree.Isolate，成功后再盖上任务文件，标记返回 git-worktree；为空时改用前缀 yoyo-eval- 的临时目录，标记返回 copy。
 func prepareWork(taskDir, isolateRoot string) (string, func(), string, error) {
 	nop := func() {}
 	if isolateRoot != "" {
-		work, cleanup, err := rt.IsolateWorkspace(isolateRoot)
+		work, cleanup, err := worktree.Isolate(isolateRoot)
 		if err != nil {
 			return "", nop, "", err
 		}

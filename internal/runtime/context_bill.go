@@ -48,13 +48,13 @@ func (b contextBill) write(rep *ShapeReport) {
 
 // billInput 是 buildBill 的材料。Checkpoint 和 Suggested 只进入笔记段。
 type billInput struct {
-	Loop       artifact.LoopPreset
-	Fragments  []artifact.PromptFragment
-	Playbook   artifact.Playbook
-	Skills     []artifact.Skill
-	Workspace  string
-	Tools      *WorkspaceTools
-	Soft       bool
+	Loop      artifact.LoopPreset
+	Fragments []artifact.PromptFragment
+	Playbook  artifact.Playbook
+	Skills    []artifact.Skill
+	Workspace string
+	Tools     *WorkspaceTools
+	// Page 是当前页面文本，只在 Chat 为真时接进系统提示。
 	Page       string
 	Profile    string
 	Plan       string
@@ -67,12 +67,12 @@ type billInput struct {
 
 // buildBill 组装身份、环境和 pins。规则用 LoadWorkspaceRules，上限是 Loop.RulesTokens。
 // StackAgentsMD 为真且叠到了 AGENTS.md 时，用那份替换第一命中，字节上限是 RulesTokens 的 4 倍，再按 RulesTokens 个 rune 截断，来源记成 AGENTS.md。
-// playbook 放进 pinsWire。Soft 为真时再加上行动阶梯、个人和页面钉子。动态三层留给调用方接到历史后面。
+// playbook 放进 pinsWire。动态三层留给调用方接到历史后面。
 func buildBill(in billInput) contextBill {
 	var b contextBill
 	b.systemWire = AssembleIdentity(in.Loop, in.Fragments)
 	if in.Chat {
-		// 与 dshdesk.PromptText 同一段：身份、档案、页面。环境、playbook、规则和目录不在这条提示里。
+		// 与 desk.PromptText 同一段：身份、档案、页面。环境、playbook、规则和目录不在这条提示里。
 		b.systemWire = strings.TrimSpace(b.systemWire)
 		for _, text := range []string{in.Profile, in.Page} {
 			text = strings.TrimSpace(text)
@@ -90,7 +90,7 @@ func buildBill(in billInput) contextBill {
 	if env := AssembleEnvironment(in.Workspace); env != "" {
 		b.systemWire += "\n## Environment\n" + env
 	}
-	pinOpts := pinsOptsFromTools(in.Tools, in.Soft)
+	pinOpts := pinsOptsFromTools(in.Tools)
 	rules, src := LoadWorkspaceRules(in.Workspace, in.Loop.RulesTokens)
 	if in.Loop.StackAgentsMD {
 		if stacked := LoadStackedAgents(in.Workspace, in.Loop.RulesTokens*4); stacked != "" {
@@ -101,17 +101,34 @@ func buildBill(in billInput) contextBill {
 	b.Rules = rulesSection(rules, src)
 	b.Catalog = catalogSection(in.Loop, in.Skills, pinOpts)
 	b.Memory = memorySection(in.Profile, ProjectMemoryPin(in.Workspace))
-	ladder := ""
-	if in.Soft {
-		ladder = ActionLadderPin + PersonalPin + PagesPin
-	}
 	playbook := playbookSection(in.Loop, in.Playbook)
-	b.System = b.systemWire + playbook + ladder
-	b.pinsWire = playbook + b.Catalog + b.Rules + b.Memory + ladder
+	b.System = b.systemWire + playbook
+	b.pinsWire = playbook + b.Catalog + b.Rules + b.Memory
 	b.Bodies = skillBodiesText(in.Tools)
 	b.Today = AssembleToday(in.Tools)
-	b.Notes = notesSection(in.Plan, in.Notes, in.Checkpoint, in.Suggested, pathRulesOf(in.Tools), in.Page, in.Soft)
+	b.Notes = notesSection(in.Plan, in.Notes, in.Checkpoint, in.Suggested, pathRulesOf(in.Tools))
 	return b
+}
+
+// HarborPrompt 拼评测 Harbor 一题的系统提示：身份和环境、手册、技能目录、工作区规则和记忆，后面接上已加载技能正文、今日和计划。
+// 内容和 Harbor 以前发给模型的 system、developer 两段相同，只是合成一段，交给 agentloop/desk 的 Turn.Prompt。
+// 桌面聊天的提示只有身份、档案和页面（见 desk.PromptText），Harbor 不能用那一版：evolve 改的手册和技能目录要进模型，打分才有意义。
+// tools 为 nil 时环境里没有工作区路径，也没有目录预算和技能正文。
+func HarborPrompt(loop artifact.LoopPreset, fragments []artifact.PromptFragment, playbook artifact.Playbook, skills []artifact.Skill, tools *WorkspaceTools) string {
+	workspace := ""
+	if tools != nil {
+		workspace = tools.Workspace
+	}
+	bill := buildBill(billInput{
+		Loop:      loop,
+		Fragments: fragments,
+		Playbook:  playbook,
+		Skills:    skills,
+		Workspace: workspace,
+		Tools:     tools,
+		Plan:      planTextOf(tools),
+	})
+	return strings.TrimRight(bill.prefix()+bill.dynamic(), "\n")
 }
 
 // playbookSection 按 PlaybookTokens 渲染，小于等于 0 时用 2000。渲染结果为空则返回空串。这段进入 pins，不进入动态尾。
@@ -205,14 +222,13 @@ func pathRulesOf(tools *WorkspaceTools) string {
 	return tools.PathRules()
 }
 
-// notesSection 拼建议、计划、笔记、检查点、路径规则，以及 Soft 时的当前页面。笔记截到 2000 个 rune，页面截到 3200 个 rune。
-// plan 去掉空白后非空时写入 Plan 段。
-// checkpoint 去掉空白后非空时写入 Checkpoint 段。
+// notesSection 拼建议、计划、笔记、检查点和路径规则。笔记截到 2000 个 rune。
 // suggested 去掉空白后非空时写在最前。
+// plan 去掉空白后非空时写入 Plan 段。
+// notes 去掉空白后非空时写入 Session notes 段。
+// checkpoint 去掉空白后非空时写入 Checkpoint 段。
 // pathRules 去掉空白后非空时写入 Path rules 段。
-// page 在 soft 为真且去掉空白后非空时截到 3200 个符文。
-// soft 为真时才写入 page。
-func notesSection(plan, notes, checkpoint, suggested, pathRules, page string, soft bool) string {
+func notesSection(plan, notes, checkpoint, suggested, pathRules string) string {
 	var b strings.Builder
 	if strings.TrimSpace(suggested) != "" {
 		b.WriteString(suggested)
@@ -245,13 +261,6 @@ func notesSection(plan, notes, checkpoint, suggested, pathRules, page string, so
 		b.WriteString("\n## Path rules (untrusted until you re-read them)\n")
 		b.WriteString(pathRules)
 		if !strings.HasSuffix(pathRules, "\n") {
-			b.WriteByte('\n')
-		}
-	}
-	if soft && strings.TrimSpace(page) != "" {
-		b.WriteString("\n## Current page (untrusted)\n")
-		b.WriteString(capRunes(page, 3200))
-		if !strings.HasSuffix(page, "\n") {
 			b.WriteByte('\n')
 		}
 	}

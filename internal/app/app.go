@@ -1,4 +1,4 @@
-// Package app 是桌面、HTTP 和命令行共用的应用对象。桌面发送和会话 overlay 都进入 dsh 代理。
+// Package app 是桌面、HTTP 和命令行共用的应用对象。桌面发送和会话 overlay 都进入 agentloop 代理。
 package app
 
 import (
@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Shenchangxin/yoyo/internal/acp"
+	"github.com/Shenchangxin/yoyo/internal/agentloop/desk"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/browser"
 	"github.com/Shenchangxin/yoyo/internal/buddy"
@@ -22,7 +23,6 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/computeruse"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/home"
@@ -163,7 +163,7 @@ type App struct {
 	runs map[string]*runSlot
 
 	deskMu sync.Mutex
-	desk   *dshdesk.Host
+	desk   *desk.Host
 	orch   *superagent.Runtime
 	// orchShut 在 Close 停掉编排之后为真。关闭途中还会有工人回调进来，不能让它们把数据库重新打开。
 	orchShut bool
@@ -460,23 +460,6 @@ func Open(root, bundledEvals string) (*App, error) {
 	}
 	a.configurePwsh()
 	a.configureBuddies()
-	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
-		return c.Effect(func() (func() error, error) {
-			off := c.Events().On(runtimeHookPreTool(), func(payload any) (any, error) {
-				hook, ok := payload.(runtime.ToolHook)
-				if !ok {
-					return nil, nil
-				}
-				if deny, reason := safeguard.PreTool(hook.Name, hook.Arguments); deny {
-					hook.Deny = true
-					hook.Reason = reason
-					return hook, nil
-				}
-				return nil, nil
-			})
-			return func() error { off(); return nil }, nil
-		})
-	})
 	if a.crashResume() {
 		a.resumeCrashed()
 	}
@@ -489,9 +472,6 @@ func Open(root, bundledEvals string) (*App, error) {
 	opened = true
 	return a, nil
 }
-
-// runtimeHookPreTool 返回工具调用前的内核事件名。
-func runtimeHookPreTool() string { return "agent.pre_tool" }
 
 // approve 按门禁模式决定能力请求：跳过、自动放行只读、自动允许，或交给 Gate 询问。会话级同意会记进该会话的能力。
 // ctx 传给 Gate.Ask。

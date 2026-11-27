@@ -302,43 +302,6 @@ func chosenOption(answer string, ids []string) string {
 	return ""
 }
 
-// waitsForNod 判断结束语是不是在等用户点头或确认，而不是已经做完。
-// text 转成小写，去掉空白后为空则返回 false，否则看是否包含 nodNeedles。
-func waitsForNod(text string) bool {
-	s := strings.ToLower(text)
-	if strings.TrimSpace(s) == "" {
-		return false
-	}
-	for _, needle := range nodNeedles {
-		if strings.Contains(s, needle) {
-			return true
-		}
-	}
-	return false
-}
-
-var nodNeedles = []string{
-	"请确认",
-	"点头",
-	"等你确认",
-	"等你回复",
-	"等你决定",
-	"等你点头",
-	"是否接受",
-	"please confirm",
-	"wait for your",
-	"waiting for your",
-	"once you approve",
-	"before i write",
-	"before i start",
-	"before i implement",
-	"shall i proceed",
-	"do you want me to proceed",
-	"let me know which",
-	"your go-ahead",
-	"your approval",
-}
-
 // askHold 读 hold 参数。布尔真，或字符串 1、true、yes、on 为真，其余为假。
 // v 是参数原值，可能是布尔、字符串或 nil。
 func askHold(v any) bool {

@@ -295,10 +295,10 @@ func TestRecallSkipsNearCopies(t *testing.T) {
 
 func TestVagueFlagsTimesThatCannotBeDated(t *testing.T) {
 	cases := map[string][]string{
-		"下个月搬家":   {"下个月"},
-		"周末去爬山":   {"周末"},
-		"下个月底搬家":  nil,
-		"每周末打球":   nil,
+		"下个月搬家":  {"下个月"},
+		"周末去爬山":  {"周末"},
+		"下个月底搬家": nil,
+		"每周末打球":  nil,
 		"下周三去上海": nil,
 	}
 	for text, want := range cases {

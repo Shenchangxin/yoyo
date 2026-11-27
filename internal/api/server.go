@@ -1,4 +1,4 @@
-// api 把 HTTP、WebSocket 和换行分隔的 JSON-RPC 接到应用核心上。
+// Package api 把 HTTP、WebSocket 和换行分隔的 JSON-RPC 接到应用核心上。
 // 工作者进程调用 ServeRPC 时，stdout 只写协议帧。
 package api
 

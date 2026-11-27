@@ -36,7 +36,7 @@ func openAgentsApp(t *testing.T, script acptest.Script, ids ...string) (*App, *f
 func route(t *testing.T, a *App, item map[string]any) string {
 	t.Helper()
 	raw, _ := json.Marshal(map[string]any{"items": []any{item}})
-	res := a.routerExtras()["task_route"].Call(string(raw))
+	res := a.routerExtrasFor("", "")["task_route"].Call(string(raw))
 	if res.Err != nil {
 		t.Fatal(res.Err)
 	}
@@ -150,7 +150,7 @@ func TestRouteBindsOmittedTrigger(t *testing.T) {
 	miss, _ := json.Marshal(map[string]any{"items": []any{map[string]any{
 		"action": "accept", "title": "hello", "brief": "在工单目录写 hello.txt。",
 	}}})
-	bare := a.routerExtras()["task_route"].Call(string(miss))
+	bare := a.routerExtrasFor("", "")["task_route"].Call(string(miss))
 	if !strings.Contains(bare.Content, "缺 trigger") {
 		t.Fatalf("no turn = %q %v", bare.Content, bare.Err)
 	}

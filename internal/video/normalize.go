@@ -14,7 +14,7 @@ var (
 	// openParen 匹配未闭合的括号直到结尾。
 	openParen = regexp.MustCompile(`[（(].*$`)
 	// spaces 匹配连续的空白，含全角空格。
-	spaces    = regexp.MustCompile(`[\s　]+`)
+	spaces = regexp.MustCompile(`[\s　]+`)
 )
 
 // NormalizeName 去掉成对括号里的别名和未闭合的括号后缀，再去掉空白并转成小写，使「林小雨（主角）」和「林小雨」落到同一键。

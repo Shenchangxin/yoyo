@@ -1,4 +1,4 @@
-// journal.go 拥有把 ACP 会话更新写成 dsh 日志的规则：正文、工具调用和结果、计划、fs 写入补记、用量。
+// journal.go 拥有把 ACP 会话更新写成 agentloop 日志的规则：正文、工具调用和结果、计划、fs 写入补记、用量。
 // TranscriptLines 只从 EventAssistant.ToolCalls 读工具调用，所以每次调用都挂在一条 EventAssistant 上。
 // 不拥有连接、回合开始和结束（worker.go），也不判断权限（perm.go）。
 
@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/Shenchangxin/yoyo/internal/acp"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 const (
@@ -49,10 +49,10 @@ type toolCall struct {
 	fromPermission bool
 }
 
-// journal 把一个工人的 ACP 更新写进它的 dsh 日志。只在 begin 和 finish 之间写；回放和回合外的更新只取用量。
+// journal 把一个工人的 ACP 更新写进它的 agentloop 日志。只在 begin 和 finish 之间写；回放和回合外的更新只取用量。
 type journal struct {
 	mu      sync.Mutex
-	sess    *dsh.Session
+	sess    *agentloop.Session
 	dir     string
 	onUsage func(acp.UsageUpdate)
 
@@ -73,7 +73,7 @@ type journal struct {
 }
 
 // newJournal 建一个写进 sess 的 journal。dir 用来把相对路径补成绝对路径。
-func newJournal(sess *dsh.Session, dir string, onUsage func(acp.UsageUpdate)) *journal {
+func newJournal(sess *agentloop.Session, dir string, onUsage func(acp.UsageUpdate)) *journal {
 	return &journal{sess: sess, dir: dir, onUsage: onUsage, calls: map[string]*toolCall{}}
 }
 
@@ -379,7 +379,7 @@ func (j *journal) flushTextLocked() {
 		return
 	}
 	j.step++
-	j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{Text: text, Finish: "stop"})
+	j.sess.Append(agentloop.EventAssistant, j.turn, j.step, agentloop.Assistant{Text: text, Finish: "stop"})
 }
 
 // permissionOpenLocked 在还有来自权限请求、且没有结果的调用时为真。调用时要已持有锁。
@@ -403,7 +403,7 @@ func (j *journal) publishDraftLocked() {
 		return
 	}
 	j.step++
-	j.draftSeq = j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{Text: text, Finish: "stop"})
+	j.draftSeq = j.sess.Append(agentloop.EventAssistant, j.turn, j.step, agentloop.Assistant{Text: text, Finish: "stop"})
 }
 
 // logCallLocked 把 c 写成一条带调用的 EventAssistant，攒着的正文跟它一起写。
@@ -431,16 +431,16 @@ func (j *journal) appendCallLocked(id, name, args string) int {
 		j.text.Reset()
 	}
 	j.step++
-	return j.sess.Append(dsh.EventAssistant, j.turn, j.step, dsh.Assistant{
+	return j.sess.Append(agentloop.EventAssistant, j.turn, j.step, agentloop.Assistant{
 		Text:      text,
-		ToolCalls: []dsh.ToolCall{{ID: id, Name: name, Arguments: args}},
+		ToolCalls: []agentloop.ToolCall{{ID: id, Name: name, Arguments: args}},
 		Finish:    "tool_calls",
 	})
 }
 
 // appendResultLocked 写一条工具结果。
 func (j *journal) appendResultLocked(id, name, text string, isError bool) {
-	j.sess.Append(dsh.EventToolResult, j.turn, j.step, dsh.ToolResultEvent{ID: id, Name: name, Text: text, IsError: isError})
+	j.sess.Append(agentloop.EventToolResult, j.turn, j.step, agentloop.ToolResultEvent{ID: id, Name: name, Text: text, IsError: isError})
 }
 
 // shownLocked 是这一轮的结果里会写成 wrote 的路径：没被拒、没失败的调用带的 diff。

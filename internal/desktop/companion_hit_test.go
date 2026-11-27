@@ -263,3 +263,45 @@ func TestClampCompanionStaysOnPrimary(t *testing.T) {
 		t.Fatalf("bottom edge %d", y)
 	}
 }
+
+// roundRectContains 判断点是否在圆角矩形内。角上按圆角半径做圆内测试，直边范围内直接算在里面。
+// px 小于 x 或大于 x 加 w 时返回假。rad 不小于 1 时还用来判断是否落在左右圆角。
+// py 小于 y 或大于 y 加 h 时返回假。rad 不小于 1 时还用来判断是否落在上下圆角。
+// x 作为左边界。
+// y 作为上边界。
+// w 作为宽度。rad 的两倍大于 w 时，rad 改成 w 的一半。
+// h 作为高度。rad 的两倍大于 h 时，rad 改成 h 的一半。
+// rad 小于 1 时，点已在矩形内就返回真。否则参与圆角测试。
+func roundRectContains(px, py, x, y, w, h, rad float64) bool {
+	if px < x || py < y || px > x+w || py > y+h {
+		return false
+	}
+	if rad < 1 {
+		return true
+	}
+	if rad*2 > w {
+		rad = w / 2
+	}
+	if rad*2 > h {
+		rad = h / 2
+	}
+	cx := px
+	cy := py
+	if px < x+rad {
+		cx = x + rad
+	} else if px > x+w-rad {
+		cx = x + w - rad
+	} else {
+		return true
+	}
+	if py < y+rad {
+		cy = y + rad
+	} else if py > y+h-rad {
+		cy = y + h - rad
+	} else {
+		return true
+	}
+	dx := px - cx
+	dy := py - cy
+	return dx*dx+dy*dy <= rad*rad
+}

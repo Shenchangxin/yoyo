@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 
 	_ "modernc.org/sqlite"
 )
@@ -113,7 +113,7 @@ func (rt *Runtime) SetWorkRoot(dir string) {
 }
 
 // Bind 接上模型和命令。ready 返回错误时派工先推迟。model 是工单代理的补全。shell 在给出的目录里执行命令。
-func (rt *Runtime) Bind(ready func() error, model dsh.Completer, shell func(ctx context.Context, dir, command string) (string, error)) {
+func (rt *Runtime) Bind(ready func() error, model agentloop.Completer, shell func(ctx context.Context, dir, command string) (string, error)) {
 	if rt == nil {
 		return
 	}
@@ -329,7 +329,7 @@ func (rt *Runtime) DeskAudiences(ticketID string) []string {
 	return rt.eng.DeskAudiences(ticketID)
 }
 
-// refreshEnvLocked 把来源里不含钥匙的说明写进工人环境。调用时要已持有锁。
+// refreshEnvLocked 把来源里不含钥匙的说明写进工人环境，变量名见 env.go。调用时要已持有锁。
 func (rt *Runtime) refreshEnvLocked() {
 	if rt == nil || rt.exec == nil || rt.eng == nil {
 		return
@@ -342,13 +342,13 @@ func (rt *Runtime) refreshEnvLocked() {
 			name = t.Name
 		}
 		return map[string]string{
-			"DSH_SUPERAGENT_DIR":               dir,
-			"DSH_SUPERAGENT_NAME":              name,
-			"DSH_SUPERAGENT_TICKET":            ticketID,
-			"DSH_SUPERAGENT_GITHUB_REPOSITORY": cfg.GitHubRepo,
-			"DSH_SUPERAGENT_GITHUB_ACCOUNT":    cfg.GitHubAccount,
-			"DSH_SUPERAGENT_FEISHU_BOT":        cfg.FeishuAppID,
-			"DSH_SUPERAGENT_FEISHU_CHAT":       cfg.FeishuChat,
+			envDir:           dir,
+			envName:          name,
+			envTicket:        ticketID,
+			envGitHubRepo:    cfg.GitHubRepo,
+			envGitHubAccount: cfg.GitHubAccount,
+			envFeishuBot:     cfg.FeishuAppID,
+			envFeishuChat:    cfg.FeishuChat,
 		}
 	}
 }
@@ -364,7 +364,7 @@ func (rt *Runtime) SetIntake(fn func() []Trigger) {
 }
 
 // SetMount 接上工人的工作区工具。dir 是这张工单的目录。
-func (rt *Runtime) SetMount(fn func(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID string) (func() int, func(time.Duration))) {
+func (rt *Runtime) SetMount(fn func(reg *agentloop.Registry, agent *agentloop.Agent, dir, ticketID string) (func() int, func(time.Duration))) {
 	if rt == nil {
 		return
 	}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/worktree"
 )
 
 // uniqueStrings 按出现顺序合并多组字符串，去掉空白和重复。
@@ -43,7 +43,7 @@ func (a *App) EnsureSessionWorktree(id string) (SessionMeta, error) {
 	if dest == "" {
 		dest = filepath.Join(a.Home.Worktrees(), m.ID)
 	}
-	if err := runtime.PersistWorktree(origin, dest); err != nil {
+	if err := worktree.Persist(origin, dest); err != nil {
 		return m, err
 	}
 	m.Isolate = true
@@ -68,7 +68,7 @@ func (a *App) ApplySessionWorktree(id string) (SessionMeta, error) {
 	if dest == "" {
 		return m, fmt.Errorf("session has no worktree")
 	}
-	if err := runtime.ApplyWorktree(origin, dest); err != nil {
+	if err := worktree.Apply(origin, dest); err != nil {
 		return m, err
 	}
 	return m, nil

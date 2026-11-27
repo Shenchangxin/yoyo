@@ -1,5 +1,5 @@
 // 偶像桌面的唯一入口 IdolCall。对话、旁白、先开口和回应礼物走偶像引擎；工作指令由 startIdolWork 交回会话的 StartSendOpts。
-// 一轮话在后台跑（idol_live.go），界面用 turn_next 长轮询拿写完的段。语音、识别和生图的厂商协议在 idol_vendor.go。
+// 一轮话在后台跑（idol_live.go），界面用 turn_next 长轮询拿写完的段。语音、识别和生图的厂商协议在 internal/idol/media。
 
 package app
 

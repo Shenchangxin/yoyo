@@ -79,33 +79,3 @@ func ParentWeight(n Node, childCount int) float64 {
 	}
 	return score
 }
-
-// BestParent 取 ParentWeight 最大的节点编号。同样跳过未评估的 online-ace-stage。都没有时返回 active。
-// nodes 为空时返回 active；否则取 ParentWeight 最大的节点 ID，该 ID 为空时仍返回 active。
-func BestParent(nodes []Node, active string) string {
-	if len(nodes) == 0 {
-		return active
-	}
-	children := map[string]int{}
-	for _, n := range nodes {
-		if n.Parent != "" {
-			children[n.Parent]++
-		}
-	}
-	bestID := active
-	bestScore := -1.0
-	for _, n := range nodes {
-		if n.Note == "online-ace-stage" && n.Metrics.HeldInTotal+n.Metrics.HeldOutTotal == 0 {
-			continue
-		}
-		score := ParentWeight(n, children[n.ID])
-		if score > bestScore {
-			bestScore = score
-			bestID = n.ID
-		}
-	}
-	if bestID == "" {
-		return active
-	}
-	return bestID
-}

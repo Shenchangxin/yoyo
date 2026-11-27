@@ -45,7 +45,7 @@ func TestNormalizeNameStripsAlias(t *testing.T) {
 	}
 }
 
-// TestPlanDuration 确认 500 字对应 60 秒和 5 段，并检查对白下限、转场下限，以及 volcengine 的 15 秒上限和 aliyun 的 30 秒上限。
+// TestPlanDuration 确认 500 字对应 60 秒和 5 段，并检查转场下限，以及 volcengine 的 15 秒上限和 aliyun 的 30 秒上限。
 func TestPlanDuration(t *testing.T) {
 	p := PlanDuration(string(make([]rune, 500)))
 	if p.TargetSeconds != 60 {
@@ -53,9 +53,6 @@ func TestPlanDuration(t *testing.T) {
 	}
 	if p.SegmentCount != 5 {
 		t.Fatalf("segments %d", p.SegmentCount)
-	}
-	if DialogueFloor(18) < MinSegment {
-		t.Fatal("floor")
 	}
 	if ClampSegment(3, "transition") != 8 {
 		t.Fatal("transition lo")

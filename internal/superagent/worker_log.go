@@ -1,5 +1,5 @@
 // worker_log.go 把工人会话日志收成可落盘的 JSON，并在重启后续回工人。
-// 不跑回合。回合由 Worker 负责：dsh 代理或外部 agent 的归一化日志。
+// 不跑回合。回合由 Worker 负责：agentloop 代理或外部 agent 的归一化日志。
 
 package superagent
 
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 type storedEvent struct {
@@ -20,7 +20,7 @@ type storedEvent struct {
 }
 
 // encodeLog 把事件收成 JSON，并返回其中最大的回合号。
-func encodeLog(events []dsh.Event) ([]byte, int) {
+func encodeLog(events []agentloop.Event) ([]byte, int) {
 	turn := 0
 	out := make([]storedEvent, 0, len(events))
 	for _, ev := range events {
@@ -41,7 +41,7 @@ func encodeLog(events []dsh.Event) ([]byte, int) {
 }
 
 // decodeLog 把 JSON 还原成事件。认不出的类型丢掉，避免重放时类型对不上。
-func decodeLog(body []byte) ([]dsh.Event, int) {
+func decodeLog(body []byte) ([]agentloop.Event, int) {
 	if len(body) == 0 {
 		return nil, 0
 	}
@@ -50,7 +50,7 @@ func decodeLog(body []byte) ([]dsh.Event, int) {
 		return nil, 0
 	}
 	turn := 0
-	var out []dsh.Event
+	var out []agentloop.Event
 	for _, ev := range stored {
 		if ev.Turn > turn {
 			turn = ev.Turn
@@ -59,7 +59,7 @@ func decodeLog(body []byte) ([]dsh.Event, int) {
 		if !ok && len(ev.Data) > 0 {
 			continue
 		}
-		out = append(out, dsh.Event{Type: ev.Type, Turn: ev.Turn, Step: ev.Step, Data: data})
+		out = append(out, agentloop.Event{Type: ev.Type, Turn: ev.Turn, Step: ev.Step, Data: data})
 	}
 	return out, turn
 }
@@ -70,43 +70,43 @@ func decodeEventData(typ string, raw json.RawMessage) (any, bool) {
 		return nil, true
 	}
 	switch typ {
-	case dsh.EventUser:
-		var msg dsh.UserMessage
+	case agentloop.EventUser:
+		var msg agentloop.UserMessage
 		if json.Unmarshal(raw, &msg) != nil {
 			return nil, false
 		}
 		return msg, true
-	case dsh.EventAssistant:
-		var msg dsh.Assistant
+	case agentloop.EventAssistant:
+		var msg agentloop.Assistant
 		if json.Unmarshal(raw, &msg) != nil {
 			return nil, false
 		}
 		return msg, true
-	case dsh.EventToolResult:
-		var msg dsh.ToolResultEvent
+	case agentloop.EventToolResult:
+		var msg agentloop.ToolResultEvent
 		if json.Unmarshal(raw, &msg) != nil {
 			return nil, false
 		}
 		return msg, true
-	case dsh.EventSystem:
-		var msg dsh.SystemCommit
+	case agentloop.EventSystem:
+		var msg agentloop.SystemCommit
 		if json.Unmarshal(raw, &msg) != nil {
 			return nil, false
 		}
 		return msg, true
-	case dsh.EventTurnEnd:
-		var msg dsh.TurnEnd
+	case agentloop.EventTurnEnd:
+		var msg agentloop.TurnEnd
 		if json.Unmarshal(raw, &msg) != nil {
 			return nil, false
 		}
 		return msg, true
-	case dsh.EventInbox:
-		var msg dsh.UserMessage
+	case agentloop.EventInbox:
+		var msg agentloop.UserMessage
 		if json.Unmarshal(raw, &msg) != nil {
 			return nil, false
 		}
 		return msg, true
-	case dsh.EventTurnStart, dsh.EventStepStart, dsh.EventStepEnd:
+	case agentloop.EventTurnStart, agentloop.EventStepStart, agentloop.EventStepEnd:
 		return nil, true
 	default:
 		return nil, false
@@ -130,22 +130,22 @@ func rejectedAsk(body []byte) (summary, question string, ok bool) {
 	found := false
 	for _, ev := range stored {
 		switch ev.Type {
-		case dsh.EventAssistant:
-			var msg dsh.Assistant
+		case agentloop.EventAssistant:
+			var msg agentloop.Assistant
 			if json.Unmarshal(ev.Data, &msg) != nil {
 				continue
 			}
 			for _, call := range msg.ToolCalls {
 				rememberReport(calls, call)
 			}
-		case dsh.EventToolCall:
-			var call dsh.ToolCall
+		case agentloop.EventToolCall:
+			var call agentloop.ToolCall
 			if json.Unmarshal(ev.Data, &call) != nil {
 				continue
 			}
 			rememberReport(calls, call)
-		case dsh.EventToolResult:
-			var msg dsh.ToolResultEvent
+		case agentloop.EventToolResult:
+			var msg agentloop.ToolResultEvent
 			if json.Unmarshal(ev.Data, &msg) != nil || msg.Name != "orchestrator_report" || msg.Text != "questionWithResult" {
 				continue
 			}
@@ -164,7 +164,7 @@ func rejectedAsk(body []byte) (summary, question string, ok bool) {
 }
 
 // rememberReport 记下一次带问题的 orchestrator_report。没有问题的调用不记。
-func rememberReport(calls map[string]reportArgs, call dsh.ToolCall) {
+func rememberReport(calls map[string]reportArgs, call agentloop.ToolCall) {
 	if call.Name != "orchestrator_report" || call.ID == "" {
 		return
 	}
@@ -200,13 +200,17 @@ func askedQuestion(e *Engine, ticketID, question string) bool {
 	return false
 }
 
-// applyRejectedAsk 把日志里被拒绝的提问按 blocked 补进 ticketID。已经有同一问题时不再补。
-func applyRejectedAsk(e *Engine, ticketID string, body []byte) bool {
-	summary, question, ok := rejectedAsk(body)
+// applyRejectedAsk 把日志里被拒绝的提问按 blocked 补进 ticketID，补上时返回这次的摘要和问题。
+// 日志里没有被拒的提问、同一问题已经记过，或者 Report 失败时 ok 为假。
+func applyRejectedAsk(e *Engine, ticketID string, body []byte) (summary, question string, ok bool) {
+	summary, question, ok = rejectedAsk(body)
 	if !ok || askedQuestion(e, ticketID, question) {
-		return false
+		return "", "", false
 	}
-	return e.Report(ticketID, Report{State: "blocked", Summary: summary, Question: question}) == nil
+	if e.Report(ticketID, Report{State: "blocked", Summary: summary, Question: question}) != nil {
+		return "", "", false
+	}
+	return summary, question, true
 }
 
 // TranscriptLine 是工单会话里给人看的一行。Role 取 user、assistant、tool_call、tool_result。
@@ -221,11 +225,11 @@ type TranscriptLine struct {
 }
 
 // stuckTurnError 返回还没被后续发言盖过去的那次错误回合。后面又有人说话或工人开口时返回 -1。
-func stuckTurnError(events []dsh.Event) int {
+func stuckTurnError(events []agentloop.Event) int {
 	last := -1
 	for i, ev := range events {
-		end, ok := ev.Data.(dsh.TurnEnd)
-		if ev.Type == dsh.EventTurnEnd && ok && end.Kind == "error" && strings.TrimSpace(end.Reason) != "" {
+		end, ok := ev.Data.(agentloop.TurnEnd)
+		if ev.Type == agentloop.EventTurnEnd && ok && end.Kind == "error" && strings.TrimSpace(end.Reason) != "" {
 			last = i
 		}
 	}
@@ -234,7 +238,7 @@ func stuckTurnError(events []dsh.Event) int {
 	}
 	for _, ev := range events[last+1:] {
 		switch ev.Type {
-		case dsh.EventAssistant, dsh.EventUser, dsh.EventToolResult, dsh.EventToolCall:
+		case agentloop.EventAssistant, agentloop.EventUser, agentloop.EventToolResult, agentloop.EventToolCall:
 			return -1
 		}
 	}
@@ -243,11 +247,11 @@ func stuckTurnError(events []dsh.Event) int {
 
 // TranscriptLines 把工人日志收成会话行。派工包装、重试和后台完成不进对话。
 // 还没被下一步领走的新消息会先出现。只有停在错误上、后面没有再开口时，才把中断原因留在末尾。
-func TranscriptLines(events []dsh.Event) []TranscriptLine {
+func TranscriptLines(events []agentloop.Event) []TranscriptLine {
 	claimed := map[string]bool{}
 	for _, ev := range events {
-		msg, ok := ev.Data.(dsh.UserMessage)
-		if ev.Type == dsh.EventUser && ok {
+		msg, ok := ev.Data.(agentloop.UserMessage)
+		if ev.Type == agentloop.EventUser && ok {
 			if text := strings.TrimSpace(msg.Text); text != "" {
 				claimed[strings.Join(strings.Fields(text), " ")] = true
 			}
@@ -257,8 +261,8 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 	var out []TranscriptLine
 	for i, ev := range events {
 		switch ev.Type {
-		case dsh.EventInbox:
-			msg, ok := ev.Data.(dsh.UserMessage)
+		case agentloop.EventInbox:
+			msg, ok := ev.Data.(agentloop.UserMessage)
 			if !ok || msg.Source == "retry" || msg.Source == "job" {
 				continue
 			}
@@ -267,14 +271,14 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 				continue
 			}
 			out = append(out, TranscriptLine{ID: lineID(i, "inbox"), Role: "user", Source: msg.Source, Text: clipRunes(text, 4000)})
-		case dsh.EventTurnEnd:
+		case agentloop.EventTurnEnd:
 			if i != stuck {
 				continue
 			}
-			end, _ := ev.Data.(dsh.TurnEnd)
+			end, _ := ev.Data.(agentloop.TurnEnd)
 			out = append(out, TranscriptLine{ID: lineID(i, "error"), Role: "assistant", Text: "这一回合中断了：" + clipRunes(strings.TrimSpace(end.Reason), 300)})
-		case dsh.EventUser:
-			msg, ok := ev.Data.(dsh.UserMessage)
+		case agentloop.EventUser:
+			msg, ok := ev.Data.(agentloop.UserMessage)
 			if !ok {
 				continue
 			}
@@ -296,8 +300,8 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 				line.Name = strings.TrimPrefix(msg.ID, handoverPrefix)
 			}
 			out = append(out, line)
-		case dsh.EventAssistant:
-			msg, ok := ev.Data.(dsh.Assistant)
+		case agentloop.EventAssistant:
+			msg, ok := ev.Data.(agentloop.Assistant)
 			if !ok {
 				continue
 			}
@@ -317,8 +321,8 @@ func TranscriptLines(events []dsh.Event) []TranscriptLine {
 					ID: id, Role: "tool_call", Name: name, Text: clipRunes(call.Arguments, transcriptClip(name, 500)),
 				})
 			}
-		case dsh.EventToolResult:
-			msg, ok := ev.Data.(dsh.ToolResultEvent)
+		case agentloop.EventToolResult:
+			msg, ok := ev.Data.(agentloop.ToolResultEvent)
 			if !ok {
 				continue
 			}
@@ -349,14 +353,14 @@ func lineID(i int, role string) string {
 }
 
 // scrubRestartNotes 去掉重启说明。它不是新任务，留在日志里会让工人把已经做过的事当成不能再做。
-func scrubRestartNotes(events []dsh.Event) []dsh.Event {
+func scrubRestartNotes(events []agentloop.Event) []agentloop.Event {
 	if len(events) == 0 {
 		return events
 	}
-	out := make([]dsh.Event, 0, len(events))
+	out := make([]agentloop.Event, 0, len(events))
 	for _, ev := range events {
-		if ev.Type == dsh.EventUser {
-			msg, ok := ev.Data.(dsh.UserMessage)
+		if ev.Type == agentloop.EventUser {
+			msg, ok := ev.Data.(agentloop.UserMessage)
 			if ok {
 				msg.Text = dropRestartLines(msg.Text)
 				if strings.TrimSpace(msg.Text) == "" {
@@ -459,11 +463,11 @@ func (e *Executor) watchLog(w Worker, ticketID string, stop <-chan struct{}) {
 // restoreAgent 把 ticketID 已存的日志灌进 w，并把回合号接到上次的后面。灌进去时返回真。
 // 日志里有交接时只灌最后一次交接之后的那段，更早的留作前缀，新工人读不到别的 agent 留下的工具调用。
 // marker 是这次派工的交接消息。日志里还没有它时，已有的全部留作前缀，w 从这条消息开始，返回假。
-func (e *Executor) restoreAgent(w Worker, ticketID string, marker *dsh.UserMessage) bool {
+func (e *Executor) restoreAgent(w Worker, ticketID string, marker *agentloop.UserMessage) bool {
 	if e == nil || w == nil {
 		return false
 	}
-	var events []dsh.Event
+	var events []agentloop.Event
 	turn := 0
 	if e.LogLoad != nil {
 		events, turn = decodeLog(e.LogLoad(ticketID))
@@ -474,7 +478,7 @@ func (e *Executor) restoreAgent(w Worker, ticketID string, marker *dsh.UserMessa
 	if fresh {
 		cut = len(events)
 	}
-	var prefix []dsh.Event
+	var prefix []agentloop.Event
 	if cut > 0 {
 		prefix, events = events[:cut], events[cut:]
 	}
@@ -482,7 +486,7 @@ func (e *Executor) restoreAgent(w Worker, ticketID string, marker *dsh.UserMessa
 	if fresh {
 		w.Restore(nil, turn)
 		if s := w.Session(); s != nil {
-			s.Append(dsh.EventUser, turn, 0, *marker)
+			s.Append(agentloop.EventUser, turn, 0, *marker)
 		}
 		return false
 	}
@@ -511,7 +515,7 @@ func (e *Executor) storeAgent(w Worker, ticketID string) {
 }
 
 // setPrefix 记下 ticketID 交接之前的日志，以及之后写日志的会话 owner。
-func (e *Executor) setPrefix(ticketID string, owner *dsh.Session, events []dsh.Event) {
+func (e *Executor) setPrefix(ticketID string, owner *agentloop.Session, events []agentloop.Event) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.prefix == nil {
@@ -521,7 +525,7 @@ func (e *Executor) setPrefix(ticketID string, owner *dsh.Session, events []dsh.E
 }
 
 // prefixFor 返回 owner 写盘时要拼在前面的日志副本。前缀属于别的会话时 ok 为假，这次不写。
-func (e *Executor) prefixFor(ticketID string, owner *dsh.Session) ([]dsh.Event, bool) {
+func (e *Executor) prefixFor(ticketID string, owner *agentloop.Session) ([]agentloop.Event, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	p, has := e.prefix[ticketID]
@@ -531,13 +535,13 @@ func (e *Executor) prefixFor(ticketID string, owner *dsh.Session) ([]dsh.Event, 
 	if p.owner != owner {
 		return nil, false
 	}
-	return append([]dsh.Event(nil), p.events...), true
+	return append([]agentloop.Event(nil), p.events...), true
 }
 
 // lastHandover 返回 events 里最后一条交接消息的下标。没有时为 -1。
-func lastHandover(events []dsh.Event) int {
+func lastHandover(events []agentloop.Event) int {
 	for i := len(events) - 1; i >= 0; i-- {
-		if msg, ok := events[i].Data.(dsh.UserMessage); ok && events[i].Type == dsh.EventUser && msg.Source == "handover" {
+		if msg, ok := events[i].Data.(agentloop.UserMessage); ok && events[i].Type == agentloop.EventUser && msg.Source == "handover" {
 			return i
 		}
 	}
@@ -545,9 +549,9 @@ func lastHandover(events []dsh.Event) int {
 }
 
 // hasMessage 在 events 里有编号为 id 的用户消息时为真。
-func hasMessage(events []dsh.Event, id string) bool {
+func hasMessage(events []agentloop.Event, id string) bool {
 	for _, ev := range events {
-		if msg, ok := ev.Data.(dsh.UserMessage); ok && ev.Type == dsh.EventUser && msg.ID == id {
+		if msg, ok := ev.Data.(agentloop.UserMessage); ok && ev.Type == agentloop.EventUser && msg.ID == id {
 			return true
 		}
 	}
@@ -583,7 +587,7 @@ func lastAssistantText(w Worker) string {
 		if ev.Turn != turn {
 			break
 		}
-		if msg, ok := ev.Data.(dsh.Assistant); ok && ev.Type == dsh.EventAssistant {
+		if msg, ok := ev.Data.(agentloop.Assistant); ok && ev.Type == agentloop.EventAssistant {
 			if text := strings.TrimSpace(msg.Text); text != "" {
 				return text
 			}
@@ -599,8 +603,8 @@ func lastTurnEnd(w Worker) (string, string) {
 	}
 	events := w.Session().Events()
 	for i := len(events) - 1; i >= 0; i-- {
-		end, ok := events[i].Data.(dsh.TurnEnd)
-		if events[i].Type == dsh.EventTurnEnd && ok {
+		end, ok := events[i].Data.(agentloop.TurnEnd)
+		if events[i].Type == agentloop.EventTurnEnd && ok {
 			return end.Kind, end.Reason
 		}
 	}

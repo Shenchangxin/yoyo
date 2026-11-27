@@ -2,7 +2,7 @@
 
 最后审阅：**2026-09-21**。对照的是各产品 **2026 年仍在演进的公开机制**（官方博客 / 文档 / 开源树），不是 2024 年的玩具 demo。
 
-落地状态：**桌面聊天不走 `runtime.Run`。** `sendLocked` 把身份、档案和页面交给 `dshdesk.Host.Run`。压缩只在发送前、历史已经超过整窗时做一次 `MaybeCheckpoint`。溢出是模型错误，不重试。`runtime.Run` 和 `ContextKernel` 是 Harbor 和它派生的子任务。Harbor 仍 Shape-only，且 `ModelWindow=0`、`AllowLLMCompact=false`。Playbook 不进 Harbor 的压缩提示，也不进桌面发出的系统提示。上下文用量按桌面实际发出的那段系统提示估算。
+落地状态：**桌面聊天不走 `runtime.Run`。** `sendLocked` 把身份、档案和页面交给 `desk.Host.Run`。压缩只在发送前、历史已经超过整窗时做一次 `MaybeCheckpoint`。溢出是模型错误，不重试。`runtime.Run` 和 `ContextKernel` 已经删除：评测 Harbor 也经 `desk.Host.Run` 跑每一题，提示用 `runtime.HarborPrompt` 拼完整前缀，`Turn.MaxSteps` 给出硬步数上限，不做模型摘要。Playbook 不进 Harbor 的压缩提示，也不进桌面发出的系统提示。上下文用量按桌面实际发出的那段系统提示估算。
 
 本文是工程方案，不是文献卡片。文献谱系仍走 [docs/research](../research/README.md)。Harbor / CAS / L4 不变量见 [invariants.md](invariants.md)。Skill Pack（Superpowers / NovelToGame）见 [skill-packs.md](skill-packs.md)。
 
@@ -88,7 +88,7 @@ Yoyo 已经有一条正确的产品轴线：
 - 可走 provider native compact；失败则从 **原始存储历史** 重建再本地检查点。
 - 指令更新和压缩分开记账；压缩完成那一刻的指令成为新 baseline。
 
-**对 Yoyo：** 这是 Chat 路径最该对齐的状态机。Yoyo 已有 `PersistCheckpoint` + `MessagesFromEvents` 的 rebuild origin，缺的是 `keep.tokens` 尾、一次溢出重试、以及「检查点之前禁止改写前缀」。
+**对 Yoyo：** 这是 Chat 路径最该对齐的状态机。Yoyo 已有 `persistCheckpoint` + `MessagesFromEvents` 的 rebuild origin，缺的是 `keep.tokens` 尾、一次溢出重试、以及「检查点之前禁止改写前缀」。
 
 ### 2.4 Cursor（DCD 2026-01；Composer self-summarization 2026-03；hooks）
 
@@ -130,17 +130,17 @@ Yoyo 已经有一条正确的产品轴线：
 
 ### 3.1 每轮实际组装顺序
 
-桌面一回合是 `internal/app/session.go` `sendLocked` → `dshdesk.Host.Run`：
+桌面一回合是 `internal/app/session.go` `sendLocked` → `desk.Host.Run`：
 
 1. `ApplyChatHorizon` 把 `RulesTokens` 写成 1600，并打开 `AllowLLMCompact`。子代理工具在这条路上没有装上。
 2. 历史来自检查点之后的轨迹。
 3. `MaybeCheckpoint` 只在估算已经超过整窗时，于发送前写一次检查点。
-4. 系统提示是 `dshdesk.PromptText`：`AssembleIdentity`、档案钉、页面。没有 playbook、技能目录、工作区规则、笔记或项目记忆钉。
+4. 系统提示是 `desk.PromptText`：`AssembleIdentity`、档案钉、页面。没有 playbook、技能目录、工作区规则、笔记或项目记忆钉。
 5. `Bridge.Complete` 只做 `Legalize`。工具走 `WorkspaceTools.Call`，调用前跑 `safeguard.PreTool`。
 6. 供应商报了 prompt token 时，记进这一轮的现场用量。回合外的用量按上面这段系统提示重算，不把 Harbor 的账单算进去。
 7. 上下文溢出作为模型错误结束这一轮，不自动压缩再试。
 
-Harbor 仍是 `eval/harbor.go` `runTask` → `runtime.Run` → `ContextKernel`。那条循环才有 Shape、溢出后重试一次、spill 和 `dispatchTools`。上面第 4 步以后的内核账单不要写回桌面。
+Harbor 现在是 `eval/harbor.go` `runTask` → `desk.Host.Run`，和桌面同一套循环。原来只在 `runtime.Run` 里的溢出重试、工具结果 spill 和预取都随它删除；桌面路径从来没有这几步。
 
 Harbor 不设 `ModelWindow`，预算钉死 `CompactionTokens`（默认 24k），且 `AllowLLMCompact` 被评测强制关掉。这条必须保持。
 
@@ -151,7 +151,7 @@ Harbor 不设 `ModelWindow`，预算钉死 `CompactionTokens`（默认 24k），
 **主机写进会话的行要进路由的上下文。** 工人回报、通知、简报、提醒和任务组卡片是主机直接写进主会话轨迹的（`Source` 为 `worker`、`notice`、`desk`），人在屏幕上看得到。桌面每条会话有一个常驻的代理，只在检查点换了时才重灌历史，所以两轮之间写进来的这些行，路由要到重启才看得到；重灌时它们又是助手角色，像是路由自己说过的话。现在：
 
 - 回放历史时，这些行不再是助手消息，而是并成一条写明「主机记录，不是人说的话」的用户角色消息，放在下一句人话之前，不会插在工具调用和结果中间（`runtime/host_note.go`、`MessagesFromEventsOpts`）。最多留最近 16 行，每行 600 字。
-- 常驻的代理每一轮收到这条会话里全部的主机行，把还没见过的补成同样的一条记录；同一行只补一次，重灌之后不重复（`dshdesk.Turn.HostLines`、`live.noteHost`）。
+- 常驻的代理每一轮收到这条会话里全部的主机行，把还没见过的补成同样的一条记录；同一行只补一次，重灌之后不重复（`desk.Turn.HostLines`、`live.noteHost`）。
 - 这条记录算控制行，不进笔记的目标，也不进对话摘要里「人的要求」。
 - 同一次运行里和重启之后，模型看到的是同一段字（`TestRouterSeesWhatThePersonWasShown`）。
 
@@ -174,7 +174,7 @@ Harbor 不设 `ModelWindow`，预算钉死 `CompactionTokens`（默认 24k），
 | Spill-first ingest | `context_ingest.go` | 先落盘再预览，对证优于 Codex 丢字节 |
 | 重写调用体 stub | `stubHeavyCalls` | 防「凭记忆整树重写」 |
 | 配对边界 snip | `pairingBoundary` + `Legalize` | 不会把半个 tool_call 交给 Chat Completions |
-| Skill catalog / `load_skill` | `AssemblePins` | progressive disclosure; chat catalog has trigger rules + budget; domain packs add a short routing pin |
+| Skill catalog / `load_skill` | `catalogSection`（`buildBill`，Harbor 经 `HarborPrompt`） | progressive disclosure; chat catalog has trigger rules + budget; domain packs add a short routing pin |
 | Skill Pack bootstrap | `ApplyPackBootstrap` + `BootstrapBodies` | Shape B：进程内预载，不进 identity；child `Depth>0` 跳过 |
 | `read_skill_file` | `skill_file.go` | 包目录在工作区 jail 外 |
 | Chat 工具菜单 + `tool_search` | `chat_menu.go` | 主机工具不全量广告 |
@@ -240,7 +240,7 @@ WorkBuddy L2、Gemini 的文件档位：同一 path 读十次只留最新。Yoyo
 
 **C10. 子代理窗口是玩具预算**
 
-`spawnTask`：`MaxTurns=8`，`MaxToolMessages=12`，`AllowLLMCompact=false`，`ChatOverlay=false`。Claude 把「大文件研究」丢给子代理，正是因为 child 窗口要够用。8 轮不够 grep 一个中型包。没有 explore / implement / qa 人格，没有独立 evaluator（Anthropic 2026-03 长程文的核心）。
+（历史记录：`spawnTask` 已随 `runtime.Run` 删除，task 子代理现在由 `agentloop/desk/subagent.go` 起，步数上限沿用父这一轮的 `Turn.MaxSteps`。下面是当时的分析。）`spawnTask`：`MaxTurns=8`，`MaxToolMessages=12`，`AllowLLMCompact=false`，`ChatOverlay=false`。Claude 把「大文件研究」丢给子代理，正是因为 child 窗口要够用。8 轮不够 grep 一个中型包。没有 explore / implement / qa 人格，没有独立 evaluator（Anthropic 2026-03 长程文的核心）。
 
 **C11. 记忆三套平行，没有晋升语义**
 
@@ -439,7 +439,7 @@ Cache 观测：解析 provider `cached_tokens` / Anthropic `cache_read_input_tok
 
 ### Slice 0 — 契约与账本（约 1 周）
 
-把 `assemble` / `Shape` / `checkpoint` / `notes` / `spill` / `measure` 收到 `internal/runtime/ctxkernel`（或 `runtime` 内明确的 `ContextKernel` 类型）。**行为先不改**，只让 `Run` 只调 `kernel.Turn()`。加 C1 的前缀测试（预期现在失败，作为红灯）。
+把 `assemble` / `Shape` / `checkpoint` / `notes` / `spill` / `measure` 收到 `internal/runtime/ctxkernel`（或 `runtime` 内明确的 `ContextKernel` 类型）。**行为先不改**，只让 `Run` 只调 `kernel.Turn()`。加 C1 的前缀测试（预期现在失败，作为红灯）。（已过时：`Run` 和 `ContextKernel` 都已删除，所有回合走 `agentloop`；Harbor 的前缀见 `runtime.HarborPrompt`。）
 
 交付：`ShapeReport` 增加 `cache_stable bool`、`prefix_hash`、`dynamic_at string`（`mid`|`tail`）。
 

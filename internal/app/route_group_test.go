@@ -209,7 +209,7 @@ func TestTaskReadTool(t *testing.T) {
 		}
 		return false
 	})
-	read := a.routerExtras()["task_read"]
+	read := a.routerExtrasFor("", "")["task_read"]
 	if !read.ReadOnly {
 		t.Fatal("task_read must be read-only")
 	}
@@ -236,7 +236,7 @@ func TestTaskRecommendTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := rt.View().Groups[0]
-	recommend := a.routerExtras()["task_recommend"]
+	recommend := a.routerExtrasFor("", "")["task_recommend"]
 	if recommend.ReadOnly {
 		t.Fatal("task_recommend writes to the group")
 	}
@@ -272,7 +272,7 @@ func TestRosterShowsGroup(t *testing.T) {
 			t.Fatalf("roster lacks %q:\n%s", want, roster)
 		}
 	}
-	if status := a.routerExtras()["task_status"].Call("{}"); !strings.Contains(status.Content, "  任务组 "+g.ID+"（分工，0/2 做完） · 前端\n") {
+	if status := a.routerExtrasFor("", "")["task_status"].Call("{}"); !strings.Contains(status.Content, "  任务组 "+g.ID+"（分工，0/2 做完） · 前端\n") {
 		t.Fatalf("status %q", status.Content)
 	}
 	if note := a.intakeDesk("s1", "t2", "进展怎么样"); !strings.Contains(note, "可派的 agent：") || !strings.Contains(note, "fake Fake") {

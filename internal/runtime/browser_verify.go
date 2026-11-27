@@ -155,9 +155,6 @@ func parseLimitations(v any) []qaLimitation {
 // root 若是 CSS 选择器，结果里会说明已忽略，并写到推断出的项目目录下。
 // args 传给 parseVerifyPlan。
 func (t *WorkspaceTools) browserVerify(args map[string]any) ToolResult {
-	if msg, ok := t.repeatVerifyBlocked(); ok {
-		return ToolResult{Content: msg}
-	}
 	plan, err := parseVerifyPlan(args, func(rel string) ([]byte, error) {
 		p, err := t.resolve(rel)
 		if err != nil {

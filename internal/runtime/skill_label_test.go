@@ -8,30 +8,17 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// TestEmitLiveIncludesSkillLabel 锁住 emit 的实时载荷和 JSONL 里都有 skill 字段。
-func TestEmitLiveIncludesSkillLabel(t *testing.T) {
-	st := trace.NewStore(t.TempDir())
-	var live []trace.Event
-	req := RunRequest{
-		SessionID: "s",
-		Trace:     st,
-		OnEvent:   func(ev trace.Event) { live = append(live, ev) },
-	}
-	emit(req, trace.TypeToolCall, "agent", map[string]any{
+// TestSlimLiveEventKeepsSkillLabel 锁住实时总线上变瘦的 load_skill 调用仍带 skill 字段，原事件的载荷不被改写。
+func TestSlimLiveEventKeepsSkillLabel(t *testing.T) {
+	ev := trace.Event{Type: trace.TypeToolCall, SessionID: "s", Payload: map[string]any{
 		"name": "load_skill", "arguments": `{"name":"brainstorming"}`, "id": "s1", "skill": "brainstorming",
-	})
-	if len(live) != 1 {
-		t.Fatalf("live=%d", len(live))
+	}}
+	got := slimLiveEvent(ev)
+	if got.Payload["name"] != "load_skill" || got.Payload["skill"] != "brainstorming" {
+		t.Fatalf("%v", got.Payload)
 	}
-	if live[0].Payload["name"] != "load_skill" || live[0].Payload["skill"] != "brainstorming" {
-		t.Fatalf("%v", live[0].Payload)
-	}
-	evs, err := st.Read("s")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(evs) == 0 || evs[0].Payload["skill"] != "brainstorming" {
-		t.Fatal("jsonl must keep the skill label")
+	if ev.Payload["skill"] != "brainstorming" {
+		t.Fatal("slimLiveEvent must not mutate the caller's payload")
 	}
 }
 

@@ -5,8 +5,6 @@ package runtime
 import (
 	"strings"
 	"testing"
-
-	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 // TestNotesSkipControlUsers 确认催促、检查点、提及和 steer 不替换已经记下的目标。
@@ -25,15 +23,6 @@ func TestNotesSkipControlUsers(t *testing.T) {
 	n := NotesFromMessages(msgs)
 	if n.Objective != "fix the parser in loop.go" {
 		t.Fatalf("objective %q", n.Objective)
-	}
-	evs := []trace.Event{
-		{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "fix the parser in loop.go"}},
-		{Type: trace.TypeUser, Source: "steer", Payload: map[string]any{"text": "do something else"}},
-		{Type: trace.TypeUser, Source: "runtime", Payload: map[string]any{"text": toolBudgetNudge}},
-	}
-	got := ExtractNotes(evs)
-	if got.Objective != "fix the parser in loop.go" {
-		t.Fatalf("extract objective %q", got.Objective)
 	}
 }
 
@@ -77,13 +66,6 @@ func TestResumeDoesNotReplaceObjective(t *testing.T) {
 	got := ParseNotes(ReadNotes(sp))
 	if got.Objective != "完善 RBAC 控制台" {
 		t.Fatalf("objective %q", got.Objective)
-	}
-	evs := []trace.Event{
-		{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "完善 RBAC 控制台"}},
-		{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "继续"}},
-	}
-	if ExtractNotes(evs).Objective != "完善 RBAC 控制台" {
-		t.Fatalf("extract %q", ExtractNotes(evs).Objective)
 	}
 }
 

@@ -5,8 +5,6 @@ package runtime
 import (
 	"fmt"
 	"strings"
-
-	"github.com/Shenchangxin/yoyo/internal/memory"
 )
 
 // ThreadRef 是另一场会话的 ID 和标题。
@@ -193,30 +191,4 @@ func (t *WorkspaceTools) sendThread(id, text string) ToolResult {
 		return ToolResult{Err: err}
 	}
 	return ToolResult{Content: "queued or steered into " + id}
-}
-
-// consolidateMemory 只在 SoftHorizon、工具和 Memory 都存在且 Objective 非空时写入。正文截到 800 个 rune。若已有相同文本或以前缀开头的情景记忆则不写。
-// req 的 SoftHorizon 为假，或 Tools、Memory 为空时直接返回；否则用 Memory 按目标搜索并写入。
-// notes 的 Objective 去掉空白后为空则返回；否则和 Files 拼成正文。
-func consolidateMemory(req RunRequest, notes SessionNotes) {
-	if !req.SoftHorizon || req.Tools == nil || req.Tools.Memory == nil {
-		return
-	}
-	obj := strings.TrimSpace(notes.Objective)
-	if obj == "" {
-		return
-	}
-	var b strings.Builder
-	b.WriteString(obj)
-	if len(notes.Files) > 0 {
-		b.WriteString("\nfiles: ")
-		b.WriteString(strings.Join(notes.Files, ", "))
-	}
-	text := capRunes(b.String(), 800)
-	for _, it := range req.Tools.Memory.Search(obj, memory.KindEpisodic, 4) {
-		if it.Text == text || strings.HasPrefix(it.Text, obj) {
-			return
-		}
-	}
-	req.Tools.Memory.Write(memory.Item{Kind: memory.KindEpisodic, Text: text, Origin: req.Tools.memoryOrigin()})
 }

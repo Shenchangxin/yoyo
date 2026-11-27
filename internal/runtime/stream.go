@@ -1,12 +1,10 @@
 // 与供应商无关的流式块词汇。适配器发出这些块，循环只按这里的块组装。
-// BlockAssembler 在 assembler.go。本文件不读网络。
+// 本文件不读网络。流片段在前端由 stream-chunk.ts 的 BlockAssembler 收成内容块。
 
 package runtime
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
 )
 
 const (
@@ -106,42 +104,4 @@ func (c StreamChunk) IsToken() bool {
 // Streamer 是 Client 的可选能力。循环发现它就走流式，界面可以逐块画，不必再接一套代理 SDK。
 type Streamer interface {
 	ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error)
-}
-
-// chunkMap 把块编成 JSON 对象。编解码失败时只留下 type。
-func chunkMap(ch StreamChunk) map[string]any {
-	b, err := json.Marshal(ch)
-	if err != nil {
-		return map[string]any{"type": ch.Type}
-	}
-	var m map[string]any
-	if err := json.Unmarshal(b, &m); err != nil {
-		return map[string]any{"type": ch.Type}
-	}
-	return m
-}
-
-// textFromBlocks 按顺序拼出文本块。推理块和空文本不进入结果。
-// blocks 里 Type 为文本且 Text 非空的块按顺序拼起来。
-func textFromBlocks(blocks []ContentBlock) string {
-	var b strings.Builder
-	for _, bl := range blocks {
-		if bl.Type == BlockText && bl.Text != "" {
-			b.WriteString(bl.Text)
-		}
-	}
-	return b.String()
-}
-
-// blocksFromMessage 把一条助手消息收成块。正文去掉空白后非空时先放文本块，再按原顺序放工具调用。没有正文也没有工具调用时返回 nil。
-// msg 的 Content 去掉空白后非空时先放文本块，再按 ToolCalls 的原顺序放工具调用块。
-func blocksFromMessage(msg Message) []ContentBlock {
-	var out []ContentBlock
-	if strings.TrimSpace(msg.Content) != "" {
-		out = append(out, ContentBlock{Type: BlockText, Text: msg.Content})
-	}
-	for _, tc := range msg.ToolCalls {
-		out = append(out, ContentBlock{Type: BlockToolCall, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
-	}
-	return out
 }

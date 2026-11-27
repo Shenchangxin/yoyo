@@ -17,7 +17,7 @@ import (
 func TestWaitIdleSilenceReturns(t *testing.T) {
 	cmd := sleeper(t, 5*time.Second)
 	start := time.Now()
-	o := Wait(context.Background(), cmd, 200*time.Millisecond, 0)
+	o := WaitNotify(context.Background(), cmd, 200*time.Millisecond, 0, nil)
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("idle fuse blocked %s", elapsed)
 	}
@@ -32,7 +32,7 @@ func TestWaitIdleSilenceReturns(t *testing.T) {
 func TestWaitBlockReturnsWhileAlive(t *testing.T) {
 	cmd := pingLoop(t)
 	start := time.Now()
-	o := Wait(context.Background(), cmd, 0, 300*time.Millisecond)
+	o := WaitNotify(context.Background(), cmd, 0, 300*time.Millisecond, nil)
 	if elapsed := time.Since(start); elapsed > 8*time.Second {
 		t.Fatalf("block fuse blocked %s", elapsed)
 	}
@@ -65,7 +65,7 @@ func TestWaitNotifyChunks(t *testing.T) {
 // TestWaitEchoFinishes 要求短命令在 idle 和 block 都是 2 秒时仍然正常结束，Background 为 false，输出含 hi。
 func TestWaitEchoFinishes(t *testing.T) {
 	cmd := echoHi()
-	o := Wait(context.Background(), cmd, 2*time.Second, 2*time.Second)
+	o := WaitNotify(context.Background(), cmd, 2*time.Second, 2*time.Second, nil)
 	if o.Background {
 		t.Fatalf("echo still running pid=%d out=%q", o.PID, o.Output)
 	}
@@ -77,13 +77,13 @@ func TestWaitEchoFinishes(t *testing.T) {
 	}
 }
 
-// TestRunStillKillsOnCancel 要求 ctx 在 200 毫秒超时后 Run 返回错误，且不会堵过 2 秒。
+// TestRunStillKillsOnCancel 要求 ctx 在 200 毫秒超时后 WaitNotify 返回错误，且不会堵过 2 秒。
 func TestRunStillKillsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	cmd := sleeper(t, 5*time.Second)
 	start := time.Now()
-	_, err := Run(ctx, cmd)
+	err := WaitNotify(ctx, cmd, 0, 0, nil).Err
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("cancel blocked %s", elapsed)
 	}

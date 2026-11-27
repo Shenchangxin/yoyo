@@ -1,4 +1,4 @@
-// 画布助手桥。startCanvasAgent 把这一轮交给已绑定的视频会话 StartSend，画布桥不是第二条 runtime.Run。停止走 Interrupt，审批走 Gate.Resolve。Hub 上的回合事件写回视频引擎的 CanvasAgent 接口。
+// 画布助手桥。startCanvasAgent 把这一轮交给已绑定的视频会话 StartSend，和普通桌面发送一样经 sendLocked 进入 desk.Host.Run，画布桥不是第二条代理循环。停止走 Interrupt，审批走 Gate.Resolve。Hub 上的回合事件写回视频引擎的 CanvasAgent 接口。
 
 package app
 

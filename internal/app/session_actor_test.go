@@ -252,14 +252,15 @@ func TestSeedAdvertisesHostTools(t *testing.T) {
 	_ = artifact.KindToolSpec
 }
 
-// TestSendAppliesChatHorizon 发送一长串工具步骤后，回合仍能结束并得到 done。
+// TestSendAppliesChatHorizon 发送 33 步各不相同、都能成功的工具调用后，回合仍能结束并得到 done。
+// 会话开在 learn 频道：agent 频道的会话是路由主会话，beginRoute 会置上 RouteOnly，只登记路由工具，list_dir 会得到 tool not found，安全网在第 6 次相同错误时就停下。
 func TestSendAppliesChatHorizon(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	sess, err := a.NewSession(t.TempDir())
+	sess, err := a.NewSessionOn(t.TempDir(), session.ChannelLearn)
 	if err != nil {
 		t.Fatal(err)
 	}

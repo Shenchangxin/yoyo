@@ -14,59 +14,59 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
 // fakeWorker 是测试用的外部工人。每条消息同步跑成一轮：记下消息，交给 onTurn，再写回合结束。
 type fakeWorker struct {
 	mu      sync.Mutex
-	session *dsh.Session
-	tools   map[string]dsh.Tool
+	session *agentloop.Session
+	tools   map[string]agentloop.Tool
 	turn    int
-	got     []dsh.UserMessage
+	got     []agentloop.UserMessage
 	steers  int
 	closed  atomic.Bool
-	onTurn  func(w *fakeWorker, msg dsh.UserMessage)
+	onTurn  func(w *fakeWorker, msg agentloop.UserMessage)
 	// end 不为 nil 时，这一轮按它结束，用过就清掉。minutes 是 Caps 报的单轮上限。
-	end     *dsh.TurnEnd
+	end     *agentloop.TurnEnd
 	minutes int
 }
 
 // newFakeWorker 用 spec 里的工具建一个假工人。onTurn 为 nil 时这一轮什么都不做。
-func newFakeWorker(spec WorkerSpec, onTurn func(w *fakeWorker, msg dsh.UserMessage)) *fakeWorker {
-	tools := map[string]dsh.Tool{}
+func newFakeWorker(spec WorkerSpec, onTurn func(w *fakeWorker, msg agentloop.UserMessage)) *fakeWorker {
+	tools := map[string]agentloop.Tool{}
 	for _, tool := range spec.Tools {
 		tools[tool.Name] = tool
 	}
-	return &fakeWorker{session: dsh.NewSession(), tools: tools, onTurn: onTurn}
+	return &fakeWorker{session: agentloop.NewSession(), tools: tools, onTurn: onTurn}
 }
 
 // Followup 把 msg 跑成一轮。
-func (w *fakeWorker) Followup(msg dsh.UserMessage) {
+func (w *fakeWorker) Followup(msg agentloop.UserMessage) {
 	w.mu.Lock()
 	w.turn++
 	turn := w.turn
 	w.got = append(w.got, msg)
 	w.mu.Unlock()
-	w.session.Append(dsh.EventUser, turn, 0, msg)
+	w.session.Append(agentloop.EventUser, turn, 0, msg)
 	if w.onTurn != nil {
 		w.onTurn(w, msg)
 	}
-	end := dsh.TurnEnd{Kind: "completed"}
+	end := agentloop.TurnEnd{Kind: "completed"}
 	w.mu.Lock()
 	if w.end != nil {
 		end = *w.end
 		w.end = nil
 	}
 	w.mu.Unlock()
-	w.session.Append(dsh.EventTurnEnd, turn, 0, end)
+	w.session.Append(agentloop.EventTurnEnd, turn, 0, end)
 }
 
 // endWith 让这一轮按 kind 和 reason 结束。
 func (w *fakeWorker) endWith(kind, reason string) {
 	w.mu.Lock()
-	w.end = &dsh.TurnEnd{Kind: kind, Reason: reason}
+	w.end = &agentloop.TurnEnd{Kind: kind, Reason: reason}
 	w.mu.Unlock()
 }
 
@@ -75,11 +75,11 @@ func (w *fakeWorker) say(text string) {
 	w.mu.Lock()
 	turn := w.turn
 	w.mu.Unlock()
-	w.session.Append(dsh.EventAssistant, turn, 1, dsh.Assistant{Text: text})
+	w.session.Append(agentloop.EventAssistant, turn, 1, agentloop.Assistant{Text: text})
 }
 
 // Steer 记一次插话并返回假，像 ACP 一样不支持。
-func (w *fakeWorker) Steer(dsh.UserMessage) bool {
+func (w *fakeWorker) Steer(agentloop.UserMessage) bool {
 	w.mu.Lock()
 	w.steers++
 	w.mu.Unlock()
@@ -87,7 +87,7 @@ func (w *fakeWorker) Steer(dsh.UserMessage) bool {
 }
 
 // Cancel 什么都不做；假工人的一轮是同步的。
-func (w *fakeWorker) Cancel(dsh.CancelCause, bool) {}
+func (w *fakeWorker) Cancel(agentloop.CancelCause, bool) {}
 
 // WhenIdle 立刻返回。
 func (w *fakeWorker) WhenIdle() {}
@@ -96,10 +96,10 @@ func (w *fakeWorker) WhenIdle() {}
 func (w *fakeWorker) Status() string { return "idle" }
 
 // Session 返回假工人的日志。
-func (w *fakeWorker) Session() *dsh.Session { return w.session }
+func (w *fakeWorker) Session() *agentloop.Session { return w.session }
 
 // Restore 把 events 灌进日志，回合号接在 turn 后面。
-func (w *fakeWorker) Restore(events []dsh.Event, turn int) {
+func (w *fakeWorker) Restore(events []agentloop.Event, turn int) {
 	w.session.Restore(events)
 	w.mu.Lock()
 	w.turn = turn
@@ -118,17 +118,17 @@ func (w *fakeWorker) Close() error {
 }
 
 // report 调用工单的 orchestrator_report。
-func (w *fakeWorker) report(state, summary string) dsh.Result {
+func (w *fakeWorker) report(state, summary string) agentloop.Result {
 	tool := w.tools["orchestrator_report"]
-	res, _ := tool.Run(context.Background(), dsh.ToolCall{ID: "r1", Name: tool.Name, Arguments: fmt.Sprintf(`{"state":%q,"summary":%q}`, state, summary)})
+	res, _ := tool.Run(context.Background(), agentloop.ToolCall{ID: "r1", Name: tool.Name, Arguments: fmt.Sprintf(`{"state":%q,"summary":%q}`, state, summary)})
 	return res
 }
 
 // messages 返回假工人收到的全部消息。
-func (w *fakeWorker) messages() []dsh.UserMessage {
+func (w *fakeWorker) messages() []agentloop.UserMessage {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return append([]dsh.UserMessage(nil), w.got...)
+	return append([]agentloop.UserMessage(nil), w.got...)
 }
 
 // setAgent 把 eng 里 ticketID 交给 agent。
@@ -139,7 +139,7 @@ func setAgent(eng *Engine, ticketID, agent string) {
 }
 
 // openWith 返回一个 Opener，每次打开都用 onTurn 建假工人，并把它送进 out。
-func openWith(out chan<- *fakeWorker, onTurn func(w *fakeWorker, msg dsh.UserMessage)) Opener {
+func openWith(out chan<- *fakeWorker, onTurn func(w *fakeWorker, msg agentloop.UserMessage)) Opener {
 	return func(_ context.Context, spec WorkerSpec) (Worker, error) {
 		w := newFakeWorker(spec, onTurn)
 		if out != nil {
@@ -182,7 +182,7 @@ func TestOpenerWorkerReportsReady(t *testing.T) {
 	specs := make(chan WorkerSpec, 1)
 	ex.Opener = func(_ context.Context, spec WorkerSpec) (Worker, error) {
 		specs <- spec
-		return newFakeWorker(spec, func(w *fakeWorker, msg dsh.UserMessage) {
+		return newFakeWorker(spec, func(w *fakeWorker, msg agentloop.UserMessage) {
 			if msg.Source == "assignment" {
 				if res := w.report("ready", "做完了"); res.IsError {
 					t.Errorf("report: %s", res.Text)
@@ -236,7 +236,7 @@ func TestDeliverFallsBackToFollowup(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	ex := NewExecutor(eng, NewSlots(1), nil)
 	opened := make(chan *fakeWorker, 1)
-	ex.Opener = openWith(opened, func(w *fakeWorker, msg dsh.UserMessage) {
+	ex.Opener = openWith(opened, func(w *fakeWorker, msg agentloop.UserMessage) {
 		switch msg.Source {
 		case "assignment":
 			w.report("waiting", "收到")
@@ -280,7 +280,7 @@ func TestAgentLimitBusy(t *testing.T) {
 		return 0
 	}
 	release := make(chan struct{})
-	ex.Opener = openWith(nil, func(w *fakeWorker, msg dsh.UserMessage) {
+	ex.Opener = openWith(nil, func(w *fakeWorker, msg agentloop.UserMessage) {
 		if msg.Source == "assignment" {
 			<-release
 			w.report("ready", "ok")
@@ -321,7 +321,7 @@ func TestClosedWhenTicketEnds(t *testing.T) {
 	setAgent(eng, done, "codex")
 	setAgent(eng, idle, "codex")
 
-	ex.Opener = openWith(opened, func(w *fakeWorker, msg dsh.UserMessage) {
+	ex.Opener = openWith(opened, func(w *fakeWorker, msg agentloop.UserMessage) {
 		if msg.Source == "assignment" {
 			w.report("ready", "ok")
 		}
@@ -333,7 +333,7 @@ func TestClosedWhenTicketEnds(t *testing.T) {
 	waitOutcome(t, eng, done, "completed")
 	waitFor(t, "close after ready", func() bool { return finished.closed.Load() && !ex.HasAgent(done) })
 
-	ex.Opener = openWith(opened, func(w *fakeWorker, msg dsh.UserMessage) {
+	ex.Opener = openWith(opened, func(w *fakeWorker, msg agentloop.UserMessage) {
 		if msg.Source == "assignment" {
 			w.report("waiting", "收到")
 		}
@@ -372,7 +372,7 @@ func TestTurnTimeoutParks(t *testing.T) {
 	ex := NewExecutor(eng, NewSlots(1), nil)
 	opened := make(chan *fakeWorker, 1)
 	ex.Opener = func(_ context.Context, spec WorkerSpec) (Worker, error) {
-		w := newFakeWorker(spec, func(w *fakeWorker, _ dsh.UserMessage) { w.endWith("aborted", ReasonTurnTimeout) })
+		w := newFakeWorker(spec, func(w *fakeWorker, _ agentloop.UserMessage) { w.endWith("aborted", ReasonTurnTimeout) })
 		w.minutes = 45
 		opened <- w
 		return w, nil
@@ -397,7 +397,7 @@ func TestAgentSpinParks(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	ex := NewExecutor(eng, NewSlots(1), nil)
 	opened := make(chan *fakeWorker, 1)
-	ex.Opener = openWith(opened, func(w *fakeWorker, _ dsh.UserMessage) {
+	ex.Opener = openWith(opened, func(w *fakeWorker, _ agentloop.UserMessage) {
 		w.say("终于——现在我真正调用 orchestrator_report（ready）")
 		w.endWith("error", ReasonAgentSpin)
 	})
@@ -434,7 +434,7 @@ func TestAuthRequiredAsksLogin(t *testing.T) {
 		mu.Unlock()
 	}
 	opened := make(chan *fakeWorker, 1)
-	ex.Opener = openWith(opened, func(w *fakeWorker, _ dsh.UserMessage) {
+	ex.Opener = openWith(opened, func(w *fakeWorker, _ agentloop.UserMessage) {
 		w.endWith("error", ReasonAuthRequired+": Authentication required")
 	})
 	id := accept(t, eng, "m1")
@@ -464,7 +464,7 @@ func TestAgentExitRetries(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	ex := NewExecutor(eng, NewSlots(1), nil)
 	opened := make(chan *fakeWorker, 1)
-	ex.Opener = openWith(opened, func(w *fakeWorker, msg dsh.UserMessage) {
+	ex.Opener = openWith(opened, func(w *fakeWorker, msg agentloop.UserMessage) {
 		switch msg.Source {
 		case "assignment":
 			w.endWith("error", "agent exited: 1 panic: boom")
@@ -507,7 +507,7 @@ func TestExternalSettleUsesLastText(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	ex := NewExecutor(eng, NewSlots(1), nil)
 	long := strings.Repeat("改", 250)
-	ex.Opener = openWith(nil, func(w *fakeWorker, msg dsh.UserMessage) {
+	ex.Opener = openWith(nil, func(w *fakeWorker, msg agentloop.UserMessage) {
 		if msg.Source == "retry" {
 			w.say(long)
 			return

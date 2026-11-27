@@ -5,8 +5,8 @@ package app
 import (
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/buddy"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
@@ -47,11 +47,6 @@ func (a *App) compactOptsFor(routing bool) runtime.CompactOpts {
 // intakeDesk 转发到 routeHost。
 func (a *App) intakeDesk(sessionID, turnID, text string) string {
 	return (&routeHost{app: a}).intakeDesk(sessionID, turnID, text)
-}
-
-// routerExtras 转发到 routeHost。
-func (a *App) routerExtras() map[string]runtime.ExtraTool {
-	return (&routeHost{app: a}).routerExtras()
 }
 
 // routerExtrasFor 转发到 routeHost。
@@ -120,7 +115,7 @@ func (a *App) memoryForgetTool() runtime.ExtraTool {
 }
 
 // mountWorker 转发到 routeHost。
-func (a *App) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID string) (func() int, func(time.Duration)) {
+func (a *App) mountWorker(reg *agentloop.Registry, agent *agentloop.Agent, dir, ticketID string) (func() int, func(time.Duration)) {
 	return (&routeHost{app: a}).mountWorker(reg, agent, dir, ticketID)
 }
 

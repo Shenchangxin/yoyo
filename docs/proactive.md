@@ -5,7 +5,7 @@
 基线有两份，不再加第三套运行时：
 
 - 领域与注意力纪律：[dsh-superagent-prototype](../../dsh-superagent-prototype/docs/000-philosophy.md) 的哲学，以及 [001 领域模型](../../dsh-superagent-prototype/docs/001-domain.md)。来源产出触发，评估决定接单、忽略或未完成，工单才授权执行。
-- 执行器是一次 harness 会话。原型里它是 DeepSeek Harness 的 Session；Yoyo 用进程内的 Go 循环站在同一个位置（`internal/runtime`、`internal/dsh`、`internal/superagent`）。路由只拿 `task_route`、`task_status`、`task_note`、`task_stop`、`memory_read`。工人是另一段会话，一次一张工单。
+- 执行器是一次 harness 会话。原型里它是 DeepSeek Harness 的 Session；Yoyo 用进程内的 Go 循环站在同一个位置（`internal/runtime`、`internal/agentloop`、`internal/superagent`）。路由只拿 `task_route`、`task_status`、`task_note`、`task_stop`、`memory_read`。工人是另一段会话，一次一张工单。
 
 主动式要补的是开口，不是再做一个会聊天的壳。
 

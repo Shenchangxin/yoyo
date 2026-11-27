@@ -16,10 +16,10 @@ import (
 // TestJoinTokensKeepsChineseTogether 确认中文词之间不加空格，只有拉丁字母和数字之间才隔开。
 func TestJoinTokensKeepsChineseTogether(t *testing.T) {
 	cases := map[string][]string{
-		"差点走了":          {"差点", "走了"},
+		"差点走了":         {"差点", "走了"},
 		"今天聊iPhone 18": {"今天", "聊", "iPhone", "18"},
-		"Hello world.":  {"Hello", "world."},
-		"world. Next":   {"world.", "Next"},
+		"Hello world.": {"Hello", "world."},
+		"world. Next":  {"world.", "Next"},
 	}
 	for want, toks := range cases {
 		var words []Word
@@ -29,32 +29,6 @@ func TestJoinTokensKeepsChineseTogether(t *testing.T) {
 		if got := joinTokens(words); got != want {
 			t.Errorf("%v: got %q want %q", toks, got, want)
 		}
-	}
-}
-
-// TestContractHasNoPendingRows 锁住清单没有待定行，已实现和排除都有，而且编号不重复。
-func TestContractHasNoPendingRows(t *testing.T) {
-	if rows := Pending(); len(rows) != 0 {
-		t.Fatalf("pending %+v", rows)
-	}
-	impl, excl := 0, 0
-	seen := map[string]bool{}
-	for _, row := range Contract() {
-		if seen[row.ID] {
-			t.Fatalf("duplicate %s", row.ID)
-		}
-		seen[row.ID] = true
-		switch row.State {
-		case "implemented":
-			impl++
-		case "excluded":
-			excl++
-		default:
-			t.Fatalf("state %s", row.State)
-		}
-	}
-	if impl != 8 || excl != 7 {
-		t.Fatalf("implemented %d excluded %d", impl, excl)
 	}
 }
 
@@ -604,7 +578,8 @@ func TestRegionsAndDownloadCommand(t *testing.T) {
 	if err != nil || len(boxes) != 1 || boxes[0].Label != "脸" {
 		t.Fatal(err)
 	}
-	p := ApplyRegions(FromTemplate("interview", ""), boxes)
+	p := FromTemplate("interview", "")
+	p.Shots = assignRegions(p.Shots, boxes)
 	if p.Shots[0].Region.Label != "脸" || p.Shots[0].Region.W != 0.3 {
 		t.Fatalf("%+v", p.Shots[0].Region)
 	}

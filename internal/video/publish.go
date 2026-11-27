@@ -13,7 +13,7 @@ import (
 // 发布记录使用这四种状态文本。
 const (
 	// PublishDraft 是草稿状态 draft。
-	PublishDraft  = "draft"
+	PublishDraft = "draft"
 	// PublishOpened 是已打开后台的状态 opened。
 	PublishOpened = "opened"
 	// PublishPosted 是已发布状态 posted。

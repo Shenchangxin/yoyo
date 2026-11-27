@@ -79,7 +79,7 @@ func TestReadDevToolsActivePort(t *testing.T) {
 // TestWaitDevToolsPortTimesOut 锁住没有端口文件时等待会超时，错误里含有 chrome debug port did not come up。
 func TestWaitDevToolsPortTimesOut(t *testing.T) {
 	dir := t.TempDir()
-	_, err := waitDevToolsPort(dir, time.Now().Add(40*time.Millisecond))
+	_, err := waitChromeDebug(dir, 0, time.Now().Add(40*time.Millisecond))
 	if err == nil || !strings.Contains(err.Error(), "chrome debug port did not come up") {
 		t.Fatalf("%v", err)
 	}

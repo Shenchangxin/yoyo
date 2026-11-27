@@ -13,12 +13,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Shenchangxin/yoyo/internal/agentloop/desk"
 	"github.com/Shenchangxin/yoyo/internal/capability"
-	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
+	"github.com/Shenchangxin/yoyo/internal/worktree"
 )
 
 const (
@@ -207,7 +208,7 @@ type overlayProbeReq struct {
 	maxWall  time.Duration
 }
 
-// overlayProbe 用 runtime.IsolateWorkspace 得到一份临时工作目录，在其中调用 dshdesk.Host.Run，再按任务里点名的文件判断是否交付。
+// overlayProbe 用 worktree.Isolate 得到一份临时工作目录，在其中调用 desk.Host.Run，再按任务里点名的文件判断是否交付。
 // ctx 用来做超时上下文，再传给 Host.Run。
 // req 用来读 label、toolRoot、maxWall、session、mats、model、task 和 client；toolRoot 去掉空白后为空则返回错误。
 func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.OverlayRollout, error) {
@@ -216,7 +217,7 @@ func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.Ove
 	if src == "" {
 		return out, fmt.Errorf("overlay: empty tool root")
 	}
-	work, cleanup, err := runtime.IsolateWorkspace(src)
+	work, cleanup, err := worktree.Isolate(src)
 	if err != nil {
 		return out, err
 	}
@@ -252,7 +253,7 @@ func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.Ove
 	preHooks, stopHooks, _ := runtime.LoadHookFile(work)
 	tools.FileHooks = preHooks
 	meter := &runtime.Meter{USDPerMTok: a.Config.USDPerMTok}
-	_, runErr := a.agentDesk().Run(tctx, dshdesk.Turn{
+	_, runErr := a.agentDesk().Run(tctx, desk.Turn{
 		SessionID:        probeID,
 		Prompt:           runtime.AssembleIdentity(req.mats.Loop, req.mats.Fragments),
 		User:             req.task,

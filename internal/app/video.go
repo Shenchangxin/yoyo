@@ -1,4 +1,4 @@
-// 视频引擎的打开、车道工具和 VideoCall。会话循环不在这里。openVideo 把画布助手桥的 Start 接到 startCanvasAgent，那一轮由会话 StartSend 执行，画布桥不是第二条 runtime.Run。短片、剪辑、短剧和画布工具挂在这场会话的 WorkspaceTools 上。
+// 视频引擎的打开、车道工具和 VideoCall。会话循环不在这里。openVideo 把画布助手桥的 Start 接到 startCanvasAgent，那一轮由会话 StartSend 执行（经 sendLocked 进入 desk.Host.Run），画布桥不是第二条代理循环。短片、剪辑、短剧和画布工具挂在这场会话的 WorkspaceTools 上。
 
 package app
 
@@ -25,7 +25,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/film"
 )
 
-// openVideo 打开默认视频引擎、媒体服务和角色卡司，并把任务与画布 Hub 事件接到 onVideoJob、onCanvasHub。画布助手的 Start、Stop、Decide 分别是 startCanvasAgent、stopCanvasAgent、decideCanvasAgent。Start 进入会话的 StartSend，画布桥不是第二条 runtime.Run。
+// openVideo 打开默认视频引擎、媒体服务和角色卡司，并把任务与画布 Hub 事件接到 onVideoJob、onCanvasHub。画布助手的 Start、Stop、Decide 分别是 startCanvasAgent、stopCanvasAgent、decideCanvasAgent。Start 进入会话的 StartSend，经 sendLocked 交给 desk.Host.Run，画布桥不是第二条代理循环。
 func (appHost *videoHost) openVideo() error {
 	if appHost.app.Home == nil || appHost.app.CAS == nil || appHost.app.Vault == nil {
 		return fmt.Errorf("video: home, cas, and vault are required")

@@ -81,34 +81,3 @@ func TestWriteFileAllowsTypicalMarkdownPart(t *testing.T) {
 		t.Fatal(res.Err)
 	}
 }
-
-// TestSoftGuardStopsWhenNothingMoved 锁住轮数到达 ChatSoftGuardTurns 且停滞窗口已满时停止；窗口内有进展则重置；还没到上限则既不重置也不停。
-func TestSoftGuardStopsWhenNothingMoved(t *testing.T) {
-	reset, stop := softGuard(ChatSoftGuardTurns, ChatStallWindow)
-	if reset || !stop {
-		t.Fatalf("reset=%v stop=%v", reset, stop)
-	}
-	reset, stop = softGuard(ChatSoftGuardTurns, 0)
-	if !reset || stop {
-		t.Fatalf("recent progress must extend, reset=%v stop=%v", reset, stop)
-	}
-	reset, stop = softGuard(ChatSoftGuardTurns-1, ChatStallWindow)
-	if reset || stop {
-		t.Fatalf("under the cap must keep going, reset=%v stop=%v", reset, stop)
-	}
-}
-
-// TestTrimTruncatedReplyDropsCutToolCall 锁住截断回复里未闭合的 write_file 被丢掉，完整的 read_file 留下，并给出提示。
-func TestTrimTruncatedReplyDropsCutToolCall(t *testing.T) {
-	msg, nudge := trimTruncatedReply(Message{
-		Role:      RoleAssistant,
-		Truncated: true,
-		ToolCalls: []ToolCall{
-			{ID: "ok", Name: "read_file", Arguments: `{"path":"a.js"}`},
-			{ID: "cut", Name: "write_file", Arguments: `{"path":"b.js","content":"partial`},
-		},
-	})
-	if nudge == "" || len(msg.ToolCalls) != 1 || msg.ToolCalls[0].ID != "ok" {
-		t.Fatalf("msg=%+v nudge=%q", msg.ToolCalls, nudge)
-	}
-}

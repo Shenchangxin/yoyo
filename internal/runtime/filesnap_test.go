@@ -27,7 +27,7 @@ func TestFileSnapshotRewindRestoresOldest(t *testing.T) {
 	if err := os.WriteFile(target, []byte("edit-2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	n, err := RestoreFileSnapshots(dir, ws)
+	n, err := RestoreFileSnapshotsAfter(dir, ws, time.Time{})
 	if err != nil || n != 1 {
 		t.Fatalf("restore n=%d err=%v", n, err)
 	}

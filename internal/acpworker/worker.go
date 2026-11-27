@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/acp"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
 
@@ -80,7 +80,7 @@ type Config struct {
 type Worker struct {
 	cfg  Config
 	spec superagent.WorkerSpec
-	sess *dsh.Session
+	sess *agentloop.Session
 	jr   *journal
 	pool *pool
 
@@ -92,7 +92,7 @@ type Worker struct {
 
 	mu      sync.Mutex
 	idle    *sync.Cond
-	queue   []dsh.UserMessage
+	queue   []agentloop.UserMessage
 	running bool
 	closed  bool
 	halted  bool
@@ -109,7 +109,7 @@ func Open(cfg Config) *Worker { return open(cfg, processes) }
 
 // open 建一个记在 p 里的工人。
 func open(cfg Config, p *pool) *Worker {
-	w := &Worker{cfg: cfg, spec: cfg.Spec, sess: dsh.NewSession(), pool: p, pointer: strings.TrimSpace(cfg.Spec.Pointer)}
+	w := &Worker{cfg: cfg, spec: cfg.Spec, sess: agentloop.NewSession(), pool: p, pointer: strings.TrimSpace(cfg.Spec.Pointer)}
 	w.idle = sync.NewCond(&w.mu)
 	w.jr = newJournal(w.sess, cfg.Spec.Dir, w.onUsage)
 	w.usedAt.Store(time.Now().UnixNano())
@@ -120,7 +120,7 @@ func open(cfg Config, p *pool) *Worker {
 var _ superagent.Worker = (*Worker)(nil)
 
 // Followup 把 msg 排进队列。空闲时立刻开一轮，正在跑时等这一轮结束后一起发。
-func (w *Worker) Followup(msg dsh.UserMessage) {
+func (w *Worker) Followup(msg agentloop.UserMessage) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.closed || w.halted {
@@ -139,10 +139,10 @@ func (w *Worker) Followup(msg dsh.UserMessage) {
 }
 
 // Steer 返回假。ACP 没有标准的插话，执行器改用 Followup。
-func (w *Worker) Steer(dsh.UserMessage) bool { return false }
+func (w *Worker) Steer(agentloop.UserMessage) bool { return false }
 
 // Cancel 停下这一轮：取消提示，客户端会发 session/cancel。keepInbox 为假时清掉还没发的输入。
-func (w *Worker) Cancel(cause dsh.CancelCause, keepInbox bool) {
+func (w *Worker) Cancel(cause agentloop.CancelCause, keepInbox bool) {
 	w.mu.Lock()
 	if !keepInbox {
 		w.queue = nil
@@ -174,10 +174,10 @@ func (w *Worker) Status() string {
 }
 
 // Session 返回归一化的日志。
-func (w *Worker) Session() *dsh.Session { return w.sess }
+func (w *Worker) Session() *agentloop.Session { return w.sess }
 
 // Restore 把已存的日志灌回去，回合号接在 turn 后面。之后新开的会话会带上延续说明。
-func (w *Worker) Restore(events []dsh.Event, turn int) {
+func (w *Worker) Restore(events []agentloop.Event, turn int) {
 	w.sess.Restore(events)
 	w.mu.Lock()
 	if turn > w.turn {
@@ -209,7 +209,7 @@ func (w *Worker) Close() error {
 	}
 	w.mu.Unlock()
 	if cancel != nil {
-		cancel(dsh.CancelCause{Kind: "closed"})
+		cancel(agentloop.CancelCause{Kind: "closed"})
 	}
 	if c != nil {
 		_ = c.Close()
@@ -252,10 +252,10 @@ func (w *Worker) loop() {
 }
 
 // runTurn 写回合开始和这一轮的输入，发提示，再写回合结束。
-func (w *Worker) runTurn(ctx context.Context, turn int, msgs []dsh.UserMessage) {
-	w.sess.Append(dsh.EventTurnStart, turn, 0, nil)
+func (w *Worker) runTurn(ctx context.Context, turn int, msgs []agentloop.UserMessage) {
+	w.sess.Append(agentloop.EventTurnStart, turn, 0, nil)
 	for _, msg := range msgs {
-		w.sess.Append(dsh.EventUser, turn, 0, msg)
+		w.sess.Append(agentloop.EventUser, turn, 0, msg)
 	}
 	w.jr.begin(turn)
 	end := w.prompt(ctx, turn, msgs)
@@ -263,11 +263,11 @@ func (w *Worker) runTurn(ctx context.Context, turn int, msgs []dsh.UserMessage) 
 	if end.Kind == "error" {
 		diaglog.Warn("acp worker turn failed", "component", "acp", "ticket", w.spec.TicketID, "agent", w.spec.Agent, "reason", end.Reason)
 	}
-	w.sess.Append(dsh.EventTurnEnd, turn, 0, end)
+	w.sess.Append(agentloop.EventTurnEnd, turn, 0, end)
 }
 
 // prompt 连上 agent 并发这一轮，返回回合结束。超过 TurnTimeout，或静默超过上限时取消。
-func (w *Worker) prompt(ctx context.Context, turn int, msgs []dsh.UserMessage) dsh.TurnEnd {
+func (w *Worker) prompt(ctx context.Context, turn int, msgs []agentloop.UserMessage) agentloop.TurnEnd {
 	w.heard.Store(0)
 	w.touch()
 	ctx, cancel := context.WithCancelCause(ctx)
@@ -286,7 +286,7 @@ func (w *Worker) prompt(ctx context.Context, turn int, msgs []dsh.UserMessage) d
 	}
 	stop, err := c.Prompt(ctx, sid, promptBlocks(preface, msgs))
 	if w.jr.spun() {
-		return dsh.TurnEnd{Kind: "error", Reason: superagent.ReasonAgentSpin}
+		return agentloop.TurnEnd{Kind: "error", Reason: superagent.ReasonAgentSpin}
 	}
 	if ctx.Err() != nil || err != nil {
 		return w.endFor(ctx, err)
@@ -339,14 +339,14 @@ func (w *Worker) touchHeard() {
 }
 
 // endFor 把失败换成回合结束：取消和超时记 aborted；静默记 agent stalled 并丢掉连接；要求登录记 auth_required 并通知 Buddy；进程断开记 agent exited，下一轮重连。
-func (w *Worker) endFor(ctx context.Context, err error) dsh.TurnEnd {
+func (w *Worker) endFor(ctx context.Context, err error) agentloop.TurnEnd {
 	if ctx.Err() != nil {
 		cause := context.Cause(ctx)
 		if errors.Is(cause, errSpin) {
-			return dsh.TurnEnd{Kind: "error", Reason: superagent.ReasonAgentSpin}
+			return agentloop.TurnEnd{Kind: "error", Reason: superagent.ReasonAgentSpin}
 		}
 		if errors.Is(cause, errTurnTimeout) {
-			return dsh.TurnEnd{Kind: "aborted", Reason: superagent.ReasonTurnTimeout}
+			return agentloop.TurnEnd{Kind: "aborted", Reason: superagent.ReasonTurnTimeout}
 		}
 		if errors.Is(cause, errStalled) {
 			fresh := w.heard.Load() == 0
@@ -354,13 +354,13 @@ func (w *Worker) endFor(ctx context.Context, err error) dsh.TurnEnd {
 			if fresh {
 				w.forgetSession()
 			}
-			return dsh.TurnEnd{Kind: "error", Reason: errStalled.Error()}
+			return agentloop.TurnEnd{Kind: "error", Reason: errStalled.Error()}
 		}
-		var cc dsh.CancelCause
+		var cc agentloop.CancelCause
 		if errors.As(cause, &cc) {
-			return dsh.TurnEnd{Kind: "aborted", Reason: cc.Error()}
+			return agentloop.TurnEnd{Kind: "aborted", Reason: cc.Error()}
 		}
-		return dsh.TurnEnd{Kind: "aborted", Reason: "cancelled"}
+		return agentloop.TurnEnd{Kind: "aborted", Reason: "cancelled"}
 	}
 	if err == nil {
 		err = errors.New("prompt failed")
@@ -370,7 +370,7 @@ func (w *Worker) endFor(ctx context.Context, err error) dsh.TurnEnd {
 		if w.cfg.OnAuth != nil {
 			w.cfg.OnAuth(w.redact(err.Error()))
 		}
-		return dsh.TurnEnd{Kind: "error", Reason: superagent.ReasonAuthRequired}
+		return agentloop.TurnEnd{Kind: "error", Reason: superagent.ReasonAuthRequired}
 	}
 	reason := err.Error()
 	if errors.Is(err, acp.ErrClosed) {
@@ -379,20 +379,20 @@ func (w *Worker) endFor(ctx context.Context, err error) dsh.TurnEnd {
 			reason = "agent exited: " + reason
 		}
 	}
-	return dsh.TurnEnd{Kind: "error", Reason: clipRunes(w.redact(reason), 300)}
+	return agentloop.TurnEnd{Kind: "error", Reason: clipRunes(w.redact(reason), 300)}
 }
 
 // stopEnd 把 stopReason 换成回合结束。
-func stopEnd(stop acp.StopReason) dsh.TurnEnd {
+func stopEnd(stop acp.StopReason) agentloop.TurnEnd {
 	switch stop {
 	case acp.StopMaxTokens:
-		return dsh.TurnEnd{Kind: "max-tokens"}
+		return agentloop.TurnEnd{Kind: "max-tokens"}
 	case acp.StopCancelled:
-		return dsh.TurnEnd{Kind: "aborted", Reason: "cancelled"}
+		return agentloop.TurnEnd{Kind: "aborted", Reason: "cancelled"}
 	case acp.StopRefusal:
-		return dsh.TurnEnd{Kind: "error", Reason: "refusal"}
+		return agentloop.TurnEnd{Kind: "error", Reason: "refusal"}
 	default:
-		return dsh.TurnEnd{Kind: "completed"}
+		return agentloop.TurnEnd{Kind: "completed"}
 	}
 }
 
@@ -582,7 +582,7 @@ func (w *Worker) preface(caps acp.AgentCapabilities, turn int) string {
 	if systemPrompt(caps, w.spec.System) == nil && strings.TrimSpace(w.spec.System) != "" {
 		parts = append(parts, instructionsBlock(w.spec.System))
 	}
-	var prior []dsh.Event
+	var prior []agentloop.Event
 	for _, ev := range w.sess.Events() {
 		if ev.Turn < turn {
 			prior = append(prior, ev)
@@ -646,7 +646,7 @@ func (w *Worker) halt() {
 	}
 	w.mu.Unlock()
 	if cancel != nil {
-		cancel(dsh.CancelCause{Kind: "shutdown"})
+		cancel(agentloop.CancelCause{Kind: "shutdown"})
 	}
 	if c != nil {
 		_ = c.Suspend()

@@ -18,12 +18,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
+	"github.com/Shenchangxin/yoyo/internal/agentloop/desk"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/connector"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
-	"github.com/Shenchangxin/yoyo/internal/dshdesk"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
@@ -226,12 +226,6 @@ func ruleParam(raw any) []string {
 	default:
 		return nil
 	}
-}
-
-// routerExtras 是不属于哪条会话时的十一件路由工具。记下的记忆都算路由的推断，开出的任务组唤醒触发所在的桌面会话。
-// 没有会话和轮次，task_route 不补 trigger。
-func (appHost *routeHost) routerExtras() map[string]runtime.ExtraTool {
-	return appHost.app.routerExtrasFor("", "")
 }
 
 // routerExtrasFor 是主会话仅有的十一件工具。写记忆时拿 sessionID 这条会话里当事人最近写的话核对出处；
@@ -815,7 +809,7 @@ func routeExtra(name, desc string, props map[string]any, readOnly bool, fn func(
 }
 
 // mountWorker 把工作区工具登记到这张工单的代理上。会话授权是 full，避免每条命令都问人。
-func (appHost *routeHost) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, ticketID string) (func() int, func(time.Duration)) {
+func (appHost *routeHost) mountWorker(reg *agentloop.Registry, agent *agentloop.Agent, dir, ticketID string) (func() int, func(time.Duration)) {
 	id := "ticket-" + ticketID
 	if appHost.app != nil {
 		appHost.app.applySessionAuth(id, capability.AuthFull)
@@ -839,7 +833,7 @@ func (appHost *routeHost) mountWorker(reg *dsh.Registry, agent *dsh.Agent, dir, 
 		tools.SkillAutoInvoke = runtime.NormalizeAutoInvoke(appHost.app.Config.Skills.AutoInvoke)
 		tools.SkillCatalogBudget = appHost.app.Config.Skills.CatalogBudgetChars
 	}
-	return dshdesk.MountWorkspace(reg, agent, tools)
+	return desk.MountWorkspace(reg, agent, tools)
 }
 
 // namedWorkRoots 从这张工单已经交给工人的说明里取出可写目录。家目录和过浅的路径不放进来。

@@ -13,8 +13,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/expert"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/memory"
-	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
+	"github.com/Shenchangxin/yoyo/internal/worktree"
 )
 
 // InboxMarkRead 把一条收件箱标为已读。收件箱为空则返回。
@@ -419,7 +419,7 @@ func (a *App) PhoneSchedule(j schedule.Job) schedule.Job {
 	return a.ScheduleCreate(j)
 }
 
-// runIsolatedJob 在 Isolate 为真且工作区非空时用 runtime.IsolateWorkspace 换目录，再 NewSession 并 StartSendOpts。失败记到 Schedule.Record。
+// runIsolatedJob 在 Isolate 为真且工作区非空时用 worktree.Isolate 换目录，再 NewSession 并 StartSendOpts。失败记到 Schedule.Record。
 // j 用来读 Workspace、Isolate、ID 和 Prompt；Workspace 为空时改用 App.Workspace。
 func (a *App) runIsolatedJob(j schedule.Job) {
 	ws := j.Workspace
@@ -429,7 +429,7 @@ func (a *App) runIsolatedJob(j schedule.Job) {
 	cleanup := func() {}
 	if j.Isolate && ws != "" {
 		var err error
-		ws, cleanup, err = runtime.IsolateWorkspace(ws)
+		ws, cleanup, err = worktree.Isolate(ws)
 		if err != nil {
 			a.Schedule.Record(j.ID, err)
 			return

@@ -10,7 +10,7 @@ import (
 
 // TestRemotionStatusNeverBundled 确认状态里 bundled 为假，hint 非空，并且空引擎不会报成已托管安装。
 func TestRemotionStatusNeverBundled(t *testing.T) {
-	st := RemotionStatus()
+	st := (&Engine{}).RemotionSnapshot()
 	if st["bundled"] != false {
 		t.Fatalf("%+v", st)
 	}

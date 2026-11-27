@@ -11,7 +11,7 @@ type StopReason string
 const (
 	// StopEndTurn 的值是 end_turn，模型没有再调用工具并结束这一轮。
 	StopEndTurn StopReason = "end_turn"
-	// StopMaxTurns 的值是 max_turns。硬循环用尽 MaxTurns，或 softGuard 判定停止时，Run 都写这个原因。
+	// StopMaxTurns 的值是 max_turns。Run 用尽 MaxTurns，或 agentloop/desk 轮数保护判定停止时，写这个原因。
 	StopMaxTurns StopReason = "max_turns"
 	// StopMaxTokens 的值是 max_tokens。本文件只定义它，Run 的停止路径没有把它写进 req.Stop。
 	StopMaxTokens StopReason = "max_tokens"
@@ -25,7 +25,7 @@ const (
 	StopHook StopReason = "hook_stop"
 	// StopModelError 的值是 model_error。模型调用失败且不是溢出或取消时，Run 写这个原因。ReasonOf 对非 StopError 也返回它。
 	StopModelError StopReason = "model_error"
-	// StopStuck 的值是 stuck。SoftHorizon 上观察没有变化、或同类失败达到停止次数时，Run 写这个原因。
+	// StopStuck 的值是 stuck。agentloop/desk 安全网发现同一错误或同一调用反复出现、停下这一轮时，写这个原因。
 	StopStuck StopReason = "stuck"
 	// StopPlanOpen 的值是 plan_open。聊天回合在催促用尽后仍有未完成计划步骤时，Run 写这个原因，并在 turn_end 之后另发一张卡片。
 	StopPlanOpen StopReason = "plan_open"
@@ -79,13 +79,13 @@ func ReasonOf(err error) StopReason {
 	return StopModelError
 }
 
-// maxTurnsErr 返回 StopMaxTurns，Msg 和内部错误文本都是 max turns reached。
-func maxTurnsErr() error {
+// MaxTurnsErr 返回 StopMaxTurns，Msg 和内部错误文本都是 max turns reached。
+func MaxTurnsErr() error {
 	return stopErr(StopMaxTurns, "max turns reached", fmt.Errorf("max turns reached"))
 }
 
-// stuckLoopErr 返回 StopStuck。detail 为空时改成 the same tool failure kept repeating。
-func stuckLoopErr(detail string) error {
+// StuckLoopErr 返回 StopStuck。detail 为空时改成 the same tool failure kept repeating。
+func StuckLoopErr(detail string) error {
 	if detail == "" {
 		detail = "the same tool failure kept repeating"
 	}

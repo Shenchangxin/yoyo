@@ -1,5 +1,5 @@
 #!/bin/sh
-# Harbor agent wrapper: same argv as eval.AgentArgs.
+# Harbor agent wrapper: yoyo run --workspace <ws> "<instruction>" (see docs/architecture/harbor.md).
 set -e
 WS=${1:-/app}
 INST=${2:-instruction.md}

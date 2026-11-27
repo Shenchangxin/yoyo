@@ -1,0 +1,487 @@
+// host.go 持有每个会话当前这一轮的 agentloop 代理。
+// 它不决定提示和工具从哪来。App.sendLocked 填好 Turn 再调用 Run。
+
+package desk
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
+	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/trace"
+)
+
+// Turn 是一轮桌面发送。User 已经由调用方写入轨迹时，这里不再发一条来源为空的用户事件。
+type Turn struct {
+	SessionID string
+	TurnID    string
+	// TaskID 写进这一轮每一条轨迹事件。评测 Harbor 填题号，evolve 的 Mine 按它把工具调用归到题上；桌面聊天留空。
+	TaskID           string
+	Prompt           string
+	User             string
+	Inject           string
+	Model            string
+	MaxTokens        int
+	Budget           float64
+	History          []runtime.Message
+	Client           runtime.Client
+	Tools            *runtime.WorkspaceTools
+	Trace            *trace.Store
+	OnEvent          func(trace.Event)
+	ShowThinking     bool
+	HarnessHash      string
+	ModelFingerprint string
+	Meter            *runtime.Meter
+	// OnPrompt 在每次模型返回后调用。prompt 和 completion 是供应商报的 token，没报就是 0。
+	OnPrompt   func(prompt, completion int)
+	UserParts  []runtime.ContentPart
+	PullSteer  func() string
+	StopHooks  []runtime.FileHook
+	Checkpoint string
+	// MaxSteps 大于 0 时是这一轮的硬步数上限（模型调用次数），到了以 max_turns 停下。评测 Harbor 填循环预设的 MaxTurns；桌面聊天留 0。子代理沿用父这一轮的值。
+	MaxSteps int
+	// Wake 是唤醒路由时写给它的任务组回报，不是人说的话。非空时这一轮先落一条来源为 wake 的注入，回放历史时它是一条用户消息。
+	Wake string
+	// WakeMeta 是那条注入载荷里另外带的字段，例如任务组编号和状态。
+	WakeMeta map[string]any
+	// HostLines 是最后一次检查点以来主机直接写进这条会话的行：工人回报、通知、简报。
+	// History 里已经带着它们。常驻的代理不重灌历史，所以这一轮开始前把还没见过的几行补成一条主机记录。
+	HostLines []runtime.HostLine
+}
+
+// Host 按会话保存正在跑的代理，供 Steer 和 Interrupt 找到它。
+type Host struct {
+	mu       sync.Mutex
+	sessions map[string]*live
+}
+
+// live 是一个会话上长期活着的代理、工具和补全桥。同一会话的下一轮发送复用它，不再重灌历史。
+type live struct {
+	agent      *agentloop.Agent
+	reg        *agentloop.Registry
+	box        *toolBox
+	bridge     *Bridge
+	ready      bool
+	checkpoint string
+	// hostSeen 记着哪些主机代写的行已经在代理的日志里，按事件编号。
+	hostSeen map[string]bool
+}
+
+// noteHost 把 lines 都记成已经给代理看过，返回其中这次才见到的几行，顺序不变。
+func (l *live) noteHost(lines []runtime.HostLine) []runtime.HostLine {
+	if l.hostSeen == nil {
+		l.hostSeen = map[string]bool{}
+	}
+	var fresh []runtime.HostLine
+	for _, line := range lines {
+		if l.hostSeen[line.ID] {
+			continue
+		}
+		l.hostSeen[line.ID] = true
+		fresh = append(fresh, line)
+	}
+	return fresh
+}
+
+// New 返回空的宿主。
+func New() *Host {
+	return &Host{sessions: map[string]*live{}}
+}
+
+// Run 用这个会话上的代理跑 turn。第一次发送建代理并灌入历史，之后的发送复用同一代理。
+// ctx 取消时停掉模型和这一轮的命令。返回最后一条助手正文。
+func (h *Host) Run(ctx context.Context, turn Turn) (string, error) {
+	if h == nil {
+		return "", errString("no desk")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if turn.Tools != nil {
+		turn.Tools.Ctx = ctx
+	}
+	sessionID := turn.SessionID
+	if sessionID == "" {
+		sessionID = "session"
+		turn.SessionID = sessionID
+	}
+	// 会话号定下来之后再挂子代理，子会话号要从它派生。
+	attachTask(ctx, turn)
+	h.mu.Lock()
+	if h.sessions == nil {
+		h.sessions = map[string]*live{}
+	}
+	cur := h.sessions[sessionID]
+	h.mu.Unlock()
+	var (
+		box    *toolBox
+		bridge *Bridge
+		reg    *agentloop.Registry
+		agent  *agentloop.Agent
+	)
+	if cur != nil && cur.ready && cur.agent != nil {
+		box, bridge, reg, agent = cur.box, cur.bridge, cur.reg, cur.agent
+		box.set(turn.Tools)
+		bridge.Client = turn.Client
+		bridge.Model = turn.Model
+		bridge.MaxTokens = turn.MaxTokens
+		bridge.ShowThinking = turn.ShowThinking
+		bridge.Meter = turn.Meter
+		bridge.OnPrompt = turn.OnPrompt
+		bridge.UserParts = turn.UserParts
+		bridge.partsUsed = false
+		agent.SetPrompt(turn.Prompt)
+		agent.SetRoute(turn.Model, turn.MaxTokens)
+		if cur.checkpoint != turn.Checkpoint {
+			agent.ResetSession()
+			seedHistory(agent, turn.History)
+			cur.checkpoint = turn.Checkpoint
+			// 刚按历史重灌，主机代写的行都在里面了。
+			cur.hostSeen = nil
+			cur.noteHost(turn.HostLines)
+		} else if fresh := cur.noteHost(turn.HostLines); len(fresh) > 0 {
+			// 两轮之间写进会话的工人回报和通知，只追加在日志末尾，前面的字节不动。
+			agent.Session().Append(agentloop.EventUser, 0, 0, agentloop.UserMessage{Text: runtime.HostNote(fresh), Source: "history"})
+		}
+	} else {
+		box = &toolBox{note: make(chan struct{}, 1)}
+		box.set(turn.Tools)
+		bridge = &Bridge{
+			Client:       turn.Client,
+			Model:        turn.Model,
+			MaxTokens:    turn.MaxTokens,
+			ShowThinking: turn.ShowThinking,
+			Meter:        turn.Meter,
+			OnPrompt:     turn.OnPrompt,
+			UserParts:    turn.UserParts,
+		}
+		reg = agentloop.NewRegistry()
+		agent = agentloop.New(sessionID, bridge, reg, agentloop.Options{
+			Prompt:    turn.Prompt,
+			Model:     turn.Model,
+			MaxTokens: turn.MaxTokens,
+		})
+		cur = &live{agent: agent, reg: reg, box: box, bridge: bridge, ready: true, checkpoint: turn.Checkpoint}
+		h.mu.Lock()
+		h.sessions[sessionID] = cur
+		h.mu.Unlock()
+		agent.ResumeTurn(recordedTurn(turn.Trace, sessionID))
+		seedHistory(agent, turn.History)
+		cur.noteHost(turn.HostLines)
+	}
+	agent.SetBeforeModel(func(context.Context) {
+		reg.Reset()
+		box.bind(reg, agent)
+	})
+	// 安全网每一轮重新计数，只看这一轮开始之后的事件，见 guard.go。必须在 Followup 之前建好，起点才不会漏掉这一轮的第一步。
+	watch := newGuard(agent.Session(), turn.User, turn.MaxSteps)
+	agent.SetPreStep(watch.preStep)
+	reg.Reset()
+	box.bind(reg, agent)
+	wireStream(bridge, turn)
+
+	stopProject := make(chan struct{})
+	projDone := make(chan struct{})
+	// 游标要在 Followup 之前记下。放进协程里再读，回合开始事件可能已经写上，投影会把它跳过。
+	cursor := 0
+	if agent.Session() != nil {
+		cursor = len(agent.Session().Events())
+	}
+	go func() {
+		defer close(projDone)
+		project(turn, agent, cursor, stopProject)
+	}()
+	stopPull := make(chan struct{})
+	var pullOnce sync.Once
+	endPull := func() { pullOnce.Do(func() { close(stopPull) }) }
+	defer endPull()
+	go func() {
+		tick := time.NewTicker(50 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stopPull:
+				return
+			case <-tick.C:
+				pullSteer(agent, turn.PullSteer)
+			}
+		}
+	}()
+	stopWatch := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			agent.Cancel(agentloop.CancelCause{Kind: "user", Reason: "stop"}, false)
+		case <-stopWatch:
+		}
+	}()
+	// late 是要排在这一轮全部轨迹之后的卡片（安全网停止、plan_open）。投影协程每 50 毫秒才刷一次，
+	// 直接发会抢在 turn_end 前面；等投影最后一次刷完再发，保证 turn_end 在前、卡片在后。
+	var late []trace.Event
+	defer func() {
+		close(stopWatch)
+		close(stopProject)
+		<-projDone
+		for _, ev := range late {
+			turn.emit(ev, true)
+		}
+	}()
+
+	if ctx.Err() != nil {
+		return "", stopCancelled(ctx.Err())
+	}
+	pullSteer(agent, turn.PullSteer)
+	if strings.TrimSpace(turn.Inject) != "" {
+		turn.emit(trace.Event{
+			Type:    trace.TypeInject,
+			Source:  "dsh",
+			Payload: map[string]any{"text": turn.Inject},
+		}, true)
+	}
+	if wake := strings.TrimSpace(turn.Wake); wake != "" {
+		payload := map[string]any{}
+		for k, v := range turn.WakeMeta {
+			payload[k] = v
+		}
+		payload["text"] = wake
+		payload["name"] = "wake"
+		turn.emit(trace.Event{Type: trace.TypeInject, Source: "wake", Payload: payload}, true)
+	}
+	agent.Followup(agentloop.UserMessage{Text: composeUser(turn), Source: ""})
+	waitIdle(ctx, agent, box)
+	endPull()
+	waitIdle(ctx, agent, box)
+	if ctx.Err() != nil {
+		return lastAssistant(agent), stopCancelled(ctx.Err())
+	}
+	end := lastEnd(agent)
+	if end.Kind == "completed" {
+		for hop := 0; hop < 4 && ctx.Err() == nil; hop++ {
+			block, msg := denyStop(turn.StopHooks)
+			if !block {
+				break
+			}
+			agent.Followup(agentloop.UserMessage{Text: msg, Source: "hook"})
+			waitIdle(ctx, agent, box)
+		}
+		end = lastEnd(agent)
+	}
+	text := lastAssistant(agent)
+	// 安全网拦下了这一步（agentloop 记为 blocked）：发出停止卡片，调用方拿到 stuck 或 max_turns 的停止原因。
+	if haltErr, card, ok := watch.halted(); ok && end.Kind == "blocked" {
+		late = append(late, trace.Event{Type: trace.TypeError, Source: "runtime", Payload: card.Payload()})
+		return text, haltErr
+	}
+	if end.Kind == "error" {
+		reason := end.Reason
+		if reason == "" {
+			reason = "model error"
+		}
+		return text, &runtime.StopError{Reason: runtime.StopModelError, Msg: reason, Err: errString(reason)}
+	}
+	if turn.Meter != nil && turn.Budget > 0 {
+		if err := turn.Meter.Check(turn.Budget); err != nil {
+			return text, err
+		}
+	}
+	// 人发了话，这一轮却既没有正文也没有工具。回合结束会被界面丢掉，看起来像没响应。
+	// 唤醒不是人说的话，取消也已经在上面返回。错误卡片由这里发出；调用方看到的是模型错误，不再发第二张。
+	if end.Kind != "aborted" && strings.TrimSpace(turn.User) != "" && strings.TrimSpace(turn.Wake) == "" && !turnVisible(agent) {
+		reason := "模型没有返回内容"
+		turn.emit(trace.Event{Type: trace.TypeError, Source: "runtime", Payload: runtime.ClassifyError(errString(reason)).Payload()}, true)
+		return text, &runtime.StopError{Reason: runtime.StopModelError, Msg: reason, Err: errString(reason)}
+	}
+	// 回合正常结束、计划却还有没做完的步骤：补一张可重试的 plan_open 卡片，不然这一轮看起来像任务已经做完。
+	// 子代理（深度大于 0）和计划模式不发。返回值仍是正常结束。
+	if end.Kind == "completed" && turn.Tools != nil && turn.Tools.Depth == 0 && !turn.Tools.PlanMode {
+		if total, open := runtime.PlanProgress(turn.Tools); open > 0 {
+			late = append(late, trace.Event{Type: trace.TypeError, Source: "runtime", Payload: runtime.PlanOpenInfo(open, total).Payload()})
+		}
+	}
+	return text, nil
+}
+
+// Steer 把 text 交给 sessionID 正在跑的代理，作为下一步消息。没有这一轮的代理时返回假。
+func (h *Host) Steer(sessionID, text string) bool {
+	if h == nil || strings.TrimSpace(text) == "" {
+		return false
+	}
+	h.mu.Lock()
+	cur := h.sessions[sessionID]
+	h.mu.Unlock()
+	if cur == nil || cur.agent == nil {
+		return false
+	}
+	cur.agent.Steer(agentloop.UserMessage{Text: text, Source: "steer"})
+	return true
+}
+
+// Forget 丢掉 sessionID 上的代理。下一轮发送会按当时的历史重新建一个。
+func (h *Host) Forget(sessionID string) {
+	if h == nil || sessionID == "" {
+		return
+	}
+	h.mu.Lock()
+	delete(h.sessions, sessionID)
+	h.mu.Unlock()
+}
+
+// Interrupt 取消 sessionID 正在跑的代理。没有代理时什么都不做。已投递的收件箱清掉。
+func (h *Host) Interrupt(sessionID string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	cur := h.sessions[sessionID]
+	h.mu.Unlock()
+	if cur == nil || cur.agent == nil {
+		return
+	}
+	cur.agent.Cancel(agentloop.CancelCause{Kind: "user", Reason: "stop"}, false)
+}
+
+// denyStop 在 rules 里第一条 Deny 上返回真和要继续的消息。reason 为空时用钩子文件的默认句子。
+func denyStop(rules []runtime.FileHook) (bool, string) {
+	for _, rule := range rules {
+		if !rule.Deny {
+			continue
+		}
+		msg := rule.Reason
+		if msg == "" {
+			msg = "blocked by .yoyo/hooks.json stop hook"
+		}
+		return true, msg
+	}
+	return false, ""
+}
+
+// composeUser 拼出这一轮要跟进的用户文本：User、Inject 和 Wake 里不空的，按这个顺序隔一行。都空时用 Continue.。
+func composeUser(turn Turn) string {
+	var parts []string
+	for _, text := range []string{turn.User, turn.Inject, turn.Wake} {
+		if text = strings.TrimSpace(text); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
+		return "Continue."
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// pullSteer 把 pull 取到的文本交给 agent。pull 为 nil 或文本为空时什么都不做。
+func pullSteer(agent *agentloop.Agent, pull func() string) {
+	if agent == nil || pull == nil {
+		return
+	}
+	text := strings.TrimSpace(pull())
+	if text == "" {
+		return
+	}
+	agent.Steer(agentloop.UserMessage{Text: text, Source: "steer"})
+}
+
+// waitIdle 等到 agent 空闲且 box 没有后台命令。ctx 取消时返回。
+func waitIdle(ctx context.Context, agent *agentloop.Agent, box *toolBox) {
+	if agent == nil {
+		return
+	}
+	for {
+		agent.WhenIdle()
+		if ctx.Err() != nil {
+			return
+		}
+		left := 0
+		if box != nil {
+			left = box.jobsLeft()
+		}
+		if left == 0 && agent.Status() != "running" {
+			if box == nil || box.jobsLeft() == 0 {
+				return
+			}
+		}
+		note := box.note
+		if note == nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-note:
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// stopCancelled 把 err 包成取消。err 为 nil 时用 context.Canceled 的文本。
+func stopCancelled(err error) error {
+	if err == nil {
+		err = context.Canceled
+	}
+	return &runtime.StopError{Reason: runtime.StopCancelled, Msg: err.Error(), Err: err}
+}
+
+// turnVisible 在最近一次回合开始之后，已经有助手正文或工具调用时为真。更早的历史不算。
+func turnVisible(agent *agentloop.Agent) bool {
+	if agent == nil || agent.Session() == nil {
+		return false
+	}
+	evs := agent.Session().Events()
+	start := 0
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].Type == agentloop.EventTurnStart {
+			start = i
+			break
+		}
+	}
+	for _, ev := range evs[start:] {
+		switch ev.Type {
+		case agentloop.EventToolCall:
+			return true
+		case agentloop.EventAssistant:
+			msg, _ := ev.Data.(agentloop.Assistant)
+			if strings.TrimSpace(msg.Text) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// lastAssistant 返回 agent 日志里最后一条非空助手正文。没有则返回空串。
+func lastAssistant(agent *agentloop.Agent) string {
+	if agent == nil || agent.Session() == nil {
+		return ""
+	}
+	evs := agent.Session().Events()
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].Type != agentloop.EventAssistant {
+			continue
+		}
+		msg, ok := evs[i].Data.(agentloop.Assistant)
+		if ok && strings.TrimSpace(msg.Text) != "" {
+			return msg.Text
+		}
+	}
+	return ""
+}
+
+// lastEnd 返回 agent 日志里最后一条回合结束。没有则返回空结束。
+func lastEnd(agent *agentloop.Agent) agentloop.TurnEnd {
+	if agent == nil || agent.Session() == nil {
+		return agentloop.TurnEnd{}
+	}
+	evs := agent.Session().Events()
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].Type != agentloop.EventTurnEnd {
+			continue
+		}
+		if end, ok := evs[i].Data.(agentloop.TurnEnd); ok {
+			return end
+		}
+	}
+	return agentloop.TurnEnd{}
+}

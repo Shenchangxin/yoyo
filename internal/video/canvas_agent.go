@@ -1,4 +1,4 @@
-// 行为：保存画布助手的运行状态，供画布面板轮询。模型调用不在本文件。Agent.Start 由 app 接到会话的 StartSend，再进入 runtime.Run。这里不是第二条循环。
+// 行为：保存画布助手的运行状态，供画布面板轮询。模型调用不在本文件。Agent.Start 由 app 接到会话的 StartSend，经 App.sendLocked 交给 desk.Host.Run，由 agentloop 代理跑这一轮。这里不是第二条循环。
 
 package video
 
@@ -24,7 +24,7 @@ type CanvasAgentTurn struct {
 	Epoch      int
 }
 
-// CanvasAgentBridge 由 app 填上。Start、Stop、Decide 都回到 app：Start 进入已绑定会话的 StartSend，模型调用在 runtime.Run。视频引擎只保存画布面板轮询的运行状态，这不是第二条循环。
+// CanvasAgentBridge 由 app 填上。Start、Stop、Decide 都回到 app：Start 进入已绑定会话的 StartSend，模型调用在 desk.Host.Run 驱动的 agentloop 代理里。视频引擎只保存画布面板轮询的运行状态，这不是第二条循环。
 type CanvasAgentBridge struct {
 	Start  func(CanvasAgentTurn) error
 	Stop   func(sessionID string)

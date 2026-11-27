@@ -1,4 +1,4 @@
-// glob 和 grep 的工作区遍历。跳过 skipDirNames 和 loadIgnore 命中的路径。含 NUL 的文件不参与 grep。
+// glob 和 grep 的工作区遍历。跳过 loadIgnore 命中的路径（worktree.SkipDirNames 加上根目录 .gitignore）。含 NUL 的文件不参与 grep。
 
 package runtime
 
@@ -9,12 +9,6 @@ import (
 	"regexp"
 	"strings"
 )
-
-// skipDirNames 是遍历时跳过的目录名：.git、node_modules、vendor、dist、.yoyo、target、.next、__pycache__。copyTree 也用它。
-var skipDirNames = map[string]bool{
-	".git": true, "node_modules": true, "vendor": true, "dist": true,
-	".yoyo": true, "target": true, ".next": true, "__pycache__": true,
-}
 
 // globWalk 按 filepath.Match 匹配相对路径或文件名。模式含 ** 时再试 matchStarStar。达到 limit 就停止。忽略目录和文件被跳过。
 // root 交给 loadIgnore 和 filepath.Walk，并用来算相对路径。

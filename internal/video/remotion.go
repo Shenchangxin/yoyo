@@ -106,11 +106,6 @@ func (e *Engine) managedRemotionReady() bool {
 	return e != nil && e.remotionBin() != ""
 }
 
-// RemotionStatus 在没有视频目录的空引擎上做一次检测。要看见托管安装，用引擎上的 RemotionSnapshot。
-func RemotionStatus() map[string]any {
-	return (&Engine{}).RemotionSnapshot()
-}
-
 // RemotionSnapshot 报告 node、npm、npx 和托管安装。托管命令存在时 source 为 managed 且 ready 为真。否则再看系统 remotion，或用 3 秒超时跑 npx --no-install remotion --version。
 func (e *Engine) RemotionSnapshot() map[string]any {
 	node := ""

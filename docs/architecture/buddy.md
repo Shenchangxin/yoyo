@@ -12,7 +12,7 @@
 
 yoyo 的会话已经是「路由 + 工人」：人只跟主会话说话，路由把事情开成工单，执行器派给工人。要让工人可以是任何 agent，改动只在三处：
 
-1. **工人缝**：执行器只认 `superagent.Worker` 接口，yoyo 自带工人（dsh）和外部工人（acpworker）是它的两种实现。
+1. **工人缝**：执行器只认 `superagent.Worker` 接口，yoyo 自带工人（agentloop）和外部工人（acpworker）是它的两种实现。
 2. **控制面**：外部 agent 不在 yoyo 进程里，回报进度要走 MCP。yoyo 自己当 MCP 服务器，只给这张工单的 `orchestrator_*` 工具。
 3. **路由的工具**：`task_route` 多一个 `agent` 字段；多个 agent 一起做时用 `task_split` 开任务组，任务组停下时叫醒路由。
 
@@ -40,7 +40,7 @@ yoyo 的会话已经是「路由 + 工人」：人只跟主会话说话，路由
 
 1. 人在输入框里 `@` 一个或几个 agent，消息里带 `@agent:<id>`。
 2. 路由用 `task_route`（一个 agent）或 `task_split`（几个 agent）开工单或任务组。
-3. 执行器按每次派工的 agent 选工人：`yoyo` 走 dsh，外部 agent 走 acpworker。
+3. 执行器按每次派工的 agent 选工人：`yoyo` 走 agentloop，外部 agent 走 acpworker。
 4. 外部 agent 经控制面的 `orchestrator_report` 等工具回报。
 5. 任务组停下（全部结束、有人挂起或失败）时，`route_wake` 叫醒路由，路由在主会话里汇总。单张工单不叫醒路由，只把交接写回主会话。
 
@@ -76,6 +76,8 @@ PATH 上找得到的优先，也不标成「在别处找到」。桌面应用本
 
 **启动环境。** 白名单变量，加 `TERM=dumb`、`NO_COLOR=1`，加这一项自己的密钥；不继承 `YOYO_*` 和其他像密钥的变量。工作目录是工单目录。
 
+**工单变量。** yoyo 按工单给出 `YOYO_SUPERAGENT_DIR`、`YOYO_SUPERAGENT_NAME`、`YOYO_SUPERAGENT_TICKET`，以及来源设置里的 `YOYO_SUPERAGENT_GITHUB_REPOSITORY`、`YOYO_SUPERAGENT_GITHUB_ACCOUNT`、`YOYO_SUPERAGENT_FEISHU_BOT`、`YOYO_SUPERAGENT_FEISHU_CHAT`，值里没有钥匙。准备命令在进程环境里拿到它们；工人（自带的和外部的）在提示里读到非空的那几个。名字定义在 `internal/superagent/env.go`。旧名 `DSH_SUPERAGENT_*` 已废弃：为了不弄坏改名前写好的准备脚本，准备命令的进程环境里仍同时给出同值的旧名，工人提示里不再写；下一个大版本删除。新写的脚本只读 `YOYO_SUPERAGENT_*`。
+
 **登录。** 按 agent 在握手里报的登录方式（没报时用精选表的兜底命令）：agent 型调 `authenticate`，最多等 5 分钟；终端型打开可见终端让人操作，结束后或每 5 秒看一次，最多 10 分钟；env_var 型到配置里填密钥。每种做完都全探一次。
 
 **探测与健康。** 全探：启动一次，握手、建会话，记下模型、能力和登录方式（20 秒超时）。轻探：只握手。Start 之后 20 秒做第一次健康检查，之后每 10 分钟一次。轻探失败先记成「刚断开」，5 分钟内没恢复才落成离线；正在服务工单的 agent 算在线。
@@ -96,7 +98,7 @@ PATH 上找得到的优先，也不标成「在别处找到」。桌面应用本
 
 **审批。** `session/request_permission` 和 client fs 读写都走 `capability.Broker`，会话名 `ticket-<id>`，目录限制和 yoyo 自带工人相同：工单目录、命名目录和任务组共享目录可写，前置任务的目录只读。允许时先选 `allow_once`；危险命令照样被确定性名单挡下；审批方式为 `ask` 时每次都问人。一轮被取消时挂着的请求答 cancelled。
 
-**日志。** 外部 agent 的更新归一化成一份 `dsh.Session` 日志，任务页、`worker_log` 和转录行原样复用。
+**日志。** 外部 agent 的更新归一化成一份 `agentloop.Session` 日志，任务页、`worker_log` 和转录行原样复用。
 
 **韧性。** 进程崩溃带着 stderr 尾部（打过码）重连；单轮超过时长上限就取消；用量（上下文和花费）按 agent 报的记到工单上。
 

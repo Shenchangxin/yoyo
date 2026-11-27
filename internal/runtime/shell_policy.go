@@ -146,26 +146,6 @@ func looksLikePowerShell(command string) bool {
 	return strings.HasPrefix(trim, "$") && !strings.Contains(trim, "$(")
 }
 
-// powershellCommandArg 取出 powershell 或 pwsh 的 -Command、-c、/command 或 /c 后面的正文。不是这类包装时返回原命令。
-func powershellCommandArg(command string) string {
-	argv := SplitShellArgv(command)
-	if len(argv) == 0 {
-		return command
-	}
-	name := strings.ToLower(filepath.Base(argv[0]))
-	name = strings.TrimSuffix(name, ".exe")
-	if name != "powershell" && name != "pwsh" {
-		return command
-	}
-	for i := 1; i < len(argv); i++ {
-		a := strings.ToLower(argv[i])
-		if a == "-command" || a == "-c" || a == "/command" || a == "/c" {
-			return strings.TrimSpace(strings.Join(argv[i+1:], " "))
-		}
-	}
-	return command
-}
-
 // shellHasStatementSep 报告未加引号的分号，这样 Windows 不会把 `node --version; node -p 1` 送进 cmd /C，以免分号被当成开关的一部分。引号里的分号（findstr /C:"a;b"）仍走 cmd。
 // 单引号内不把反斜杠当转义。双引号外的反斜杠吃掉下一个字符。
 // command 逐个字符看未加引号的分号；双引号外的反斜杠吃掉下一个字符。

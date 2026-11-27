@@ -6,13 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -150,24 +146,6 @@ func signedManifestRejected(payload []byte, err error) bool {
 	}
 	m, perr := ParseManifest(payload)
 	return perr == nil && strings.TrimSpace(m.Version) != ""
-}
-
-// Stage 把字节写到 destDir/yoyo.staging，权限 0o755。wantSHA 非空且与内容 SHA-256 不一致时返回 "update: sha256 mismatch"。本函数不替换正在运行的可执行文件。
-// bin 用来算 SHA-256，并写到 destDir 下的暂存文件。
-func Stage(destDir string, bin []byte, wantSHA string) (string, error) {
-	sum := sha256.Sum256(bin)
-	got := hex.EncodeToString(sum[:])
-	if wantSHA != "" && !strings.EqualFold(wantSHA, got) {
-		return "", fmt.Errorf("update: sha256 mismatch")
-	}
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return "", err
-	}
-	path := filepath.Join(destDir, StagingName())
-	if err := os.WriteFile(path, bin, 0o755); err != nil {
-		return "", err
-	}
-	return path, nil
 }
 
 // httpGet 以最多 2 MiB 调用 Fetch。

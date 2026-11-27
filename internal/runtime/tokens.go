@@ -1,4 +1,4 @@
-// 近似 cl100k 的 token 计数，以及按 rune 截断工具结果。评测和聊天调用同一个 CountTokens。
+// 近似 cl100k 的 token 计数（estimateTokens），以及按 rune 截断工具结果（capText）。上下文账本、补水和检查点都用同一个 estimateTokens。
 // 不访问模型，也不按模型名换词表。
 
 package runtime
@@ -7,15 +7,6 @@ import "unicode"
 
 // defaultToolResultRunes 是 16000。capText 在 maxRunes 小于等于 0 时用它。
 const defaultToolResultRunes = 16_000
-
-// CountTokens 转给 estimateTokens。模型名不参与计算。
-func CountTokens(s string) int { return estimateTokens(s) }
-
-// TokenizerName 忽略 model，固定返回 approx-cl100k。
-func TokenizerName(model string) string {
-	_ = model
-	return "approx-cl100k"
-}
 
 // estimateTokens 按近似 cl100k 计数。空串返回 0。只含空白（rune 小于等于 32）时返回 1。
 // 汉字、谚文、平假名、片假名各计 1。连续字母或数字按 (长度+3)/4 计。标点和其他字符各计 1，并先结算未结束的词。

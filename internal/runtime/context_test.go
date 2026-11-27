@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
 // TestShapeDoesNotMutateAndStubs 确认 Compact 不改调用方的工具正文，投影里出现占位。
@@ -51,14 +49,6 @@ func TestSpillRecall(t *testing.T) {
 	res := tools.Call("recall_context", `{"id":"abc"}`)
 	if res.Err != nil || !strings.Contains(res.Content, "full secret") {
 		t.Fatalf("%+v", res)
-	}
-}
-
-// TestWorkspaceRulesAssemble 确认拼好的提示里同时有规则来源和规则正文。
-func TestWorkspaceRulesAssemble(t *testing.T) {
-	s := Assemble(DefaultLoop(), nil, artifact.Playbook{}, nil, "always use tabs", "YOYO.md", nil)
-	if !strings.Contains(s, "YOYO.md") || !strings.Contains(s, "always use tabs") {
-		t.Fatal(s)
 	}
 }
 

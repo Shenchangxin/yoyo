@@ -5,9 +5,12 @@ package expert
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 )
 
 // TestUnsignedCannotAdmit 要求公钥为 nil 时 Admit 返回错误。
@@ -47,4 +50,11 @@ func TestSignedAdmit(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "demo", "SKILL.md")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Sign 对技能正文调用 wasm.Sign，再把签名编成十六进制。
+// priv 传给 wasm.Sign。
+// skillMD 转成字节后传给 wasm.Sign，返回值再编成十六进制。
+func Sign(priv ed25519.PrivateKey, skillMD string) string {
+	return hex.EncodeToString(wasm.Sign(priv, []byte(skillMD)))
 }

@@ -4,82 +4,13 @@
 package runtime
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/safeguard"
 )
-
-// TestParallelTaskCallsRunConcurrently 确认三条 task 的重叠时间短于串行，同时在跑的不少于 2 条。
-func TestParallelTaskCallsRunConcurrently(t *testing.T) {
-	var mu sync.Mutex
-	live := 0
-	max := 0
-	tools := &WorkspaceTools{
-		Task: func(prompt string, isolate bool, profile string) (string, error) {
-			mu.Lock()
-			live++
-			if live > max {
-				max = live
-			}
-			mu.Unlock()
-			time.Sleep(80 * time.Millisecond)
-			mu.Lock()
-			live--
-			mu.Unlock()
-			return prompt, nil
-		},
-	}
-	req := RunRequest{SessionID: "s", Tools: tools, Loop: DefaultLoop()}
-	started := time.Now()
-	out := dispatchTools(context.Background(), req, []ToolCall{
-		{ID: "t1", Name: "task", Arguments: `{"prompt":"a","profile":"explore"}`},
-		{ID: "t2", Name: "task", Arguments: `{"prompt":"b","profile":"explore"}`},
-		{ID: "t3", Name: "task", Arguments: `{"prompt":"c","profile":"explore"}`},
-	}, "s:r1", false)
-	elapsed := time.Since(started)
-	if elapsed > 220*time.Millisecond {
-		t.Fatalf("serial? elapsed=%s maxlive=%d", elapsed, max)
-	}
-	if max < 2 {
-		t.Fatalf("max live %d", max)
-	}
-	if len(out) != 3 {
-		t.Fatalf("len %d", len(out))
-	}
-}
-
-// TestExclusiveShellFailureDoesNotAbortSiblingWrite 确认 exclusive 的 shell 失败后，同批 write_file 仍写入 ok.txt。
-func TestExclusiveShellFailureDoesNotAbortSiblingWrite(t *testing.T) {
-	dir := t.TempDir()
-	tools := &WorkspaceTools{Workspace: dir, Spill: NewSpill(filepath.Join(dir, "spill"))}
-	req := RunRequest{SessionID: "s", Tools: tools, Loop: DefaultLoop()}
-	out := dispatchTools(context.Background(), req, []ToolCall{
-		{ID: "s1", Name: "shell", Arguments: `{"command":"not-a-real-yoyo-cmd-xyz"}`},
-		{ID: "w1", Name: "write_file", Arguments: `{"path":"ok.txt","content":"hello"}`},
-	}, "s:r1", false)
-	if len(out) != 2 {
-		t.Fatalf("len %d", len(out))
-	}
-	if !strings.Contains(out[0].Content, "ERROR") {
-		t.Fatalf("expected shell error, got %q", out[0].Content)
-	}
-	if strings.Contains(out[1].Content, "aborted") || strings.Contains(out[1].Content, "ERROR") {
-		t.Fatalf("write aborted after exclusive shell failure: %s", out[1].Content)
-	}
-	b, err := os.ReadFile(filepath.Join(dir, "ok.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(b) != "hello" {
-		t.Fatalf("wrote %q", b)
-	}
-}
 
 // TestWriteFileWithFormatCommentIsNotDenied 确认正文里的 format 注释不拦截 write_file、apply_patch 和 str_replace，命令 format c: 仍被拒绝。
 func TestWriteFileWithFormatCommentIsNotDenied(t *testing.T) {

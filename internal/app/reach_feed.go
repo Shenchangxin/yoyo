@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/initiative"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/reach"
@@ -223,8 +223,8 @@ func (appHost *deskHost) reachNote(item reach.Item) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	out, err := liveModel{app: appHost.app}.Complete(ctx, dsh.Request{
-		Messages: []dsh.Message{
+	out, err := liveModel{app: appHost.app}.Complete(ctx, agentloop.Request{
+		Messages: []agentloop.Message{
 			{Role: "system", Text: reachNotePrompt},
 			{Role: "user", Text: packet},
 		},

@@ -223,25 +223,6 @@ func uniqueBaseHit(root, base string) (FileHit, bool) {
 	return FileHit{Path: hit.Path, Kind: kind}, true
 }
 
-// ExpandMentions 把 ExpandMentionsPacks 的技能表和技能目录都传成 nil。
-// workspace 传给 ExpandMentionsSkills。
-// text 传给 ExpandMentionsSkills。
-// harnessNote 传给 ExpandMentionsSkills。
-// budget 传给 ExpandMentionsSkills。
-func ExpandMentions(workspace, text, harnessNote string, budget int) (inject string, refs []Mention) {
-	return ExpandMentionsSkills(workspace, text, harnessNote, nil, budget)
-}
-
-// ExpandMentionsSkills 把技能目录传成 nil，其余交给 ExpandMentionsPacks。
-// workspace 传给 ExpandMentionsPacks。
-// text 传给 ExpandMentionsPacks。
-// harnessNote 传给 ExpandMentionsPacks。
-// skills 传给 ExpandMentionsPacks。
-// budget 传给 ExpandMentionsPacks。
-func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string]string, budget int) (inject string, refs []Mention) {
-	return ExpandMentionsPacks(workspace, text, harnessNote, skills, nil, budget)
-}
-
 // mentionFileRunes 是 800，mentionPrimaryRunes 是 12000，mentionPrimaryBytes 是 8*1024。
 const (
 	// mentionFileRunes 是 800。普通文件注入按这个 rune 数截断正文。

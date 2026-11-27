@@ -8,20 +8,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 // TestDeliverPendingKeepsWordsWhenNoSlotIsFree 锁住槽满时人的话不被标成已送达，空出槽后下一次投递还能送出去。
 func TestDeliverPendingKeepsWordsWhenNoSlotIsFree(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	id := accept(t, eng, "m1")
-	model := scriptModel{fn: func(context.Context, dsh.Request) (dsh.Assistant, error) {
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"waiting","summary":"收到"}`}}}, nil
+	model := scriptModel{fn: func(context.Context, agentloop.Request) (agentloop.Assistant, error) {
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"waiting","summary":"收到"}`}}}, nil
 	}}
 	slots := NewSlots(1)
 	ex := NewExecutor(eng, slots, model)
 	ex.mu.Lock()
-	ex.agents[id] = dsh.New("ticket-"+id, model, dsh.NewRegistry(), dsh.Options{})
+	ex.agents[id] = agentloop.New("ticket-"+id, model, agentloop.NewRegistry(), agentloop.Options{})
 	ex.mu.Unlock()
 	_, first := eng.PendingInputs(id)
 	eng.AckInputs(id, first)
@@ -53,13 +53,13 @@ func TestPauseParksTheTurnAndTheNextWordsResumeIt(t *testing.T) {
 	eng := NewEngine(autoPolicy())
 	started := make(chan struct{})
 	var calls atomic.Int32
-	model := scriptModel{fn: func(ctx context.Context, _ dsh.Request) (dsh.Assistant, error) {
+	model := scriptModel{fn: func(ctx context.Context, _ agentloop.Request) (agentloop.Assistant, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 			<-ctx.Done()
-			return dsh.Assistant{}, ctx.Err()
+			return agentloop.Assistant{}, ctx.Err()
 		}
-		return dsh.Assistant{ToolCalls: []dsh.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"按新说法做完了"}`}}}, nil
+		return agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{ID: "r1", Name: "orchestrator_report", Arguments: `{"state":"ready","summary":"按新说法做完了"}`}}}, nil
 	}}
 	ex := NewExecutor(eng, NewSlots(1), model)
 	id := acceptOn(t, eng, "m1", "room-a")
@@ -107,8 +107,8 @@ func TestPauseParksTheTurnAndTheNextWordsResumeIt(t *testing.T) {
 // TestPauseParksARunningAssignmentWithNoLiveWorker 锁住派工还标着在做、工人却已经不在时，暂停直接记下停下，工单不结束。
 func TestPauseParksARunningAssignmentWithNoLiveWorker(t *testing.T) {
 	eng := NewEngine(autoPolicy())
-	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(context.Context, dsh.Request) (dsh.Assistant, error) {
-		return dsh.Assistant{}, nil
+	ex := NewExecutor(eng, NewSlots(1), scriptModel{fn: func(context.Context, agentloop.Request) (agentloop.Assistant, error) {
+		return agentloop.Assistant{}, nil
 	}})
 	id := acceptOn(t, eng, "m-orphan", "room-a")
 	if err := eng.AssignmentStarted(id, eng.LatestAssignment(id)); err != nil {
@@ -184,10 +184,10 @@ func TestInferredAssignmentNamesItsRules(t *testing.T) {
 // TestFollowUpOnAParkedTaskStaysInTheSameSession 锁住工人进程已经不在时，人的下一句回到原来的会话，只送这句，不重开派工，也不重发整段任务说明。
 // 话还没送进去时，停止不会把这句记成停下。同一进程里的再下一句仍走这个工人。
 func TestFollowUpOnAParkedTaskStaysInTheSameSession(t *testing.T) {
-	sess := dsh.NewSession()
-	sess.Append(dsh.EventUser, 1, 0, dsh.UserMessage{Text: "先做一版首页", Source: "assignment"})
-	sess.Append(dsh.EventAssistant, 1, 1, dsh.Assistant{Text: "首页已经放好了"})
-	sess.Append(dsh.EventTurnEnd, 1, 0, dsh.TurnEnd{Kind: "completed"})
+	sess := agentloop.NewSession()
+	sess.Append(agentloop.EventUser, 1, 0, agentloop.UserMessage{Text: "先做一版首页", Source: "assignment"})
+	sess.Append(agentloop.EventAssistant, 1, 1, agentloop.Assistant{Text: "首页已经放好了"})
+	sess.Append(agentloop.EventTurnEnd, 1, 0, agentloop.TurnEnd{Kind: "completed"})
 	body, _ := encodeLog(sess.Events())
 
 	eng := NewEngine(autoPolicy())
@@ -212,7 +212,7 @@ func TestFollowUpOnAParkedTaskStaysInTheSameSession(t *testing.T) {
 		if spec.Agent != "opencode" || spec.Pointer != "sess-63" {
 			t.Errorf("spec agent %q pointer %q", spec.Agent, spec.Pointer)
 		}
-		return openWith(opened, func(w *fakeWorker, msg dsh.UserMessage) {
+		return openWith(opened, func(w *fakeWorker, msg agentloop.UserMessage) {
 			if msg.Source == "human" {
 				w.say("接着做了")
 			}
@@ -297,7 +297,7 @@ func TestFollowUpWithoutALogKeepsTheAssignment(t *testing.T) {
 	}
 	opened := make(chan *fakeWorker, 1)
 	ex := NewExecutor(eng, NewSlots(1), nil)
-	ex.Opener = openWith(opened, func(w *fakeWorker, msg dsh.UserMessage) {
+	ex.Opener = openWith(opened, func(w *fakeWorker, msg agentloop.UserMessage) {
 		if msg.Source == "assignment" {
 			w.say("收到")
 		}

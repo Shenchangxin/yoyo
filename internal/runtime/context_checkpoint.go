@@ -11,7 +11,6 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -34,17 +33,6 @@ Do NOT call tools. Reply with markdown sections exactly, in this order:
 ## Errors lists unresolved failures, each with the command or check that produced it.
 ## Next is the single next action.
 Prefer file paths and spill ids over quoting file bodies. Be concise.`
-
-// PersistCheckpoint 追加一条检查点。不截断已有 JSONL。下次 MessagesFromEvents 从这里重建，用摘要加保留的尾部替换此前的内容。
-// store 传给 persistCheckpoint。
-// sessionID 传给 persistCheckpoint。
-// source 传给 persistCheckpoint。
-// summary 传给 persistCheckpoint。
-// tail 传给 persistCheckpoint。
-// lossless 传给 persistCheckpoint。
-func PersistCheckpoint(store *trace.Store, sessionID, source string, summary string, tail []Message, lossless bool) error {
-	return persistCheckpoint(store, sessionID, source, summary, tail, lossless, nil, "", 0, "")
-}
 
 // persistCheckpoint 写入 kind 为 checkpoint 的事件。summary 或 note 为空时写成 checkpoint。
 // spill 非空时，完整 tail 放进 id ckpt-tail，事件里的 tail 只留 slimTail。否则事件里放完整 tail。
@@ -109,7 +97,6 @@ type CompactOpts struct {
 	Focus   string
 	Trigger string
 	From    string
-	Req     *RunRequest
 	Profile *CompactProfile
 }
 
@@ -138,20 +125,6 @@ func MaybeCheckpointOpts(store *trace.Store, sessionID string, hist []Message, l
 		opt.Trigger = "budget"
 	}
 	return forceCheckpoint(store, sessionID, dummy, loop, spill, client, model, window, "runtime", fragments, opt)
-}
-
-// CompactHistory 按用户触发做检查点，并返回检查点说明。历史为空时返回已在预算内。
-// store 传给 CompactHistoryOpts。
-// sessionID 传给 CompactHistoryOpts。
-// hist 传给 CompactHistoryOpts。
-// loop 传给 CompactHistoryOpts。
-// spill 传给 CompactHistoryOpts。
-// client 传给 CompactHistoryOpts。
-// model 传给 CompactHistoryOpts。
-// window 传给 CompactHistoryOpts。
-// fragments 传给 CompactHistoryOpts。
-func CompactHistory(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, fragments []artifact.PromptFragment) string {
-	return CompactHistoryOpts(store, sessionID, hist, loop, spill, client, model, window, fragments, CompactOpts{Trigger: "user"})
 }
 
 // CompactHistoryOpts 先按 From 回绕，再决定要不要检查点。已在预算内、Shape 没有 note、没有 Focus、触发也不是 rewind 时，返回已在预算内。
@@ -300,29 +273,18 @@ func rewindFrom(hist []Message, from string) []Message {
 	return hist[idx:]
 }
 
-// emitCheckpointPhase 发出检查点阶段事件。只有 kind 为 checkpoint_start 时才追加进 store。其他 kind 只在 OnEvent 非空时回调。
-// req 非 nil 且 OnEvent 非 nil 时回调这条事件。
-// sessionID 写入事件；为空时即使 kind 为 checkpoint_start 也不追加。
-// source 写入事件的 Source。
-// opt 的 Trigger 和 Focus 写入载荷。
-// extra 的键值并进载荷。
-func emitCheckpointPhase(store *trace.Store, req *RunRequest, sessionID, source, kind string, opt CompactOpts, extra map[string]any) {
-	payload := map[string]any{"kind": kind, "trigger": opt.Trigger, "focus": opt.Focus}
-	for k, v := range extra {
-		payload[k] = v
+// emitCheckpointStart 在 store 和 sessionID 都非空时追加一条 kind 为 checkpoint_start 的压缩事件，载荷带 opt 的 Trigger 和 Focus。
+// source 写入事件的 Source。检查点完成的那条事件由 persistCheckpoint 写。
+func emitCheckpointStart(store *trace.Store, sessionID, source string, opt CompactOpts) {
+	if store == nil || sessionID == "" {
+		return
 	}
-	ev := trace.Event{
+	_ = store.Append(trace.Event{
 		Type:      trace.TypeCompact,
 		Source:    source,
 		SessionID: sessionID,
-		Payload:   payload,
-	}
-	if kind == "checkpoint_start" && store != nil && sessionID != "" {
-		_ = store.Append(ev)
-	}
-	if req != nil && req.OnEvent != nil {
-		req.OnEvent(ev)
-	}
+		Payload:   map[string]any{"kind": "checkpoint_start", "trigger": opt.Trigger, "focus": opt.Focus},
+	})
 }
 
 // forceCheckpoint 做一次检查点。先发 checkpoint_start，在副本上标记过期读并 Shape。KeepTokens 大于 0 时尾部改由 retainKeepTokens 保留。
@@ -332,33 +294,12 @@ func emitCheckpointPhase(store *trace.Store, req *RunRequest, sessionID, source,
 // withSystem 先数 token，再复制后标记过期读并 Shape。
 // loop 放进 ShapeOpts；KeepTokens 大于 0 时改由 retainKeepTokens 留尾，AllowLLMCompact 参与是否走摘要。
 // spill 放进 ShapeOpts，并传给 WriteNotes、ReadNotes 和 persistCheckpoint。
-// source 传给 emitCheckpointPhase 和 persistCheckpoint。
+// source 传给 emitCheckpointStart 和 persistCheckpoint。
 // fragments 在允许摘要时传给 LLMTranscriptCompact。
-// opt 的 Req、Trigger 和 Focus 参与观察、钩子、笔记的 Next 和检查点事件。
+// opt 的 Trigger 和 Focus 参与笔记的 Next 和检查点事件，Profile 决定摘要形状。
 func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, source string, fragments []artifact.PromptFragment, opt CompactOpts) []Message {
-	req := opt.Req
-	before := messagesTokens(withSystem)
-	var sp observe.Span
-	started := false
-	if req != nil && req.Observe != nil {
-		sp = req.Observe.Start("checkpoint", sessionID, map[string]any{"trigger": opt.Trigger, "focus": opt.Focus})
-		sp.TurnID = req.TurnID
-		started = true
-		defer func() { req.Observe.End(sp, nil) }()
-	}
 	diaglog.Warn("checkpoint", "component", "context", "session_id", sessionID, "trigger", opt.Trigger)
-	emitCheckpointPhase(store, req, sessionID, source, "checkpoint_start", opt, nil)
-	if req != nil && req.Events != nil {
-		payload := map[string]any{"trigger": opt.Trigger, "session": sessionID, "focus": opt.Focus}
-		if n := len(req.PreCompactHooks); n > 0 {
-			names := make([]string, 0, n)
-			for _, h := range req.PreCompactHooks {
-				names = append(names, h.Match)
-			}
-			payload["file_hooks"] = names
-		}
-		req.Events.Emit(HookPreCompact, payload)
-	}
+	emitCheckpointStart(store, sessionID, source, opt)
 	work := copyMessages(withSystem)
 	_ = markStaleReads(work)
 	shaped, rep := Shape(work, ShapeOpts{Loop: loop, Spill: spill, ModelWindow: window})
@@ -400,37 +341,13 @@ func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message,
 			}
 		}
 	}
+	// 检查点之后不再把最近写过的文件补进对话：调用方（桌面 sendLocked、会话 overlay）没有传工作区，这一步从来没有生效过。载荷里的 hydrated 照旧记 0。
 	hydrated := 0
-	ws := ""
-	var tools *WorkspaceTools
-	if req != nil {
-		ws = req.Workspace
-		tools = req.Tools
-	}
-	if extra, n := hydrateAfterCheckpoint(ws, tail, notes, tools); n > 0 {
-		tail = append(tail, extra)
-		hydrated = n
-	}
 	note := fmt.Sprintf("Checkpoint · kept %d · elided %d · hydrated %d files", messagesTokens(tail), rep.Elided, hydrated)
 	if opt.Trigger != "" {
 		note = note + " · " + opt.Trigger
 	}
-	if started {
-		if sp.Attrs == nil {
-			sp.Attrs = map[string]any{}
-		}
-		sp.Attrs["tokens_before"] = before
-		sp.Attrs["tokens_after"] = messagesTokens(tail)
-		sp.Attrs["elided"] = rep.Elided
-		sp.Attrs["hydrated"] = hydrated
-	}
 	_ = persistCheckpoint(store, sessionID, source, summary, tail, lossless, spill, opt.Trigger, hydrated, note)
-	emitCheckpointPhase(store, req, sessionID, source, "checkpoint", opt, map[string]any{
-		"note":     note,
-		"hydrated": hydrated,
-		"elided":   rep.Elided,
-		"phase":    "complete",
-	})
 	if store == nil {
 		return tail
 	}

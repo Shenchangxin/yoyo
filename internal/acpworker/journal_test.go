@@ -1,4 +1,4 @@
-// journal 的测试：ACP 更新落进 dsh 日志后，TranscriptLines 和任务页认得出文件、计划、命令和控制面工具。
+// journal 的测试：ACP 更新落进 agentloop 日志后，TranscriptLines 和任务页认得出文件、计划、命令和控制面工具。
 
 package acpworker
 
@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/acp"
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 	"github.com/Shenchangxin/yoyo/internal/superagent"
 )
 
@@ -31,14 +31,14 @@ func chunk(text string) map[string]any {
 	return map[string]any{"sessionUpdate": acp.UpdateAgentChunk, "content": map[string]any{"type": "text", "text": text}}
 }
 
-func newTestJournal(t *testing.T) (*journal, *dsh.Session, string) {
+func newTestJournal(t *testing.T) (*journal, *agentloop.Session, string) {
 	t.Helper()
 	dir := t.TempDir()
-	sess := dsh.NewSession()
+	sess := agentloop.NewSession()
 	return newJournal(sess, dir, nil), sess, dir
 }
 
-func transcript(sess *dsh.Session) []superagent.TranscriptLine {
+func transcript(sess *agentloop.Session) []superagent.TranscriptLine {
 	return superagent.TranscriptLines(sess.Events())
 }
 
@@ -280,7 +280,7 @@ func TestJournalSynthesizesWritesResultsDoNotShow(t *testing.T) {
 
 func TestJournalIgnoresReplayAndOutsideTurn(t *testing.T) {
 	var usage []acp.UsageUpdate
-	sess := dsh.NewSession()
+	sess := agentloop.NewSession()
 	j := newJournal(sess, t.TempDir(), func(u acp.UsageUpdate) { usage = append(usage, u) })
 	j.update(wire(t, chunk("between turns")), false)
 	j.begin(1)

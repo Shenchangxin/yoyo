@@ -1,4 +1,4 @@
-// job.go 排队、取消并推进图像、视频和拼接任务。模型循环仍是 runtime.Run，这里只按定时器领取已排队的任务。
+// job.go 排队、取消并推进图像、视频和拼接任务。这里只按定时器领取已排队的任务，不调用模型；视频会话里的代理回合由 app 交给 internal/agentloop/desk，再进入 internal/agentloop 的代理。
 
 package video
 

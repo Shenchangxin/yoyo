@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Shenchangxin/yoyo/internal/dsh"
+	"github.com/Shenchangxin/yoyo/internal/agentloop"
 )
 
 func TestTranscriptLinesSkipAssignment(t *testing.T) {
-	lines := TranscriptLines([]dsh.Event{
-		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "工单 tkt-1\n原文", Source: "assignment"}},
-		{Type: dsh.EventAssistant, Data: dsh.Assistant{Text: "找到三家", ToolCalls: []dsh.ToolCall{{ID: "c1", Name: "shell", Arguments: "ls"}}}},
-		{Type: dsh.EventToolResult, Data: dsh.ToolResultEvent{ID: "c1", Name: "shell", Text: "ok"}},
-		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "再看上海", Source: "human"}},
+	lines := TranscriptLines([]agentloop.Event{
+		{Type: agentloop.EventUser, Data: agentloop.UserMessage{Text: "工单 tkt-1\n原文", Source: "assignment"}},
+		{Type: agentloop.EventAssistant, Data: agentloop.Assistant{Text: "找到三家", ToolCalls: []agentloop.ToolCall{{ID: "c1", Name: "shell", Arguments: "ls"}}}},
+		{Type: agentloop.EventToolResult, Data: agentloop.ToolResultEvent{ID: "c1", Name: "shell", Text: "ok"}},
+		{Type: agentloop.EventUser, Data: agentloop.UserMessage{Text: "再看上海", Source: "human"}},
 	})
 	if len(lines) != 5 {
 		t.Fatalf("%+v", lines)
@@ -27,11 +27,11 @@ func TestTranscriptLinesSkipAssignment(t *testing.T) {
 }
 
 func TestTranscriptShowsAPendingSteerAndATurnError(t *testing.T) {
-	lines := TranscriptLines([]dsh.Event{
-		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "先做完", Source: "human"}},
-		{Type: dsh.EventInbox, Data: dsh.UserMessage{Text: "把天数延长", Source: "human"}},
-		{Type: dsh.EventAssistant, Data: dsh.Assistant{Text: "先做完这一轮"}},
-		{Type: dsh.EventTurnEnd, Data: dsh.TurnEnd{Kind: "error", Reason: `Post "https://example.test/chat/completions": EOF`}},
+	lines := TranscriptLines([]agentloop.Event{
+		{Type: agentloop.EventUser, Data: agentloop.UserMessage{Text: "先做完", Source: "human"}},
+		{Type: agentloop.EventInbox, Data: agentloop.UserMessage{Text: "把天数延长", Source: "human"}},
+		{Type: agentloop.EventAssistant, Data: agentloop.Assistant{Text: "先做完这一轮"}},
+		{Type: agentloop.EventTurnEnd, Data: agentloop.TurnEnd{Kind: "error", Reason: `Post "https://example.test/chat/completions": EOF`}},
 	})
 	if len(lines) != 4 {
 		t.Fatalf("%+v", lines)
@@ -42,16 +42,16 @@ func TestTranscriptShowsAPendingSteerAndATurnError(t *testing.T) {
 	if lines[3].Role != "assistant" || !strings.Contains(lines[3].Text, "EOF") {
 		t.Fatalf("error %+v", lines[3])
 	}
-	claimed := TranscriptLines([]dsh.Event{
-		{Type: dsh.EventInbox, Data: dsh.UserMessage{Text: "把天数延长", Source: "human"}},
-		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "把天数延长", Source: "human"}},
+	claimed := TranscriptLines([]agentloop.Event{
+		{Type: agentloop.EventInbox, Data: agentloop.UserMessage{Text: "把天数延长", Source: "human"}},
+		{Type: agentloop.EventUser, Data: agentloop.UserMessage{Text: "把天数延长", Source: "human"}},
 	})
 	if len(claimed) != 1 || claimed[0].Text != "把天数延长" {
 		t.Fatalf("dup %+v", claimed)
 	}
-	continued := TranscriptLines([]dsh.Event{
-		{Type: dsh.EventTurnEnd, Data: dsh.TurnEnd{Kind: "error", Reason: "EOF"}},
-		{Type: dsh.EventAssistant, Data: dsh.Assistant{Text: "接着做"}},
+	continued := TranscriptLines([]agentloop.Event{
+		{Type: agentloop.EventTurnEnd, Data: agentloop.TurnEnd{Kind: "error", Reason: "EOF"}},
+		{Type: agentloop.EventAssistant, Data: agentloop.Assistant{Text: "接着做"}},
 	})
 	if len(continued) != 1 || continued[0].Text != "接着做" {
 		t.Fatalf("continued %+v", continued)
@@ -59,20 +59,20 @@ func TestTranscriptShowsAPendingSteerAndATurnError(t *testing.T) {
 }
 
 func TestScrubRestartNote(t *testing.T) {
-	events := []dsh.Event{
-		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: "工单 tkt-1\n" + hostRestartNote + "\n原文", Source: "assignment"}},
-		{Type: dsh.EventUser, Data: dsh.UserMessage{Text: hostRestartNote, Source: "human"}},
-		{Type: dsh.EventAssistant, Data: dsh.Assistant{Text: "继续写"}},
+	events := []agentloop.Event{
+		{Type: agentloop.EventUser, Data: agentloop.UserMessage{Text: "工单 tkt-1\n" + hostRestartNote + "\n原文", Source: "assignment"}},
+		{Type: agentloop.EventUser, Data: agentloop.UserMessage{Text: hostRestartNote, Source: "human"}},
+		{Type: agentloop.EventAssistant, Data: agentloop.Assistant{Text: "继续写"}},
 	}
 	got := scrubRestartNotes(events)
 	if len(got) != 2 {
 		t.Fatalf("%+v", got)
 	}
-	msg, ok := got[0].Data.(dsh.UserMessage)
+	msg, ok := got[0].Data.(agentloop.UserMessage)
 	if !ok || strings.Contains(msg.Text, "宿主重启了") || !strings.Contains(msg.Text, "原文") {
 		t.Fatalf("%+v", got[0].Data)
 	}
-	lines := TranscriptLines([]dsh.Event{{Type: dsh.EventUser, Data: dsh.UserMessage{Text: hostRestartNote}}})
+	lines := TranscriptLines([]agentloop.Event{{Type: agentloop.EventUser, Data: agentloop.UserMessage{Text: hostRestartNote}}})
 	if len(lines) != 0 {
 		t.Fatalf("%+v", lines)
 	}
@@ -100,14 +100,14 @@ func TestAnsweredQuestionStaysDown(t *testing.T) {
 	}
 	question := "是自立题材，还是既有原作？"
 	body := rejectedAskLog("call-1", "两份文档已写好", question)
-	if !applyRejectedAsk(eng, id, body) {
-		t.Fatal("not applied")
+	if _, got, ok := applyRejectedAsk(eng, id, body); !ok || got != question {
+		t.Fatalf("not applied: ok=%v question=%q", ok, got)
 	}
 	ticket, _ = eng.Ticket(id)
 	if ticket.Attention != question || TicketStage(&ticket).Action != "answer" {
 		t.Fatalf("stage %+v attention %q", TicketStage(&ticket), ticket.Attention)
 	}
-	if applyRejectedAsk(eng, id, body) {
+	if _, _, ok := applyRejectedAsk(eng, id, body); ok {
 		t.Fatal("applied twice")
 	}
 }
@@ -115,11 +115,11 @@ func TestAnsweredQuestionStaysDown(t *testing.T) {
 // rejectedAskLog 造一条被拒绝的 ready 加提问日志。
 func rejectedAskLog(id, summary, question string) []byte {
 	args, _ := json.Marshal(map[string]string{"state": "ready", "summary": summary, "question": question})
-	call, _ := json.Marshal(dsh.Assistant{ToolCalls: []dsh.ToolCall{{ID: id, Name: "orchestrator_report", Arguments: string(args)}}})
-	result, _ := json.Marshal(dsh.ToolResultEvent{ID: id, Name: "orchestrator_report", Text: "questionWithResult", IsError: true})
+	call, _ := json.Marshal(agentloop.Assistant{ToolCalls: []agentloop.ToolCall{{ID: id, Name: "orchestrator_report", Arguments: string(args)}}})
+	result, _ := json.Marshal(agentloop.ToolResultEvent{ID: id, Name: "orchestrator_report", Text: "questionWithResult", IsError: true})
 	raw, _ := json.Marshal([]storedEvent{
-		{Type: dsh.EventAssistant, Data: call},
-		{Type: dsh.EventToolResult, Data: result},
+		{Type: agentloop.EventAssistant, Data: call},
+		{Type: agentloop.EventToolResult, Data: result},
 	})
 	return raw
 }

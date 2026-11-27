@@ -60,17 +60,17 @@ func TestEmptyChatHasNoConversationTokens(t *testing.T) {
 
 // TestChatCatalogBudgetIsACeiling 确认聊天目录预算以 ChatSkillCatalogBudget 为帽，更小的显式预算保留；没有 ChatOverlay 时用调用方给的预算。
 func TestChatCatalogBudgetIsACeiling(t *testing.T) {
-	fat := pinsOptsFromTools(&WorkspaceTools{ChatOverlay: true, SkillCatalogBudget: 80_000}, true)
-	if fat.CatalogBudget != ChatSkillCatalogBudget {
-		t.Fatalf("chat catalog %d", fat.CatalogBudget)
+	fat := pinsOptsFromTools(&WorkspaceTools{ChatOverlay: true, SkillCatalogBudget: 80_000})
+	if fat.CatalogBudget != ChatSkillCatalogBudget || !fat.ChatCatalog {
+		t.Fatalf("chat catalog %+v", fat)
 	}
-	small := pinsOptsFromTools(&WorkspaceTools{ChatOverlay: true, SkillCatalogBudget: 1000}, true)
+	small := pinsOptsFromTools(&WorkspaceTools{ChatOverlay: true, SkillCatalogBudget: 1000})
 	if small.CatalogBudget != 1000 {
 		t.Fatalf("smaller budget %d", small.CatalogBudget)
 	}
-	harbor := pinsOptsFromTools(&WorkspaceTools{SkillCatalogBudget: 80_000}, false)
-	if harbor.CatalogBudget != 80_000 {
-		t.Fatalf("harbor catalog %d", harbor.CatalogBudget)
+	harbor := pinsOptsFromTools(&WorkspaceTools{SkillCatalogBudget: 80_000})
+	if harbor.CatalogBudget != 80_000 || harbor.ChatCatalog {
+		t.Fatalf("harbor catalog %+v", harbor)
 	}
 }
 
@@ -125,7 +125,7 @@ func TestPathRulesLoadOnRead(t *testing.T) {
 	if strings.Contains(tools.PathRules(), "root rule stays pinned") {
 		t.Fatal("root pin was copied into the tail")
 	}
-	bill := buildBill(billInput{Loop: ApplyChatHorizon(DefaultLoop()), Workspace: root, Tools: tools, Soft: true})
+	bill := buildBill(billInput{Loop: ApplyChatHorizon(DefaultLoop()), Workspace: root, Tools: tools})
 	if strings.Contains(bill.Rules, "use the web router") {
 		t.Fatal("nested rule entered the stable prefix")
 	}
