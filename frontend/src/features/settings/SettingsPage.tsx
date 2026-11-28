@@ -39,11 +39,15 @@ import { isSettingsTab, resolveSettingsTarget } from "./registry";
 function panelFor(tab: SettingsTab, host: SettingsHost): ReactNode {
   switch (tab) {
     case "general":
-      return <GeneralSettings host={host} />;
+      // 快捷键并进通用：低频，单独一页不值得占侧栏一格。旧的 shortcuts 链接在 registry 里落到这里。
+      return (
+        <>
+          <GeneralSettings host={host} />
+          <ShortcutsSettings host={host} />
+        </>
+      );
     case "appearance":
       return <AppearanceSettings host={host} />;
-    case "shortcuts":
-      return <ShortcutsSettings host={host} />;
     case "provider":
       return (
         <>

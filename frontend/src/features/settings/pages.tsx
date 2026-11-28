@@ -656,7 +656,7 @@ export function AboutSettings({ host }: { host: SettingsHost }) {
           ) : null}
         </SettingRow>
         {busy ? <ProgressHairline value={phase === "downloading" ? percent : 0} /> : null}
-        {ota?.error ? <p className="text-ui-body leading-[1.5] text-danger">{String(ota.error)}</p> : null}
+        {ota?.error ? <p className="text-ui-footnote leading-[1.5] text-danger">{String(ota.error)}</p> : null}
         <SettingRow title={copy.settings.autoCheck} description={copy.settings.autoCheckDesc}>
           <Switch
             checked={host.cfg.updateAutoCheck !== false}

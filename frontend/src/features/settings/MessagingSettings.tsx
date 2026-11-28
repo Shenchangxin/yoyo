@@ -1,8 +1,9 @@
 /**
- * 拥有：设置里的消息工作台。左边是机器人，右边是接入配置，下面是唤醒规则。
+ * 拥有：设置里的「聊天软件」页：机器人列表、加机器人和改机器人的弹框，以及谁能叫醒它的规则。
  * 不拥有：平台协议。目录、状态和密钥都来自本机的消息运行时。
+ * 机器人一行一个，开关就地生效；点一行在弹框里改，加机器人先选平台再填。规则改了就存，没有保存按钮。
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -11,10 +12,10 @@ import { Switch } from "../../components/ui/switch";
 import * as api from "../../lib/client";
 import { writeClipboard } from "../../lib/clipboard";
 import { getLocale, useCopy } from "../../lib/i18n";
-import { useMedia } from "../../lib/media";
 import { cn } from "../../lib/utils";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { SettingRow, SettingSection } from "./SettingChrome";
+import { FormDialog } from "../FormDialog";
+import { SettingDisclosure, SettingEmpty, SettingRow, SettingSection } from "./SettingChrome";
 
 type Phrase = { zh: string; en: string };
 type Field = { key: string; label: Phrase; help?: Phrase; secret?: boolean; default?: string };
@@ -57,6 +58,7 @@ type Draft = {
   config: Record<string, string>;
   secrets: Record<string, string>;
 };
+type Kind = "running" | "error" | "stopped" | "unsaved";
 
 const MODES: Record<string, string[]> = {
   lark: ["webhook", "socket"],
@@ -92,6 +94,26 @@ function policyFrom(raw: Record<string, unknown> | undefined): PolicyForm {
     segmented: !!raw?.segmented,
     host: String(raw?.listen_host || "127.0.0.1"),
     port: String(raw?.listen_port || 8787),
+  };
+}
+
+/** policyBody 把表单收成运行时要的形状。数字填坏了时退回默认值。 */
+function policyBody(p: PolicyForm) {
+  const port = Number(p.port);
+  const rate = Number(p.rate);
+  return {
+    wake_prefixes: splitList(p.wake),
+    friend_needs_wake: p.friend,
+    ignore_self: p.ignoreSelf,
+    ignore_at_all: p.ignoreAtAll,
+    admins: splitList(p.admins),
+    allow_users: splitList(p.users),
+    allow_groups: splitList(p.groups),
+    rate_per_minute: Number.isFinite(rate) ? rate : 20,
+    reply_mention: p.mention,
+    segmented: p.segmented,
+    listen_host: p.host.trim(),
+    listen_port: Number.isFinite(port) ? port : 8787,
   };
 }
 
@@ -134,22 +156,30 @@ function transportLabel(t: MessagingCopy, transport: string): string {
   return known[transport] || transport;
 }
 
-function stateKind(state: string | undefined): "running" | "error" | "stopped" | "unsaved" {
+function stateKind(state: string | undefined): Kind {
   if (state === "running") return "running";
   if (state === "error") return "error";
   if (state === "stopped") return "stopped";
   return "unsaved";
 }
 
-/** MessagingSettings 是设置里的消息页。机器人工作台在上，唤醒规则在下。 */
+function stateText(t: MessagingCopy, kind: Kind): string {
+  if (kind === "running") return t.stateRunning;
+  if (kind === "error") return t.stateError;
+  if (kind === "stopped") return t.stateStopped;
+  return t.unsaved;
+}
+
+/** MessagingSettings 是「聊天软件」整页：上面是机器人，有机器人之后下面才出现唤醒规则。 */
 export function MessagingSettings() {
   const copy = useCopy();
   const t = copy.settings.messaging;
-  const narrow = useMedia("(max-width: 860px)");
   const [snap, setSnap] = useState<Snap | null>(null);
   const [policy, setPolicy] = useState<PolicyForm | null>(null);
+  // savedPolicy 是上一次存下的规则，没变就不再提交，免得失焦就弹一次「已保存」。
+  const savedPolicy = useRef("");
+  const [dialog, setDialog] = useState<"pick" | "edit" | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -159,23 +189,23 @@ export function MessagingSettings() {
 
   useEffect(() => {
     let stop = false;
-    const load = async (first: boolean) => {
+    const load = async () => {
       try {
         const next = (await api.imSnapshot()) as Snap;
         if (stop) return;
         setSnap(next);
         setError("");
-        if (first) {
-          setPolicy(policyFrom(next.settings));
-          const firstAccount = next.accounts?.[0];
-          if (firstAccount) applyAccount(firstAccount, next.catalog || []);
+        if (!savedPolicy.current) {
+          const form = policyFrom(next.settings);
+          savedPolicy.current = JSON.stringify(policyBody(form));
+          setPolicy(form);
         }
       } catch (e) {
         if (!stop) setError(errText(e));
       }
     };
-    void load(true);
-    const timer = window.setInterval(() => void load(false), 3000);
+    void load();
+    const timer = window.setInterval(() => void load(), 3000);
     return () => {
       stop = true;
       window.clearInterval(timer);
@@ -184,12 +214,10 @@ export function MessagingSettings() {
 
   const catalog = snap?.catalog || [];
   const accounts = snap?.accounts || [];
+  const statuses = snap?.statuses || [];
   const platform = catalog.find((p) => p.id === draft?.platform);
-  const status = (snap?.statuses || []).find((s) => s.id === draft?.id);
+  const status = statuses.find((s) => s.id === draft?.id);
   const saved = accounts.find((a) => a.id === draft?.id);
-  const opening = picking || (!draft && accounts.length === 0 && catalog.length > 0);
-  const showList = !narrow || (!draft && !opening);
-  const showMain = !narrow || !!draft || opening;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -199,79 +227,61 @@ export function MessagingSettings() {
     );
   }, [catalog, query]);
 
-  function applyAccount(account: Account, list: Platform[]) {
+  function draftOf(account: Account, list: Platform[] = catalog): Draft {
     const spec = list.find((p) => p.id === account.platform);
-    setPicking(false);
-    setDraft({
+    return {
       id: account.id,
       platform: account.platform,
       label: account.label,
       enabled: account.enabled,
       config: { ...defaultsFor(spec), ...(account.config || {}) },
       secrets: {},
-    });
+    };
+  }
+
+  function openAccount(account: Account) {
+    setDraft(draftOf(account));
+    setTestChat("");
+    setTestText("");
+    setDialog("edit");
+  }
+
+  function openPicker() {
+    setQuery("");
+    setDraft(null);
+    setDialog("pick");
   }
 
   function choose(spec: Platform) {
-    setQuery("");
-    setPicking(false);
-    setDraft({
-      id: "",
-      platform: spec.id,
-      label: "",
-      enabled: false,
-      config: defaultsFor(spec),
-      secrets: {},
-    });
+    setDraft({ id: "", platform: spec.id, label: "", enabled: true, config: defaultsFor(spec), secrets: {} });
+    setDialog("edit");
   }
 
-  async function savePolicy() {
-    if (!policy) return;
-    setBusy("policy");
-    try {
-      const port = Number(policy.port);
-      const rate = Number(policy.rate);
-      await api.imSaveSettings({
-        wake_prefixes: splitList(policy.wake),
-        friend_needs_wake: policy.friend,
-        ignore_self: policy.ignoreSelf,
-        ignore_at_all: policy.ignoreAtAll,
-        admins: splitList(policy.admins),
-        allow_users: splitList(policy.users),
-        allow_groups: splitList(policy.groups),
-        rate_per_minute: Number.isFinite(rate) ? rate : 20,
-        reply_mention: policy.mention,
-        segmented: policy.segmented,
-        listen_host: policy.host.trim(),
-        listen_port: Number.isFinite(port) ? port : 8787,
-      });
-      toast.success(t.saved);
-    } catch (e) {
-      toast.error(errText(e));
-    } finally {
-      setBusy("");
-    }
+  function closeDialog() {
+    if (busy === "account" || busy === "remove") return;
+    setDialog(null);
+    setDraft(null);
   }
 
   async function saveAccount() {
-    if (!draft) return;
+    if (!draft || !platform) return;
     setBusy("account");
     try {
-      const savedAccount = (await api.imSaveAccount(
-        {
-          id: draft.id,
-          platform: draft.platform,
-          label: draft.label,
-          enabled: draft.enabled,
-          config: draft.config,
-        },
+      const out = (await api.imSaveAccount(
+        { id: draft.id, platform: draft.platform, label: draft.label, enabled: draft.enabled, config: draft.config },
         draft.secrets,
       )) as Account;
-      toast.success(t.saved);
       const next = (await api.imSnapshot()) as Snap;
       setSnap(next);
-      const fresh = (next.accounts || []).find((a) => a.id === savedAccount.id) || savedAccount;
-      applyAccount(fresh, next.catalog || []);
+      toast.success(t.saved);
+      const fresh = (next.accounts || []).find((a) => a.id === out.id) || out;
+      // 新建的回调机器人要把回调地址抄到平台上，弹框留着让人复制；其余存完就关。
+      if (!draft.id && needsHook(platform, fresh.config || draft.config)) {
+        setDraft(draftOf(fresh, next.catalog || catalog));
+      } else {
+        setDialog(null);
+        setDraft(null);
+      }
     } catch (e) {
       toast.error(errText(e));
     } finally {
@@ -284,10 +294,26 @@ export function MessagingSettings() {
     setBusy("remove");
     try {
       await api.imDeleteAccount(draft.id);
-      setDraft(null);
-      setPicking(false);
       setConfirmRemove(false);
+      setDialog(null);
+      setDraft(null);
       toast.success(t.removed);
+      setSnap((await api.imSnapshot()) as Snap);
+    } catch (e) {
+      toast.error(errText(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /** toggleAccount 在列表里直接开关一个机器人。密钥留空，运行时保留原来的。 */
+  async function toggleAccount(account: Account, enabled: boolean) {
+    setBusy(`toggle:${account.id}`);
+    try {
+      await api.imSaveAccount(
+        { id: account.id, platform: account.platform, label: account.label, enabled, config: account.config || {} },
+        {},
+      );
       setSnap((await api.imSnapshot()) as Snap);
     } catch (e) {
       toast.error(errText(e));
@@ -309,181 +335,180 @@ export function MessagingSettings() {
     }
   }
 
+  /** savePolicy 在开关拨动或输入框失焦时存规则。和上次存的一样就不提交。 */
+  async function savePolicy(next: PolicyForm) {
+    const body = policyBody(next);
+    const key = JSON.stringify(body);
+    if (key === savedPolicy.current) return;
+    try {
+      await api.imSaveSettings(body);
+      savedPolicy.current = key;
+      toast.success(t.saved, { id: "im-policy-saved" });
+    } catch (e) {
+      toast.error(errText(e));
+    }
+  }
+
+  function commit(next: PolicyForm) {
+    setPolicy(next);
+    void savePolicy(next);
+  }
+
   const hook = draft?.id && needsHook(platform, draft.config) ? `${snap?.hook_base || ""}${draft.id}` : "";
-  const rows: Account[] = draft && !draft.id
-    ? [{ id: "", platform: draft.platform, label: draft.label, enabled: draft.enabled }, ...accounts]
-    : accounts;
 
   return (
     <div className="flex w-full min-w-0 flex-col">
-      {error ? <p className="mb-3 text-ui-body text-danger" role="alert">{error}</p> : null}
-      <section className="mb-8 w-full min-w-0" data-setting-section-highlight-target="messaging-accounts">
-        <div className="mb-2.5 flex flex-col gap-0.5 px-1">
-          <h2 id="messaging-accounts" className="flex min-h-7 items-center text-ui-body-l font-semibold text-foreground">{copy.settings.sections.messagingAccounts}</h2>
-          <p className="text-ui-body leading-[1.55] text-muted">{t.intro}</p>
-        </div>
-        <div className="flex h-[min(34rem,calc(100dvh-15rem))] min-h-[22rem] overflow-hidden rounded-lg border border-border bg-card">
-          {showList ? (
-            <aside className={cn("flex min-h-0 min-w-0 flex-col", showMain ? "w-[15.5rem] shrink-0 border-r border-border" : "flex-1")}>
-              <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                <span className="text-ui-footnote font-medium text-muted">{t.listTitle}</span>
-                <Button type="button" size="sm" variant="ghost" disabled={!catalog.length} onClick={() => { setPicking(true); setQuery(""); }}>
-                  <Plus />
-                  {t.add}
-                </Button>
-              </div>
-              {rows.length === 0 ? (
-                <div className="flex flex-1 flex-col items-start justify-center gap-3 px-4 pb-8">
-                  <p className="text-ui-body leading-5 text-muted">{t.noAccounts}</p>
-                  <Button type="button" size="sm" disabled={!catalog.length} onClick={() => setPicking(true)}>{t.add}</Button>
-                </div>
-              ) : (
-                <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="listbox" aria-label={t.listTitle}>
-                  {rows.map((account) => {
-                    const spec = catalog.find((p) => p.id === account.platform);
-                    const st = account.id ? (snap?.statuses || []).find((s) => s.id === account.id) : undefined;
-                    const kind = account.id ? stateKind(st?.state || "stopped") : "unsaved";
-                    const active = !picking && (account.id ? draft?.id === account.id : !draft?.id);
-                    const platformName = phrase(spec?.name);
-                    const name = account.label || platformName || account.platform;
-                    const statusLine = kind === "unsaved" ? t.unsaved : stateText(t, kind);
-                    return (
-                      <button
-                        key={account.id || "draft"}
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        onClick={() => account.id ? applyAccount(account, catalog) : setPicking(false)}
-                        className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left",
-                          active ? "bg-lift" : "hover:bg-lift/70",
-                        )}
-                      >
-                        <Mark name={platformName} id={account.platform} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-ui-body font-medium text-foreground">{name}</span>
-                          <span className="mt-0.5 flex items-center gap-1.5 text-ui-caption text-muted">
-                            <StatusDot kind={kind} />
-                            <span className="truncate">{account.label ? `${statusLine} · ${platformName}` : statusLine}</span>
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </aside>
-          ) : null}
-          {showMain ? (
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-              {narrow ? (
-                <button
-                  type="button"
-                  className="flex items-center gap-1.5 px-4 pt-3 text-ui-footnote text-muted hover:text-foreground"
-                  onClick={() => {
-                    if (picking && draft) {
-                      setPicking(false);
-                      return;
-                    }
-                    setDraft(null);
-                    setPicking(false);
-                  }}
-                >
-                  <ArrowLeft className="size-3.5" />
-                  {t.back}
-                </button>
-              ) : null}
-              {opening ? (
-                <PlatformPicker
-                  t={t}
-                  query={query}
-                  platforms={filtered}
-                  onQuery={setQuery}
-                  onChoose={choose}
-                />
-              ) : draft && platform ? (
-                <AccountEditor
-                  t={t}
-                  draft={draft}
-                  platform={platform}
-                  status={status}
-                  saved={saved}
-                  hook={hook}
-                  busy={busy}
-                  testChat={testChat}
-                  testText={testText}
-                  onChange={setDraft}
-                  onTestChat={setTestChat}
-                  onTestText={setTestText}
-                  onSave={() => void saveAccount()}
-                  onRemove={() => setConfirmRemove(true)}
-                  onSend={() => void sendTest()}
-                  onCopy={async () => {
-                    await writeClipboard(hook);
-                    toast.success(t.copied);
-                  }}
-                />
-              ) : (
-                <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-                  <p className="text-ui-body text-muted">{accounts.length ? t.selectHint : t.pickHint}</p>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </section>
+      {error ? <p className="mb-3 px-1 text-ui-footnote leading-[1.5] text-danger" role="alert">{error}</p> : null}
 
       <SettingSection
-        id="messaging-policy"
-        title={copy.settings.sections.messagingPolicy}
-        description={t.policyHint}
-        actions={
-          <Button type="button" size="sm" disabled={!policy || busy === "policy"} onClick={() => void savePolicy()}>
-            {t.savePolicy}
+        id="messaging-accounts"
+        title={copy.settings.sections.messagingAccounts}
+        description={t.intro}
+        headerActions={
+          <Button size="sm" variant="ghost" disabled={!catalog.length} onClick={openPicker}>
+            <Plus aria-hidden />
+            {t.add}
           </Button>
         }
       >
-        {policy ? (
-          <>
-            <SettingRow title={t.wakePrefixes} description={t.wakePrefixesHint}>
-              <Input value={policy.wake} onChange={(e) => setPolicy({ ...policy, wake: e.target.value })} />
-            </SettingRow>
-            <SettingRow title={t.friendNeedsWake}>
-              <Switch checked={policy.friend} onCheckedChange={(v) => setPolicy({ ...policy, friend: v })} />
-            </SettingRow>
+        {accounts.length === 0 ? (
+          <SettingEmpty compact>{t.noAccounts}</SettingEmpty>
+        ) : (
+          accounts.map((account) => (
+            <BotRow
+              key={account.id}
+              t={t}
+              account={account}
+              platform={catalog.find((p) => p.id === account.platform)}
+              status={statuses.find((s) => s.id === account.id)}
+              busy={busy === `toggle:${account.id}`}
+              onOpen={() => openAccount(account)}
+              onToggle={(on) => void toggleAccount(account, on)}
+            />
+          ))
+        )}
+      </SettingSection>
+
+      {policy && accounts.length > 0 ? (
+        <SettingSection
+          id="messaging-policy"
+          title={copy.settings.sections.messagingPolicy}
+          description={t.policyHint}
+          footnote={t.autosave}
+        >
+          <PolicyInput
+            title={t.wakePrefixes}
+            description={t.wakePrefixesHint}
+            value={policy.wake}
+            onChange={(v) => setPolicy({ ...policy, wake: v })}
+            onCommit={() => void savePolicy(policy)}
+          />
+          <SettingRow title={t.friendNeedsWake}>
+            <Switch checked={policy.friend} aria-label={t.friendNeedsWake} onCheckedChange={(v) => commit({ ...policy, friend: v })} />
+          </SettingRow>
+          <SettingDisclosure
+            title={t.access}
+            description={t.accessHint}
+            defaultOpen={!!(policy.admins || policy.users || policy.groups)}
+          >
+            <PolicyInput
+              title={t.admins}
+              description={t.adminsHint}
+              value={policy.admins}
+              onChange={(v) => setPolicy({ ...policy, admins: v })}
+              onCommit={() => void savePolicy(policy)}
+            />
+            <PolicyInput
+              title={t.allowUsers}
+              description={t.allowUsersHint}
+              value={policy.users}
+              onChange={(v) => setPolicy({ ...policy, users: v })}
+              onCommit={() => void savePolicy(policy)}
+            />
+            <PolicyInput
+              title={t.allowGroups}
+              description={t.allowGroupsHint}
+              value={policy.groups}
+              onChange={(v) => setPolicy({ ...policy, groups: v })}
+              onCommit={() => void savePolicy(policy)}
+            />
+          </SettingDisclosure>
+          <SettingDisclosure title={t.advanced} description={t.advancedHint}>
             <SettingRow title={t.ignoreSelf}>
-              <Switch checked={policy.ignoreSelf} onCheckedChange={(v) => setPolicy({ ...policy, ignoreSelf: v })} />
+              <Switch checked={policy.ignoreSelf} aria-label={t.ignoreSelf} onCheckedChange={(v) => commit({ ...policy, ignoreSelf: v })} />
             </SettingRow>
             <SettingRow title={t.ignoreAtAll}>
-              <Switch checked={policy.ignoreAtAll} onCheckedChange={(v) => setPolicy({ ...policy, ignoreAtAll: v })} />
+              <Switch checked={policy.ignoreAtAll} aria-label={t.ignoreAtAll} onCheckedChange={(v) => commit({ ...policy, ignoreAtAll: v })} />
             </SettingRow>
-            <SettingRow title={t.admins} description={t.adminsHint}>
-              <Input value={policy.admins} onChange={(e) => setPolicy({ ...policy, admins: e.target.value })} />
-            </SettingRow>
-            <SettingRow title={t.allowUsers} description={t.allowUsersHint}>
-              <Input value={policy.users} onChange={(e) => setPolicy({ ...policy, users: e.target.value })} />
-            </SettingRow>
-            <SettingRow title={t.allowGroups} description={t.allowGroupsHint}>
-              <Input value={policy.groups} onChange={(e) => setPolicy({ ...policy, groups: e.target.value })} />
-            </SettingRow>
-            <SettingRow title={t.rate} description={t.rateHint}>
-              <Input inputMode="numeric" value={policy.rate} onChange={(e) => setPolicy({ ...policy, rate: e.target.value })} />
-            </SettingRow>
+            <PolicyInput
+              numeric
+              title={t.rate}
+              description={t.rateHint}
+              value={policy.rate}
+              onChange={(v) => setPolicy({ ...policy, rate: v })}
+              onCommit={() => void savePolicy(policy)}
+            />
             <SettingRow title={t.replyMention}>
-              <Switch checked={policy.mention} onCheckedChange={(v) => setPolicy({ ...policy, mention: v })} />
+              <Switch checked={policy.mention} aria-label={t.replyMention} onCheckedChange={(v) => commit({ ...policy, mention: v })} />
             </SettingRow>
             <SettingRow title={t.segmented}>
-              <Switch checked={policy.segmented} onCheckedChange={(v) => setPolicy({ ...policy, segmented: v })} />
+              <Switch checked={policy.segmented} aria-label={t.segmented} onCheckedChange={(v) => commit({ ...policy, segmented: v })} />
             </SettingRow>
-            <SettingRow title={t.listenHost} description={t.listenHint}>
-              <Input value={policy.host} onChange={(e) => setPolicy({ ...policy, host: e.target.value })} />
-            </SettingRow>
-            <SettingRow title={t.listenPort}>
-              <Input inputMode="numeric" value={policy.port} onChange={(e) => setPolicy({ ...policy, port: e.target.value })} />
-            </SettingRow>
-          </>
+            <PolicyInput
+              title={t.listenHost}
+              description={t.listenHint}
+              value={policy.host}
+              onChange={(v) => setPolicy({ ...policy, host: v })}
+              onCommit={() => void savePolicy(policy)}
+            />
+            <PolicyInput
+              numeric
+              title={t.listenPort}
+              value={policy.port}
+              onChange={(v) => setPolicy({ ...policy, port: v })}
+              onCommit={() => void savePolicy(policy)}
+            />
+          </SettingDisclosure>
+        </SettingSection>
+      ) : null}
+
+      <FormDialog open={dialog === "pick"} title={t.pickTitle} description={t.pickHint} onClose={closeDialog}>
+        <PlatformPicker t={t} query={query} platforms={filtered} onQuery={setQuery} onChoose={choose} />
+      </FormDialog>
+
+      <FormDialog
+        open={dialog === "edit" && !!draft && !!platform && !confirmRemove}
+        title={draft?.label || phrase(platform?.name)}
+        description={phrase(platform?.summary)}
+        onClose={closeDialog}
+      >
+        {draft && platform ? (
+          <AccountEditor
+            t={t}
+            cancelLabel={copy.dialog.cancel}
+            draft={draft}
+            platform={platform}
+            status={status}
+            saved={saved}
+            hook={hook}
+            busy={busy}
+            testChat={testChat}
+            testText={testText}
+            onChange={setDraft}
+            onTestChat={setTestChat}
+            onTestText={setTestText}
+            onSave={() => void saveAccount()}
+            onRemove={() => setConfirmRemove(true)}
+            onBack={draft.id ? undefined : openPicker}
+            onCancel={closeDialog}
+            onSend={() => void sendTest()}
+            onCopy={async () => {
+              await writeClipboard(hook);
+              toast.success(t.copied);
+            }}
+          />
         ) : null}
-      </SettingSection>
+      </FormDialog>
 
       <ConfirmDialog
         open={confirmRemove}
@@ -498,14 +523,70 @@ export function MessagingSettings() {
   );
 }
 
-function stateText(t: MessagingCopy, kind: "running" | "error" | "stopped" | "unsaved"): string {
-  if (kind === "running") return t.stateRunning;
-  if (kind === "error") return t.stateError;
-  if (kind === "stopped") return t.stateStopped;
-  return t.unsaved;
+/** BotRow 是列表里的一个机器人：点左边打开弹框改，右边开关就地生效。 */
+function BotRow(props: {
+  t: MessagingCopy;
+  account: Account;
+  platform?: Platform;
+  status?: Status;
+  busy: boolean;
+  onOpen: () => void;
+  onToggle: (on: boolean) => void;
+}) {
+  const { t, account } = props;
+  const platformName = phrase(props.platform?.name) || account.platform;
+  const name = account.label || platformName;
+  const kind = stateKind(props.status?.state || "stopped");
+  const line = account.label ? `${stateText(t, kind)} · ${platformName}` : stateText(t, kind);
+  return (
+    <div className="flex min-h-8 w-full min-w-0 items-center gap-3" data-testid={`im-bot-${account.id}`}>
+      <button
+        type="button"
+        onClick={props.onOpen}
+        title={kind === "error" ? props.status?.detail : undefined}
+        className="group flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        <Mark name={platformName} id={account.platform} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-ui-body-l leading-[1.45] text-foreground transition-colors group-hover:text-accent">{name}</span>
+          <span className={cn("mt-0.5 flex items-center gap-1.5 text-ui-footnote", kind === "error" ? "text-danger" : "text-muted")}>
+            <StatusDot kind={kind} />
+            <span className="truncate">{line}</span>
+          </span>
+        </span>
+      </button>
+      <Switch checked={account.enabled} disabled={props.busy} aria-label={`${t.enabled} ${name}`} onCheckedChange={props.onToggle} />
+    </div>
+  );
 }
 
-function StatusDot({ kind }: { kind: "running" | "error" | "stopped" | "unsaved" }) {
+/** PolicyInput 是规则里的一格文字：失焦或回车时存。numeric 为真时弹数字键盘。 */
+function PolicyInput(props: {
+  title: string;
+  description?: string;
+  value: string;
+  numeric?: boolean;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <SettingRow title={props.title} description={props.description}>
+      <Input
+        className="h-8 w-full text-ui-body"
+        aria-label={props.title}
+        inputMode={props.numeric ? "numeric" : undefined}
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        onBlur={props.onCommit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+    </SettingRow>
+  );
+}
+
+function StatusDot({ kind }: { kind: Kind }) {
   return (
     <span
       className={cn(
@@ -528,6 +609,7 @@ function Mark({ name, id }: { name: string; id: string }) {
   );
 }
 
+/** PlatformPicker 是加机器人的第一步：搜一下，点一个平台。 */
 function PlatformPicker(props: {
   t: MessagingCopy;
   query: string;
@@ -537,43 +619,45 @@ function PlatformPicker(props: {
 }) {
   const { t } = props;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 px-4 pt-4">
-        <h3 className="text-ui-title-s font-medium tracking-[-0.01em] text-foreground">{t.pickTitle}</h3>
-        <p className="mt-1 text-ui-footnote leading-5 text-muted">{t.pickHint}</p>
-        <Input className="mt-3" value={props.query} placeholder={t.searchPlatforms} onChange={(e) => props.onQuery(e.target.value)} autoFocus />
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {props.platforms.length === 0 ? (
-          <p className="py-8 text-ui-body text-muted">{t.noMatch}</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {props.platforms.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => props.onChoose(p)}
-                className="flex items-start gap-3 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:bg-lift"
-              >
-                <Mark name={phrase(p.name)} id={p.id} />
-                <span className="min-w-0">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-ui-body font-medium text-foreground">{phrase(p.name)}</span>
-                    <span className="shrink-0 text-ui-caption text-muted">{transportLabel(t, p.transport)}</span>
-                  </span>
-                  <span className="mt-1 block text-ui-footnote leading-5 text-muted">{phrase(p.summary)}</span>
+    <div className="mt-4 flex flex-col gap-3">
+      <Input
+        autoFocus
+        value={props.query}
+        placeholder={t.searchPlatforms}
+        aria-label={t.searchPlatforms}
+        onChange={(e) => props.onQuery(e.target.value)}
+      />
+      {props.platforms.length === 0 ? (
+        <p className="py-6 text-ui-footnote text-muted">{t.noMatch}</p>
+      ) : (
+        <div className="-mx-2 flex max-h-[22rem] flex-col overflow-y-auto">
+          {props.platforms.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => props.onChoose(p)}
+              className="flex items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-lift"
+            >
+              <Mark name={phrase(p.name)} id={p.id} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-ui-body font-medium text-foreground">{phrase(p.name)}</span>
+                  <span className="shrink-0 text-ui-caption text-muted">{transportLabel(t, p.transport)}</span>
                 </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+                <span className="mt-0.5 block text-ui-footnote leading-5 text-muted">{phrase(p.summary)}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+/** AccountEditor 是弹框里的表单：状态和启用、名称、平台字段、回调地址、发测试，最后是操作。 */
 function AccountEditor(props: {
   t: MessagingCopy;
+  cancelLabel: string;
   draft: Draft;
   platform: Platform;
   status?: Status;
@@ -587,86 +671,76 @@ function AccountEditor(props: {
   onTestText: (v: string) => void;
   onSave: () => void;
   onRemove: () => void;
+  onBack?: () => void;
+  onCancel: () => void;
   onSend: () => void;
   onCopy: () => void;
 }) {
   const { t, draft, platform } = props;
-  const kind = draft.id ? stateKind(props.status?.state || "stopped") : "unsaved";
-  const platformName = phrase(platform.name);
-  const title = draft.label || platformName;
+  const kind: Kind = draft.id ? stateKind(props.status?.state || "stopped") : "unsaved";
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
-        <Mark name={platformName} id={platform.id} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-ui-title-s font-medium tracking-[-0.01em] text-foreground">{title}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-ui-footnote text-muted">
-            {draft.label ? <span className="truncate">{platformName}</span> : null}
-            <span className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-caption font-medium",
-              kind === "running" && "bg-success/15 text-success",
-              kind === "error" && "bg-danger/10 text-danger",
-              kind === "stopped" && "bg-lift text-muted",
-              kind === "unsaved" && "bg-accent/15 text-accent",
-            )}>
-              <StatusDot kind={kind} />
-              {stateText(t, kind)}
-            </span>
-          </div>
-        </div>
-        <label className="flex shrink-0 items-center gap-2 text-ui-footnote text-muted">
+    <div className="mt-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3 rounded-lg bg-lift px-3 py-2">
+        <span className="inline-flex items-center gap-1.5 text-ui-footnote text-muted">
+          <StatusDot kind={kind} />
+          {stateText(t, kind)}
+        </span>
+        <label className="flex items-center gap-2 text-ui-footnote text-muted">
           {t.enabled}
           <Switch checked={draft.enabled} onCheckedChange={(v) => props.onChange({ ...draft, enabled: v })} />
         </label>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <p className="text-ui-footnote leading-5 text-muted">{phrase(platform.summary)}</p>
-        {props.status?.state === "error" && props.status.detail ? (
-          <p className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-ui-footnote leading-5 text-danger">{props.status.detail}</p>
-        ) : null}
-        <div className="mt-4 flex flex-col gap-3">
-          <FieldLabel title={t.label}>
-            <Input value={draft.label} onChange={(e) => props.onChange({ ...draft, label: e.target.value })} />
-          </FieldLabel>
-          {(platform.fields || []).map((field) => (
-            <ConfigField key={field.key} t={t} field={field} draft={draft} platform={platform} saved={props.saved} onChange={props.onChange} />
-          ))}
-          {props.hook ? (
-            <div className="rounded-lg bg-lift px-3 py-2.5">
-              <div className="text-ui-footnote font-medium text-foreground">{t.hook}</div>
-              <div className="mt-1.5 flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate font-mono text-ui-footnote text-muted">{props.hook}</code>
-                <Button type="button" size="sm" variant="outline" onClick={props.onCopy}>{t.copy}</Button>
-              </div>
-            </div>
-          ) : needsHook(platform, draft.config) && !draft.id ? (
-            <p className="text-ui-footnote leading-5 text-muted">{t.hookAfterSave}</p>
-          ) : null}
-          {draft.id ? (
-            <details className="rounded-lg border border-border px-3 py-2">
-              <summary className="cursor-pointer text-ui-footnote font-medium text-foreground">{t.testSend}</summary>
-              <p className="mt-1 text-ui-footnote leading-5 text-muted">{t.testHint}</p>
-              <div className="mt-2 flex flex-col gap-2">
-                <FieldLabel title={t.testChat}>
-                  <Input value={props.testChat} onChange={(e) => props.onTestChat(e.target.value)} />
-                </FieldLabel>
-                <FieldLabel title={t.testText}>
-                  <Input value={props.testText} onChange={(e) => props.onTestText(e.target.value)} />
-                </FieldLabel>
-                <div className="flex justify-end">
-                  <Button type="button" size="sm" variant="outline" disabled={props.busy === "send"} onClick={props.onSend}>{t.testSend}</Button>
-                </div>
-              </div>
-            </details>
-          ) : null}
-        </div>
       </div>
-      <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-4 py-3">
+      {props.status?.state === "error" && props.status.detail ? (
+        <p className="rounded-lg bg-danger/10 px-3 py-2 text-ui-footnote leading-5 text-danger">{props.status.detail}</p>
+      ) : null}
+      <FieldLabel title={t.label}>
+        <Input value={draft.label} placeholder={phrase(platform.name)} onChange={(e) => props.onChange({ ...draft, label: e.target.value })} />
+      </FieldLabel>
+      {(platform.fields || []).map((field) => (
+        <ConfigField key={field.key} t={t} field={field} draft={draft} platform={platform} saved={props.saved} onChange={props.onChange} />
+      ))}
+      {props.hook ? (
+        <div className="rounded-lg bg-lift px-3 py-2.5">
+          <div className="text-ui-footnote font-medium text-foreground">{t.hook}</div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate font-mono text-ui-footnote text-muted">{props.hook}</code>
+            <Button type="button" size="sm" variant="outline" onClick={props.onCopy}>{t.copy}</Button>
+          </div>
+        </div>
+      ) : needsHook(platform, draft.config) && !draft.id ? (
+        <p className="text-ui-footnote leading-5 text-muted">{t.hookAfterSave}</p>
+      ) : null}
+      {draft.id ? (
+        <details className="setting-disclosure rounded-lg border border-border px-3 py-2">
+          <summary className="cursor-pointer list-none text-ui-footnote font-medium text-foreground">{t.testSend}</summary>
+          <p className="mt-1 text-ui-footnote leading-5 text-muted">{t.testHint}</p>
+          <div className="mt-2 flex flex-col gap-2">
+            <FieldLabel title={t.testChat}>
+              <Input value={props.testChat} onChange={(e) => props.onTestChat(e.target.value)} />
+            </FieldLabel>
+            <FieldLabel title={t.testText}>
+              <Input value={props.testText} onChange={(e) => props.onTestText(e.target.value)} />
+            </FieldLabel>
+            <div className="flex justify-end">
+              <Button type="button" size="sm" variant="outline" disabled={props.busy === "send"} onClick={props.onSend}>{t.testSend}</Button>
+            </div>
+          </div>
+        </details>
+      ) : null}
+      <div className="dialog-actions">
         {draft.id ? (
-          <Button type="button" size="sm" variant="ghost" className="text-danger hover:bg-danger/10" onClick={props.onRemove}>{t.remove}</Button>
-        ) : <span />}
+          <Button type="button" size="sm" variant="ghost" className="mr-auto text-danger hover:bg-danger/10" onClick={props.onRemove}>
+            {t.remove}
+          </Button>
+        ) : props.onBack ? (
+          <Button type="button" size="sm" variant="ghost" className="mr-auto" onClick={props.onBack}>
+            <ArrowLeft aria-hidden />
+            {t.backToPlatforms}
+          </Button>
+        ) : null}
+        <Button type="button" size="sm" variant="lift" onClick={props.onCancel}>{props.cancelLabel}</Button>
         <Button type="button" size="sm" disabled={props.busy === "account"} onClick={props.onSave}>{t.saveAccount}</Button>
-      </footer>
+      </div>
     </div>
   );
 }

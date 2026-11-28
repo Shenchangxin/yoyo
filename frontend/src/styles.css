@@ -2025,6 +2025,29 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   .setting-card > * + * {
     border-top: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   }
+  /* Folded rows inside a card: the <details> is one card row; its body repeats the card's row rhythm and hairlines. */
+  .setting-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+  .setting-disclosure[open] > summary .setting-disclosure-chevron {
+    transform: rotate(90deg);
+  }
+  .setting-disclosure-body {
+    margin-top: 0.75rem;
+  }
+  .setting-disclosure-body > * {
+    padding-block: 0.75rem;
+    border-top: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  }
+  .setting-disclosure-body > :last-child {
+    padding-bottom: 0;
+  }
+  .setting-card-tight .setting-disclosure-body > * {
+    padding-block: 0.5rem;
+  }
+  .setting-card-tight .setting-disclosure-body > :last-child {
+    padding-bottom: 0;
+  }
   .setting-card-tight > * {
     padding-block: 0.5rem;
   }

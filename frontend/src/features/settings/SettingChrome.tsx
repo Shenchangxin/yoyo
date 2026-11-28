@@ -79,7 +79,7 @@ export function SettingSection({
     </div>
   ) : null;
   const desc = description ? (
-    <p className="text-ui-body leading-[1.55] text-muted">{description}</p>
+    <p className="text-ui-footnote leading-[1.55] text-muted">{description}</p>
   ) : null;
   const header = heading || desc ? (
     <div className="mb-2.5 flex flex-col gap-0.5 px-1">
@@ -145,7 +145,7 @@ export function SettingRow({
         {title ? (
           <div className="min-w-0 flex-1">
             <div className="text-ui-body-l leading-[1.45] text-foreground">{title}</div>
-            {description ? <div className="mt-0.5 text-ui-body leading-[1.5] text-muted">{description}</div> : null}
+            {description ? <div className="mt-0.5 text-ui-footnote leading-[1.5] text-muted">{description}</div> : null}
           </div>
         ) : null}
         {children ? (
@@ -166,11 +166,47 @@ export function SettingRow({
       {title ? (
         <div className="min-w-0">
           <div className="text-ui-body-l leading-[1.45] text-foreground">{title}</div>
-          {description ? <div className="mt-0.5 text-ui-body leading-[1.5] text-muted">{description}</div> : null}
+          {description ? <div className="mt-0.5 text-ui-footnote leading-[1.5] text-muted">{description}</div> : null}
         </div>
       ) : null}
       {children ? <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2">{children}</div> : null}
     </div>
+  );
+}
+
+/**
+ * SettingDisclosure 把低频的行收进卡片里的一行折叠，点标题展开。
+ * 它作为卡片的直接子节点，自己拿到卡片的行距和上方细线；展开后里面每个直接子节点算一行，行间同样有细线。
+ * title 画在折叠行左边。description 为真时画在标题下面，写清里面收了什么。
+ * defaultOpen 为真时一开始就展开，例如里面已经有改过的值。
+ * 用原生 details，键盘和读屏不用另外处理；箭头旋转在 styles.css 的 .setting-disclosure。
+ */
+export function SettingDisclosure({
+  title,
+  description,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  description?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="setting-disclosure w-full min-w-0" open={defaultOpen}>
+      <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 select-none">
+        <ChevronRight
+          className="setting-disclosure-chevron size-4 shrink-0 text-muted transition-transform duration-[var(--duration-fast)]"
+          aria-hidden
+          strokeWidth={1.75}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block text-ui-body-l leading-[1.45] text-foreground">{title}</span>
+          {description ? <span className="mt-0.5 block text-ui-footnote leading-[1.5] text-muted">{description}</span> : null}
+        </span>
+      </summary>
+      <div className="setting-disclosure-body">{children}</div>
+    </details>
   );
 }
 
@@ -231,7 +267,7 @@ export function SettingActionRow({
         <span className={cn("block text-ui-body-l leading-[1.45]", danger ? "text-danger" : "text-foreground")}>
           {title}
         </span>
-        {description ? <span className="mt-0.5 block text-ui-body leading-[1.5] text-muted">{description}</span> : null}
+        {description ? <span className="mt-0.5 block text-ui-footnote leading-[1.5] text-muted">{description}</span> : null}
       </span>
       {trailing ? <span className="flex shrink-0 items-center text-ui-footnote text-muted transition-colors group-hover:text-foreground">{trailing}</span> : null}
       {chevron ? <ChevronRight className="size-4 shrink-0 text-muted/70 transition-[color,transform] duration-[var(--duration-fast)] group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden /> : null}

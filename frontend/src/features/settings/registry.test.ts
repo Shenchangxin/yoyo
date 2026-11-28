@@ -29,6 +29,9 @@ test("old links and moved sections land on the current page", () => {
   assert.deepEqual(resolveSettingsTarget("advanced", "advanced-doctor"), { tab: "advanced", section: "advanced-logs" });
   assert.deepEqual(resolveSettingsTarget("memory"), { tab: "policy", section: "policy-data" });
   assert.deepEqual(resolveSettingsTarget("generation", "generation-image"), { tab: "generation", section: "generation-image" });
+  assert.deepEqual(resolveSettingsTarget("shortcuts"), { tab: "general", section: "shortcuts-map" });
+  assert.deepEqual(resolveSettingsTarget("shortcuts", "shortcuts-map"), { tab: "general", section: "shortcuts-map" });
+  assert.ok(!navTabs().some((t) => t.key === "shortcuts"), "shortcuts live on the general page");
   assert.deepEqual(resolveSettingsTarget("nonsense"), { tab: "proactive", section: "" });
 });
 

@@ -71,8 +71,9 @@ test("control shortcuts section is reachable", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("button", { name: "General", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
+  // 快捷键并进了通用页，侧栏不再有单独的 Shortcuts 页签。
+  await expect(page.getByRole("button", { name: "Shortcuts", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "General", exact: true }).click();
   await expect(page.getByRole("button", { name: "palette" })).toHaveText(/^(Ctrl|⌘)\s*K$/);
 });
 
@@ -80,7 +81,7 @@ test("generation tab lists music stock and transcription templates", async ({ pa
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Generation", exact: true }).click();
+  await page.getByRole("button", { name: "Creative services", exact: true }).click();
   const image = page.locator('[data-setting-section-highlight-target="generation-image"]');
   await image.scrollIntoViewIfNeeded();
   await expect(page.getByTestId("adapter-template-qwen-image")).toBeVisible();
@@ -1561,8 +1562,10 @@ test("advanced diagnostics is not the journal", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Advanced" }).click();
-  await expect(page.getByRole("heading", { name: "Diagnostics" })).toBeVisible();
+  // 诊断与实验室在开发者一组，默认收起，先点开。
+  await page.getByRole("button", { name: "Show developer options", exact: true }).click();
+  await page.getByRole("button", { name: "Diagnostics & labs", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Diagnostics", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   await expect(page.getByTestId("diagnostics-tail")).toContainText("boot");
   await expect(page.getByTestId("journal-tail")).toContainText("checkout");

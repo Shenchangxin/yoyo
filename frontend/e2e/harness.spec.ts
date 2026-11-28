@@ -120,7 +120,10 @@ test("settings replaces the thread list and returns via sessions", async ({ page
   await expect(page.getByRole("button", { name: "New chat", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Demo thread/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Sessions", exact: true }).click();
-  await expect(page.getByRole("button", { name: /Demo thread/ })).toBeVisible();
+  // 会话表面的侧栏是今天栏，历史会话不在侧栏里，从命令面板打开。
+  await expect(page.getByTestId("work-pane")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("option", { name: /Demo thread/ }).click();
   await expect(page.getByTestId("conversation-column").getByText("hello from demo")).toBeVisible();
 });
 
@@ -181,11 +184,13 @@ test("laboratory switch reveals owner tables", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  // 诊断与实验室在开发者一组，默认收起，先点开。
+  await page.getByRole("button", { name: "Show developer options", exact: true }).click();
+  await page.getByRole("button", { name: "Diagnostics & labs", exact: true }).click();
   await page.getByRole("switch", { name: "Show laboratory" }).click();
   await page.getByRole("button", { name: "Sessions", exact: true }).click();
   await page.getByRole("button", { name: /^Lab\b/ }).click();
-  await page.getByRole("tab", { name: "Improve" }).click();
+  await page.getByTestId("harness-rail").getByRole("button", { name: "Improve", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Same-budget comparison" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Try" })).toBeVisible();
   const advanced = page.getByText("Advanced", { exact: true });
@@ -193,13 +198,13 @@ test("laboratory switch reveals owner tables", async ({ page }) => {
   await expect(page.getByText("Try in parallel")).toBeVisible();
   await advanced.nth(1).click();
   await expect(page.getByText("Full check set")).toBeVisible();
-  await page.getByRole("tab", { name: "Check" }).click();
+  await page.getByTestId("harness-rail").getByRole("button", { name: "Check", exact: true }).click();
   await page.getByRole("button", { name: "More checks" }).click();
   await expect(page.getByRole("menuitem", { name: "Full check set" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menuitem", { name: "Full check set" })).toHaveCount(0);
   await expect(page.getByTestId("harness-workspace")).toBeVisible();
-  await page.getByRole("tab", { name: "Use" }).click();
+  await page.getByTestId("harness-rail").getByRole("button", { name: "Use", exact: true }).click();
   await expect(page.getByText("deadbeef")).toBeVisible();
   await expect(page.getByRole("button", { name: "Compare any two versions" })).toBeVisible();
 });

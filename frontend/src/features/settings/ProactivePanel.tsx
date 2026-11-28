@@ -2,7 +2,7 @@
  * 拥有：设置里的「主动与通知」页：简报几点写、主动程度和安静时段、怎么告诉你、来信要不要自己接成任务。
  * 不拥有：开口门和编排本身，也不拥有它自己在跑的定时和目标（那在「自动化」页）。改动经 host.patch、开口门反馈和编排模式落到 Go。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { deskState, imHome, imPair, imTest, imUnbind, orchestratorMode, type DeskLead, type DeskMute, type DeskTally, type IMHomeState } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
@@ -13,7 +13,7 @@ import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import { DESK_EVENT, deskMutes, refreshDesk, sendFeedback } from "../superagent/desk-feed";
 import { refreshNeeds, useNeeds } from "../superagent/needs";
-import { SettingEmpty, SettingRow, SettingSection, SettingSegmented } from "./SettingChrome";
+import { SettingDisclosure, SettingEmpty, SettingRow, SettingSection, SettingSegmented } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
 /** ProactiveSettings 是「主动与通知」整页。 */
@@ -73,9 +73,10 @@ export function ProactiveSettings({ host }: { host: SettingsHost }) {
         <SettingRow title={p.weekend} description={p.weekendDesc}>
           <Switch checked={!!desk.quietWeekend} aria-label={p.weekend} onCheckedChange={(on) => saveDesk({ quietWeekend: on })} />
         </SettingRow>
-        <HeldClasses />
-        <LeadRow />
-        <TallyRow />
+        <HeldClasses>
+          <LeadRow />
+          <TallyRow />
+        </HeldClasses>
       </SettingSection>
 
       <SettingSection id="proactive-notify" title={s.sections.proactiveNotify} description={p.notifyDesc}>
@@ -250,8 +251,12 @@ function QuietHours(props: { start: string; end: string; onChange: (start: strin
   );
 }
 
-/** HeldClasses 列出现在按住、不主动开口的类别，可以逐个放开。公开渠道单独一个开关。 */
-function HeldClasses() {
+/**
+ * HeldClasses 列出现在按住、不主动开口的类别，可以逐个放开。公开渠道单独一个开关，留在外面。
+ * 按住的类别和 children（谁在跑主动、近七天统计）收进一行折叠：低频，只在想知道「它为什么没说话」时才看。
+ * 有类别被按住时折叠默认展开，免得人找不到放开的按钮。
+ */
+function HeldClasses({ children }: { children?: ReactNode }) {
   const copy = useCopy();
   const w = copy.work;
   const p = copy.settings.proactive;
@@ -289,21 +294,24 @@ function HeldClasses() {
       <SettingRow title={w.reachSwitch} description={w.reachSwitchHint}>
         <Switch checked={!reachOff} disabled={busy} aria-label={w.reachSwitch} onCheckedChange={() => { void send("reach", reachOff ? "unmute" : "mute"); }} />
       </SettingRow>
-      <SettingRow title={p.held} description={p.heldDesc} stack border={false}>
-        {held.length ? (
-          <div className="flex w-full flex-wrap gap-1.5" data-testid="held-classes">
-            {held.map((row) => (
-              <span key={row.class} className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background pl-2 pr-0.5 text-ui-footnote">
-                <span>{labels[row.class] || row.class}</span>
-                <span className="text-muted">· {row.until === "9999-12-31" ? w.quietOff : w.quietToday}</span>
-                <Button size="xs" variant="ghost" disabled={busy} onClick={() => { void send(row.class, "unmute"); }}>{w.quietOn}</Button>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <SettingEmpty compact>{w.quietEmpty}</SettingEmpty>
-        )}
-      </SettingRow>
+      <SettingDisclosure title={p.activity} description={p.activityHint} defaultOpen={held.length > 0}>
+        <SettingRow title={p.held} description={p.heldDesc} stack border={false}>
+          {held.length ? (
+            <div className="flex w-full flex-wrap gap-1.5" data-testid="held-classes">
+              {held.map((row) => (
+                <span key={row.class} className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background pl-2 pr-0.5 text-ui-footnote">
+                  <span>{labels[row.class] || row.class}</span>
+                  <span className="text-muted">· {row.until === "9999-12-31" ? w.quietOff : w.quietToday}</span>
+                  <Button size="xs" variant="ghost" disabled={busy} onClick={() => { void send(row.class, "unmute"); }}>{w.quietOn}</Button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <SettingEmpty compact>{w.quietEmpty}</SettingEmpty>
+          )}
+        </SettingRow>
+        {children}
+      </SettingDisclosure>
     </>
   );
 }
