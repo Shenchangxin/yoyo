@@ -714,7 +714,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <label className="flex w-full flex-col gap-[var(--space-item)] text-ui-body-l leading-[1.45] text-foreground">
       <span>
         {label}
-        {hint ? <span className="mt-0.5 block text-ui-body leading-[1.5] text-muted">{hint}</span> : null}
+        {hint ? <span className="mt-0.5 block text-ui-footnote leading-[1.5] text-muted">{hint}</span> : null}
       </span>
       {children}
     </label>

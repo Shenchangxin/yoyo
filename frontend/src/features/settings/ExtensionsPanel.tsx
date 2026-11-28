@@ -117,7 +117,7 @@ export function McpSection({ host }: { host: SettingsHost }) {
       ) : (
         <>
           {servers.length === 0 ? (
-            <SettingEmpty border>{copy.settings.noMcp}</SettingEmpty>
+            <SettingEmpty compact>{copy.settings.noMcp}</SettingEmpty>
           ) : (
             servers.map((row: any, i: number) => {
               const n = str(row?.name || row?.Name || row);
@@ -177,7 +177,7 @@ export function FiberSection({ host }: { host: SettingsHost }) {
   return (
     <SettingSection id="extensions-fibers" title={copy.settings.sections.extensionsFibers} footnote={copy.settings.fibersHint}>
       {fibers.length === 0 ? (
-        <SettingEmpty>{copy.settings.noFibers}</SettingEmpty>
+        <SettingEmpty compact>{copy.settings.noFibers}</SettingEmpty>
       ) : (
         fibers.map((name: any, i: number) => (
           <SettingRow key={str(name)} list title={str(name)}>

@@ -16,6 +16,7 @@ import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { cn } from "../../lib/utils";
 import {
   CONTROL_LG,
+  SettingDisclosure,
   SettingEmpty,
   SettingRow,
   SettingSection,
@@ -656,34 +657,35 @@ export function GenerationSettings({ host }: { host?: SettingsHost }) {
         description={v.asrLead}
         footnote={v.asrHint}
         lead={
-          <div data-testid="generation-whisper">
-            <SettingRow title={v.whisper} description={v.whisperHint} list>
-              <StatusPill
-                ok={whisper}
-                label={whisper ? v.whisperReady : v.whisperMissing}
-              />
-            </SettingRow>
-            <details className="creation-more">
-              <summary>{copy.video.film.toolsMore}</summary>
-            <SettingRow title={copy.video.film.stamp} description={copy.video.film.stampHint} list>
-              <StatusPill ok={stamp} label={stamp ? copy.video.film.stampReady : copy.video.film.stampMissing} />
-            </SettingRow>
-            <SettingRow title={copy.video.film.ytdlp} description={copy.video.film.ytdlpHint} list>
-              <StatusPill ok={ytdlp} label={ytdlp ? copy.video.film.ytdlpReady : copy.video.film.ytdlpMissing} />
-              {ytdlp ? null : (
-                <Button size="sm" variant="lift" disabled={ytdlpBusy} onClick={() => void installYTDLP()}>
-                  {ytdlpBusy ? copy.video.film.ytdlpInstalling : copy.video.film.ytdlpInstall}
-                </Button>
-              )}
-            </SettingRow>
-            <SettingRow title={copy.video.film.region} description={copy.video.film.regionHint} list>
-              <StatusPill ok={regionTool} label={regionTool ? copy.video.film.regionReady : copy.video.film.regionMissing} />
-            </SettingRow>
-            <SettingRow title={copy.video.film.browser} description={copy.video.film.browserHint} list>
-              <StatusPill ok={browserCap} label={browserCap ? copy.video.film.browserReady : copy.video.film.browserMissing} />
-            </SettingRow>
-            </details>
-          </div>
+          <>
+            <div data-testid="generation-whisper">
+              <SettingRow title={v.whisper} description={v.whisperHint} list>
+                <StatusPill
+                  ok={whisper}
+                  label={whisper ? v.whisperReady : v.whisperMissing}
+                />
+              </SettingRow>
+            </div>
+            <SettingDisclosure title={copy.video.film.toolsMore} defaultOpen={!ytdlp}>
+              <SettingRow title={copy.video.film.stamp} description={copy.video.film.stampHint} list>
+                <StatusPill ok={stamp} label={stamp ? copy.video.film.stampReady : copy.video.film.stampMissing} />
+              </SettingRow>
+              <SettingRow title={copy.video.film.ytdlp} description={copy.video.film.ytdlpHint} list>
+                <StatusPill ok={ytdlp} label={ytdlp ? copy.video.film.ytdlpReady : copy.video.film.ytdlpMissing} />
+                {ytdlp ? null : (
+                  <Button size="sm" variant="lift" disabled={ytdlpBusy} onClick={() => void installYTDLP()}>
+                    {ytdlpBusy ? copy.video.film.ytdlpInstalling : copy.video.film.ytdlpInstall}
+                  </Button>
+                )}
+              </SettingRow>
+              <SettingRow title={copy.video.film.region} description={copy.video.film.regionHint} list>
+                <StatusPill ok={regionTool} label={regionTool ? copy.video.film.regionReady : copy.video.film.regionMissing} />
+              </SettingRow>
+              <SettingRow title={copy.video.film.browser} description={copy.video.film.browserHint} list>
+                <StatusPill ok={browserCap} label={browserCap ? copy.video.film.browserReady : copy.video.film.browserMissing} />
+              </SettingRow>
+            </SettingDisclosure>
+          </>
         }
       />
       <AdapterSection

@@ -48,7 +48,6 @@ export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "generation", group: "model", icon: "film" },
   { key: "general", group: "app", icon: "sliders" },
   { key: "appearance", group: "app", icon: "palette" },
-  { key: "shortcuts", group: "app", icon: "keyboard" },
   { key: "policy", group: "system", icon: "shield" },
   { key: "about", group: "system", icon: "info" },
   { key: "extensions", group: "developer", icon: "plug" },
@@ -61,7 +60,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "general-workspace", tab: "general", titleKey: "generalWorkspace", keywords: "workspace folder directory" },
   { id: "general-desktop", tab: "general", titleKey: "generalDesktop", keywords: "tray login always on top window startup companion 托盘 开机 置顶" },
   { id: "general-language", tab: "general", titleKey: "generalLanguage", keywords: "language locale english chinese 语言 中文 英文" },
-  { id: "shortcuts-map", tab: "shortcuts", titleKey: "shortcutsMap", keywords: "keymap hotkey binding shortcuts 快捷键 键位" },
+  { id: "shortcuts-map", tab: "general", titleKey: "shortcutsMap", keywords: "keymap hotkey binding shortcuts 快捷键 键位" },
   { id: "appearance-theme", tab: "appearance", titleKey: "appearanceTheme", keywords: "theme dark light color mode palette paper mist ink dim slate neutral 色板 深色 浅色" },
   { id: "appearance-skins", tab: "appearance", titleKey: "appearanceSkins", keywords: "wallpaper background picture image veil" },
   { id: "appearance-display", tab: "appearance", titleKey: "appearanceDisplay", keywords: "scale zoom thinking reasoning work details compact detailed 界面尺寸 思考 工作细节" },
@@ -120,6 +119,7 @@ const LEGACY_TABS: Readonly<Record<string, { tab: SettingsTab; section: string }
   phone: { tab: "handheld", section: "advanced-handheld" },
   updates: { tab: "about", section: "advanced-updates" },
   logs: { tab: "advanced", section: "advanced-logs" },
+  shortcuts: { tab: "general", section: "shortcuts-map" },
   danger: { tab: "about", section: "advanced-updates" },
 };
 

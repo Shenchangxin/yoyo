@@ -189,7 +189,7 @@ export function ConnectorsSettings() {
     <>
       <WorkSources openSource={source} onOpenSource={setSource} />
       <SettingSection id="extensions-connectors" title={copy.settings.appsTitle} footnote={copy.settings.connectorsHint}>
-        {accounts.length === 0 ? <SettingEmpty border>{copy.settings.noConnectors}</SettingEmpty> : accounts.map((a, i) => {
+        {accounts.length === 0 ? <SettingEmpty compact>{copy.settings.noConnectors}</SettingEmpty> : accounts.map((a, i) => {
           const row = a as { id?: string; ID?: string; label?: string; Label?: string; provider?: string; Provider?: string; kind?: string; Kind?: string; calendar?: string; calendar_name?: string };
           const id = str(row.id || row.ID);
           const provider = str(row.provider || row.Provider);

@@ -1,8 +1,10 @@
 /**
- * 拥有：设置的「自动化」页：定时、目标、盯梢、想法、个人事务和发送审阅这几块表单。
+ * 拥有：设置的「Yoyo 在跟的事」页：定时、目标、盯梢、想法、个人事务和发送审阅这几块。
+ * 新建用的输入行默认收起，点分区标题右边的「新建」才露出来，加完或按 Esc 收回去。
  * 不拥有：记忆。记忆在今天栏的记忆页里改。增删改会调用 api 改状态。
  */
 import { useEffect, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
 import { str } from "../../lib/normalize";
@@ -31,6 +33,7 @@ export function JobSection() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [prompt, setPrompt] = useState("");
   const [spec, setSpec] = useState("30m");
+  const [adding, setAdding] = useState(false);
   /** 重新拉取定时任务。 */
   const refresh = () => {
     void api.scheduleList().then(setJobs).catch(() => {});
@@ -39,49 +42,54 @@ export function JobSection() {
     refresh();
   }, []);
   return (
-    <SettingSection id="personal-jobs" title={copy.settings.sections.personalJobs} footnote={copy.settings.automationsHint}>
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-        <label className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-background pl-2.5 text-ui-footnote text-muted transition-[border-color,box-shadow] focus-within:border-accent/45 focus-within:ring-2 focus-within:ring-accent/20">
-          {copy.settings.scheduleSpec}
-          <input
-            className="no-drag h-full w-16 bg-transparent pr-2 text-ui-body tabular-nums text-foreground outline-none"
-            value={spec}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(e) => setSpec(e.target.value)}
+    <SettingSection id="personal-jobs" title={copy.settings.sections.personalJobs} footnote={copy.settings.automationsHint} headerActions={<AddToggle open={adding} onToggle={() => setAdding((v) => !v)} />}>
+      {adding ? (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape") setAdding(false); }}>
+          <label className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-background pl-2.5 text-ui-footnote text-muted transition-[border-color,box-shadow] focus-within:border-accent/45 focus-within:ring-2 focus-within:ring-accent/20">
+            {copy.settings.scheduleSpec}
+            <input
+              className="no-drag h-full w-16 bg-transparent pr-2 text-ui-body tabular-nums text-foreground outline-none"
+              value={spec}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => setSpec(e.target.value)}
+            />
+          </label>
+          <Input
+            autoFocus
+            aria-label={copy.settings.schedulePrompt}
+            placeholder={copy.settings.schedulePrompt}
+            className="h-8 min-w-40 flex-1 text-ui-body"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
           />
-        </label>
-        <Input
-          aria-label={copy.settings.schedulePrompt}
-          placeholder={copy.settings.schedulePrompt}
-          className="h-8 min-w-40 flex-1 text-ui-body"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-        />
-        <Button
-          variant="ghost"
-          disabled={!prompt.trim()}
-          onClick={async () => {
-            await api.scheduleCreate({ kind: "webhook", spec: spec || "hook", prompt, isolate: true });
-            setPrompt("");
-            refresh();
-          }}
-        >
-          {copy.settings.webhookJob}
-        </Button>
-        <Button
-          disabled={!prompt.trim()}
-          onClick={async () => {
-            await api.scheduleCreate({ kind: "heartbeat", spec, prompt, isolate: true });
-            setPrompt("");
-            refresh();
-          }}
-        >
-          {copy.settings.addJob}
-        </Button>
-      </div>
+          <Button
+            variant="ghost"
+            disabled={!prompt.trim()}
+            onClick={async () => {
+              await api.scheduleCreate({ kind: "webhook", spec: spec || "hook", prompt, isolate: true });
+              setPrompt("");
+              setAdding(false);
+              refresh();
+            }}
+          >
+            {copy.settings.webhookJob}
+          </Button>
+          <Button
+            disabled={!prompt.trim()}
+            onClick={async () => {
+              await api.scheduleCreate({ kind: "heartbeat", spec, prompt, isolate: true });
+              setPrompt("");
+              setAdding(false);
+              refresh();
+            }}
+          >
+            {copy.settings.addJob}
+          </Button>
+        </div>
+      ) : null}
       {jobs.length === 0 ? (
-        <SettingEmpty>{copy.settings.noJobs}</SettingEmpty>
+        <SettingEmpty compact>{copy.settings.noJobs}</SettingEmpty>
       ) : (
         jobs.map((j: any, i: number) => (
           <SettingRow
@@ -151,7 +159,7 @@ export function WorkSection() {
   return (
     <SettingSection id="personal-work" title={copy.settings.sections.personalWork} footnote={copy.settings.personalWorkHint}>
       {tasks.length === 0 ? (
-        <SettingEmpty>{copy.settings.noTasks}</SettingEmpty>
+        <SettingEmpty compact>{copy.settings.noTasks}</SettingEmpty>
       ) : (
         tasks.map((t: any, i: number) => (
           <SettingRow
@@ -237,7 +245,7 @@ export function ProposalSection() {
   return (
     <SettingSection id="personal-proposals" title={copy.settings.sections.personalProposals}>
       {items.length === 0 ? (
-        <SettingEmpty>{copy.settings.noProposals}</SettingEmpty>
+        <SettingEmpty compact>{copy.settings.noProposals}</SettingEmpty>
       ) : (
         items.map((p: any, i: number) => (
           <SettingRow key={str(p.id || i)} list title={str(p.title).slice(0, 96)} description={proposalWhen(str(p.expires_at || p.expiresAt))}>
@@ -275,7 +283,7 @@ export function IdeaSection() {
   return (
     <SettingSection id="personal-ideas" title={copy.settings.sections.personalIdeas}>
       {items.length === 0 ? (
-        <SettingEmpty>{copy.settings.noIdeas}</SettingEmpty>
+        <SettingEmpty compact>{copy.settings.noIdeas}</SettingEmpty>
       ) : (
         items.map((it: any, i: number) => (
           <SettingRow key={str(it.id || i)} list title={str(it.title).slice(0, 96)} description={str(it.reason).slice(0, 120)}>
@@ -310,24 +318,28 @@ export function GoalSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
   const [title, setTitle] = useState("");
+  const [adding, setAdding] = useState(false);
   const items = Array.isArray(snap.goals) ? snap.goals : [];
   return (
-    <SettingSection id="personal-goals" title={copy.settings.sections.personalGoals}>
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-        <Input className="h-8 min-w-40 flex-1 text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} aria-label={copy.settings.goalTitle} />
-        <Button
-          disabled={!title.trim()}
-          onClick={async () => {
-            await api.personalGoal(title.trim(), "");
-            setTitle("");
-            refresh();
-          }}
-        >
-          {copy.settings.addGoal}
-        </Button>
-      </div>
+    <SettingSection id="personal-goals" title={copy.settings.sections.personalGoals} headerActions={<AddToggle open={adding} onToggle={() => setAdding((v) => !v)} />}>
+      {adding ? (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape") setAdding(false); }}>
+          <Input autoFocus className="h-8 min-w-40 flex-1 text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} aria-label={copy.settings.goalTitle} />
+          <Button
+            disabled={!title.trim()}
+            onClick={async () => {
+              await api.personalGoal(title.trim(), "");
+              setTitle("");
+              setAdding(false);
+              refresh();
+            }}
+          >
+            {copy.settings.addGoal}
+          </Button>
+        </div>
+      ) : null}
       {items.length === 0 ? (
-        <SettingEmpty>{copy.settings.noGoals}</SettingEmpty>
+        <SettingEmpty compact>{copy.settings.noGoals}</SettingEmpty>
       ) : (
         items.map((g: any, i: number) => (
           <SettingRow
@@ -383,27 +395,31 @@ export function WatchSection() {
   const copy = useCopy();
   const { snap, refresh } = usePersonalSnap();
   const [title, setTitle] = useState("");
+  const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
   const items = Array.isArray(snap.monitors) ? snap.monitors : [];
   return (
-    <SettingSection id="personal-watch" title={copy.settings.sections.personalWatch}>
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-        <Input className="h-8 w-40 shrink-0 text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} aria-label={copy.settings.goalTitle} />
-        <Input className="h-8 min-w-40 flex-1 font-mono text-ui-footnote" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={copy.settings.watchUrl} aria-label={copy.settings.watchUrl} />
-        <Button
-          disabled={!title.trim() || !url.trim()}
-          onClick={async () => {
-            await api.personalWatch(title.trim(), url.trim(), "change", "", 15);
-            setTitle("");
-            setUrl("");
-            refresh();
-          }}
-        >
-          {copy.settings.addWatch}
-        </Button>
-      </div>
+    <SettingSection id="personal-watch" title={copy.settings.sections.personalWatch} headerActions={<AddToggle open={adding} onToggle={() => setAdding((v) => !v)} />}>
+      {adding ? (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape") setAdding(false); }}>
+          <Input autoFocus className="h-8 w-40 shrink-0 text-ui-body" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} aria-label={copy.settings.goalTitle} />
+          <Input className="h-8 min-w-40 flex-1 font-mono text-ui-footnote" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={copy.settings.watchUrl} aria-label={copy.settings.watchUrl} />
+          <Button
+            disabled={!title.trim() || !url.trim()}
+            onClick={async () => {
+              await api.personalWatch(title.trim(), url.trim(), "change", "", 15);
+              setTitle("");
+              setAdding(false);
+              setUrl("");
+              refresh();
+            }}
+          >
+            {copy.settings.addWatch}
+          </Button>
+        </div>
+      ) : null}
       {items.length === 0 ? (
-        <SettingEmpty>{copy.settings.noWatches}</SettingEmpty>
+        <SettingEmpty compact>{copy.settings.noWatches}</SettingEmpty>
       ) : (
         items.map((m: any, i: number) => (
           <SettingRow key={str(m.id || i)} list title={str(m.title)} description={`${str(m.condition)} · ${str(m.status)} · ${str(m.url)}`}>
@@ -433,5 +449,16 @@ export function WatchSection() {
         ))
       )}
     </SettingSection>
+  );
+}
+
+/** AddToggle 放在分区标题右边：点了露出新建的那一行，再点一次或按 Esc 收起。open 为真时显示取消。onToggle 在点击时被调用。 */
+function AddToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const s = useCopy().settings;
+  return (
+    <Button size="sm" variant="ghost" aria-expanded={open} onClick={onToggle}>
+      {open ? <X aria-hidden /> : <Plus aria-hidden />}
+      {open ? s.cancelNew : s.newItem}
+    </Button>
   );
 }

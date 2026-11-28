@@ -86,8 +86,8 @@ export function HandheldSettings() {
             {offer ? copy.settings.handheldHide : copy.settings.handheldShow}
           </Button>
         </SettingRow>
-        {noLan ? <p className="text-ui-body leading-[1.5] text-danger">{copy.settings.handheldNoLan}</p> : null}
-        {error ? <p className="text-ui-body leading-[1.5] text-danger" role="alert">{error}</p> : null}
+        {noLan ? <p className="text-ui-footnote leading-[1.5] text-danger">{copy.settings.handheldNoLan}</p> : null}
+        {error ? <p className="text-ui-footnote leading-[1.5] text-danger" role="alert">{error}</p> : null}
         {offer?.png ? (
           <div className="flex flex-wrap items-start gap-4">
             <img
