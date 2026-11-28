@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/initiative"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/poi"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -27,6 +28,9 @@ type DeskNote struct {
 	Detail    string `json:"detail,omitempty"`
 	State     string `json:"state,omitempty"`
 	MemoryID  string `json:"memoryId,omitempty"`
+	// Reason 是「为什么是这条」，Refs 是这条依据的材料。只在开口短讯上有。
+	Reason string           `json:"reason,omitempty"`
+	Refs   []initiative.Ref `json:"refs,omitempty"`
 	// Quiet 只用在简报上：这封信写下来留档，拉开今天能读到，但不往会话里放芯片。
 	Quiet bool `json:"quiet,omitempty"`
 }
@@ -76,10 +80,22 @@ func (appHost *deskHost) DeskPush(note DeskNote) bool {
 	}
 	for key, value := range map[string]string{
 		"class": note.Class, "why": note.Why, "name": note.Name, "detail": note.Detail, "state": note.State, "memoryId": note.MemoryID,
+		"reason": note.Reason,
 	} {
 		if value = strings.TrimSpace(value); value != "" {
 			payload[key] = value
 		}
+	}
+	if len(note.Refs) > 0 {
+		refs := make([]map[string]any, 0, len(note.Refs))
+		for _, ref := range note.Refs {
+			row := map[string]any{"kind": ref.Kind, "label": ref.Label}
+			if ref.Target != "" {
+				row["target"] = ref.Target
+			}
+			refs = append(refs, row)
+		}
+		payload["refs"] = refs
 	}
 	ev := trace.Event{
 		TS:        time.Now().UTC(),

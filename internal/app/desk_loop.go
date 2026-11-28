@@ -1,6 +1,7 @@
 // desk_loop.go 在 Go 里按分钟刷新清点、判断要不要开口，并把通过开口门的话写进主会话。
 // 一条话只有真正写进会话之后才记成说过，界面读到的判断和推送不会互相消耗。
-// 不拥有晨间和晚间简报的时刻，那一档仍由界面到点生成。工单等人走交接，不在这里重复。
+// 晨间和晚间简报的时刻也在这里看（brief_clock.go），界面只在人点的时候写那一档。例行的结果经同一道门（routine.go）。
+// 工单等人走交接，不在这里重复。
 
 package app
 
@@ -16,11 +17,18 @@ import (
 // deskEvery 是送达循环的间隔。开口门本身按天限次，这里只决定多久看一次。
 const deskEvery = time.Minute
 
-// DeskState 是开口门此刻的样子：最近一轮判断，以及今天仍被按住的类别。At 是那一轮判断的时刻。
+// DeskState 是开口门此刻的样子：最近一轮判断，今天仍被按住的类别，以及最近七天打断了几次、被接受了几次。
+// At 是那一轮判断的时刻。Accepted 是七天里用上的条数除以送到的条数，一条都没送到时为负。
 type DeskState struct {
-	Briefing initiative.Briefing `json:"briefing"`
-	Mutes    []DeskMute          `json:"mutes"`
-	At       string              `json:"at,omitempty"`
+	Briefing initiative.Briefing   `json:"briefing"`
+	Mutes    []DeskMute            `json:"mutes"`
+	At       string                `json:"at,omitempty"`
+	Tally    []initiative.DayTally `json:"tally"`
+	Accepted float64               `json:"accepted"`
+	// Lead 是这台电脑上谁在跑主动链路。不选主时为空。
+	Lead DeskLead `json:"lead"`
+	// Presence 是头像的全局状态：导航轨、伴侣窗和托盘读的是同一份，见 presence.go。
+	Presence Presence `json:"presence"`
 }
 
 // DeskMute 是一类被按住的开口。Until 为 9999-12-31 表示要人在偏好里打开。Ignores 是标过没用的次数。
@@ -30,17 +38,19 @@ type DeskMute struct {
 	Ignores int    `json:"ignores,omitempty"`
 }
 
-// DeskState 返回最近一轮判断和按住的类别。第一次调用时开始按分钟送达，所以只有接上界面的进程才会往主会话里说话。
+// DeskState 返回最近一轮判断、按住的类别和谁在跑主动链路。不选主时第一次调用才开始按分钟送达；选主时由领头的进程送，见 lead.go。
 func (appHost *deskHost) DeskState() DeskState {
-	out := DeskState{Mutes: []DeskMute{}}
+	out := DeskState{Mutes: []DeskMute{}, Tally: []initiative.DayTally{}, Accepted: -1}
 	if appHost.app == nil || appHost.app.Home == nil {
 		return out
 	}
-	appHost.app.ensureDeskLoop()
-	appHost.app.bookMu.Lock()
-	out.Briefing = appHost.app.deskSeen
-	at := appHost.app.deskSeenAt
-	appHost.app.bookMu.Unlock()
+	if !appHost.app.managed() {
+		appHost.app.ensureDeskLoop()
+	}
+	briefing, at := appHost.app.seenBriefing()
+	out.Briefing = briefing
+	out.Lead = appHost.app.LeadState()
+	out.Presence = appHost.app.Presence()
 	if !at.IsZero() {
 		out.At = at.UTC().Format(time.RFC3339)
 	}
@@ -52,6 +62,12 @@ func (appHost *deskHost) DeskState() DeskState {
 		out.Mutes = append(out.Mutes, DeskMute{Class: name, Until: mute.Until, Ignores: mute.Ignores})
 	}
 	sort.Slice(out.Mutes, func(i, j int) bool { return out.Mutes[i].Class < out.Mutes[j].Class })
+	if days := store.Recent(7); len(days) > 0 {
+		out.Tally = days
+		if rate, ok := initiative.Accepted(days); ok {
+			out.Accepted = rate
+		}
+	}
 	return out
 }
 
@@ -98,6 +114,8 @@ func (appHost *deskHost) deskTick(now time.Time) {
 	if appHost.app == nil || appHost.app.IsPaused() {
 		return
 	}
+	appHost.app.briefTick(now)
+	appHost.app.imFlush(now)
 	snap := appHost.app.PoiRefresh()
 	if snap.Initiative == nil || !briefingDelivers(*snap.Initiative) {
 		return
@@ -161,10 +179,12 @@ func (appHost *deskHost) deliverSpeaks(sessionID string, b initiative.Briefing, 
 		if signal.Code == "reach" {
 			sentCount++
 		}
+		appHost.app.imSpeak(signal, note)
 		sent = append(sent, signal)
 	}
 	if len(sent) > 0 {
 		store.Deliver(sent, now)
+		appHost.app.routineDelivered(sent)
 	}
 	return sent
 }
@@ -198,6 +218,8 @@ func speakNote(sessionID, day string, s initiative.Signal) DeskNote {
 		Detail:    s.Detail,
 		State:     s.State,
 		MemoryID:  s.MemoryID,
+		Reason:    signalReason(s),
+		Refs:      s.Refs,
 	}
 	if s.Code == "reach" {
 		note.Detail = ""
@@ -243,6 +265,18 @@ func speakText(s initiative.Signal) string {
 			line += "，已经干净"
 		}
 		return line + "。"
+	case "routine":
+		if s.State == "failed" {
+			line := "例行「" + name + "」没跑成"
+			if detail != "" {
+				line += "：" + detail
+			}
+			return line + "。"
+		}
+		if detail != "" {
+			return "例行「" + name + "」：\n" + detail
+		}
+		return "例行「" + name + "」跑完了。"
 	case "power":
 		return "电量 " + name + "%，没在充电。"
 	case "net":

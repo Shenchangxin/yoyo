@@ -15,7 +15,27 @@ export type CatalogRow = {
   platform: string;
   access: string;
   kind: string;
+  /** ready 是 Go 判断的能不能直接用：live、endpoint、elsewhere、device、pack。旧宿主没有时为空。 */
+  ready: string;
 };
+
+/** readyRank 决定目录里的先后：能直接用的在前，要装扩展包的在最后。 */
+export function readyRank(ready: string): number {
+  switch (ready) {
+    case "live":
+      return 0;
+    case "elsewhere":
+      return 1;
+    case "device":
+      return 2;
+    case "endpoint":
+      return 3;
+    case "pack":
+      return 4;
+    default:
+      return 2;
+  }
+}
 
 const tabs = ["windows", "mac", "linux", "ios", "android"] as const;
 type Tab = (typeof tabs)[number];
@@ -59,7 +79,9 @@ export function ConnectorDirectory(props: {
     const blurb = connectorBlurb(row.provider, locale);
     const name = connectorName(row.provider, row.label, locale);
     return `${name} ${row.label} ${row.provider} ${blurb}`.toLowerCase().includes(needle);
-  }), [props.catalog, tab, needle, locale]);
+  }).map((row, index) => ({ row, index }))
+    .sort((a, b) => readyRank(a.row.ready) - readyRank(b.row.ready) || a.index - b.index)
+    .map(({ row }) => row), [props.catalog, tab, needle, locale]);
   return (
     <div className="border-t border-border px-3 py-3">
       <div className="flex items-center justify-end gap-3">
@@ -88,9 +110,11 @@ export function ConnectorDirectory(props: {
       <div className="mt-3 grid grid-cols-2 gap-2">
         {rows.map((row) => {
           const access = resolvedAccess(row.provider, row.access);
-          const blurb = connectorBlurb(row.provider, locale) || fallback({ ...row, access }, copy.settings, tab === current);
+          const pending = row.ready === "endpoint" ? copy.settings.appsReadyEndpointHint : row.ready === "pack" ? copy.settings.appsReadyPackHint : "";
+          const blurb = pending || connectorBlurb(row.provider, locale) || fallback({ ...row, access }, copy.settings, tab === current);
           const here = access === "local" && row.platform === current;
           const on = props.connected.includes(row.provider);
+          const tag = on ? "" : row.ready === "endpoint" ? copy.settings.appsReadyEndpoint : row.ready === "pack" ? copy.settings.appsReadyPack : "";
           return (
             <button
               key={row.provider}
@@ -102,7 +126,7 @@ export function ConnectorDirectory(props: {
                 <span className="block truncate text-ui-body font-medium">{connectorName(row.provider, row.label, locale)}</span>
                 <span className="mt-1 block text-ui-footnote leading-5 text-muted">{blurb}</span>
               </span>
-              <span className="max-w-16 shrink-0 text-right text-ui-caption leading-4 text-muted">{here ? copy.settings.appsThisMachine : on ? copy.rail.connected : "+"}</span>
+              <span className="max-w-20 shrink-0 text-right text-ui-caption leading-4 text-muted" data-ready={row.ready || undefined}>{here ? copy.settings.appsThisMachine : on ? copy.rail.connected : tag || "+"}</span>
             </button>
           );
         })}
@@ -127,5 +151,6 @@ export function catalogRows(raw: unknown[]): CatalogRow[] {
     platform: str((row as { platform?: string; Platform?: string }).platform || (row as { Platform?: string }).Platform),
     access: str((row as { access?: string; Access?: string }).access || (row as { Access?: string }).Access),
     kind: str((row as { kind?: string; Kind?: string }).kind || (row as { Kind?: string }).Kind),
+    ready: str((row as { ready?: string; Ready?: string }).ready || (row as { Ready?: string }).Ready),
   })).filter((row) => row.provider && row.label);
 }

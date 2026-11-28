@@ -20,6 +20,9 @@ type CatalogEntry struct {
 	Access   string `json:"access,omitempty"`
 	AuthURL  string `json:"auth_url,omitempty"`
 	MCPPack  bool   `json:"mcp_pack,omitempty"`
+	// Ready 说这一项现在能不能直接用：live 填好就能读，endpoint 要填它自己的接口地址，
+	// elsewhere 在「工作来源」或「消息」里配置，device 只在对应设备上有，pack 要装扩展包。
+	Ready string `json:"ready,omitempty"`
 }
 
 // AuthURL 为 gmail、gcal、outlook、slack 拼出授权地址，并返回随机 state。其他供应商返回错误，说明只走 MCP 包。
@@ -38,6 +41,7 @@ func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, e
 			"scope":         {"https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events"},
 			"state":         {state},
 			"access_type":   {"offline"},
+			"prompt":        {"consent"},
 		}
 		raw = "https://accounts.google.com/o/oauth2/v2/auth?" + q.Encode()
 	case "outlook":
@@ -57,6 +61,9 @@ func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, e
 			"scope":        {"channels:read,chat:write"},
 		}
 		raw = "https://slack.com/oauth/v2/authorize?" + q.Encode()
+	case "feishu-calendar", "feishu-docs", "feishu-task":
+		// 飞书日历、云文档、任务都用用户身份授权，各自申请自己的权限，都带 offline_access（拿刷新令牌），见 feishu_oauth.go。
+		raw = feishuAuthURL(strings.ToLower(provider), clientID, redirect, state)
 	default:
 		return "", "", fmt.Errorf("connector: oauth for %s is MCP-pack only", provider)
 	}

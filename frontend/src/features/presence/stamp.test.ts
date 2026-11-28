@@ -49,7 +49,8 @@ describe("presence letterhead", () => {
     assert.match(css, /\.creation-message-stamp/);
 
     const app = readFileSync(join(root, "../../App.tsx"), "utf8");
-    assert.match(app, /perch=\{!home && copilotItems\.length === 0\}/);
+    // 只有系统行（例如开场的简报占位）时仍算空会话，所以栖息位跟着 hasConversation 走，不看条目数。
+    assert.match(app, /perch=\{!home && !hasConversation\(copilotItems\)\}/);
 
     const creation = readFileSync(join(root, "../../vendor/yingce-canvas/pages/create/creation-workspace.tsx"), "utf8");
     assert.match(creation, /PresencePerch/);

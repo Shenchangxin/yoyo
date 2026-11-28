@@ -1,5 +1,5 @@
 /**
- * 拥有：设置侧栏和轨道里的页签导航：搜索、分组、页签。
+ * 拥有：设置侧栏和轨道里的页签导航：搜索、分组、页签，以及开发者一组的收起和展开。
  * 不拥有：表单。只切换当前页签，不调用 api。
  */
 import { useMemo, useState } from "react";
@@ -7,6 +7,7 @@ import { motion } from "motion/react";
 import {
   Bell,
   Blocks,
+  ChevronDown,
   Clapperboard,
   Cpu,
   Heart,
@@ -28,7 +29,7 @@ import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import type { SettingsTab } from "../../lib/protocol";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
-import { navTabs, SETTINGS_GROUPS, SETTINGS_SECTIONS, tabsInGroup } from "./registry";
+import { isDeveloperTab, navTabs, readDeveloper, SETTINGS_GROUPS, SETTINGS_SECTIONS, tabsInGroup, writeDeveloper } from "./registry";
 
 const ICONS = {
   bell: Bell,
@@ -68,7 +69,10 @@ export function SettingsRailNav() {
   );
 }
 
-/** SettingsSidebar 列出分组和页签。props 读取 compact、variant、tab，调用 onTab，调用 onSection。 */
+/**
+ * SettingsSidebar 列出分组和页签。开发者一组默认收起，底下一行点开；正在看的是开发者页时一直露出。
+ * 搜索仍然搜得到开发者的区块。props 读取 compact、variant、tab，调用 onTab，调用 onSection。
+ */
 export function SettingsSidebar(props: {
   tab: SettingsTab;
   onTab: (tab: SettingsTab) => void;
@@ -78,7 +82,15 @@ export function SettingsSidebar(props: {
 }) {
   const copy = useCopy();
   const [query, setQuery] = useState("");
+  const [developer, setDeveloper] = useState(readDeveloper);
   const q = query.trim().toLowerCase();
+  const showDeveloper = developer || isDeveloperTab(props.tab);
+
+  function toggleDeveloper() {
+    const next = !developer;
+    setDeveloper(next);
+    writeDeveloper(next);
+  }
 
   const results = useMemo(() => {
     if (!q) return [];
@@ -98,7 +110,7 @@ export function SettingsSidebar(props: {
   if (props.compact && props.variant !== "rail") {
     return (
       <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-3 [scrollbar-width:none]" aria-label={copy.settings.title}>
-        {navTabs().map((t) => {
+        {navTabs(showDeveloper).map((t) => {
           const Icon = iconFor(t.icon);
           const on = props.tab === t.key;
           return (
@@ -182,23 +194,37 @@ export function SettingsSidebar(props: {
             <p className="px-2.5 py-6 text-center text-ui-footnote text-muted">{copy.settings.searchEmpty}</p>
           )
         ) : (
-          SETTINGS_GROUPS.map((group) => (
-            <div key={group} className="pt-4 first:pt-1">
-              <div className="px-2.5 pb-1 text-ui-caption font-medium text-muted/80">
-                {copy.settings.groups[group]}
+          <>
+            {SETTINGS_GROUPS.filter((group) => showDeveloper || group !== "developer").map((group) => (
+              <div key={group} className="pt-4 first:pt-1">
+                <div className="px-2.5 pb-1 text-ui-caption font-medium text-muted/80">
+                  {copy.settings.groups[group]}
+                </div>
+                {tabsInGroup(group).map((t) => (
+                  <TabButton
+                    key={t.key}
+                    tab={t.key}
+                    icon={t.icon}
+                    label={copy.settings.tabs[t.key]}
+                    active={props.tab === t.key}
+                    onClick={() => props.onTab(t.key)}
+                  />
+                ))}
               </div>
-              {tabsInGroup(group).map((t) => (
-                <TabButton
-                  key={t.key}
-                  tab={t.key}
-                  icon={t.icon}
-                  label={copy.settings.tabs[t.key]}
-                  active={props.tab === t.key}
-                  onClick={() => props.onTab(t.key)}
-                />
-              ))}
-            </div>
-          ))
+            ))}
+            {isDeveloperTab(props.tab) ? null : (
+              <button
+                type="button"
+                aria-expanded={developer}
+                onClick={toggleDeveloper}
+                title={copy.settings.developerHint}
+                className="mt-4 flex h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-left text-ui-caption text-muted transition-colors hover:bg-lift/60 hover:text-foreground"
+              >
+                <ChevronDown className={cn("size-3.5 transition-transform", developer && "rotate-180")} aria-hidden />
+                {developer ? copy.settings.developerHide : copy.settings.developerShow}
+              </button>
+            )}
+          </>
         )}
       </div>
     </nav>

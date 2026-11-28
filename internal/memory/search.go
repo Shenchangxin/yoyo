@@ -15,6 +15,7 @@ import (
 // 一个词都对不上的不返回。分数相同时新的在前。
 func (s *Store) Search(q string, kind Kind, limit int) []Item {
 	s.mu.Lock()
+	s.syncLocked()
 	defer s.mu.Unlock()
 	var docs []Item
 	for _, it := range s.items {
@@ -48,6 +49,7 @@ var askCue = regexp.MustCompile(`(?i)[?？]|什么|哪|吗|是不是|有没有|�
 // 几乎一样的几条只带第一条。最多 limit 条。
 func (s *Store) Recall(q string, limit int) []Item {
 	s.mu.Lock()
+	s.syncLocked()
 	defer s.mu.Unlock()
 	q = strings.ToLower(strings.TrimSpace(q))
 	if runes := []rune(q); len(runes) > recallRunes {
@@ -57,9 +59,11 @@ func (s *Store) Recall(q string, limit int) []Item {
 		return nil
 	}
 	now := s.clock()
+	// 后排的不召回，Search 仍然搜得到（backrow.go）。
+	back := s.backSet(now)
 	var docs []Item
 	for _, it := range s.items {
-		if it.Staging || machineItem(it) || strings.TrimSpace(it.Text) == "" {
+		if it.Staging || it.Muted || back[it.ID] || machineItem(it) || strings.TrimSpace(it.Text) == "" {
 			continue
 		}
 		if (it.Kind == KindProfile || it.Kind == KindSemantic) && !Expired(it, now) {

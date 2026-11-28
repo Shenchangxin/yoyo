@@ -136,6 +136,15 @@ func (rt *Runtime) ingestDingTalk(acct Account, data map[string]any) {
 		SenderID: staff, SenderName: jstr(data["senderNick"]), SelfID: jstr(data["chatbotUserId"]),
 		Text: text, Mentioned: mentioned, MessageID: jstr(data["msgId"]),
 	}
+	// 钉钉的引用回复在 text.repliedMsg 里带被引用那条；机器人主动发的消息拿不到 msgId，所以主要靠原文认短编号。
+	if replied := asMap(dig(data, "text", "repliedMsg")); len(replied) > 0 {
+		in.QuoteID = jstr(replied["msgId"])
+		quoted := jstr(dig(replied, "content", "text"))
+		if s, ok := replied["content"].(string); ok && quoted == "" {
+			quoted = s
+		}
+		in.QuoteText = quoted
+	}
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()
 		defer cancel()

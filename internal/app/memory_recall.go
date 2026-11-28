@@ -19,24 +19,30 @@ func (a *App) memoryOn(sessionID string) bool {
 	return p == nil || p.Memory
 }
 
-// memoryRecallNote 是这句话可能用得上、又不在常驻画像里的旧记忆：做过的事、项目和过去的安排。没有足够相关的就是空串。
-// 它跟着这一句进对话，不进系统提示，所以不动前缀缓存。
-func memoryRecallNote(store *memory.Store, message string, now time.Time) string {
+// memoryRecall 是这句话可能用得上、又不在常驻画像里的旧记忆：做过的事、项目和过去的安排，以及真正写进去的那几条。没有足够相关的就是空串。
+// 它跟着这一句进对话，不进系统提示，所以不动前缀缓存。人点过「别再提」的不召回。
+func memoryRecall(store *memory.Store, message string, now time.Time) (string, []memRef) {
 	if store == nil || strings.TrimSpace(message) == "" {
-		return ""
+		return "", nil
 	}
 	var b strings.Builder
+	var used []memRef
+	var ids []string
 	for _, it := range store.Recall(message, 3) {
 		line := "- " + recallLabel(it, now) + it.Text + "\n"
 		if b.Len() > 0 && b.Len()+len(line) > recallBytes {
 			break
 		}
 		b.WriteString(line)
+		used = append(used, memRefOf(it))
+		ids = append(ids, it.ID)
 	}
 	if b.Len() == 0 {
-		return ""
+		return "", nil
 	}
-	return "Earlier memory that may relate to this message (dates are when it was noted; check before relying on it):\n" + strings.TrimRight(b.String(), "\n")
+	// 召回带进去的记下「用到了」，留在前排（memory/backrow.go）。
+	store.MarkUsed(ids)
+	return "Earlier memory that may relate to this message (dates are when it was noted; check before relying on it):\n" + strings.TrimRight(b.String(), "\n"), used
 }
 
 // recallLabel 是一条旧记忆前面的日子和来历。

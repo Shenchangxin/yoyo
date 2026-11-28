@@ -41,6 +41,7 @@ func (appHost *deskHost) assessDesk(snap poi.Snapshot) (initiative.Briefing, boo
 	facts = append(facts, poiFacts(snap)...)
 	facts = append(facts, appHost.app.connectorFacts()...)
 	facts = append(facts, appHost.app.orchestratorFacts(now)...)
+	facts = append(facts, appHost.app.routineFacts(now)...)
 	allow, hold := appHost.app.reachBudget(now)
 	briefing := store.Assess(initiative.Input{
 		Now: now, Idle: idle, Facts: facts,
@@ -56,6 +57,7 @@ func (appHost *deskHost) keepBriefing(b initiative.Briefing, at time.Time) {
 	appHost.app.deskSeen = b
 	appHost.app.deskSeenAt = at
 	appHost.app.bookMu.Unlock()
+	appHost.app.saveSeen(b, at)
 }
 
 // DeskFeedback 记下人对某一类开口的反应。wrong 会忘掉对应的记忆。

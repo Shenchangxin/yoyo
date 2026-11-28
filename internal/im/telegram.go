@@ -168,6 +168,15 @@ func (rt *Runtime) emitTelegram(acct Account, self, username string, msg map[str
 		SenderID: jstr(from["id"]), SenderName: name, SelfID: self,
 		Text: text, Mentioned: mentioned, MessageID: jstr(msg["message_id"]),
 	}
+	// 人在 Telegram 里点「回复」时，被回复那条的编号和原文都在 reply_to_message 里。
+	if quoted := asMap(msg["reply_to_message"]); len(quoted) > 0 {
+		in.QuoteID = jstr(quoted["message_id"])
+		in.QuoteText = firstText(jstr(quoted["text"]), jstr(quoted["caption"]))
+		// 群里回复机器人发的那条，等于在叫它，不用再 @ 或加前缀。
+		if self != "" && jstr(dig(quoted, "from", "id")) == self {
+			in.Mentioned = true
+		}
+	}
 	token := rt.secret(acct.ID, "token")
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()
@@ -182,13 +191,22 @@ func (rt *Runtime) emitTelegram(acct Account, self, username string, msg map[str
 }
 
 func (rt *Runtime) pushTelegram(ctx context.Context, acct Account, chatID, text string) error {
+	_, err := rt.sendTelegram(ctx, acct, chatID, text)
+	return err
+}
+
+// sendTelegram 发一条，返回 Telegram 给它的 message_id。人回复这条时，收到的 reply_to_message.message_id 就是它。
+func (rt *Runtime) sendTelegram(ctx context.Context, acct Account, chatID, text string) (string, error) {
 	token := rt.secret(acct.ID, "token")
 	if token == "" {
-		return fatalf("missing bot token")
+		return "", fatalf("missing bot token")
 	}
-	_, err := rt.telegramCall(ctx, token, "sendMessage", map[string]any{
+	m, err := rt.telegramCall(ctx, token, "sendMessage", map[string]any{
 		"chat_id": numOrString(chatID),
 		"text":    text,
 	})
-	return err
+	if err != nil {
+		return "", err
+	}
+	return jstr(dig(m, "result", "message_id")), nil
 }

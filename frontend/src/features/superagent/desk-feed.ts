@@ -1,11 +1,12 @@
 /**
- * 拥有：到点时把晨间、晚间简报推进主会话，读回 Go 那边的开口判断，以及短讯上的反馈。
- * 不拥有：简报卡片怎么画，那在 WorkPane 和简报弹层。开口短讯由 Go 的送达循环写进主会话，这里不推。
+ * 拥有：人点的那一档简报、把 Go 写下的简报收进本机缓存、读回 Go 那边的开口判断，以及短讯上的反馈。
+ * 不拥有：到点生成。晨间和晚间的时刻由 Go 的送达循环看（brief_clock.go），这里不再看钟，免得两边各叫一次模型。
+ * 简报卡片怎么画在 WorkPane 和简报弹层。开口短讯由 Go 的送达循环写进主会话，这里不推。
  */
 
 import { briefList, composeToday, deskFeedback, deskPush, deskState, mainSession, orchestratorView, type BriefRecord, type DeskMute, type Initiative, type TodayCard } from "../../lib/client";
 import { copy, dateLocale } from "../../lib/i18n";
-import { briefDay, briefStorageKey, clockMinute, compareEditions, parseBriefPrefs, parseStoredBrief, quietBrief, serializeStoredBrief, slotsCrossed, BRIEF_PREFS_KEY, type BriefCard, type BriefLayout, type BriefPhrases, type BriefSlot, type MorningBrief } from "./work-model";
+import { briefDay, briefStorageKey, compareEditions, parseStoredBrief, quietBrief, serializeStoredBrief, type BriefCard, type BriefLayout, type BriefPhrases, type BriefSlot, type MorningBrief } from "./work-model";
 
 export const BRIEF_EVENT = "yoyo-brief";
 /** DESK_EVENT 在读回新的开口判断或按住的类别时发出。 */
@@ -16,8 +17,7 @@ const FEEDBACK_KEY = "yoyo.desk-feedback";
 let sessionId = "";
 let latest: Initiative | undefined;
 let mutes: DeskMute[] = [];
-/** seenMinute 是这一进程上次看见的本地分钟。-1 表示还没看过钟，第一次只记账，不补生成。 */
-let seenMinute = -1;
+
 
 /** latestInitiative 是最近一轮感知。资讯写进主会话，任务栏只留其余按住的事。 */
 export function latestInitiative(): Initiative | undefined {
@@ -86,16 +86,12 @@ export function deskSession(): string {
   return sessionId;
 }
 
-/** BRIEF_RETRY_MS 是跨过设定分钟之后还会再试的时长。模型那一次没写成，下一轮接着试，过了这段就不补了。 */
-const BRIEF_RETRY_MS = 2 * 60 * 60 * 1000;
-/** waitingSlots 是已经看见跨过设定分钟、还没写下的那几档。 */
-const waitingSlots = new Map<BriefSlot, { day: string; until: number }>();
 const busySlots = new Set<BriefSlot>();
 
 /** runDeskFeed 读回开口判断。进程跑着并且时钟跨过设定分钟时，才自动生成那一档；没写成的在两小时内每一轮再试。
  *  打开应用时已经错过的那一档不补。force 是人点的那一档，立刻生成。已经写下的不再改，也不再推进。 */
 export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Promise<void> {
-  const prefs = readPrefs();
+  void phrases;
   const main = await mainSession().catch(() => null);
   if (main?.id) sessionId = main.id;
   await orchestratorView().catch(() => null);
@@ -104,22 +100,19 @@ export async function runDeskFeed(phrases: BriefPhrases, force?: BriefSlot): Pro
     await ensureBrief(force);
     return;
   }
-  const day = briefDay();
-  for (const slot of crossedNow(prefs)) waitingSlots.set(slot, { day, until: Date.now() + BRIEF_RETRY_MS });
-  for (const [slot, want] of [...waitingSlots]) {
-    if (want.day !== day || Date.now() > want.until) {
-      waitingSlots.delete(slot);
-      continue;
-    }
-    if (await ensureBrief(slot)) waitingSlots.delete(slot);
-  }
+  await adoptToday();
 }
 
-function crossedNow(prefs: ReturnType<typeof readPrefs>): BriefSlot[] {
-  const minute = clockMinute();
-  const prev = seenMinute;
-  seenMinute = minute;
-  return slotsCrossed(prefs, prev, minute);
+/** adoptToday 把 Go 今天已经写下的简报收进本机缓存，今天栏和弹层读得到，也不再推一次。 */
+async function adoptToday(): Promise<void> {
+  const day = briefDay();
+  const rows = await briefList().catch(() => [] as BriefRecord[]);
+  for (const slot of ["morning", "evening"] as BriefSlot[]) {
+    const rec = rows.find((row) => row.slot === slot && row.day === day);
+    if (!rec) continue;
+    adoptSealed(slot, day, rec);
+    markSent(slot, day);
+  }
 }
 
 /** BriefEdition 是看板上的一封已经固定的简报。 */
@@ -337,13 +330,6 @@ function briefCard(card: TodayCard): BriefCard {
   };
 }
 
-function readPrefs() {
-  try {
-    return parseBriefPrefs(localStorage.getItem(BRIEF_PREFS_KEY));
-  } catch {
-    return parseBriefPrefs(null);
-  }
-}
 
 function readStored(key: string, day: string): MorningBrief | null {
   try {

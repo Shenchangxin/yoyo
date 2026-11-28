@@ -98,16 +98,12 @@ func (a *App) openPersonal() error {
 			return nil, err
 		}
 		a.Schedule = sched
-		a.schedStop = make(chan struct{})
-		go a.scheduleLoop()
+		// 选主时由领头的进程跑例行，见 lead.go。
+		if !a.managed() {
+			a.startSchedule()
+		}
 		return func() error {
-			if a.schedStop != nil {
-				select {
-				case <-a.schedStop:
-				default:
-					close(a.schedStop)
-				}
-			}
+			a.stopSchedule()
 			a.Schedule = nil
 			return nil
 		}, nil
@@ -191,7 +187,13 @@ func (a *App) openPersonal() error {
 			Paused: a.IsPaused,
 		})
 		a.Personal = eng
-		go eng.Run(ctx)
+		a.lead.mu.Lock()
+		a.lead.personal = ctx
+		a.lead.mu.Unlock()
+		// 选主时由领头的进程跑个人任务，见 lead.go。
+		if !a.managed() {
+			go eng.Run(ctx)
+		}
 		return func() error {
 			cancel()
 			a.Personal = nil
@@ -334,7 +336,13 @@ func (a *App) MemoryList(q, kind string) []memory.Item {
 	if a.Memory == nil {
 		return nil
 	}
-	return a.Memory.Search(q, memory.Kind(kind), memoryListMax)
+	items := a.Memory.Search(q, memory.Kind(kind), memoryListMax)
+	// 标出在后排的：还搜得到，但不进画像、不召回。Search 给的是副本，库里的条目不动。
+	back := a.Memory.BackRow()
+	for i := range items {
+		items[i].Back = back[items[i].ID]
+	}
+	return items
 }
 
 // memoryListMax 是记忆页一次读回的上限。
@@ -473,13 +481,13 @@ func (a *App) personalCounts() map[string]any {
 	return map[string]any{"waiting": waiting, "ideas": ideas, "proposals": proposals, "running": s.Worker.Running}
 }
 
-// scheduleLoop 每 30 秒取出到期日程并调用 runScheduledJob。暂停或日程为空时跳过这一拍。schedStop 关闭后退出。
-func (a *App) scheduleLoop() {
+// scheduleLoopUntil 每 30 秒取出到期日程并调用 runScheduledJob。暂停或日程为空时跳过这一拍。stop 关闭后退出。
+func (a *App) scheduleLoopUntil(stop <-chan struct{}) {
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
 	for {
 		select {
-		case <-a.schedStop:
+		case <-stop:
 			return
 		case <-tick.C:
 		}

@@ -310,7 +310,8 @@ export const useUI = create<UIState>((set, get) => ({
   lab: "agent",
   surface: "agent",
   harnessTab: readHarnessTab(),
-  settingsTab: "general",
+  // 第一次打开设置落在「你的助手」的简报与提醒：这是 Personal Agent 最先要定的事。
+  settingsTab: "proactive",
   settingsSection: "",
   settingsNav: 0,
   inspector: false,

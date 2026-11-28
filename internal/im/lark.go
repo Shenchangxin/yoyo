@@ -55,9 +55,16 @@ func (rt *Runtime) larkToken(ctx context.Context, acct Account) (string, error) 
 }
 
 func (rt *Runtime) pushLark(ctx context.Context, acct Account, chatID, text string) error {
+	_, err := rt.sendLark(ctx, acct, chatID, text)
+	return err
+}
+
+// sendLark 发一条文本，返回飞书给它的 message_id。人在飞书里回复这条时，收到的消息 parent_id 就是它。
+// HTTP 200 但 code 不为 0 也算失败（例如机器人不在这个群里）。
+func (rt *Runtime) sendLark(ctx context.Context, acct Account, chatID, text string) (string, error) {
 	token, err := rt.larkToken(ctx, acct)
 	if err != nil {
-		return err
+		return "", err
 	}
 	content, _ := json.Marshal(map[string]string{"text": clipText(text)})
 	raw, code, err := rt.postJSON(ctx, rt.larkBase(acct)+"/open-apis/im/v1/messages?receive_id_type=chat_id", map[string]string{
@@ -66,15 +73,22 @@ func (rt *Runtime) pushLark(ctx context.Context, acct Account, chatID, text stri
 		"receive_id": chatID, "msg_type": "text", "content": string(content),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if code == 401 || code == 403 {
-		return fatalf("feishu rejected the token (%d)", code)
+		return "", fatalf("feishu rejected the token (%d)", code)
 	}
 	if code >= 300 {
-		return statusErr(code, raw, "feishu send")
+		return "", statusErr(code, raw, "feishu send")
 	}
-	return nil
+	m, err := decodeJSON(raw)
+	if err != nil {
+		return "", nil
+	}
+	if jnum(m["code"]) != 0 {
+		return "", fmt.Errorf("feishu send: %s", jstr(m["msg"]))
+	}
+	return jstr(dig(m, "data", "message_id")), nil
 }
 
 func (rt *Runtime) hookLark(w http.ResponseWriter, r *http.Request, acct Account, body []byte) {
@@ -135,6 +149,8 @@ func (rt *Runtime) hookLark(w http.ResponseWriter, r *http.Request, acct Account
 		AccountID: acct.ID, Platform: "lark", Kind: kind, ChatID: chatID,
 		SenderID: sender, SenderName: sender, Text: text, Mentioned: true,
 		MessageID: jstr(message["message_id"]),
+		// 飞书里「回复」一条时，parent_id 是被回复那条的 message_id（sendLark 发出去时拿回的就是它）。
+		QuoteID: jstr(message["parent_id"]),
 	}
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()

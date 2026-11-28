@@ -1235,6 +1235,26 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.MemoryEdit(p.ID, p.Text), nil
+	case "memory.mute":
+		var p struct {
+			ID    string `json:"id"`
+			Muted bool   `json:"muted"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryMute(p.ID, p.Muted), nil
+	case "memory.revert":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryRevert(p.ID), nil
+	case "memory.tidy":
+		var p struct {
+			ID     string `json:"id"`
+			Accept bool   `json:"accept"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryTidy(p.ID, p.Accept), nil
 	case "memory.write":
 		var p struct {
 			Kind    string `json:"kind"`
@@ -1277,6 +1297,19 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": a.ConnectorDisconnect(p.ID)}, nil
+	case "connectors.calendars":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ConnectorCalendars(p.ID)
+	case "connectors.choose_calendar":
+		var p struct {
+			ID       string `json:"id"`
+			Calendar string `json:"calendar"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ConnectorChooseCalendar(p.ID, p.Calendar)
 	case "connectors.auth_url":
 		var p struct {
 			Provider string `json:"provider"`
@@ -1994,6 +2027,26 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, fmt.Errorf("messaging is not running")
 		}
 		return map[string]any{"ok": true}, a.IM.DeleteAccount(p.ID)
+	case "im.home":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.IMHomeState(), nil
+	case "im.home.pair":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return a.IMPair(), nil
+	case "im.home.unbind":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.IMUnbind()
+	case "im.home.test":
+		if a == nil {
+			return nil, fmt.Errorf("app is not running")
+		}
+		return map[string]any{"ok": true}, a.IMTest()
 	case "im.send":
 		var p struct {
 			AccountID string `json:"account_id"`

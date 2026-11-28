@@ -36,21 +36,27 @@ const (
 // ValidUntil 是正文说的那段安排到哪天为止，格式 2006-01-02；过了这一天它就是过去的事。Seen 是同一句说过几次，零当一次。
 // Origin 是从哪学到的，比如 session:编号、ticket:编号。History 是以前的说法，最多留五条。
 type Item struct {
-	ID         string     `json:"id"`
-	Kind       Kind       `json:"kind"`
-	Text       string     `json:"text"`
-	Project    string     `json:"project,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at,omitzero"`
-	ValidUntil string     `json:"valid_until,omitempty"`
-	Seen       int        `json:"seen,omitempty"`
-	Origin     string     `json:"origin,omitempty"`
-	History    []Revision `json:"history,omitempty"`
-	Staging    bool       `json:"staging,omitempty"`
-	Source     string     `json:"source,omitempty"`
-	State      string     `json:"state,omitempty"`
-	Evidence   string     `json:"evidence,omitempty"`
-	When       string     `json:"when,omitempty"`
+	ID         string    `json:"id"`
+	Kind       Kind      `json:"kind"`
+	Text       string    `json:"text"`
+	Project    string    `json:"project,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at,omitzero"`
+	ValidUntil string    `json:"valid_until,omitempty"`
+	Seen       int       `json:"seen,omitempty"`
+	// Back 只在 App.MemoryList 交给记忆页的副本上填：这一条现在在后排（backrow.go）。后排每次现算，库里的条目不设它。
+	Back bool `json:"back,omitempty"`
+	// UsedAt 是最近一次带进对话（常驻画像或召回）的时间，一天最多记一次。很久没写过也没用到的退到后排，见 backrow.go。
+	UsedAt  time.Time  `json:"used_at,omitzero"`
+	Origin  string     `json:"origin,omitempty"`
+	History []Revision `json:"history,omitempty"`
+	Staging bool       `json:"staging,omitempty"`
+	// Muted 为真时这一条不带进对话：人在回复下点了「别再提」。条目留着，记忆页还看得到，可以重新打开。
+	Muted    bool   `json:"muted,omitempty"`
+	Source   string `json:"source,omitempty"`
+	State    string `json:"state,omitempty"`
+	Evidence string `json:"evidence,omitempty"`
+	When     string `json:"when,omitempty"`
 }
 
 // Revision 是一条记忆以前的说法，At 是那个说法最后一次被确认的时间。
@@ -77,6 +83,7 @@ type Store struct {
 	path  string
 	items []Item
 	now   func() time.Time
+	stamp fileStamp
 }
 
 // Open 创建 dir，权限 0o755，路径是 dir/memory.json。读入后清掉待审标记，丢掉像密钥的条目，并把几乎一样的条目并成一条。
@@ -103,7 +110,13 @@ func (s *Store) load() error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(b, &s.items)
+	var items []Item
+	if err := json.Unmarshal(b, &items); err != nil {
+		return err
+	}
+	s.items = items
+	s.markLocked()
+	return nil
 }
 
 // flush 先把 JSON 写到路径加 .tmp，权限 0o600，再改成 memory.json。
@@ -116,13 +129,18 @@ func (s *Store) flush() error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		return err
+	}
+	s.markLocked()
+	return nil
 }
 
 // absorb 让旧的待审条目直接生效，丢掉空文本和像密钥的文本，再整理一遍。
 func (s *Store) absorb() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	changed := false
 	out := s.items[:0]
 	for _, it := range s.items {
@@ -170,6 +188,7 @@ const (
 func (s *Store) Keep(it Item, replaces string) Kept {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	now := s.clock()
 	it.Text = strings.TrimSpace(it.Text)
 	if it.Text == "" || secretText(it.Text) || secretText(it.Evidence) {
@@ -479,6 +498,7 @@ func maxTime(a, b time.Time) time.Time {
 func (s *Store) FileMachine(facts []MachineFact) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	old := map[string]Item{}
 	var rest []Item
 	for _, it := range s.items {
@@ -534,6 +554,7 @@ func (s *Store) FileMachine(facts []MachineFact) bool {
 func (s *Store) Forget(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	out := s.items[:0]
 	ok := false
 	for _, it := range s.items {
@@ -561,6 +582,7 @@ func factKey(text string) string {
 func (s *Store) Edit(id, text string) (Item, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	id = strings.TrimSpace(id)
 	text = strings.TrimSpace(text)
 	if id == "" || text == "" || strings.HasPrefix(id, "machine:") || secretText(text) {
@@ -600,6 +622,7 @@ func nonEmpty(parts ...string) []string {
 func (s *Store) Promote(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.items {
 		if s.items[i].ID == id {
 			s.items[i].Staging = false
@@ -614,6 +637,7 @@ func (s *Store) Promote(id string) bool {
 func (s *Store) All() []Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.syncLocked()
 	out := append([]Item(nil), s.items...)
 	return out
 }

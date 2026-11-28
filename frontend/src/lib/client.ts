@@ -2230,6 +2230,27 @@ export async function connectorDisconnect(id: string): Promise<boolean> {
   return asBool(pick(r, "ok", "Ok") ?? true);
 }
 
+export type CalendarChoice = { id: string; name: string; primary: boolean; current: boolean };
+
+/** connectorCalendars 列出一个 CalDAV / 飞书日历账号能选的日历，current 是现在读写用的那个。 */
+export async function connectorCalendars(id: string): Promise<CalendarChoice[]> {
+  const raw = await deskCall("ConnectorCalendars", [id], `/api/connectors/calendars?id=${encodeURIComponent(id)}`);
+  return asArray(raw).map((c: any) => ({
+    id: str(pick(c, "id", "ID")),
+    name: str(pick(c, "name", "Name")),
+    primary: asBool(pick(c, "primary", "Primary")),
+    current: asBool(pick(c, "current", "Current")),
+  })).filter((c) => c.id);
+}
+
+/** connectorChooseCalendar 记下这个账号以后读写哪一个日历；calendar 为空时回到自动选。返回改好的账号。 */
+export async function connectorChooseCalendar(id: string, calendar: string): Promise<any> {
+  return deskCall("ConnectorChooseCalendar", [id, calendar], "/api/connectors/calendars", {
+    method: "POST",
+    body: JSON.stringify({ id, calendar }),
+  });
+}
+
 /** triggerWebhook 走 TriggerWebhook 或 POST /api/hooks/{id}。 */
 export async function triggerWebhook(id: string): Promise<void> {
   const s = await wailsService();
@@ -2278,7 +2299,12 @@ export type SenseSignal = {
   speak: boolean;
   held: boolean;
   memoryId?: string;
+  /** reason 是「为什么是这条」。refs 是这条依据的材料。 */
+  reason?: string;
+  refs?: SenseRef[];
 };
+/** SenseRef 是一条开口依据的材料。kind 取 file、calendar、ticket、source、session、link、memory。 */
+export type SenseRef = { kind: string; label: string; target?: string };
 export type Initiative = {
   day?: string;
   speak?: boolean;
@@ -2361,10 +2387,72 @@ export async function deskFeedback(className: string, kind: string, memoryId = "
   return asBool(r && typeof r === "object" ? pick(r, "ok", "Ok") : r);
 }
 
+/** IMHomeState 是 IM 主通道：绑没绑、绑在哪、配对码和攒着几条。 */
+export type IMHomeState = {
+  bound: boolean;
+  account: string;
+  platform: string;
+  label: string;
+  kind: string;
+  senderName: string;
+  at: string;
+  code: string;
+  codeUntil: string;
+  held: number;
+  lastErr: string;
+  lastAt: string;
+};
+
+function imHomeOf(raw: any): IMHomeState {
+  return {
+    bound: asBool(pick(raw, "bound", "Bound")),
+    account: str(pick(raw, "account", "Account")),
+    platform: str(pick(raw, "platform", "Platform")),
+    label: str(pick(raw, "label", "Label")),
+    kind: str(pick(raw, "kind", "Kind")),
+    senderName: str(pick(raw, "senderName", "SenderName")),
+    at: str(pick(raw, "at", "At")),
+    code: str(pick(raw, "code", "Code")),
+    codeUntil: str(pick(raw, "codeUntil", "CodeUntil")),
+    held: num(pick(raw, "held", "Held")),
+    lastErr: str(pick(raw, "lastErr", "LastErr")),
+    lastAt: str(pick(raw, "lastAt", "LastAt")),
+  };
+}
+
+/** imHome 读 IM 主通道此刻的样子。 */
+export async function imHome(): Promise<IMHomeState> {
+  return imHomeOf(await deskCall("IMHome", [], "/api/im/home"));
+}
+
+/** imPair 生成十分钟有效的配对码。 */
+export async function imPair(): Promise<IMHomeState> {
+  return imHomeOf(await deskCall("IMPair", [], "/api/im/home/pair", { method: "POST" }));
+}
+
+/** imUnbind 解除主通道。 */
+export async function imUnbind(): Promise<void> {
+  await deskCall("IMUnbind", [], "/api/im/home/unbind", { method: "POST" });
+}
+
+/** imTest 往主通道发一条测试消息。发不出去时抛错。 */
+export async function imTest(): Promise<void> {
+  await deskCall("IMTest", [], "/api/im/home/test", { method: "POST" });
+}
+
 /** DeskMute 是一类被按住的开口。until 为 9999-12-31 表示要人打开。 */
 export type DeskMute = { class: string; until: string; ignores: number };
-/** DeskState 是开口门最近一轮判断，以及今天仍被按住的类别。 */
-export type DeskState = { briefing?: Initiative; mutes: DeskMute[]; at: string };
+/** DeskTally 是一天里送到了几条（打断了几次）和人的反应。 */
+export type DeskTally = { day: string; spoken: number; used: number; ignored: number; later: number; wrong: number; muted: number };
+/** DeskState 是开口门最近一轮判断、今天仍被按住的类别，以及最近七天的计数。accepted 为负表示还没有送到过。 */
+/**
+ * DeskLead 是这台电脑上谁在跑主动链路。role 是这个进程（lead 或 follow），不选主时为空；holder 是拿着后台的那个（desktop 或 daemon）。
+ * draining 为真时拿着后台的那个已经决定让出，正在等手上在跑的回合跑完，跑完就交接。
+ */
+export type DeskLead = { role: string; holder: string; since: string; draining: boolean };
+/** DeskPresence 是头像的全局状态。state 取 paused、needs、blocked、working、done、idle；ticket 是点开要看的工单。 */
+export type DeskPresence = { state: string; line: string; ticket: string; session: string; count: number };
+export type DeskState = { briefing?: Initiative; mutes: DeskMute[]; at: string; tally: DeskTally[]; accepted: number; lead: DeskLead; presence: DeskPresence };
 
 /** deskState 读开口门最近一轮判断。宿主读不到时抛错，调用方留着上一次的。 */
 export async function deskState(): Promise<DeskState> {
@@ -2377,6 +2465,38 @@ export async function deskState(): Promise<DeskState> {
       ignores: num(pick(row, "ignores", "Ignores")),
     })).filter((row) => row.class),
     at: str(pick(raw, "at", "At")),
+    tally: asArray(pick(raw, "tally", "Tally")).map((row) => ({
+      day: str(pick(row, "day", "Day")),
+      spoken: num(pick(row, "spoken", "Spoken")),
+      used: num(pick(row, "used", "Used")),
+      ignored: num(pick(row, "ignored", "Ignored")),
+      later: num(pick(row, "later", "Later")),
+      wrong: num(pick(row, "wrong", "Wrong")),
+      muted: num(pick(row, "muted", "Muted")),
+    })).filter((row) => row.day),
+    accepted: (() => {
+      const v = pick(raw, "accepted", "Accepted");
+      return typeof v === "number" && Number.isFinite(v) ? v : -1;
+    })(),
+    presence: (() => {
+      const row = pick(raw, "presence", "Presence");
+      return {
+        state: str(pick(row, "state", "State")),
+        line: str(pick(row, "line", "Line")),
+        ticket: str(pick(row, "ticket", "Ticket")),
+        session: str(pick(row, "session", "Session")),
+        count: num(pick(row, "count", "Count")),
+      };
+    })(),
+    lead: (() => {
+      const row = pick(raw, "lead", "Lead");
+      return {
+        role: str(pick(row, "role", "Role")),
+        holder: str(pick(row, "holder", "Holder")),
+        since: str(pick(row, "since", "Since")),
+        draining: pick(row, "draining", "Draining") === true,
+      };
+    })(),
   };
 }
 
@@ -2407,6 +2527,15 @@ function normalizePoi(raw: any): PoiSnapshot {
   };
 }
 
+/** senseRefs 读出依据。认不出的条目丢掉。 */
+export function senseRefs(raw: unknown): SenseRef[] {
+  return asArray(raw).map((row) => ({
+    kind: str(pick(row, "kind", "Kind")),
+    label: str(pick(row, "label", "Label")),
+    target: str(pick(row, "target", "Target")) || undefined,
+  })).filter((row) => row.label);
+}
+
 function normalizeInitiative(raw: unknown): Initiative | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const signals = asArray(pick(raw, "signals", "Signals")).map((row) => ({
@@ -2420,6 +2549,8 @@ function normalizeInitiative(raw: unknown): Initiative | undefined {
     speak: asBool(pick(row, "speak", "Speak")),
     held: asBool(pick(row, "held", "Held")),
     memoryId: str(pick(row, "memoryId", "MemoryID")),
+    reason: str(pick(row, "reason", "Reason")),
+    refs: senseRefs(pick(row, "refs", "Refs")),
   })).filter((row) => row.id || row.name);
   return {
     day: str(pick(raw, "day", "Day")),
@@ -2491,6 +2622,24 @@ export async function memoryForget(id: string): Promise<void> {
 export async function memoryEdit(id: string, text: string): Promise<{ id?: string; text?: string }> {
   const raw = await deskCall("MemoryEdit", [id, text], "/api/memory", { method: "POST", body: JSON.stringify({ op: "edit", id, text }) });
   return { id: str(pick(raw, "id", "ID")), text: str(pick(raw, "text", "Text")) };
+}
+
+/** memoryMute 让一条记忆不再带进对话（muted 为真），或者重新带进去。条目留着，记忆页还看得到。 */
+export async function memoryMute(id: string, muted: boolean): Promise<boolean> {
+  const raw = await deskCall("MemoryMute", [id, muted], "/api/memory", { method: "POST", body: JSON.stringify({ op: "mute", id, muted }) });
+  return asBool(raw && typeof raw === "object" ? pick(raw, "ok", "Ok") : raw);
+}
+
+/** memoryRevert 把一条记忆退回上一次的说法。退不了时返回的 id 为空。 */
+export async function memoryRevert(id: string): Promise<{ id?: string; text?: string }> {
+  const raw = await deskCall("MemoryRevert", [id], "/api/memory", { method: "POST", body: JSON.stringify({ op: "revert", id }) });
+  return { id: str(pick(raw, "id", "ID")), text: str(pick(raw, "text", "Text")) };
+}
+
+/** memoryTidy 处理简报里的一条记忆整理建议：accept 为真时并成一条（旧说法进历史，可以撤销），为假时以后不再问这两条。没办成时 ok 为假，error 写原因。 */
+export async function memoryTidy(id: string, accept: boolean): Promise<{ ok: boolean; error: string }> {
+  const raw = await deskCall("MemoryTidy", [id, accept], "/api/memory", { method: "POST", body: JSON.stringify({ op: "tidy", id, accept }) });
+  return { ok: asBool(pick(raw, "ok", "OK")), error: str(pick(raw, "error", "Error")) };
 }
 
 /** memoryWrite 走 MemoryWrite 或 POST /api/memory。kind 传给 MemoryWrite，放进请求体。text 传给 MemoryWrite，放进请求体。project 传给 MemoryWrite，放进请求体。 */

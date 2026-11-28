@@ -174,11 +174,12 @@ type AssignmentRow struct {
 
 // ReportLine 是派工上的一条报告。进度和空正文不放进来。At 是 RFC3339，旧报告没有时为空。Need 为 login 时人要先去登录。
 type ReportLine struct {
-	State    string `json:"state"`
-	Summary  string `json:"summary,omitempty"`
-	Question string `json:"question,omitempty"`
-	At       string `json:"at,omitempty"`
-	Need     string `json:"need,omitempty"`
+	State    string  `json:"state"`
+	Summary  string  `json:"summary,omitempty"`
+	Question string  `json:"question,omitempty"`
+	At       string  `json:"at,omitempty"`
+	Need     string  `json:"need,omitempty"`
+	Finish   *Finish `json:"finish,omitempty"`
 }
 
 // ProblemRow 是总览上要人看的一条故障。Kind 取 source、unavailable、outgoing、overdue。
@@ -528,7 +529,7 @@ func ticketRow(ticket Ticket, stage Stage, byID map[string]Trigger) TicketRow {
 				continue
 			}
 			line := ReportLine{
-				State: rep.State, Summary: clipRunes(rep.Summary, 4000), Question: clipRunes(rep.Question, 2000), Need: rep.Need,
+				State: rep.State, Summary: clipRunes(rep.Summary, 4000), Question: clipRunes(rep.Question, 2000), Need: rep.Need, Finish: rep.Finish,
 			}
 			if !rep.At.IsZero() {
 				line.At = rep.At.UTC().Format(time.RFC3339)

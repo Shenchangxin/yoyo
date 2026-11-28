@@ -75,6 +75,8 @@ type Report struct {
 	At time.Time `json:"At,omitempty"`
 	// Need 是人要先做的事。login 表示 agent 要先在 Buddy 登录。
 	Need string `json:"Need,omitempty"`
+	// Finish 是交给人的最后一步（付款、下单、预订、提交）。Need 是 finish 时才有，见 finish.go。
+	Finish *Finish `json:"Finish,omitempty"`
 }
 
 // Assignment 把工单绑到一次执行。State 取 pending、running、ended。

@@ -28,7 +28,10 @@ func (a *App) openIM() error {
 		return err
 	}
 	rt.SetHandler(a.deliverIM)
-	rt.Start()
+	// 选主时只有领头的进程接 IM：两个进程同时拉同一个机器人会互相抢消息。见 lead.go。
+	if !a.managed() {
+		rt.Start()
+	}
 	a.IM = rt
 	return nil
 }
@@ -54,6 +57,28 @@ func (a *App) deliverIM(in im.Inbound) {
 	}
 	accepted, ok := a.IM.Admit(in)
 	if !ok {
+		return
+	}
+	// 命令先处理，不进对话的队列：会话可能正等着这条审批，排在它后面就会互相卡住。
+	if a.imCommand(in, accepted) {
+		return
+	}
+	// 主通道里对某一条的回复（引用）直接处理那件事：回答任务、批准、反馈。认不出时照旧进对话。见 im_quote.go。
+	if a.imQuoteRoute(accepted) {
+		return
+	}
+	// 交接收尾期间不开新回合：记进 im/handoff.json，回一句「收到」，接手的进程领头后接着处理。见 im_handoff.go。
+	if a.imHold(accepted) {
+		return
+	}
+	a.imTurn(accepted)
+}
+
+// imTurn 给一条已经通过 Admit、不是命令也不是引用回复的消息开一个回合。交接队列重放时直接从这里进。
+func (a *App) imTurn(accepted im.Inbound) {
+	// 主通道里绑定的人说的话进主会话，和桌面上是同一段对话。
+	if a.isIMHome(accepted) {
+		a.imHomeTurn(accepted)
 		return
 	}
 	lane := a.imLane(accepted.Origin)

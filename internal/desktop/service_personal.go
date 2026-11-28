@@ -111,6 +111,36 @@ func (s *Service) MemoryEdit(id, text string) memory.Item {
 	return s.App.MemoryEdit(id, text)
 }
 
+// MemoryMute 在 RPC 非空时调用 memory.mute，否则走 App.MemoryMute。muted 为真时这一条不再带进对话。
+func (s *Service) MemoryMute(id string, muted bool) bool {
+	if s.RPC != nil {
+		v, _ := s.call("memory.mute", map[string]any{"id": id, "muted": muted})
+		ok, _ := decode[bool](v, nil)
+		return ok
+	}
+	return s.App.MemoryMute(id, muted)
+}
+
+// MemoryRevert 在 RPC 非空时调用 memory.revert，否则走 App.MemoryRevert。退不了时返回零值。
+func (s *Service) MemoryRevert(id string) memory.Item {
+	if s.RPC != nil {
+		v, _ := s.call("memory.revert", map[string]any{"id": id})
+		out, _ := decode[memory.Item](v, nil)
+		return out
+	}
+	return s.App.MemoryRevert(id)
+}
+
+// MemoryTidy 在 RPC 非空时调用 memory.tidy，否则走 App.MemoryTidy。accept 为真时并成一条，为假时以后不再问这一对。
+func (s *Service) MemoryTidy(id string, accept bool) app.TidyResult {
+	if s.RPC != nil {
+		v, _ := s.call("memory.tidy", map[string]any{"id": id, "accept": accept})
+		out, _ := decode[app.TidyResult](v, nil)
+		return out
+	}
+	return s.App.MemoryTidy(id, accept)
+}
+
 // ScheduleList 在 RPC 非空时调用 schedule.list，否则走 App.ScheduleList。
 func (s *Service) ScheduleList() []schedule.Job {
 	if s.RPC != nil {
@@ -393,6 +423,30 @@ func (s *Service) ConnectorDisconnect(id string) bool {
 		return ok
 	}
 	return s.App.ConnectorDisconnect(id)
+}
+
+// ConnectorCalendars 在 RPC 非空时调用 connectors.calendars，否则走 App.ConnectorCalendars。
+func (s *Service) ConnectorCalendars(id string) ([]connector.CalendarChoice, error) {
+	if s.RPC != nil {
+		v, err := s.call("connectors.calendars", map[string]any{"id": id})
+		return decode[[]connector.CalendarChoice](v, err)
+	}
+	if s.App == nil {
+		return nil, fmt.Errorf("no connectors")
+	}
+	return s.App.ConnectorCalendars(id)
+}
+
+// ConnectorChooseCalendar 在 RPC 非空时调用 connectors.choose_calendar，否则走 App.ConnectorChooseCalendar。
+func (s *Service) ConnectorChooseCalendar(id, calendar string) (connector.Account, error) {
+	if s.RPC != nil {
+		v, err := s.call("connectors.choose_calendar", map[string]any{"id": id, "calendar": calendar})
+		return decode[connector.Account](v, err)
+	}
+	if s.App == nil {
+		return connector.Account{}, fmt.Errorf("no connectors")
+	}
+	return s.App.ConnectorChooseCalendar(id, calendar)
 }
 
 // PersonalSnapshot 在 RPC 非空时调用 personal.snapshot，否则走 App.PersonalSnapshot。

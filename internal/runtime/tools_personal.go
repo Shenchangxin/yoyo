@@ -807,9 +807,15 @@ func (t *WorkspaceTools) connectorDraft(args map[string]any) ToolResult {
 	d.Attendees = anyStrings(args["attendees"])
 	d.Attachments = anyStrings(args["attachments"])
 	d.EventID = str(args["event_id"])
+	// item_id 是要改的那一项：飞书文档的 document_id、飞书任务的 guid（读的时候每条都带着 id）。
+	d.ItemID = str(args["item_id"])
 	d.TargetVersion = str(args["target_version"])
 	d.Recurrence = str(args["recurrence"])
 	d.Op = str(args["op"])
+	// 工单里写的草稿记下工单号：发出去时打上标记，对方回信就回到这张工单。
+	if strings.HasPrefix(t.SessionID, "ticket-") {
+		d.Ticket = strings.TrimPrefix(t.SessionID, "ticket-")
+	}
 	if title := str(args["title"]); title != "" && d.Subject == "" {
 		d.Subject = title
 	}

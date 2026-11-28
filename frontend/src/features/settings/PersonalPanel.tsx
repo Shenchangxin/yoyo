@@ -9,6 +9,7 @@ import { str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { SettingEmpty, SettingRow, SettingSection } from "./SettingChrome";
+import { proposalWhen, taskStatusLabel } from "./personal-labels";
 
 /** AutomationsSettings 是「自动化」整页：先是要你点头的发送审阅，再是定时、目标、盯梢，最后是它自己攒下的想法和事务。 */
 export function AutomationsSettings() {
@@ -157,7 +158,7 @@ export function WorkSection() {
             key={str(t.id || i)}
             list
             title={str(t.title).slice(0, 96)}
-            description={`${str(t.kind)} · ${str(t.status)}${t.question ? " · " + str(t.question).slice(0, 80) : ""}`}
+            description={`${taskStatusLabel(str(t.status))}${t.question ? " · " + str(t.question).slice(0, 80) : ""}`}
           >
             {str(t.status) === "waiting_input" ? (
               <>
@@ -239,7 +240,7 @@ export function ProposalSection() {
         <SettingEmpty>{copy.settings.noProposals}</SettingEmpty>
       ) : (
         items.map((p: any, i: number) => (
-          <SettingRow key={str(p.id || i)} list title={str(p.title).slice(0, 96)} description={str(p.kind) + " · " + str(p.hash).slice(0, 12)}>
+          <SettingRow key={str(p.id || i)} list title={str(p.title).slice(0, 96)} description={proposalWhen(str(p.expires_at || p.expiresAt))}>
             <Button
               size="sm"
               onClick={async () => {

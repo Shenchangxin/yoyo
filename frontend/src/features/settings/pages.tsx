@@ -397,8 +397,7 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
         </SettingRow>
       </SettingSection>
 
-      <IsolationSection host={host} />
-
+      {/* 运行环境搬到开发者的「诊断与实验室」页（SettingsPage）。 */}
       <DataSection host={host} />
     </>
   );
@@ -489,8 +488,8 @@ function PwshRows() {
   );
 }
 
-/** 投影隔离报告。host 读取 doctor、vault。 */
-function IsolationSection({ host }: { host: SettingsHost }) {
+/** IsolationSection 投影隔离报告：沙箱、签名、保险库、浏览器配置和 PowerShell。都是工程细节，放在开发者的「诊断与实验室」页。host 读取 doctor、vault。 */
+export function IsolationSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const [rep, setRep] = useState<any>(host.doctor?.isolation || {});
   useEffect(() => {

@@ -85,8 +85,12 @@ type Inbound struct {
 	Mentioned  bool
 	AtAll      bool
 	MessageID  string
-	Admin      bool
-	Reply      func(text string) error
+	// QuoteID 是人这条消息回复（引用）的那一条在平台上的编号，没有回复哪条时为空。见 quote.go。
+	QuoteID string
+	// QuoteText 是被引用那条的原文，平台给了才有。拿不到编号的平台靠它认出短编号。
+	QuoteText string
+	Admin     bool
+	Reply     func(text string) error
 }
 
 // Snapshot 是设置页一次拉取的目录、规则、账号和状态。

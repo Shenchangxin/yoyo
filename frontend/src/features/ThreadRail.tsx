@@ -3,6 +3,7 @@
  * 不拥有：会话列表怎么来。只投影传入的 threads，打开、置顶和删除都回调，不调用 api。
  */
 
+import { PresenceBadge } from "./presence/PresenceBadge";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -478,6 +479,7 @@ export function ThreadRail(props: {
       ) : null}
     </SidebarCard>
       <div className="rail-dock">
+        <PresenceBadge />
         <RailDock
           copy={copy}
           surface={props.surface}

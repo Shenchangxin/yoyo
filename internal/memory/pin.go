@@ -37,13 +37,15 @@ type pinSet struct {
 	updated                            time.Time
 }
 
-// pinSet 把条目分组。调用时要已持有锁。
+// pinSet 把条目分组。人点过「别再提」的不进画像。调用时要已持有锁。
 func (s *Store) pinSet(now time.Time) pinSet {
 	items := append([]Item(nil), s.items...)
 	sort.SliceStable(items, func(i, j int) bool { return updatedOf(items[i]).After(updatedOf(items[j])) })
 	var out pinSet
+	// 后排的不进画像，还能搜到（backrow.go）。
+	back := s.backSet(now)
 	for _, it := range items {
-		if it.Staging || strings.TrimSpace(it.Text) == "" || Expired(it, now) {
+		if it.Staging || it.Muted || back[it.ID] || strings.TrimSpace(it.Text) == "" || Expired(it, now) {
 			continue
 		}
 		kept := true
@@ -82,6 +84,7 @@ func (s *Store) pinSet(now time.Time) pinSet {
 // 偏好只收当事人自己说的；模型和工人记下的档案和偏好都在 Noted 里。
 func (s *Store) Portrait() Portrait {
 	s.mu.Lock()
+	s.syncLocked()
 	set := s.pinSet(s.clock())
 	s.mu.Unlock()
 	return Portrait{
@@ -94,14 +97,32 @@ func (s *Store) Portrait() Portrait {
 // ProfilePin 把已经留下的事实收成模型能读的短文。先写当事人说过的，再写偏好、模型记下的，本机的名字和时间放最后。
 // 每一组新的在前；预算不够时先舍掉最旧的和本机的。budget 是字节上限，小于等于 0 时不限。
 func (s *Store) ProfilePin(budget int) string {
+	text, _ := s.ProfileUse(budget)
+	return text
+}
+
+// ProfileUse 和 ProfilePin 写出同一段短文，并返回真正写进去的当事人说过的、偏好和模型记下的那几条。
+// 本机清点不在返回里：那是名字和时间，不是人能说「不对」的记忆。界面用它列出这一轮带进去的记忆。
+func (s *Store) ProfileUse(budget int) (string, []Item) {
 	s.mu.Lock()
+	s.syncLocked()
 	now := s.clock()
 	set := s.pinSet(now)
 	s.mu.Unlock()
 	w := pinWriter{budget: budget}
-	w.group("Said by the operator:\n", pinLines(set.said, now))
-	w.group("Preferences:\n", pinLines(set.prefs, now))
-	w.group("Noted by the assistant, not confirmed:\n", pinLines(set.noted, now))
+	var used []Item
+	for _, g := range []struct {
+		title string
+		items []Item
+	}{
+		{"Said by the operator:\n", set.said},
+		{"Preferences:\n", set.prefs},
+		{"Noted by the assistant, not confirmed:\n", set.noted},
+	} {
+		for _, i := range w.group(g.title, pinLines(g.items, now)) {
+			used = append(used, g.items[i])
+		}
+	}
 	var machine []string
 	for _, field := range []struct{ name, value string }{
 		{"user", set.device}, {"host", set.host}, {"os", set.os}, {"zone", set.zone}, {"git", set.git}, {"weekday edits", set.hours},
@@ -124,7 +145,7 @@ func (s *Store) ProfilePin(budget int) string {
 		machine = append(machine, row)
 	}
 	w.group("From this machine, names and times only:\n", machine)
-	return w.String()
+	return w.String(), used
 }
 
 // OperatorPin 是给工人看的短文：当事人说过的和他自己的偏好，最后是系统、时区和 Git 名字。
@@ -132,6 +153,7 @@ func (s *Store) ProfilePin(budget int) string {
 // 也不写机器名、工作时间、工程线和经历，那些只对主会话有用。budget 是字节上限，小于等于 0 时不限。
 func (s *Store) OperatorPin(budget int) string {
 	s.mu.Lock()
+	s.syncLocked()
 	now := s.clock()
 	set := s.pinSet(now)
 	s.mu.Unlock()
@@ -183,10 +205,11 @@ func (w *pinWriter) fits(n int) bool {
 	return w.budget <= 0 || w.b.Len()+n <= w.budget
 }
 
-// group 写一组。放不下的一行跳过，后面更短的仍可以写进来；一行都放不下时连标题也不写。
-func (w *pinWriter) group(title string, lines []string) {
+// group 写一组，返回写进去的那几行的下标。放不下的一行跳过，后面更短的仍可以写进来；一行都放不下时连标题也不写。
+func (w *pinWriter) group(title string, lines []string) []int {
 	opened := false
-	for _, line := range lines {
+	var wrote []int
+	for i, line := range lines {
 		row := "- " + line + "\n"
 		need := len(row)
 		if !opened {
@@ -200,7 +223,9 @@ func (w *pinWriter) group(title string, lines []string) {
 			opened = true
 		}
 		w.b.WriteString(row)
+		wrote = append(wrote, i)
 	}
+	return wrote
 }
 
 func (w *pinWriter) String() string { return w.b.String() }

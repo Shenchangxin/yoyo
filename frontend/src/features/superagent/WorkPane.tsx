@@ -8,7 +8,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Activity, ArrowRight, Brain, Calendar, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Clock, Coffee, Compass, Folder, FolderOpen, GitBranch, Inbox, Info, ListChecks, Mail, MapPin, Megaphone, MessageCircle, Monitor, Moon, Plus, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Sun, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
-import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, inboxDismiss, inboxRead, memoryEdit, memoryForget, memoryList, memoryWrite, personalAnswer, personalDecide, type DeskMute } from "../../lib/client";
+import { orchestratorAct, orchestratorDecide, orchestratorDeliver, orchestratorView, inboxDismiss, inboxRead, memoryEdit, memoryMute, memoryForget, memoryList, memoryWrite, personalAnswer, personalDecide, type DeskMute } from "../../lib/client";
+import { isTidyCard, settleTidy } from "./brief-tidy.ts";
 import type { Attachment, FileHit, Notice, SkillInfo } from "../../lib/protocol";
 import { dateLocale, useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
@@ -322,6 +323,7 @@ export function WorkPane(props: {
                   await memoryForget(id).catch(() => undefined);
                   await pullMemory();
                 }}
+                onMute={async (id, muted) => { await memoryMute(id, muted).catch(() => false); await pullMemory(); }}
                 onEdit={async (id, text) => {
                   const saved = await memoryEdit(id, text).catch(() => ({ id: "" }));
                   await pullMemory();
@@ -997,7 +999,15 @@ export function BriefStack(props: {
             handled={handled}
             collapsed={toggled[card.id] ?? handled}
             onToggle={(collapsed) => toggle(card.id, collapsed)}
-            onUse={(target, which) => { hold(target.id); props.onUse(target, which); }}
+            onUse={(target, which) => {
+              hold(target.id);
+              // 记忆整理卡的「对」「不对」直接去处理那条建议，不放进输入框；办成了才记成处理过（brief-tidy.ts）。
+              if (isTidyCard(target)) {
+                void settleTidy(target, which).then((done) => { if (done) mark?.(target.id, which); });
+                return;
+              }
+              props.onUse(target, which);
+            }}
             onMark={mark ? (key, value) => { hold(card.id); mark(key, value); } : undefined}
             onDraft={props.onDraft}
             filledLabel={props.filledLabel}
@@ -1950,7 +1960,7 @@ function RulePill(props: { label: string; meta: string; on: boolean; onOpen: () 
 
 const FOLDER_PAGE = 30;
 
-function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<void>; onForget: (id: string) => Promise<void>; onEdit: (id: string, text: string) => Promise<boolean> }) {
+function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<void>; onForget: (id: string) => Promise<void>; onEdit: (id: string, text: string) => Promise<boolean>; onMute: (id: string, muted: boolean) => Promise<void> }) {
   const copy = useCopy();
   const [folder, setFolder] = useState<MemoryFolder | "">("");
   const [adding, setAdding] = useState(false);
@@ -2066,6 +2076,8 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
                   at,
                   before.length ? copy.work.memoryChanged.replace("{n}", String(before.length)) : "",
                   (row.seen ?? 0) > 1 ? copy.work.memorySeen.replace("{n}", String(row.seen)) : "",
+                  row.muted ? copy.work.memoryMutedTag : "",
+                  row.back && !row.muted ? copy.work.memoryBackTag : "",
                 ];
                 const open = editing?.id === row.id;
                 return (
@@ -2110,6 +2122,7 @@ function Memory(props: { rows: MemoryRow[]; onAdd: (text: string) => Promise<voi
                               >
                                 {copy.work.memoryEdit}
                               </button>
+                              {row.muted ? <button type="button" className="h-6 rounded-md px-2 text-ui-caption font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:bg-lift hover:text-foreground" onClick={() => { void props.onMute(row.id, false); }}>{copy.work.memoryUnmute}</button> : null}
                               <ForgetButton onForget={() => props.onForget(row.id)} />
                             </span>
                           ) : null}

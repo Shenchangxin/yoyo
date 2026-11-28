@@ -29,6 +29,10 @@ type Token struct {
 	TokenType    string    `json:"token_type,omitempty"`
 	Expiry       time.Time `json:"expiry,omitempty"`
 	Scope        string    `json:"scope,omitempty"`
+	// ClientID 和 ClientSecret 是换票时用的应用身份，跟令牌一起在保险库里，不进 connectors.json。
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
+	Provider     string `json:"provider,omitempty"`
 }
 
 // SetTokens 换上令牌仓库。
@@ -79,14 +83,17 @@ func (b *Broker) Exchange(provider, code, clientID, secret, redirect string) (To
 		endpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 	case "slack":
 		endpoint = "https://slack.com/api/oauth.v2.access"
+	case "feishu-calendar", "feishu-docs", "feishu-task":
+		// 飞书 v2 换票：授权码换 user_access_token 和 refresh_token（授权时申请了 offline_access 才有），见 feishu_oauth.go。
+		endpoint = feishuTokenURL()
 	default:
 		return Token{}, fmt.Errorf("connector: token exchange for %s is MCP-pack only", provider)
 	}
-	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	// 飞书只收 JSON，其余供应商收表单。
+	req, err := tokenRequest(provider, endpoint, form)
 	if err != nil {
 		return Token{}, err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := b.client().Do(req)
 	if err != nil {
 		return Token{}, err
@@ -120,6 +127,8 @@ func (b *Broker) Exchange(provider, code, clientID, secret, redirect string) (To
 			tok.Expiry = time.Now().UTC().Add(time.Duration(extra.ExpiresIn) * time.Second)
 		}
 	}
+	// 记下应用身份，令牌过期之后 freshToken 拿它换票。
+	tok.keepApp(Token{ClientID: clientID, ClientSecret: secret, Provider: provider})
 	return tok, nil
 }
 
@@ -167,13 +176,42 @@ func (b *Broker) liveRead(a Account, query string) ([]map[string]string, error) 
 	if items, handled, err := b.readPhone(a.Provider); handled {
 		return filterItems(items, query), err
 	}
-	tok, err := b.loadToken(a.VaultKey)
+	tok, err := b.freshToken(a, false)
 	if err != nil {
 		return nil, err
 	}
+	items, err := b.readWith(a, tok, query)
+	if err != nil && authExpired(err) && tok.RefreshToken != "" {
+		again, rerr := b.freshToken(a, true)
+		if rerr != nil {
+			return nil, rerr
+		}
+		return b.readWith(a, again, query)
+	}
+	return items, err
+}
+
+// readWith 用已经拿到的令牌读一次。邮箱的令牌就是 IMAP 授权码。
+func (b *Broker) readWith(a Account, tok Token, query string) ([]map[string]string, error) {
 	provider := strings.ToLower(a.Provider)
 	if isMailbox(provider) {
-		return readMailbox(a.Endpoint, tok.AccessToken, provider)
+		return readMailbox(a.Endpoint, tok.AccessToken, provider, query)
+	}
+	// CalDAV 的令牌是「用户名:密码」、Endpoint 是日历集合地址（caldav.go）；
+	// 飞书日历的令牌是 user_access_token、Endpoint 是可选的 calendar_id（feishu_calendar.go）。
+	// 选过日历时读选的那个（calendar_pick.go 的 calendarEndpoint）。
+	if isCalDAV(provider) {
+		return caldavList(b.client(), calendarEndpoint(a), tok.AccessToken, query)
+	}
+	if isFeishuCalendar(provider) {
+		return feishuEvents(b.client(), calendarEndpoint(a), tok.AccessToken, query)
+	}
+	// 飞书云文档的 Endpoint 是可选的文件夹 token（不填是「我的空间」根目录）；飞书任务不用 Endpoint。见 feishu_docs.go、feishu_task.go。
+	if isFeishuDocs(provider) {
+		return feishuDocs(b.client(), a.Endpoint, tok.AccessToken, query)
+	}
+	if isFeishuTask(provider) {
+		return feishuTasks(b.client(), tok.AccessToken, query)
 	}
 	if a.Kind == KindCalendar || looksCalendar(query) {
 		switch provider {
@@ -199,12 +237,46 @@ func (b *Broker) liveRead(a Account, query string) ([]map[string]string, error) 
 }
 
 // liveSend 对日历种类或 gcal 写日程，gmail 和 outlook 发信。其他供应商返回错误。
+// 401 时还没发出去，换一张令牌再发一次不会重复。
 func (b *Broker) liveSend(a Account, d Draft) error {
-	tok, err := b.loadToken(a.VaultKey)
+	tok, err := b.freshToken(a, false)
 	if err != nil {
 		return err
 	}
+	err = b.sendWith(a, tok, d)
+	// 已经写出去一部分（日程建好了、参会人没加上）时不重发，不然会多出一个一样的日程。
+	if err != nil && authExpired(err) && !alreadyWritten(err) && tok.RefreshToken != "" {
+		again, rerr := b.freshToken(a, true)
+		if rerr != nil {
+			return rerr
+		}
+		return b.sendWith(a, again, d)
+	}
+	return err
+}
+
+// sendWith 用已经拿到的令牌发一次。
+func (b *Broker) sendWith(a Account, tok Token, d Draft) error {
 	provider := strings.ToLower(a.Provider)
+	// QQ / 网易 / 自填邮箱走 SMTP，令牌就是授权码（见 mailbox_send.go）。
+	if isMailbox(provider) {
+		return sendMailbox(a.Endpoint, tok.AccessToken, provider, d)
+	}
+	// CalDAV 和飞书日历自己写日程，要排在下面 KindCalendar 那一支前面，不然会落进 Google / Outlook 的写法。
+	// 选过日历时写进选的那个（calendar_pick.go 的 calendarEndpoint）。
+	if isCalDAV(provider) {
+		return caldavWrite(b.client(), calendarEndpoint(a), tok.AccessToken, d)
+	}
+	if isFeishuCalendar(provider) {
+		return feishuWriteEvent(b.client(), calendarEndpoint(a), tok.AccessToken, d)
+	}
+	// 飞书云文档新建或追加，飞书任务建、改、完成、删除，见 feishu_docs.go、feishu_task.go。
+	if isFeishuDocs(provider) {
+		return feishuWriteDoc(b.client(), a.Endpoint, tok.AccessToken, d)
+	}
+	if isFeishuTask(provider) {
+		return feishuWriteTask(b.client(), tok.AccessToken, d)
+	}
 	if a.Kind == KindCalendar || provider == "gcal" {
 		return liveWriteEvent(b.client(), provider, tok.AccessToken, d)
 	}
@@ -271,7 +343,8 @@ func gmailList(client *http.Client, token, query string) ([]map[string]string, e
 // token 写进 Authorization 的 Bearer 后面。
 // id 经 PathEscape 放进 messages 路径。
 func gmailMeta(client *http.Client, token, id string) (map[string]string, error) {
-	u := "https://gmail.googleapis.com/gmail/v1/users/me/messages/" + url.PathEscape(id) + "?format=metadata&metadataHeaders=Subject&metadataHeaders=From"
+	// To、Cc、Delivered-To 用来认出发给加号子地址的回信（alias.go），合成一个 to 字段。
+	u := "https://gmail.googleapis.com/gmail/v1/users/me/messages/" + url.PathEscape(id) + "?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Delivered-To"
 	req, _ := http.NewRequest(http.MethodGet, u, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := client.Do(req)
@@ -294,13 +367,22 @@ func gmailMeta(client *http.Client, token, id string) (map[string]string, error)
 	}
 	_ = json.Unmarshal(body, &doc)
 	out := map[string]string{"body": doc.Snippet}
+	// to 收 To、Cc、Delivered-To 三项（同名头可能出现多次，都收），用逗号隔开，和 IMAP 读信的 to 字段写法一致。
+	var to []string
 	for _, h := range doc.Payload.Headers {
 		switch strings.ToLower(h.Name) {
 		case "subject":
 			out["subject"] = h.Value
 		case "from":
 			out["from"] = h.Value
+		case "to", "cc", "delivered-to":
+			if v := strings.TrimSpace(h.Value); v != "" {
+				to = append(to, v)
+			}
 		}
+	}
+	if len(to) > 0 {
+		out["to"] = strings.Join(to, ", ")
 	}
 	return out, nil
 }
@@ -332,7 +414,9 @@ func gmailSend(client *http.Client, token string, d Draft) error {
 // token 写进 Authorization 的 Bearer 后面。
 // query 非空时经 QueryEscape 加到 $search。空列表的记录里也会写入 query。
 func outlookList(client *http.Client, token, query string) ([]map[string]string, error) {
-	u := "https://graph.microsoft.com/v1.0/me/messages?$top=20&$select=subject,from,bodyPreview"
+	// id 让这封信能收成触发（connectorTriggers 跳过没有 id 的行）；toRecipients、ccRecipients 合成 to 字段，
+	// mail_alias.go 用它认出发给加号子地址的回信。Graph 列表接口拿不到 Delivered-To 这类原始头，收件人两项已经够用。
+	u := "https://graph.microsoft.com/v1.0/me/messages?$top=20&$select=id,subject,from,toRecipients,ccRecipients,bodyPreview"
 	if query != "" {
 		u += "&$search=" + url.QueryEscape(query)
 	}
@@ -347,26 +431,45 @@ func outlookList(client *http.Client, token, query string) ([]map[string]string,
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("outlook list: %s", truncate(string(body), 300))
 	}
+	// graphAddr 是 Graph 里收发件人的写法：{"emailAddress":{"address":...}}。
+	type graphAddr struct {
+		EmailAddress struct {
+			Address string `json:"address"`
+		} `json:"emailAddress"`
+	}
 	var doc struct {
 		Value []struct {
-			Subject     string `json:"subject"`
-			BodyPreview string `json:"bodyPreview"`
-			From        struct {
-				EmailAddress struct {
-					Address string `json:"address"`
-				} `json:"emailAddress"`
-			} `json:"from"`
+			ID           string      `json:"id"`
+			Subject      string      `json:"subject"`
+			BodyPreview  string      `json:"bodyPreview"`
+			From         graphAddr   `json:"from"`
+			ToRecipients []graphAddr `json:"toRecipients"`
+			CcRecipients []graphAddr `json:"ccRecipients"`
 		} `json:"value"`
 	}
 	_ = json.Unmarshal(body, &doc)
 	out := make([]map[string]string, 0, len(doc.Value))
 	for _, m := range doc.Value {
-		out = append(out, map[string]string{
+		row := map[string]string{
 			"provider": "outlook",
 			"subject":  m.Subject,
 			"from":     m.From.EmailAddress.Address,
 			"body":     m.BodyPreview,
-		})
+		}
+		if m.ID != "" {
+			row["id"] = m.ID
+		}
+		// to 和 IMAP、Gmail 读信一样：逗号隔开的收件地址，To 在前、Cc 在后。
+		var to []string
+		for _, r := range append(append([]graphAddr(nil), m.ToRecipients...), m.CcRecipients...) {
+			if v := strings.TrimSpace(r.EmailAddress.Address); v != "" {
+				to = append(to, v)
+			}
+		}
+		if len(to) > 0 {
+			row["to"] = strings.Join(to, ", ")
+		}
+		out = append(out, row)
 	}
 	if len(out) == 0 {
 		out = append(out, map[string]string{"provider": "outlook", "note": "no messages", "query": query})
@@ -382,6 +485,7 @@ func outlookSend(client *http.Client, token string, d Draft) error {
 		"message": map[string]any{
 			"subject": d.Subject,
 			"body":    map[string]string{"contentType": "Text", "content": d.Body},
+			"replyTo": outlookReplyTo(d.Alias),
 			"toRecipients": []map[string]any{
 				{"emailAddress": map[string]string{"address": d.To}},
 			},
@@ -412,6 +516,9 @@ func mimeMail(d Draft) string {
 	}
 	if d.Bcc != "" {
 		fmt.Fprintf(&hdr, "Bcc: %s\r\n", d.Bcc)
+	}
+	if d.Alias != "" {
+		fmt.Fprintf(&hdr, "Reply-To: %s\r\n", d.Alias)
 	}
 	if d.ReplyTo != "" {
 		fmt.Fprintf(&hdr, "In-Reply-To: %s\r\nReferences: %s\r\n", d.ReplyTo, d.ReplyTo)

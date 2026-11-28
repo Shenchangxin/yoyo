@@ -42,18 +42,18 @@ func main() {
 	}
 }
 
-// openApp 用环境变量 YOYO_HOME 和 boot.EvalsDir 打开应用。
+// openApp 用环境变量 YOYO_HOME 和 boot.EvalsDir 打开应用。一次性的命令不参加选主，也不跑后台：桌面或 daemon 开着时不会和它们抢例行和 IM。
 func openApp() (*app.App, error) {
-	return app.Open(os.Getenv("YOYO_HOME"), boot.EvalsDir())
+	return app.OpenManaged(os.Getenv("YOYO_HOME"), boot.EvalsDir(), "tool")
 }
 
-// root 建立 yoyo 命令，并按这个顺序挂上 version、init、run、harness、eval、evolve、session、replay、trace、serve、daemon、update、doctor、logs、pack。
+// root 建立 yoyo 命令，并按这个顺序挂上 version、init、run、harness、eval、evolve、session、replay、trace、serve、daemon、update、doctor、logs、pack、connect。
 func root() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "yoyo",
 		Short: "Yoyo self-harnessing local agent",
 	}
-	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), sessionCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd(), logsCmd(), packCmd())
+	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), sessionCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd(), logsCmd(), packCmd(), connectCmd())
 	return cmd
 }
 
@@ -876,7 +876,7 @@ func daemonCmd() *cobra.Command {
 // serveApp 打开应用，把磁盘上的前端（boot.DiskFrontend）交给远程节点和 HTTP。
 // stdio 为真时在 stdin/stdout 上跑 JSON-RPC；否则打印 banner、地址和当前 harness，再逐行打印 notes，然后在 addr 上监听。
 func serveApp(ctx context.Context, addr string, stdio bool, banner string, notes ...string) error {
-	a, err := openApp()
+	a, err := app.OpenManaged(os.Getenv("YOYO_HOME"), boot.EvalsDir(), "daemon")
 	if err != nil {
 		return err
 	}
@@ -890,6 +890,7 @@ func serveApp(ctx context.Context, addr string, stdio bool, banner string, notes
 		return api.ServeRPC(ctx, a, os.Stdin, os.Stdout)
 	}
 	fmt.Println(banner, addr, "active", a.ActiveHash())
+	fmt.Println(a.LeadSummary())
 	for _, n := range notes {
 		fmt.Println(n)
 	}

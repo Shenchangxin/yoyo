@@ -85,6 +85,11 @@ func (rt *Runtime) ingestDiscord(acct Account, self string, d map[string]any) {
 		SenderID: jstr(author["id"]), SenderName: jstr(author["username"]), SelfID: self,
 		Text: text, Mentioned: mentioned, AtAll: atAll, MessageID: jstr(d["id"]),
 	}
+	// Discord 的回复带 message_reference（被回复那条的编号），网关一般还附上 referenced_message 原文。
+	if ref := asMap(d["message_reference"]); len(ref) > 0 {
+		in.QuoteID = jstr(ref["message_id"])
+		in.QuoteText = jstr(dig(d, "referenced_message", "content"))
+	}
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()
 		defer cancel()
@@ -94,21 +99,31 @@ func (rt *Runtime) ingestDiscord(acct Account, self string, d map[string]any) {
 }
 
 func (rt *Runtime) pushDiscord(ctx context.Context, acct Account, chatID, text string) error {
+	_, err := rt.sendDiscord(ctx, acct, chatID, text)
+	return err
+}
+
+// sendDiscord 发一条，返回 Discord 给它的消息 id。
+func (rt *Runtime) sendDiscord(ctx context.Context, acct Account, chatID, text string) (string, error) {
 	token := rt.secret(acct.ID, "bot_token")
 	if token == "" {
-		return fatalf("missing discord bot token")
+		return "", fatalf("missing discord bot token")
 	}
 	raw, code, err := rt.postJSON(ctx, "https://discord.com/api/v10/channels/"+chatID+"/messages", map[string]string{
 		"Authorization": "Bot " + token,
 	}, map[string]string{"content": clipText(text)})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if code == 401 || code == 403 {
-		return fatalf("discord rejected the token (%d)", code)
+		return "", fatalf("discord rejected the token (%d)", code)
 	}
 	if code >= 300 {
-		return statusErr(code, raw, "discord send")
+		return "", statusErr(code, raw, "discord send")
 	}
-	return nil
+	m, err := decodeJSON(raw)
+	if err != nil {
+		return "", nil
+	}
+	return jstr(m["id"]), nil
 }

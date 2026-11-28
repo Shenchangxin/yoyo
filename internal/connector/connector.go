@@ -33,13 +33,17 @@ const (
 
 // Account 是一个已连接账号。VaultKey 是钥匙名字，不是令牌原文。
 type Account struct {
-	ID        string    `json:"id"`
-	Kind      Kind      `json:"kind"`
-	Provider  string    `json:"provider"`
-	Label     string    `json:"label"`
-	Endpoint  string    `json:"endpoint,omitempty"`
-	VaultKey  string    `json:"vault_key,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID       string `json:"id"`
+	Kind     Kind   `json:"kind"`
+	Provider string `json:"provider"`
+	Label    string `json:"label"`
+	Endpoint string `json:"endpoint,omitempty"`
+	// Calendar 是 CalDAV / 飞书日历账号选用的日历（集合地址或 calendar_id），CalendarName 是它的名字。
+	// 空的时候自动选，见 calendar_pick.go。
+	Calendar     string    `json:"calendar,omitempty"`
+	CalendarName string    `json:"calendar_name,omitempty"`
+	VaultKey     string    `json:"vault_key,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // Draft 是一封待发邮件或一条待写日程。正文保存在连接器 JSON 里。
@@ -63,9 +67,14 @@ type Draft struct {
 	Attendees     []string `json:"attendees,omitempty"`
 	CalendarID    string   `json:"calendar_id,omitempty"`
 	EventID       string   `json:"event_id,omitempty"`
+	ItemID        string   `json:"item_id,omitempty"`
 	TargetVersion string   `json:"target_version,omitempty"`
 	Recurrence    string   `json:"recurrence,omitempty"`
 	Op            string   `json:"op,omitempty"`
+	// Ticket 是写这份草稿的工单。发出去时主题带上 [yoyo:工单号]，回信地址是加号子地址，见 alias.go。
+	Ticket string `json:"ticket,omitempty"`
+	// Alias 是发信时写进 Reply-To 的地址。
+	Alias string `json:"alias,omitempty"`
 }
 
 // Broker 保存账号、草稿和本地样例。令牌放在 tokens，不放进 path 指向的 JSON。
@@ -215,6 +224,9 @@ func (b *Broker) Send(id string) (Draft, error) {
 	}
 	if strings.TrimSpace(d.Recurrence) != "" {
 		return Draft{}, fmt.Errorf("connector: recurring series must be edited in the calendar app (422)")
+	}
+	if strings.TrimSpace(d.Ticket) != "" {
+		d = withAlias(d, acct, b.aliasSelf(acct))
 	}
 	local := strings.EqualFold(acct.Provider, "local") || acct.Provider == ""
 	if !local {

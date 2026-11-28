@@ -1,15 +1,17 @@
 // Package initiative 决定要不要开口，并把感知收成一条条带证据的信号。
-// 拥有：沉默、预判和反馈的计数。判断和记账分开：Assess 只判断，Deliver 在话真正送到之后才记下。
+// 拥有：沉默、预判和反馈的计数，以及每天打断和被接受的条数。判断和记账分开：Assess 只判断，Deliver 在话真正送到之后才记下。
 // 不拥有：工单、模型回合、文件正文。
 package initiative
 
 import (
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
 // Fact 是一轮里看见的一件事。Sig 用来和上次对比。Eligible 为真才可能开口。
+// Reason 是给人看的一句「为什么是这条」，为空时由送达方按种类补。Refs 是这条依据的材料，界面上可以点开。
 type Fact struct {
 	ID       string
 	Code     string
@@ -21,6 +23,16 @@ type Fact struct {
 	Rank     int
 	Eligible bool
 	MemoryID string
+	Reason   string
+	Refs     []Ref
+}
+
+// Ref 是一条开口依据的材料。Kind 取 file、calendar、ticket、source、session、link、memory。
+// Target 是界面打开它时用的编号或地址，没有可打开的东西时为空。
+type Ref struct {
+	Kind   string `json:"kind"`
+	Label  string `json:"label"`
+	Target string `json:"target,omitempty"`
 }
 
 // Signal 是给人看的一条感知。Speak 为真才推进主会话。Held 为真表示本来会说，这一轮按住了。
@@ -37,6 +49,8 @@ type Signal struct {
 	Held     bool   `json:"held"`
 	Priority int    `json:"priority"`
 	MemoryID string `json:"memoryId,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	Refs     []Ref  `json:"refs,omitempty"`
 	// Sig 是这一轮的签名。送到之后由 Deliver 记成上一次告诉人的样子。不发给界面。
 	Sig string `json:"-"`
 }
@@ -67,9 +81,30 @@ type ReachQuota struct {
 	At  string `json:"at,omitempty"`
 }
 
+// Tally 是一天里开口和人的反应。Spoken 是真正送到的条数，也就是打断了几次；Used 是标了「用上了」的条数。
+// 其余是忽略、稍后、事实错了和一直按住的次数。主动性看的是 Used 和 Spoken 的比，不是 Spoken 本身。
+type Tally struct {
+	Spoken  int `json:"spoken,omitempty"`
+	Used    int `json:"used,omitempty"`
+	Ignored int `json:"ignored,omitempty"`
+	Later   int `json:"later,omitempty"`
+	Wrong   int `json:"wrong,omitempty"`
+	Muted   int `json:"muted,omitempty"`
+}
+
+// DayTally 是某一天的计数。
+type DayTally struct {
+	Day string `json:"day"`
+	Tally
+}
+
+// tallyDays 是计数留几天。更早的丢掉。
+const tallyDays = 30
+
 // Book 是开口的记忆。
 // Seen 是变化比较的基线：第一次见到时记下；会开口的变化要等送到之后才换，没送到就一直算变化。
 // Spoken 是某一类上次开口的日期。Told 是某一条上次送到的日期，同一天不再开口，也不算按住。
+// Tally 按天记打断和反应。
 type Book struct {
 	Seen   map[string]string `json:"seen,omitempty"`
 	Spoken map[string]string `json:"spoken,omitempty"`
@@ -77,6 +112,7 @@ type Book struct {
 	Mute   map[string]Mute   `json:"mute,omitempty"`
 	Open   []Commitment      `json:"open,omitempty"`
 	Reach  ReachQuota        `json:"reach,omitempty"`
+	Tally  map[string]Tally  `json:"tally,omitempty"`
 }
 
 // Briefing 是这一轮的感知、要开口的判断，以及还留着的承诺。
@@ -103,7 +139,7 @@ type Input struct {
 
 // Assess 写出这一轮该说什么。它不记账：同一条在 Deliver 之前，每一轮都还会开口。
 // 第一次见到的工程线只建立基线，不开口。会开口的变化在送到之前保留原来的基线。
-// 日历到期、来源错误、低电量和断网可以在第一次就开口。同一轮里同一类只让排在最前的一条开口。
+// 日历到期、来源错误、低电量、断网和例行结果可以在第一次就开口。同一轮里同一类只让排在最前的一条开口。
 func Assess(in Input) (Briefing, Book) {
 	now := in.Now
 	if now.IsZero() {
@@ -157,7 +193,8 @@ func Assess(in Input) (Briefing, Book) {
 			speak = false
 			held = true
 		}
-		if speak && fact.Class != "reach" && (book.Spoken[fact.Class] == day || claimed[fact.Class]) {
+		// 例行的每一次运行各说一次：人自己设的例行，有话才回，靠按住和忽略来收，不按「一类一天一次」挡。
+		if speak && fact.Class != "reach" && ((fact.Code != "routine" && book.Spoken[fact.Class] == day) || claimed[fact.Class]) {
 			speak = false
 			held = true
 		}
@@ -176,8 +213,11 @@ func Assess(in Input) (Briefing, Book) {
 			held = true
 		}
 		limit := 120
-		if fact.Code == "reach" {
+		switch fact.Code {
+		case "reach":
 			limit = 900
+		case "routine":
+			limit = 600
 		}
 		signals = append(signals, Signal{
 			ID:       fact.ID,
@@ -191,6 +231,8 @@ func Assess(in Input) (Briefing, Book) {
 			Held:     held,
 			Priority: fact.Rank,
 			MemoryID: fact.MemoryID,
+			Reason:   clip(strings.TrimSpace(fact.Reason), 120),
+			Refs:     cleanRefs(fact.Refs),
 			Sig:      sig,
 		})
 		if speak {
@@ -211,7 +253,7 @@ func Assess(in Input) (Briefing, Book) {
 	return Briefing{Day: day, Speak: speak, Signals: signals, Open: book.Open}, book
 }
 
-// Deliver 记下 signals 里已经送到的话。那一类今天开过口，那一条今天说过。
+// Deliver 记下 signals 里已经送到的话。那一类今天开过口，那一条今天说过，当天的打断数加一。
 // 会开口的变化换成送到时的签名，公开检索记进当天的配额。没有 Speak 的条目不记。
 func Deliver(book Book, signals []Signal, now time.Time) Book {
 	if now.IsZero() {
@@ -233,11 +275,12 @@ func Deliver(book Book, signals []Signal, now time.Time) Book {
 		if signal.Code == "reach" {
 			book.Reach = markReach(book.Reach, now)
 		}
+		book = bump(book, day, func(t *Tally) { t.Spoken++ })
 	}
 	return book
 }
 
-// Feedback 记下人对某一类的反应。wrong 返回要忘掉的记忆编号，没有则返回空串。
+// Feedback 记下人对某一类的反应，并记进当天的计数。wrong 返回要忘掉的记忆编号，没有则返回空串。
 // kind 取 used、ignore、later、wrong、mute、unmute。mute 一直按住，unmute 打开。
 func Feedback(book Book, className, memoryID, kind, day string) (Book, string) {
 	className = strings.TrimSpace(className)
@@ -245,6 +288,7 @@ func Feedback(book Book, className, memoryID, kind, day string) (Book, string) {
 		return book, ""
 	}
 	book = cloneBook(book)
+	book = countFeedback(book, kind, day)
 	switch kind {
 	case "used":
 		delete(book.Mute, className)
@@ -292,6 +336,39 @@ func Quiet(book Book, day string) map[string]Mute {
 	return out
 }
 
+// Recent 按日期从新到旧列出最近 n 天有计数的日子。n 小于 1 时按 7。
+func Recent(book Book, n int) []DayTally {
+	if n < 1 {
+		n = 7
+	}
+	days := make([]string, 0, len(book.Tally))
+	for day := range book.Tally {
+		days = append(days, day)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(days)))
+	if len(days) > n {
+		days = days[:n]
+	}
+	out := make([]DayTally, 0, len(days))
+	for _, day := range days {
+		out = append(out, DayTally{Day: day, Tally: book.Tally[day]})
+	}
+	return out
+}
+
+// Accepted 是这几天被接受的比例：用上的条数除以送到的条数。一条都没送到时 ok 为假。
+func Accepted(days []DayTally) (rate float64, ok bool) {
+	spoken, used := 0, 0
+	for _, d := range days {
+		spoken += d.Spoken
+		used += d.Used
+	}
+	if spoken == 0 {
+		return 0, false
+	}
+	return float64(used) / float64(spoken), true
+}
+
 // NoteSchedule 把一条人写过的日程记成承诺。它不开口。
 func NoteSchedule(book Book, id, title, day string) Book {
 	id = strings.TrimSpace(id)
@@ -333,6 +410,7 @@ func cloneBook(in Book) Book {
 		Mute:   make(map[string]Mute, len(in.Mute)),
 		Open:   append([]Commitment(nil), in.Open...),
 		Reach:  in.Reach,
+		Tally:  make(map[string]Tally, len(in.Tally)),
 	}
 	for k, v := range in.Seen {
 		out.Seen[k] = v
@@ -345,6 +423,66 @@ func cloneBook(in Book) Book {
 	}
 	for k, v := range in.Mute {
 		out.Mute[k] = v
+	}
+	for k, v := range in.Tally {
+		out.Tally[k] = v
+	}
+	return out
+}
+
+// bump 改 day 这一天的计数，再丢掉 tallyDays 之前的日子。book 要是已经复制过的。
+func bump(book Book, day string, fn func(*Tally)) Book {
+	if strings.TrimSpace(day) == "" {
+		return book
+	}
+	if book.Tally == nil {
+		book.Tally = map[string]Tally{}
+	}
+	t := book.Tally[day]
+	fn(&t)
+	book.Tally[day] = t
+	if len(book.Tally) > tallyDays {
+		days := make([]string, 0, len(book.Tally))
+		for d := range book.Tally {
+			days = append(days, d)
+		}
+		sort.Strings(days)
+		for _, d := range days[:len(days)-tallyDays] {
+			delete(book.Tally, d)
+		}
+	}
+	return book
+}
+
+func countFeedback(book Book, kind, day string) Book {
+	switch kind {
+	case "used":
+		return bump(book, day, func(t *Tally) { t.Used++ })
+	case "ignore":
+		return bump(book, day, func(t *Tally) { t.Ignored++ })
+	case "later":
+		return bump(book, day, func(t *Tally) { t.Later++ })
+	case "wrong":
+		return bump(book, day, func(t *Tally) { t.Wrong++ })
+	case "mute":
+		return bump(book, day, func(t *Tally) { t.Muted++ })
+	}
+	return book
+}
+
+func cleanRefs(in []Ref) []Ref {
+	var out []Ref
+	for _, ref := range in {
+		ref.Kind = strings.TrimSpace(ref.Kind)
+		ref.Label = clip(strings.TrimSpace(ref.Label), 80)
+		ref.Target = strings.TrimSpace(ref.Target)
+		if ref.Label == "" || scrub(ref.Label) == "" {
+			continue
+		}
+		out = append(out, ref)
+		if len(out) == 4 {
+			break
+		}
 	}
 	return out
 }
@@ -394,7 +532,7 @@ func muteOn(mute Mute, day string) bool {
 
 func awareness(code string) bool {
 	switch code {
-	case "line", "git", "power", "net", "focus", "idle", "mail", "calendar", "channel", "poi", "ticket":
+	case "line", "git", "power", "net", "focus", "idle", "mail", "calendar", "channel", "poi", "ticket", "routine":
 		return true
 	default:
 		return false

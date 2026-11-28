@@ -53,6 +53,8 @@ type Engine struct {
 	seq      atomic.Int64
 	abort    map[string]context.CancelFunc
 	lastTick time.Time
+	// hold 为真时 tick 不再领新任务，在跑的照常跑完。交接收尾时用，见 hold.go。
+	hold atomic.Bool
 }
 
 // Open 创建 dir 和 dir/files，权限都是 0o755，并打开 workspace.json。Poll 默认 1 秒，Lease 默认 1 分钟，Fetch 默认 SafeGET。

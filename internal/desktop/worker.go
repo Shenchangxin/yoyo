@@ -109,7 +109,7 @@ func OpenIsolated(home, evals string) (*Service, *app.App, error) {
 		return svc, nil, nil
 	}
 	// 工作者没起来就在本进程打开 App。窗口和循环回到同一个进程。
-	core, err2 := app.Open(home, evals)
+	core, err2 := app.OpenManaged(home, evals, "desktop")
 	if err2 != nil {
 		return nil, nil, fmt.Errorf("worker: %v; local: %w", err, err2)
 	}

@@ -14,9 +14,10 @@ import (
 
 // Store 把 doc 读写到 path 指向的 workspace.json。
 type Store struct {
-	mu   sync.Mutex
-	path string
-	doc  doc
+	mu    sync.Mutex
+	path  string
+	doc   doc
+	stamp storeStamp
 }
 
 // openStore 按 0o755 创建目录。文件读失败时仍返回存储。SamplePages 为 nil 时改成空映射。LastIdeasAt 为零时写成当前 UTC。
@@ -42,7 +43,11 @@ func (s *Store) load() error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(b, &s.doc)
+	if err := json.Unmarshal(b, &s.doc); err != nil {
+		return err
+	}
+	s.stamp = storeStampOf(s.path)
+	return nil
 }
 
 // flush 把 doc 写成缩进 JSON，先写 path.tmp，权限 0o600，再改名替换 path。
@@ -55,13 +60,18 @@ func (s *Store) flush() error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		return err
+	}
+	s.stamp = storeStampOf(s.path)
+	return nil
 }
 
 // snapshot 在锁内复制任务、目标、监视、想法、产物、提案和选择。Worker.Running 留给 Engine.Snapshot 填写。
 func (s *Store) snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	return Snapshot{
 		Tasks:     append([]Task(nil), s.doc.Tasks...),
 		Goals:     append([]Goal(nil), s.doc.Goals...),
@@ -92,6 +102,7 @@ func cloneMap(m map[string]any) map[string]any {
 func (s *Store) putTask(t Task) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Tasks {
 		if s.doc.Tasks[i].ID == t.ID {
 			s.doc.Tasks[i] = t
@@ -108,6 +119,7 @@ func (s *Store) putTask(t Task) {
 func (s *Store) task(id string) (Task, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, t := range s.doc.Tasks {
 		if t.ID == id {
 			t.Input = cloneMap(t.Input)
@@ -122,6 +134,7 @@ func (s *Store) task(id string) (Task, bool) {
 func (s *Store) tasks() []Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	out := make([]Task, len(s.doc.Tasks))
 	copy(out, s.doc.Tasks)
 	return out
@@ -132,6 +145,7 @@ func (s *Store) tasks() []Task {
 func (s *Store) casTask(id, expectStatus, leaseID string, patch func(*Task) bool) (Task, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Tasks {
 		t := &s.doc.Tasks[i]
 		if t.ID != id {
@@ -160,6 +174,7 @@ func (s *Store) casTask(id, expectStatus, leaseID string, patch func(*Task) bool
 func (s *Store) putGoal(g Goal) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Goals {
 		if s.doc.Goals[i].ID == g.ID {
 			s.doc.Goals[i] = g
@@ -176,6 +191,7 @@ func (s *Store) putGoal(g Goal) {
 func (s *Store) goal(id string) (Goal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, g := range s.doc.Goals {
 		if g.ID == id {
 			return g, true
@@ -188,6 +204,7 @@ func (s *Store) goal(id string) (Goal, bool) {
 func (s *Store) goals() []Goal {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	return append([]Goal(nil), s.doc.Goals...)
 }
 
@@ -196,6 +213,7 @@ func (s *Store) goals() []Goal {
 func (s *Store) casGoal(id, expect string, patch func(*Goal) bool) (Goal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Goals {
 		g := &s.doc.Goals[i]
 		if g.ID != id {
@@ -220,6 +238,7 @@ func (s *Store) casGoal(id, expect string, patch func(*Goal) bool) (Goal, bool) 
 func (s *Store) putMonitor(m Monitor) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Monitors {
 		if s.doc.Monitors[i].ID == m.ID {
 			s.doc.Monitors[i] = m
@@ -236,6 +255,7 @@ func (s *Store) putMonitor(m Monitor) {
 func (s *Store) casMonitor(id, expectStatus string, expectChecks int, patch func(*Monitor) bool) (Monitor, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Monitors {
 		m := &s.doc.Monitors[i]
 		if m.ID != id {
@@ -262,6 +282,7 @@ func (s *Store) casMonitor(id, expectStatus string, expectChecks int, patch func
 func (s *Store) monitor(id string) (Monitor, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, m := range s.doc.Monitors {
 		if m.ID == id {
 			return m, true
@@ -274,6 +295,7 @@ func (s *Store) monitor(id string) (Monitor, bool) {
 func (s *Store) putPage(p MonitorPage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Pages {
 		if s.doc.Pages[i].ID == p.ID {
 			s.doc.Pages[i] = p
@@ -290,6 +312,7 @@ func (s *Store) putPage(p MonitorPage) {
 func (s *Store) page(id string) (MonitorPage, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, p := range s.doc.Pages {
 		if p.ID == id {
 			return p, true
@@ -303,6 +326,7 @@ func (s *Store) page(id string) (MonitorPage, bool) {
 func (s *Store) insertIdea(it Idea) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, e := range s.doc.Ideas {
 		if e.ID == it.ID {
 			return false
@@ -317,6 +341,7 @@ func (s *Store) insertIdea(it Idea) bool {
 func (s *Store) idea(id string) (Idea, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, it := range s.doc.Ideas {
 		if it.ID == id {
 			return it, true
@@ -329,6 +354,7 @@ func (s *Store) idea(id string) (Idea, bool) {
 func (s *Store) ideas() []Idea {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	return append([]Idea(nil), s.doc.Ideas...)
 }
 
@@ -337,6 +363,7 @@ func (s *Store) ideas() []Idea {
 func (s *Store) casIdea(id, expect string, patch func(*Idea) bool) (Idea, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Ideas {
 		it := &s.doc.Ideas[i]
 		if it.ID != id {
@@ -359,6 +386,7 @@ func (s *Store) casIdea(id, expect string, patch func(*Idea) bool) (Idea, bool) 
 func (s *Store) putArtifact(a Artifact) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	s.doc.Artifacts = append(s.doc.Artifacts, a)
 	_ = s.flush()
 }
@@ -367,6 +395,7 @@ func (s *Store) putArtifact(a Artifact) {
 func (s *Store) putProposal(p Proposal) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Proposals {
 		if s.doc.Proposals[i].ID == p.ID {
 			s.doc.Proposals[i] = p
@@ -383,6 +412,7 @@ func (s *Store) putProposal(p Proposal) {
 func (s *Store) proposal(id string) (Proposal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, p := range s.doc.Proposals {
 		if p.ID == id {
 			return p, true
@@ -396,6 +426,7 @@ func (s *Store) proposal(id string) (Proposal, bool) {
 func (s *Store) casProposal(id, expect, hash string, patch func(*Proposal) bool) (Proposal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Proposals {
 		p := &s.doc.Proposals[i]
 		if p.ID != id {
@@ -421,6 +452,7 @@ func (s *Store) casProposal(id, expect, hash string, patch func(*Proposal) bool)
 func (s *Store) putChoice(c Choice) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.doc.Choices {
 		if s.doc.Choices[i].ID == c.ID {
 			s.doc.Choices[i] = c
@@ -437,6 +469,7 @@ func (s *Store) putChoice(c Choice) {
 func (s *Store) choice(id string) (Choice, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for _, c := range s.doc.Choices {
 		if c.ID == id {
 			return c, true
@@ -450,6 +483,7 @@ func (s *Store) choice(id string) (Choice, bool) {
 func (s *Store) setIdeasAt(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	s.doc.LastIdeasAt = at
 	_ = s.flush()
 }
@@ -460,6 +494,7 @@ func (s *Store) setIdeasAt(at time.Time) {
 func (s *Store) sample(key, text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	if s.doc.SamplePages == nil {
 		s.doc.SamplePages = map[string]string{}
 	}
@@ -472,6 +507,7 @@ func (s *Store) sample(key, text string) {
 func (s *Store) sampleGet(key string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	return s.doc.SamplePages[key]
 }
 
@@ -479,6 +515,7 @@ func (s *Store) sampleGet(key string) string {
 func (s *Store) lastIdeasAt() time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	return s.doc.LastIdeasAt
 }
 

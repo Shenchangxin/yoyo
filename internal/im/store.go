@@ -14,6 +14,7 @@ type fileState struct {
 }
 
 func (rt *Runtime) load() error {
+	rt.stamp = imStampOf(rt.path)
 	b, err := os.ReadFile(rt.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -57,7 +58,11 @@ func (rt *Runtime) flush() error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, rt.path)
+	if err := os.Rename(tmp, rt.path); err != nil {
+		return err
+	}
+	rt.stamp = imStampOf(rt.path)
+	return nil
 }
 
 func applyDefaults(a Account) Account {

@@ -44,6 +44,67 @@ function modeOf(row: CatalogRow): Mode {
   return "token";
 }
 
+/** 能在界面里选日历的几家。和 Go 的 calendarPickable 一致。 */
+const PICKABLE = new Set(["caldav", "feishu-calendar"]);
+
+/**
+ * CalendarPicker 是一个日历账号的「选日历」：点开时才去列日历（要连网），选了就记下。
+ * 空选项是自动选（CalDAV 用找到的第一个能放日程的日历，飞书用主日历）。
+ */
+function CalendarPicker(props: { id: string; chosen: string; onSaved: () => void }) {
+  const copy = useCopy();
+  const [list, setList] = useState<api.CalendarChoice[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function open() {
+    setBusy(true);
+    try {
+      const rows = await api.connectorCalendars(props.id);
+      if (!rows.length) toast(copy.settings.connectorsCalendarNone);
+      setList(rows);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e || ""));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function choose(cal: string) {
+    setBusy(true);
+    try {
+      await api.connectorChooseCalendar(props.id, cal);
+      toast.success(copy.settings.connectorsCalendarSaved);
+      props.onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e || ""));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!list) {
+    return (
+      <Button size="sm" variant="ghost" disabled={busy} onClick={() => void open()}>
+        {copy.settings.connectorsCalendarPick}
+      </Button>
+    );
+  }
+  return (
+    <select
+      className="h-8 max-w-[14rem] rounded-md border border-border bg-background px-2 text-ui-body"
+      aria-label={copy.settings.connectorsCalendar}
+      disabled={busy}
+      value={props.chosen}
+      onChange={(e) => void choose(e.target.value)}
+    >
+      <option value="">{copy.settings.connectorsCalendarAuto}</option>
+      {list.map((c) => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+      ))}
+    </select>
+  );
+}
+
 function titles(raw: unknown): string[] {
   return asArray(raw).map((item) => str((item as { title?: string }).title)).filter(Boolean);
 }
@@ -129,9 +190,14 @@ export function ConnectorsSettings() {
       <WorkSources openSource={source} onOpenSource={setSource} />
       <SettingSection id="extensions-connectors" title={copy.settings.appsTitle} footnote={copy.settings.connectorsHint}>
         {accounts.length === 0 ? <SettingEmpty border>{copy.settings.noConnectors}</SettingEmpty> : accounts.map((a, i) => {
-          const row = a as { id?: string; ID?: string; label?: string; Label?: string; provider?: string; kind?: string; Kind?: string };
+          const row = a as { id?: string; ID?: string; label?: string; Label?: string; provider?: string; Provider?: string; kind?: string; Kind?: string; calendar?: string; calendar_name?: string };
+          const id = str(row.id || row.ID);
+          const provider = str(row.provider || row.Provider);
+          const calName = str(row.calendar_name);
+          const kind = str(row.kind || row.Kind);
           return (
-            <SettingRow key={str(row.id || row.ID || i)} list title={str(row.label || row.Label || row.provider)} description={str(row.kind || row.Kind) || undefined}>
+            <SettingRow key={id || i} list title={str(row.label || row.Label || provider)} description={[kind, calName].filter(Boolean).join(" · ") || undefined}>
+              {PICKABLE.has(provider) && id ? <CalendarPicker id={id} chosen={str(row.calendar)} onSaved={refresh} /> : null}
               <Button size="sm" variant="ghost" onClick={async () => { await api.connectorDisconnect(str(row.id || row.ID)); refresh(); }}>
                 {copy.settings.disconnect}
               </Button>

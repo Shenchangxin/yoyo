@@ -728,6 +728,7 @@ func (appHost *routeHost) memoryWriteTool(sessionID string) runtime.ExtraTool {
 			origin = "session:" + sessionID
 		}
 		kept := appHost.app.Memory.Keep(memory.Item{Kind: kind, Text: text, Source: source, Origin: origin}, strParam(args, "replaces"))
+		appHost.app.noteMemoryWrite(sessionID, kept)
 		if kept.Action != "refused" {
 			appHost.app.touchPoi()
 		}
@@ -920,6 +921,13 @@ func (appHost *routeHost) relayReport(ticketID, state, summary, question string)
 	if rt == nil {
 		return
 	}
+	// 交给人的最后一步：报告后面接上价格、截止和要打开的页面，主会话的交接卡和 IM 主通道读到的是同一段。
+	finish := rt.TicketFinish(ticketID)
+	if finish != nil && strings.TrimSpace(question) != "" {
+		text = finishText(text, finish)
+	} else {
+		finish = nil
+	}
 	sids := rt.DeskAudiences(ticketID)
 	if len(sids) == 0 {
 		// GitHub、飞书、邮件来的工单没有跟着的桌面会话。要人看的报告仍然回到主会话，不然只能去任务页翻。
@@ -936,10 +944,14 @@ func (appHost *routeHost) relayReport(ticketID, state, summary, question string)
 	if strings.TrimSpace(question) == "" && (state == "ready" || state == "waiting" || state == "stopped") {
 		kind = "status"
 	}
+	appHost.app.imTicket(ticketID, state, text, question, id)
 	extra := map[string]any{}
 	if agent, ok := rt.TicketAgent(ticketID); ok && agent != superagent.YoyoAgent {
 		extra["agent"] = agent
 		extra["agentName"] = firstNonEmpty(appHost.app.buddyName(agent), agent)
+	}
+	if finish != nil {
+		extra["finish"] = finishPayload(finish)
 	}
 	if need := rt.TicketNeed(ticketID); need != "" {
 		extra["need"] = need
@@ -1138,6 +1150,10 @@ func (appHost *routeHost) connectorTriggers() []superagent.Trigger {
 			}
 			body := strings.TrimSpace(row["body"])
 			if itemID == "" || (subject == "" && body == "") {
+				continue
+			}
+			// 带工单标记的回信交回那张工单，不再当成新邮件评估。见 mail_alias.go。
+			if acct.Kind == connector.KindMail && appHost.app.mailReply(acct, row, itemID, subject, body) {
 				continue
 			}
 			text := subject

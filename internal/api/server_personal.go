@@ -86,6 +86,8 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 				Project string `json:"project"`
 				ID      string `json:"id"`
 				Op      string `json:"op"`
+				Muted   bool   `json:"muted"`
+				Accept  bool   `json:"accept"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			switch body.Op {
@@ -97,6 +99,16 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 				return
 			case "edit":
 				writeJSON(w, a.MemoryEdit(body.ID, body.Text))
+				return
+			case "mute":
+				writeJSON(w, map[string]any{"ok": a.MemoryMute(body.ID, body.Muted)})
+				return
+			case "revert":
+				writeJSON(w, a.MemoryRevert(body.ID))
+				return
+			case "tidy":
+				// 简报里记忆整理卡的「对」（accept 为真）和「不对」，见 app/brief_tidy.go。
+				writeJSON(w, a.MemoryTidy(body.ID, body.Accept))
 				return
 			default:
 				writeJSON(w, a.MemoryWrite(body.Kind, body.Text, body.Project))
@@ -132,6 +144,29 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 			return
 		}
 		writeJSON(w, out)
+	})
+	// GET 列出一个日历账号能选的日历；POST {id, calendar} 记下选哪一个（calendar 为空回到自动选）。
+	mux.HandleFunc("/api/connectors/calendars", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var body struct {
+				ID       string `json:"id"`
+				Calendar string `json:"calendar"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			acct, err := a.ConnectorChooseCalendar(body.ID, body.Calendar)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, acct)
+			return
+		}
+		list, err := a.ConnectorCalendars(r.URL.Query().Get("id"))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, list)
 	})
 	mux.HandleFunc("/api/connectors", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {

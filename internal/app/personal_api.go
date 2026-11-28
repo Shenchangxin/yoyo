@@ -77,6 +77,27 @@ func (a *App) ConnectorCatalog() []connector.CatalogEntry {
 	return connector.Catalog()
 }
 
+// ConnectorCalendars 列出一个 CalDAV / 飞书日历账号能放日程的日历，标出现在用的那个。
+func (a *App) ConnectorCalendars(id string) ([]connector.CalendarChoice, error) {
+	if a == nil || a.Connectors == nil {
+		return nil, fmt.Errorf("no connectors")
+	}
+	return a.Connectors.Calendars(id)
+}
+
+// ConnectorChooseCalendar 记下这个账号以后读写哪一个日历；cal 为空时回到自动选。
+// 换了日历，个人引擎里按账号缓存的读数作废，下一拍按新日历重读。
+func (a *App) ConnectorChooseCalendar(id, cal string) (connector.Account, error) {
+	if a == nil || a.Connectors == nil {
+		return connector.Account{}, fmt.Errorf("no connectors")
+	}
+	acct, err := a.Connectors.ChooseCalendar(id, cal)
+	if err == nil && a.Personal != nil {
+		a.Personal.InvalidateAccount(id)
+	}
+	return acct, err
+}
+
 // ConnectorAuthURL 返回授权链接和 state。连接器为空返回 no connectors。
 // provider 传给 Connectors.AuthURL。
 // clientID 传给 Connectors.AuthURL。
@@ -155,8 +176,8 @@ func (a *App) SetSessionConnectors(id string, accounts []string) (SessionMeta, e
 	return m, nil
 }
 
-// TriggerWebhook 触发一条日程后在后台跑 runIsolatedJob。找不到任务返回 unknown webhook job。
-// id 传给 Schedule.Trigger。
+// TriggerWebhook 触发一条日程后在后台 runScheduledJob，和到点的例行走同一条路：暂停、编排台关掉时不跑，结果经过开口门。
+// 找不到任务返回 unknown webhook job。id 传给 Schedule.Trigger。
 func (a *App) TriggerWebhook(id string) error {
 	if a.Schedule == nil {
 		return fmt.Errorf("no scheduler")
@@ -165,7 +186,7 @@ func (a *App) TriggerWebhook(id string) error {
 	if !ok {
 		return fmt.Errorf("unknown webhook job")
 	}
-	go a.runIsolatedJob(j)
+	go a.runScheduledJob(j)
 	return nil
 }
 
@@ -419,7 +440,7 @@ func (a *App) PhoneSchedule(j schedule.Job) schedule.Job {
 	return a.ScheduleCreate(j)
 }
 
-// runIsolatedJob 在 Isolate 为真且工作区非空时用 worktree.Isolate 换目录，再 NewSession 并 StartSendOpts。失败记到 Schedule.Record。
+// runIsolatedJob 在 Isolate 为真且工作区非空时用 worktree.Isolate 换目录，再 NewSession，并在那条会话里同步跑完例行（runRoutine），结果经过开口门。失败记到 Schedule.Record。
 // j 用来读 Workspace、Isolate、ID 和 Prompt；Workspace 为空时改用 App.Workspace。
 func (a *App) runIsolatedJob(j schedule.Job) {
 	ws := j.Workspace
@@ -444,6 +465,7 @@ func (a *App) runIsolatedJob(j schedule.Job) {
 	if a.Inbox != nil {
 		a.Inbox.Push(inbox.Item{Kind: inbox.KindHeartbeat, Title: "Job " + j.ID, Body: j.Prompt, SessionID: meta.ID})
 	}
-	err = a.StartSendOpts(meta.ID, j.Prompt, false, nil)
+	// 同步跑完再清理隔离目录。以前在后台开跑就返回，defer 的 cleanup 会在跑的时候把隔离目录删掉。
+	err = a.runRoutine(j, meta.ID)
 	a.Schedule.Record(j.ID, err)
 }

@@ -104,6 +104,10 @@ func (rt *Runtime) ingestSlack(acct Account, self string, event map[string]any) 
 		SenderID: user, SenderName: user, SelfID: self,
 		Text: text, Mentioned: mentioned, MessageID: channel + ":" + jstr(event["ts"]),
 	}
+	// Slack 里「回复」一条就是在它下面开线程：thread_ts 是被回复那条的 ts。线程的第一条自己的 ts 等于 thread_ts，不算引用。
+	if parent := jstr(event["thread_ts"]); parent != "" && parent != jstr(event["ts"]) {
+		in.QuoteID = channel + ":" + parent
+	}
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()
 		defer cancel()
@@ -113,27 +117,37 @@ func (rt *Runtime) ingestSlack(acct Account, self string, event map[string]any) 
 }
 
 func (rt *Runtime) pushSlack(ctx context.Context, acct Account, chatID, text string) error {
+	_, err := rt.sendSlack(ctx, acct, chatID, text)
+	return err
+}
+
+// sendSlack 发一条，返回 频道:ts，和收消息时的 MessageID 同一种写法。频道取回执里的（私信时 chatID 可能是用户编号）。
+func (rt *Runtime) sendSlack(ctx context.Context, acct Account, chatID, text string) (string, error) {
 	bot := rt.secret(acct.ID, "bot_token")
 	if bot == "" {
-		return fatalf("missing slack bot token")
+		return "", fatalf("missing slack bot token")
 	}
 	raw, code, err := rt.postJSON(ctx, "https://slack.com/api/chat.postMessage", bearer(bot), map[string]string{
 		"channel": chatID, "text": clipText(text),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if code == 401 || code == 403 {
-		return fatalf("slack rejected the bot token (%d)", code)
+		return "", fatalf("slack rejected the bot token (%d)", code)
 	}
 	body, err := decodeJSON(raw)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !jbool(body["ok"]) {
-		return fmt.Errorf("slack send: %s", jstr(body["error"]))
+		return "", fmt.Errorf("slack send: %s", jstr(body["error"]))
 	}
-	return nil
+	ts := jstr(body["ts"])
+	if ts == "" {
+		return "", nil
+	}
+	return firstText(jstr(body["channel"]), chatID) + ":" + ts, nil
 }
 
 func (rt *Runtime) hookSlack(w http.ResponseWriter, r *http.Request, acct Account, body []byte) {
