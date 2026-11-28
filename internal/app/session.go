@@ -860,6 +860,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if routing && !resume && !waking {
 		routeNote = a.intakeDesk(sessionID, turnID, message)
 	}
+	// recalledMem 是这一句召回、带进对话的旧记忆，pinnedMem 是常驻画像里的那几条。说完之后写成回执给人看。
+	var recalledMem []memRef
 	if resume {
 		message = ""
 		atts = nil
@@ -918,11 +920,13 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			inject += extra
 		}
 		if a.memoryOn(sessionID) {
-			if note := memoryRecallNote(a.Memory, message, time.Now()); note != "" {
+			recallNote, recallRefs := memoryRecall(a.Memory, message, time.Now())
+			recalledMem = recallRefs
+			if recallNote != "" {
 				if inject != "" {
 					inject += "\n"
 				}
-				inject += note
+				inject += recallNote
 			}
 		}
 	}
@@ -934,8 +938,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	userParts := runtime.ImageParts(toolRoot, toRuntimeAtts(atts))
 	profile := ""
+	var pinnedMem []memRef
 	if a.memoryOn(sessionID) {
-		profile = a.Memory.ProfilePin(profilePinBytes)
+		profile, pinnedMem = a.profileUse()
 	}
 	tools.OperatorVoice = voice
 	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConduct(runtime.ConductOpts{Plan: loop.PlanMode, Methodology: runtime.HasMethodologyPack(tools.Packs)})...)
@@ -1015,6 +1020,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		HostLines:  hostLines,
 	})
 	a.markRunDone(sessionID)
+	if a.memoryOn(sessionID) {
+		a.emitMemorySeen(sessionID, turnID, pinnedMem, recalledMem)
+	}
 	if a.Threads != nil {
 		a.Threads.SetApprovals(sessionID, nil)
 	}

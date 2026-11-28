@@ -78,6 +78,7 @@ func workerPrompt(e *Executor, dir, ticketID string) string {
 	b.WriteString("任务说明里已经写明的选择不要再问。说明没写到的细节，按已有文件自己定，做完再核对。一直做到说明里的完成标准。不要在一个小进展之后用 ready、waiting 或 blocked 把下一步交还给人。\n")
 	b.WriteString("后来补来的消息可能只是一个变化、一个答案或下一步，不是一份新的完整说明。沿着已有的日志、计划和目录继续，不要因为这句短就停下来要求把整张工单重写一遍。\n")
 	b.WriteString("只有三种情况才停下来问：说明没授权的破坏性操作、必须改说明和工单目录以外的文件、缺少密钥或登录。\n")
+	b.WriteString("付款、下单、预订、提交申请这类只能人来按的最后一步，你不要按：把能准备的都准备好（比价、填好表、选好方案），然后用 orchestrator_report 报 blocked，finish 写要人做的那一下，finish_url 是要打开的页面，finish_price 和 finish_deadline 有就写。人办完或说不用了会回你一句，你再收尾。\n")
 	b.WriteString("操作者用 @skill:名字 指定技能时，先 load_skill 这个名字。@file:路径 是附上的文件。\n")
 	b.WriteString("用 orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。progress 报完继续做。ready 只在完成标准达到、并且计划里没有 pending 或 in_progress 时使用。计划还开着就先 update_plan。question 只在上面三种硬性挡住时填写。\n")
 	b.WriteString("回复原处用 orchestrator_reply。超出范围用 orchestrator_handback。只跟随上下文用 orchestrator_follow。无关线程用 orchestrator_unrelated。\n")
@@ -111,6 +112,7 @@ func externalWorkerPrompt(e *Executor, spec WorkerSpec) string {
 		b.WriteString("用 orchestrator_report 报告 progress、waiting、ready、blocked、failed 或 dropped。progress 报完继续做。ready 只在完成标准达到时使用，summary 写做了什么、改了哪些文件、怎么验证的。\n")
 	}
 	b.WriteString("只有三种情况才停下来问：说明没授权的破坏性操作、必须改上面目录以外的文件、缺少密钥或登录。这时报 blocked，并在 question 里写清楚要人决定什么；question 不能和 ready 一起用。\n")
+	b.WriteString("付款、下单、预订、提交申请这类只能人来按的最后一步，你不要按：把能准备的都准备好（比价、填好表、选好方案），然后用 orchestrator_report 报 blocked，finish 写要人做的那一下，finish_url 是要打开的页面，finish_price 和 finish_deadline 有就写。人办完或说不用了会回你一句，你再收尾。\n")
 	b.WriteString("不要为了确认下一步而提问，也不要在一个小进展之后把下一步交还给人。说明里已经写明的选择不要再问；没写到的细节按已有文件自己定，做完再核对。\n")
 	b.WriteString("后来补来的消息可能只是一个变化、一个答案或下一步，沿着已有的进展继续，不要要求把整张工单重写一遍。\n")
 	b.WriteString("回复原处用 orchestrator_reply。超出范围用 orchestrator_handback。只跟随上下文用 orchestrator_follow。无关线程用 orchestrator_unrelated。\n")

@@ -62,6 +62,26 @@ func mountIM(mux *http.ServeMux, a *app.App) {
 		}
 		writeJSON(w, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("GET /api/im/home", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.IMHomeState())
+	})
+	mux.HandleFunc("POST /api/im/home/pair", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.IMPair())
+	})
+	mux.HandleFunc("POST /api/im/home/unbind", func(w http.ResponseWriter, r *http.Request) {
+		if err := a.IMUnbind(); err != nil {
+			writeJSONStatus(w, 400, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("POST /api/im/home/test", func(w http.ResponseWriter, r *http.Request) {
+		if err := a.IMTest(); err != nil {
+			writeJSONStatus(w, 400, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
 	mux.HandleFunc("POST /api/im/send", func(w http.ResponseWriter, r *http.Request) {
 		if !imReady(w, a) {
 			return

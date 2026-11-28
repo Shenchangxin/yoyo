@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { orchestratorMode, type DeskMute } from "../../lib/client";
+import { deskState, imHome, imPair, imTest, imUnbind, orchestratorMode, type DeskLead, type DeskMute, type DeskTally, type IMHomeState } from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import { applyProactiveLevel, briefDeskOf, briefTimesOf, cacheBriefTimes, parseProactiveLevel, type BriefTimes, type ProactiveLevel } from "../../lib/proactive";
 import type { DeskConfig } from "../../lib/protocol";
@@ -74,6 +74,8 @@ export function ProactiveSettings({ host }: { host: SettingsHost }) {
           <Switch checked={!!desk.quietWeekend} aria-label={p.weekend} onCheckedChange={(on) => saveDesk({ quietWeekend: on })} />
         </SettingRow>
         <HeldClasses />
+        <LeadRow />
+        <TallyRow />
       </SettingSection>
 
       <SettingSection id="proactive-notify" title={s.sections.proactiveNotify} description={p.notifyDesc}>
@@ -82,8 +84,124 @@ export function ProactiveSettings({ host }: { host: SettingsHost }) {
         </SettingRow>
       </SettingSection>
 
+      <HomeSection />
+
       <IntakeSection />
     </>
+  );
+}
+
+function fillCopy(text: string, vars: Record<string, string | number>): string {
+  return text.replace(/\{(\w+)\}/g, (_, key: string) => String(vars[key] ?? ""));
+}
+
+/** LeadRow 是这台电脑上谁在跑主动链路：桌面开着时是桌面，关掉之后是 yoyo daemon。不选主（只开着一个旧式进程）时不显示。 */
+function LeadRow() {
+  const p = useCopy().settings.proactive;
+  const [lead, setLead] = useState<DeskLead | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const pull = () => { void deskState().then((state) => { if (alive) setLead(state.lead); }).catch(() => {}); };
+    pull();
+    const timer = window.setInterval(pull, 10000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, []);
+  if (!lead || !lead.role) return null;
+  // 收尾中（领头的已经决定让出、等手上的回合跑完）优先显示，免得人以为桌面没接上。
+  const text = lead.draining
+    ? (lead.role === "lead" ? p.leadDrainSelf : p.leadDrainOther)
+    : lead.role === "lead" ? p.leadSelf : lead.holder === "desktop" ? p.leadDesktop : lead.holder ? p.leadDaemon : p.leadNone;
+  return (
+    <SettingRow title={p.lead} description={p.leadDesc}>
+      <span className="text-ui-footnote text-muted" data-testid="proactive-lead">{text}</span>
+    </SettingRow>
+  );
+}
+
+/** TallyRow 是最近七天主动开口了几次、用上了几次。还没说过话时写一句。 */
+function TallyRow() {
+  const p = useCopy().settings.proactive;
+  const [days, setDays] = useState<DeskTally[]>([]);
+  const [rate, setRate] = useState(-1);
+  useEffect(() => {
+    let alive = true;
+    const pull = () => {
+      void deskState().then((state) => {
+        if (!alive) return;
+        setDays(state.tally);
+        setRate(state.accepted);
+      }).catch(() => {});
+    };
+    pull();
+    window.addEventListener(DESK_EVENT, pull);
+    return () => { alive = false; window.removeEventListener(DESK_EVENT, pull); };
+  }, []);
+  const spoken = days.reduce((n, d) => n + d.spoken, 0);
+  const used = days.reduce((n, d) => n + d.used, 0);
+  return (
+    <SettingRow title={p.tally} description={p.tallyDesc} border={false}>
+      {spoken > 0 ? (
+        <div className="text-right text-ui-footnote tabular-nums" data-testid="proactive-tally">
+          <div>{fillCopy(p.tallyLine, { spoken, used })}</div>
+          {rate >= 0 ? <div className="text-muted">{fillCopy(p.tallyRate, { rate: Math.round(rate * 100) })}</div> : null}
+        </div>
+      ) : (
+        <span className="text-ui-footnote text-muted">{p.tallyEmpty}</span>
+      )}
+    </SettingRow>
+  );
+}
+
+/** HomeSection 是 IM 主通道：生成配对码、看绑在哪、发测试、解除。配对码有效时每三秒看一次绑上没有。 */
+function HomeSection() {
+  const copy = useCopy();
+  const p = copy.settings.proactive;
+  const [state, setState] = useState<IMHomeState | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const pull = () => { void imHome().then((next) => { if (alive) setState(next); }).catch(() => {}); };
+    pull();
+    const timer = window.setInterval(pull, state?.code && !state.bound ? 3000 : 30000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [state?.code, state?.bound]);
+  async function run(fn: () => Promise<unknown>, ok?: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      if (ok) toast.success(ok);
+      setState(await imHome());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <SettingSection id="proactive-home" title={copy.settings.sections.proactiveHome} description={p.homeDesc}>
+      {state?.bound ? (
+        <>
+          <SettingRow
+            title={fillCopy(p.homeBound, { label: state.label || state.platform })}
+            description={[state.senderName ? fillCopy(p.homeBoundBy, { name: state.senderName }) : "", state.held ? fillCopy(p.homeHeld, { n: state.held }) : "", state.lastErr ? fillCopy(p.homeLastErr, { err: state.lastErr }) : ""].filter(Boolean).join(" · ") || undefined}
+            border={false}
+          >
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => { void run(imTest, p.homeTestOk); }}>{p.homeTest}</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => { void run(imUnbind); }}>{p.homeUnbind}</Button>
+            </div>
+          </SettingRow>
+        </>
+      ) : (
+        <SettingRow title={state?.code ? fillCopy(p.homeCode, { code: state.code }) : p.homeNone} border={false}>
+          <div className="flex items-center gap-2">
+            {state?.code ? <code className="rounded-md border border-border px-2 py-1 text-ui-body tabular-nums" data-testid="im-pair-code">{state.code}</code> : null}
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => { void run(imPair); }}>{p.homePair}</Button>
+          </div>
+        </SettingRow>
+      )}
+    </SettingSection>
   );
 }
 

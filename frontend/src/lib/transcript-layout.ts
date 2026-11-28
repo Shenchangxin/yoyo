@@ -59,12 +59,17 @@ export function isSteer(it: Item): boolean {
 
 /** isMentionInject 提及注入折进用户气泡，不单独成一轮。技能注入和任务组的唤醒回执除外。it 读取 type、source。 */
 export function isMentionInject(it: Item): boolean {
-  return it.type === "context_injection" && it.source !== "skill" && it.source !== "wake";
+  return it.type === "context_injection" && it.source !== "skill" && it.source !== "wake" && it.source !== "memory";
 }
 
 /** isWakeReceipt 是任务组唤醒路由时落下的回报。它单独成一行画成回执，不进用户气泡，也不进路由那一轮的过程轨。 */
 export function isWakeReceipt(it: Item): boolean {
   return it.type === "context_injection" && it.source === "wake";
+}
+
+/** isMemoryReceipt 是关于记忆的回执：这一轮带进了哪些记忆，或者路由记下、改口的那几条。它单独成一行，不进用户气泡，也不进过程轨，回放历史时不进模型。 */
+export function isMemoryReceipt(it: Item): boolean {
+  return it.type === "context_injection" && it.source === "memory";
 }
 
 /** liveAutoSkills 这一段里自动载入的技能名。同名只留一次。items 读取 length，为空时不读，用来遍历。 */
@@ -149,7 +154,7 @@ export function classifyToolPairs(pairs: ToolPair[]): Map<string, "artifact" | "
 
 /** isProcessItem 进过程轨的条目：推理、上下文注入，以及非产出的工具。提及注入和子代理不算。it 的 type 为 subagent 时返回假，其余分支还看别的条件；传给 isMentionInject，传给 isToolish，传给 isOutcomeTool。 */
 export function isProcessItem(it: Item): boolean {
-  if (isMentionInject(it) || isWakeReceipt(it)) return false;
+  if (isMentionInject(it) || isWakeReceipt(it) || isMemoryReceipt(it)) return false;
   if (it.type === "reasoning" || it.type === "context_injection") return true;
   if (it.type === "subagent") return false;
   return isToolish(it) && !isOutcomeTool(it);
@@ -276,7 +281,7 @@ export function hasConversation(items: Item[]): boolean {
 
 /** isAgentItem 属于智能体回合的条目。提及注入和唤醒回执不算。it 读取 type，传给 isMentionInject，传给 isToolish，传给 isSteer。 */
 export function isAgentItem(it: Item): boolean {
-  if (isMentionInject(it) || isWakeReceipt(it)) return false;
+  if (isMentionInject(it) || isWakeReceipt(it) || isMemoryReceipt(it)) return false;
   return (
     it.type === "assistant" ||
     it.type === "reasoning" ||

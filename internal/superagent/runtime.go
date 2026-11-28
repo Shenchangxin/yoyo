@@ -438,6 +438,21 @@ func (rt *Runtime) CloseWorkers() {
 	exec.CloseAll()
 }
 
+// Working 返回正在启动或正在跑的工单数（同一张工单只算一个）。还没 Bind 过执行器时是 0。
+// 领头的进程让出之前用它等手上的工人跑完这一轮，免得 Stop / CloseWorkers 把回合从中间打断。
+func (rt *Runtime) Working() int {
+	if rt == nil {
+		return 0
+	}
+	rt.mu.Lock()
+	exec := rt.exec
+	rt.mu.Unlock()
+	if exec == nil || exec.Slots == nil {
+		return 0
+	}
+	return exec.Slots.Used()
+}
+
 // SetProfile 接上操作者画像。fn 返回已经留下的偏好和本人说过的话，写进每个新工人的系统提示，只读。
 func (rt *Runtime) SetProfile(fn func() string) {
 	if rt == nil {

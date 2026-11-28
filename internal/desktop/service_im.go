@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/im"
 )
 
@@ -55,6 +56,52 @@ func (s *Service) IMDeleteAccount(id string) error {
 		return fmt.Errorf("messaging is not running")
 	}
 	return s.App.IM.DeleteAccount(id)
+}
+
+// IMHome 返回 IM 主通道此刻的样子：绑没绑、绑在哪、配对码、攒着几条。
+func (s *Service) IMHome() (app.IMHomeState, error) {
+	if s.RPC != nil {
+		return decode[app.IMHomeState](s.call("im.home", nil))
+	}
+	if s.App == nil {
+		return app.IMHomeState{}, fmt.Errorf("app is not running")
+	}
+	return s.App.IMHomeState(), nil
+}
+
+// IMPair 生成十分钟有效的配对码。
+func (s *Service) IMPair() (app.IMHomeState, error) {
+	if s.RPC != nil {
+		return decode[app.IMHomeState](s.call("im.home.pair", nil))
+	}
+	if s.App == nil {
+		return app.IMHomeState{}, fmt.Errorf("app is not running")
+	}
+	return s.App.IMPair(), nil
+}
+
+// IMUnbind 解除主通道。
+func (s *Service) IMUnbind() error {
+	if s.RPC != nil {
+		_, err := s.call("im.home.unbind", nil)
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("app is not running")
+	}
+	return s.App.IMUnbind()
+}
+
+// IMTest 往主通道发一条测试消息。
+func (s *Service) IMTest() error {
+	if s.RPC != nil {
+		_, err := s.call("im.home.test", nil)
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("app is not running")
+	}
+	return s.App.IMTest()
 }
 
 // IMSend 用一个已启用的机器人主动发一条文本。

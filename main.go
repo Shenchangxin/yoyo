@@ -87,7 +87,7 @@ func main() {
 	evals := boot.EvalsDir()
 	home := os.Getenv("YOYO_HOME")
 	if os.Getenv("YOYO_WORKER") == "1" {
-		core, err := app.Open(home, evals)
+		core, err := app.OpenManaged(home, evals, "desktop")
 		if err != nil {
 			fail(err)
 		}
@@ -240,7 +240,7 @@ func openDesktop(home, evals string) (*desktop.Service, *app.App, error) {
 	if os.Getenv("YOYO_ISOLATE") == "1" {
 		return desktop.OpenIsolated(home, evals)
 	}
-	core, err := app.Open(home, evals)
+	core, err := app.OpenManaged(home, evals, "desktop")
 	if err != nil {
 		return nil, nil, err
 	}

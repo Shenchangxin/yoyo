@@ -53,6 +53,8 @@ func (s *liveSocket) write(ctx context.Context, v any) error {
 type Runtime struct {
 	mu         sync.Mutex
 	path       string
+	stamp      imStamp
+	pending    bool
 	vault      SecretStore
 	settings   Settings
 	accounts   []Account
@@ -67,6 +69,8 @@ type Runtime struct {
 	hookErr    string
 	seen       map[string]time.Time
 	sockets    sync.Map
+	// echoes 是 OneBot 发出去还在等回执的请求，键是 echo，值是 chan map[string]any。见 quote.go 的 sendOneBot。
+	echoes     sync.Map
 	bases      map[string]string
 	cursors    map[string]string
 	httpClient *http.Client
@@ -145,6 +149,7 @@ func (rt *Runtime) Close() {
 func (rt *Runtime) Snapshot() Snapshot {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	rt.refreshLocked()
 	accounts := make([]Account, len(rt.accounts))
 	for i, a := range rt.accounts {
 		accounts[i] = rt.decorateLocked(a)
@@ -167,6 +172,7 @@ func (rt *Runtime) Snapshot() Snapshot {
 // SaveSettings 写下规则并重载正在运行的账号。
 func (rt *Runtime) SaveSettings(s Settings) error {
 	rt.mu.Lock()
+	rt.refreshLocked()
 	rt.settings = s.normalized()
 	err := rt.flush()
 	running := rt.root != nil
@@ -195,6 +201,7 @@ func (rt *Runtime) SaveAccount(a Account, secrets map[string]string) (Account, e
 		a.Label = a.Platform
 	}
 	rt.mu.Lock()
+	rt.refreshLocked()
 	replaced := false
 	for i := range rt.accounts {
 		if rt.accounts[i].ID == a.ID {
@@ -231,6 +238,7 @@ func (rt *Runtime) DeleteAccount(id string) error {
 	id = cleanID(id)
 	spec, _ := rt.account(id)
 	rt.mu.Lock()
+	rt.refreshLocked()
 	out := rt.accounts[:0]
 	for _, a := range rt.accounts {
 		if a.ID == id {
@@ -279,6 +287,7 @@ func (rt *Runtime) Bind(origin, sessionID string) {
 		return
 	}
 	rt.mu.Lock()
+	rt.refreshLocked()
 	if rt.bindings == nil {
 		rt.bindings = map[string]string{}
 	}

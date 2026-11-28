@@ -1,4 +1,5 @@
 /** 拥有陪伴窗的宠物、气泡、拖动和进入通话。不拥有工作台的模型循环，也不在这里另开一份；通话画面交给 IdolCall。快照和脉搏是投影。拖动、字幕尺寸和唤起会话会改服务端记下的窗口状态。 */
+import { useDeskPresence } from "./desk-presence";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Phone } from "lucide-react";
 import { useBusyMs } from "./busy";
@@ -258,22 +259,27 @@ export function CompanionApp() {
     busyMs,
   }), [booted, running, items, approvals, idleMs, now, voicePhase, loading, interrupted, busyMs]);
 
+  // 伴侣窗和导航轨头像读同一个状态源：没有待批准、但有工单在等你或受阻时，气泡说的是那张工单。
+  const presence = useDeskPresence();
+  const ticketWaits = approvals === 0 && (presence?.state === "needs" || presence?.state === "blocked") && !!presence.line;
+  const waiting = ticketWaits ? 1 : approvals;
+  const waitLine = ticketWaits && presence ? presence.line : copy.presence.approval;
   const emotionLine = presenceLine(emotion, copy.presence);
   const bubble = bubbleParts({
-    approvals,
+    approvals: waiting,
     pulse: shownPulse,
-    approvalLine: copy.presence.approval,
+    approvalLine: waitLine,
     emotionLine,
     now,
   });
   const line = bubbleLine({
-    approvals,
+    approvals: waiting,
     pulse: shownPulse,
-    approvalLine: copy.presence.approval,
+    approvalLine: waitLine,
     emotionLine,
     now,
   });
-  const showLine = !!shownPulse || emotion.live || loading || emotion.tips === "approval" || emotion.tips === "ask" || approvals > 0;
+  const showLine = !!shownPulse || emotion.live || loading || emotion.tips === "approval" || emotion.tips === "ask" || waiting > 0;
   const bubbleRef = useRef<HTMLButtonElement>(null);
   const scrollRef = useRef<HTMLSpanElement>(null);
 

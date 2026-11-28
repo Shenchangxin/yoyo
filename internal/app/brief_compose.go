@@ -56,6 +56,8 @@ type BriefCard struct {
 	Task       string      `json:"task,omitempty"`
 	Alt        string      `json:"alt,omitempty"`
 	Refs       []BriefRef  `json:"refs,omitempty"`
+	// Tidy 非空时这是一张记忆整理建议卡（brief_tidy.go），值是建议的编号：「对」「不对」直接交给 MemoryTidy，不放进输入框。
+	Tidy string `json:"tidy,omitempty"`
 }
 
 // BriefRef 是一张卡依据的一条材料。Kind 取 ticket、date、line、memory。Target 是界面打开它时用的编号：工单编号或记忆编号。
@@ -142,12 +144,14 @@ func (appHost *deskHost) ComposeToday(slot string) TodayBrief {
 	if tokens <= 0 {
 		tokens = 8192
 	}
+	// 记忆整理借这一次模型：相近的几对附在材料后面，不算进上面的签名，免得问过之后材料一变又叫一次模型。见 brief_tidy.go。
+	tidyText, tidyPairs := appHost.app.tidyAsk()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	out, err := liveModel{app: appHost.app}.Complete(ctx, agentloop.Request{
 		Messages: []agentloop.Message{
 			{Role: "system", Text: briefPrompt},
-			{Role: "user", Text: briefAsk(slot, packet)},
+			{Role: "user", Text: briefAsk(slot, packet) + tidyText},
 		},
 		MaxTokens: tokens,
 	})
@@ -158,6 +162,8 @@ func (appHost *deskHost) ComposeToday(slot string) TodayBrief {
 	if !ok {
 		return TodayBrief{}
 	}
+	// 模型的判断只存成建议，人在信里点了「对」才改记忆。
+	appHost.app.takeTidy(tidyPairs, out.Text)
 	got := TodayBrief{Quiet: true}
 	if cards = groundRefs(cards, material.refs); len(cards) > 0 {
 		got = TodayBrief{Cards: cards, Woven: true}

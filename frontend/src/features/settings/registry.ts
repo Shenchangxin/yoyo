@@ -24,29 +24,35 @@ export type SettingsSectionDef = {
   keywords?: string;
 };
 
-/** SETTINGS_GROUPS 是设置分组的顺序：偏好、能力、助手、连接、系统。 */
-export const SETTINGS_GROUPS: readonly GroupKey[] = ["app", "model", "agent", "link", "system"];
+/**
+ * SETTINGS_GROUPS 是设置分组的顺序，按「这个助手替你做什么」排：你的助手、连接、模型与服务、偏好、隐私与关于，最后是开发者。
+ * 开发者一组默认收起（DEVELOPER_KEY），侧栏底下点开；深链打开其中一页时自动露出。
+ */
+export const SETTINGS_GROUPS: readonly GroupKey[] = ["agent", "link", "model", "app", "system", "developer"];
+
+/** DEVELOPER_KEY 是「显示开发者选项」存在 localStorage 里的键。 */
+export const DEVELOPER_KEY = "yoyo.settings.developer";
 
 /**
- * SETTINGS_TABS 是现行页签：十四页进侧栏，一页只管一件事；偶像页从偶像模块打开。
- * 偏好是这个应用自己的样子，能力是它能调用的模型和生成服务，助手是它怎么主动、怎么自己跑、哪些要先问，
- * 连接是它够得着的应用、消息、工具和手机，系统是诊断和版本。
+ * SETTINGS_TABS 是现行页签，按分组顺序排。键不变：别的模块和旧链接按键打开。
+ * 你的助手：简报与提醒、Yoyo 在跟的事。连接：应用与账号、聊天软件、手机。模型与服务：模型、创作服务。
+ * 偏好：通用、外观、快捷键。隐私与关于：隐私与权限、关于。开发者：MCP 与插件、诊断与实验室。偶像页从偶像模块打开。
  */
 export const SETTINGS_TABS: readonly SettingsTabDef[] = [
+  { key: "proactive", group: "agent", icon: "bell" },
+  { key: "personal", group: "agent", icon: "repeat" },
+  { key: "connectors", group: "link", icon: "blocks" },
+  { key: "messaging", group: "link", icon: "message" },
+  { key: "handheld", group: "link", icon: "phone" },
+  { key: "provider", group: "model", icon: "cpu" },
+  { key: "generation", group: "model", icon: "film" },
   { key: "general", group: "app", icon: "sliders" },
   { key: "appearance", group: "app", icon: "palette" },
   { key: "shortcuts", group: "app", icon: "keyboard" },
-  { key: "provider", group: "model", icon: "cpu" },
-  { key: "generation", group: "model", icon: "film" },
-  { key: "proactive", group: "agent", icon: "bell" },
-  { key: "personal", group: "agent", icon: "repeat" },
-  { key: "policy", group: "agent", icon: "shield" },
-  { key: "connectors", group: "link", icon: "blocks" },
-  { key: "messaging", group: "link", icon: "message" },
-  { key: "extensions", group: "link", icon: "plug" },
-  { key: "handheld", group: "link", icon: "phone" },
-  { key: "advanced", group: "system", icon: "wrench" },
+  { key: "policy", group: "system", icon: "shield" },
   { key: "about", group: "system", icon: "info" },
+  { key: "extensions", group: "developer", icon: "plug" },
+  { key: "advanced", group: "developer", icon: "wrench" },
   { key: "idol", group: "app", icon: "heart", hidden: true },
 ];
 
@@ -62,6 +68,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "proactive-brief", tab: "proactive", titleKey: "proactiveBrief", keywords: "brief morning evening digest 简报 晨间 晚间" },
   { id: "proactive-level", tab: "proactive", titleKey: "proactiveLevel", keywords: "proactive quiet hours weekend mute hold 主动 安静 周末 按住" },
   { id: "proactive-notify", tab: "proactive", titleKey: "proactiveNotify", keywords: "notifications toast system 通知" },
+  { id: "proactive-home", tab: "proactive", titleKey: "proactiveHome", keywords: "im home chat feishu lark wecom dingtalk telegram qq bind pair 主通道 飞书 企微 钉钉 绑定 配对" },
   { id: "proactive-intake", tab: "proactive", titleKey: "proactiveIntake", keywords: "intake admission auto observe off orchestrator 自动接单 观察" },
   { id: "personal-jobs", tab: "personal", titleKey: "personalJobs", keywords: "automation schedule cron job heartbeat webhook routine 定时 自动化 例行" },
   { id: "personal-goals", tab: "personal", titleKey: "personalGoals", keywords: "goal milestone plan 目标" },
@@ -85,17 +92,17 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "generation-search", tab: "generation", titleKey: "generationSearch", keywords: "search web duckduckgo bocha metaso jina exa 秘塔 搜索" },
   { id: "generation-workflow", tab: "generation", titleKey: "generationWorkflow", keywords: "runninghub workflow comfy" },
   { id: "policy-gate", tab: "policy", titleKey: "policyGate", keywords: "approval gate shell auto allow 审批 权限" },
-  { id: "policy-isolation", tab: "policy", titleKey: "policyIsolation", keywords: "isolation sandbox vault signature pwsh powershell 7 runtime sidecar shell 命令行" },
+  { id: "policy-isolation", tab: "advanced", titleKey: "policyIsolation", keywords: "isolation sandbox vault signature pwsh powershell 7 runtime sidecar shell 命令行 运行环境 developer 开发者" },
   { id: "policy-data", tab: "policy", titleKey: "policyData", keywords: "data memory export privacy 数据 记忆 导出 隐私" },
   { id: "extensions-work", tab: "connectors", titleKey: "extensionsWorkSources", keywords: "github feishu source token work 来源 飞书" },
   { id: "extensions-connectors", tab: "connectors", titleKey: "connectorsDirectory", keywords: "connector oauth gmail notion slack github 连接应用 邮件 日历" },
   { id: "messaging-accounts", tab: "messaging", titleKey: "messagingAccounts", keywords: "im account bot token webhook 账号 令牌 回调" },
   { id: "messaging-policy", tab: "messaging", titleKey: "messagingPolicy", keywords: "im bot telegram qq discord slack wechat lark dingtalk line whatsapp wake mention 消息 机器人 唤醒" },
-  { id: "extensions-mcp", tab: "extensions", titleKey: "extensionsMcp", keywords: "mcp server stdio http json tools 工具" },
-  { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm 插件" },
+  { id: "extensions-mcp", tab: "extensions", titleKey: "extensionsMcp", keywords: "mcp server stdio http json tools 工具 developer 开发者" },
+  { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm 插件 developer 开发者" },
   { id: "advanced-handheld", tab: "handheld", titleKey: "advancedHandheld", keywords: "phone handheld qr pair remote mobile android ios harmony 手机 配对 扫码" },
-  { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs diagnostics debug support journal audit chain doctor health 日志 审计 本机检查" },
-  { id: "advanced-labs", tab: "advanced", titleKey: "advancedLabs", keywords: "laboratory lab harness sealed bon hash verbose collapse 实验室" },
+  { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs diagnostics debug support journal audit chain doctor health 日志 审计 本机检查 developer 开发者" },
+  { id: "advanced-labs", tab: "advanced", titleKey: "advancedLabs", keywords: "laboratory lab harness sealed bon hash verbose collapse 实验室 developer 开发者" },
   { id: "advanced-updates", tab: "about", titleKey: "advancedUpdates", keywords: "update version release ota modelscope about 更新 版本 关于" },
   { id: "idol-services", tab: "idol", titleKey: "idolServices", keywords: "idol llm asr tts image voice chat speech 偶像 语音 模型 音色 对话" },
   { id: "idol-you", tab: "idol", titleKey: "idolYou", keywords: "address birthday timezone name 称呼 生日" },
@@ -148,6 +155,11 @@ export function isSettingsTab(v: string): v is SettingsTab {
   return SETTINGS_TABS.some((t) => t.key === v);
 }
 
+/** isDeveloperTab 在这一页属于开发者一组时为真。 */
+export function isDeveloperTab(tab: SettingsTab): boolean {
+  return SETTINGS_TABS.some((t) => t.key === tab && t.group === "developer");
+}
+
 /** resolveSettingsTarget 把现行或旧的页签与区块对到现行布局上。区块认得出时以区块为准，其次是现行页签，再次是旧页签。 */
 export function resolveSettingsTarget(tab?: string, section?: string): { tab: SettingsTab; section: string } {
   const mappedSection = section ? LEGACY_SECTIONS[section] || section : "";
@@ -155,8 +167,12 @@ export function resolveSettingsTarget(tab?: string, section?: string): { tab: Se
   if (owner) return { tab: owner.tab, section: owner.id };
   if (tab && isSettingsTab(tab)) return { tab, section: "" };
   const legacy = tab ? LEGACY_TABS[tab] : undefined;
-  if (legacy) return { tab: legacy.tab, section: legacy.section };
-  return { tab: "general", section: "" };
+  if (legacy) {
+    // 旧页签指向的区块后来又搬了家时，跟着区块现在所在的页走（比如运行环境搬进了开发者）。
+    const moved = SETTINGS_SECTIONS.find((s) => s.id === legacy.section);
+    return { tab: moved ? moved.tab : legacy.tab, section: legacy.section };
+  }
+  return { tab: "proactive", section: "" };
 }
 
 /** tabsInGroup 取出某一组里进侧栏的页签。group 与 t.group 比较是否相等。 */
@@ -164,7 +180,25 @@ export function tabsInGroup(group: GroupKey) {
   return SETTINGS_TABS.filter((t) => t.group === group && !t.hidden);
 }
 
-/** navTabs 是进侧栏的全部页签，按分组顺序。 */
-export function navTabs() {
-  return SETTINGS_TABS.filter((t) => !t.hidden);
+/** navTabs 是进侧栏的全部页签，按分组顺序。developer 为假时不含开发者一组。 */
+export function navTabs(developer = true) {
+  return SETTINGS_GROUPS.filter((g) => developer || g !== "developer").flatMap((g) => tabsInGroup(g));
+}
+
+/** readDeveloper 读「显示开发者选项」。读不到时收起。 */
+export function readDeveloper(): boolean {
+  try {
+    return localStorage.getItem(DEVELOPER_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** writeDeveloper 记下「显示开发者选项」。 */
+export function writeDeveloper(on: boolean) {
+  try {
+    localStorage.setItem(DEVELOPER_KEY, on ? "1" : "0");
+  } catch {
+    // 存不下时只在这一次打开里生效。
+  }
 }

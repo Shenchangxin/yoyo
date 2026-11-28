@@ -57,6 +57,10 @@ func (e *Engine) tick(ctx context.Context) {
 	if now.Sub(e.store.lastIdeasAt()) >= 15*time.Minute {
 		_ = e.RefreshIdeas()
 	}
+	// 收尾中：只让在跑的跑完，不领新的。见 hold.go。
+	if e.hold.Load() {
+		return
+	}
 	var due []Task
 	e.mu.Lock()
 	inflight := len(e.inFlight)

@@ -17,6 +17,7 @@ import {
   BudgetSection,
   DiagnosticsSettings,
   GeneralSettings,
+  IsolationSection,
   LabsSection,
   type SettingsHost,
   PolicySettings,
@@ -76,9 +77,11 @@ function panelFor(tab: SettingsTab, host: SettingsHost): ReactNode {
     case "handheld":
       return <HandheldSettings />;
     case "advanced":
+      // 运行环境（沙箱、签名、保险库、PowerShell）从隐私页搬到这里：那是出问题时才看的工程细节。
       return (
         <>
           <DiagnosticsSettings host={host} />
+          <IsolationSection host={host} />
           <LabsSection host={host} />
         </>
       );

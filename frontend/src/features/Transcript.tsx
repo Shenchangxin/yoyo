@@ -16,6 +16,8 @@ import { EventCard } from "../components/ui/event-card";
 import { TaskEventHead, TurnReceipts } from "./transcript/TurnReceipts";
 import { GroupCard } from "./transcript/GroupCard";
 import { WakeReceipt } from "./transcript/WakeReceipt";
+import { MemoryReceipt } from "./transcript/MemoryReceipt";
+import { FinishCard } from "./transcript/FinishCard";
 import { BuddyMark } from "./buddy/BuddyMark";
 import { useBuddy } from "./buddy/buddy-store";
 import { FirstRun } from "./transcript/FirstRun";
@@ -46,7 +48,7 @@ import { isLearnQuizItem, LearnQuizCard } from "./learn/cards/LearnQuizCard";
 import { BriefCard } from "./video/BriefCard";
 import { isVideoBriefItem } from "../lib/video-brief";
 import { classifyItem, errorCopy } from "../lib/error";
-import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, foldAsks, hasConversation, hydrateLayout, isGroupCard, isGroupCardRow, isWakeReceipt, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, foldAsks, hasConversation, hydrateLayout, isGroupCard, isGroupCardRow, isMemoryReceipt, isWakeReceipt, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig } from "../lib/stream-live";
 import { coerceCollapseTiming, coerceTranscriptView, presentationPolicyFor } from "../lib/presentation-policy";
 import { ScrollFollow, scrollMetrics } from "../lib/scroll-follow";
@@ -2015,6 +2017,9 @@ const ItemRow = memo(function ItemRow({
             <FilePathList text={shown.text} files={stringList(shown.payload?.files)} ticket={String(shown.payload?.ticket || "")} />
           )}
         </div>
+        {handoff && !streaming && shown.payload?.finish && typeof shown.payload.finish === "object" ? (
+          <FinishCard ticket={String(shown.payload?.ticket || "")} finish={shown.payload.finish as Record<string, unknown>} />
+        ) : null}
         {handoff ? <p className="mt-2 text-ui-footnote text-muted">{copy.transcript.needsYouHint}</p> : null}
       </div>
     );
@@ -2058,6 +2063,7 @@ const ItemRow = memo(function ItemRow({
     return <ErrorCard item={shown} onRetry={onRetry} />;
   }
   if (isWakeReceipt(shown)) return <WakeReceipt item={shown} />;
+  if (isMemoryReceipt(shown)) return <MemoryReceipt item={shown} />;
   if (shown.type === "compaction") {
     const kind = String(shown.payload?.kind || "");
     if (kind === "checkpoint_start") return null;

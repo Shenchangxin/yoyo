@@ -80,7 +80,20 @@ func (rt *Runtime) readOneBot(ctx context.Context, acct Account, c *websocket.Co
 			return
 		}
 		m, err := decodeJSON(raw)
-		if err != nil || jstr(m["post_type"]) != "message" {
+		if err != nil {
+			continue
+		}
+		// 带 echo 的是动作回执：交给 sendOneBot 里在等它的那一方。没人等（超时了，或是 pushOneBot 发的）就丢掉。
+		if echo := jstr(m["echo"]); echo != "" && jstr(m["post_type"]) == "" {
+			if v, ok := rt.echoes.Load(echo); ok {
+				select {
+				case v.(chan map[string]any) <- m:
+				default:
+				}
+			}
+			continue
+		}
+		if jstr(m["post_type"]) != "message" {
 			continue
 		}
 		rt.ingestOneBot(acct, m)
@@ -101,10 +114,13 @@ func (rt *Runtime) ingestOneBot(acct Account, m map[string]any) {
 		chatID = "group:" + jstr(m["group_id"])
 	}
 	text, mentioned, atAll := onebotText(m["message"], jstr(m["raw_message"]), self)
+	// 回复段只用来认出回复的是哪一条，不留在正文里。
+	text = strings.TrimSpace(cqReplyAll.ReplaceAllString(text, ""))
 	in := Inbound{
 		AccountID: acct.ID, Platform: "onebot", Kind: kind, ChatID: chatID,
 		SenderID: user, SenderName: jstr(sender["nickname"]), SelfID: self,
 		Text: text, Mentioned: mentioned, AtAll: atAll, MessageID: jstr(m["message_id"]),
+		QuoteID: onebotQuote(m["message"], jstr(m["raw_message"])),
 	}
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()
@@ -165,13 +181,6 @@ func (rt *Runtime) pushOneBot(ctx context.Context, acct Account, chatID, text st
 	if sock == nil {
 		return fmt.Errorf("onebot is not connected")
 	}
-	action := "send_private_msg"
-	params := map[string]any{"message": clipText(text)}
-	if strings.HasPrefix(chatID, "group:") {
-		action = "send_group_msg"
-		params["group_id"] = numOrString(strings.TrimPrefix(chatID, "group:"))
-	} else {
-		params["user_id"] = numOrString(strings.TrimPrefix(strings.TrimPrefix(chatID, "private:"), "direct:"))
-	}
+	action, params := onebotTarget(chatID, text)
 	return sock.write(ctx, map[string]any{"action": action, "params": params, "echo": reqID()})
 }

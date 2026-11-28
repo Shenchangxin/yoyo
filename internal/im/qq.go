@@ -125,18 +125,24 @@ func (rt *Runtime) ingestQQ(acct Account, event string, d map[string]any) {
 		AccountID: acct.ID, Platform: acct.Platform, Kind: kind, ChatID: chatID,
 		SenderID: sender, SenderName: sender, Text: text, Mentioned: mentioned, MessageID: msgID,
 	}
+	// 引用回复时带 message_reference（被引用那条的编号）。
+	if ref := asMap(d["message_reference"]); len(ref) > 0 {
+		in.QuoteID = jstr(ref["message_id"])
+	}
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()
 		defer cancel()
-		return rt.sendQQ(ctx, acct, chatID, text, msgID)
+		_, err := rt.sendQQ(ctx, acct, chatID, text, msgID)
+		return err
 	}
 	rt.emit(in)
 }
 
-func (rt *Runtime) sendQQ(ctx context.Context, acct Account, chatID, text, msgID string) error {
+// sendQQ 发一条文本，返回 QQ 给它的消息 id。msgID 非空时是被动回复（回复那条消息），为空时是主动推送。
+func (rt *Runtime) sendQQ(ctx context.Context, acct Account, chatID, text, msgID string) (string, error) {
 	token, err := rt.qqToken(ctx, acct)
 	if err != nil {
-		return err
+		return "", err
 	}
 	kind, id, _ := strings.Cut(chatID, ":")
 	var path string
@@ -154,19 +160,25 @@ func (rt *Runtime) sendQQ(ctx context.Context, acct Account, chatID, text, msgID
 	}
 	raw, code, err := rt.postJSON(ctx, path, map[string]string{"Authorization": "QQBot " + token}, body)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if code == 401 || code == 403 {
-		return fatalf("qq rejected the token (%d)", code)
+		return "", fatalf("qq rejected the token (%d)", code)
 	}
 	if code >= 300 {
-		return statusErr(code, raw, "qq send")
+		return "", statusErr(code, raw, "qq send")
 	}
-	return nil
+	// 回执里的 id 就是这条消息的编号；解析不了不算失败，只是以后认不出对它的引用。
+	m, err := decodeJSON(raw)
+	if err != nil {
+		return "", nil
+	}
+	return jstr(m["id"]), nil
 }
 
 func (rt *Runtime) pushQQ(ctx context.Context, acct Account, chatID, text string) error {
-	return rt.sendQQ(ctx, acct, chatID, text, "")
+	_, err := rt.sendQQ(ctx, acct, chatID, text, "")
+	return err
 }
 
 func (rt *Runtime) hookQQ(w http.ResponseWriter, r *http.Request, acct Account, body []byte) {

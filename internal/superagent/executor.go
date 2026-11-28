@@ -1201,22 +1201,36 @@ func (e *Executor) planStillOpen(ticketID string) bool {
 func (e *Executor) reportToolWith(ticketID string, planGate bool) agentloop.Tool {
 	return agentloop.Tool{
 		Name:        "orchestrator_report",
-		Description: "向工单报告状态。state 取 progress、waiting、ready、blocked、failed 或 dropped。summary 是给人看的一句，也会留在这条会话末尾。progress 不结束这一轮。ready 只在任务说明里的完成标准达到、并且计划步骤都已 complete 时使用；计划里还有 pending 或 in_progress 会被拒绝。有 question 时不要用 ready。question 只在被硬性挡住时填写：没授权的破坏、说明和工单目录以外的必改路径、缺少密钥。不要为了确认下一步而提问。",
+		Description: "向工单报告状态。state 取 progress、waiting、ready、blocked、failed 或 dropped。summary 是给人看的一句，也会留在这条会话末尾。progress 不结束这一轮。ready 只在任务说明里的完成标准达到、并且计划步骤都已 complete 时使用；计划里还有 pending 或 in_progress 会被拒绝。有 question 时不要用 ready。question 只在被硬性挡住时填写：没授权的破坏、说明和工单目录以外的必改路径、缺少密钥。不要为了确认下一步而提问。付款、下单、预订、提交申请这类只能人来按的最后一步不要自己按：准备好之后报 blocked，finish 写要人做的那一下，finish_url、finish_price、finish_deadline 有就写。",
 		Mode:        func(agentloop.ToolCall) string { return agentloop.ModeExclusive },
 		Run: func(_ context.Context, call agentloop.ToolCall) (agentloop.Result, error) {
 			var body struct {
-				State    string `json:"state"`
-				Summary  string `json:"summary"`
-				Question string `json:"question"`
+				State          string `json:"state"`
+				Summary        string `json:"summary"`
+				Question       string `json:"question"`
+				Finish         string `json:"finish"`
+				FinishURL      string `json:"finish_url"`
+				FinishPrice    string `json:"finish_price"`
+				FinishDeadline string `json:"finish_deadline"`
 			}
 			if err := json.Unmarshal([]byte(call.Arguments), &body); err != nil {
 				return agentloop.Result{Text: err.Error(), IsError: true}, nil
+			}
+			// 带了最后一步的报告：工单停下等人按那一下。
+			finish := (&Finish{What: body.Finish, URL: body.FinishURL, Price: body.FinishPrice, Deadline: body.FinishDeadline}).clean()
+			need := ""
+			if finish != nil {
+				body.State = "blocked"
+				if strings.TrimSpace(body.Question) == "" {
+					body.Question = "最后一步交给你：" + finish.What
+				}
+				need = "finish"
 			}
 			body.State = askReport(body.State, body.Question)
 			if planGate && body.State == "ready" && e.planStillOpen(ticketID) {
 				return agentloop.Result{Text: "计划里还有没完成的步骤。先做完，用 update_plan 标成 complete，然后再 ready。", IsError: true}, nil
 			}
-			err := e.Engine.Report(ticketID, Report{State: body.State, Summary: body.Summary, Question: body.Question})
+			err := e.Engine.Report(ticketID, Report{State: body.State, Summary: body.Summary, Question: body.Question, Need: need, Finish: finish})
 			if err != nil {
 				return agentloop.Result{Text: err.Error(), IsError: true}, nil
 			}

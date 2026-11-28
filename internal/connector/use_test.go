@@ -20,10 +20,10 @@ func TestExtractNotionAndGitHubShapes(t *testing.T) {
 	}
 }
 
-func TestParseMailHeaders(t *testing.T) {
-	raw := "Subject: 账单\r\nFrom: a@b.com\r\na3 OK Fetch completed"
-	items := parseMailHeaders("qq-mail", raw)
-	if len(items) != 1 || items[0]["title"] != "账单" || items[0]["text"] != "a@b.com" {
+func TestMailItemsFromHeaders(t *testing.T) {
+	msgs := []fetched{{Seq: 1, UID: "7", Header: []byte("Subject: 账单\r\nFrom: a@b.com\r\n\r\n")}}
+	items := mailItems("qq-mail", msgs)
+	if len(items) != 1 || items[0]["title"] != "账单" || items[0]["text"] != "a@b.com" || items[0]["id"] != "7" {
 		t.Fatalf("%#v", items)
 	}
 }

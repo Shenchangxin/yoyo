@@ -64,6 +64,20 @@ func (s *Service) agentWorking() bool {
 }
 
 // chromeStatus 用 IsPaused、agentWorking 和待审批数量合成托盘状态。
+// 工单在等人或受阻时也算要你处理：托盘和头像读的是同一个状态源（app/presence.go）。
 func (s *Service) chromeStatus() chromeStatus {
-	return chromeStatusOf(s.IsPaused(), s.agentWorking(), s.pendingApprovalCount())
+	approvals := s.pendingApprovalCount()
+	if approvals == 0 && s.ticketWaiting() {
+		approvals = 1
+	}
+	return chromeStatusOf(s.IsPaused(), s.agentWorking(), approvals)
+}
+
+// ticketWaiting 在头像状态是等你或受阻时为真。App 和 RPC 都空、或读不到时为假。
+func (s *Service) ticketWaiting() bool {
+	if s.App == nil && s.RPC == nil {
+		return false
+	}
+	st, err := s.DeskState()
+	return err == nil && (st.Presence.State == "needs" || st.Presence.State == "blocked")
 }

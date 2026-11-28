@@ -498,6 +498,8 @@ export type BriefCard = {
   note?: string;
   stats?: BriefStat[];
   refs?: BriefRef[];
+  /** tidy 非空时这是一张记忆整理建议卡，值是建议编号：「对」「不对」直接交给 memoryTidy，不放进输入框。 */
+  tidy?: string;
 };
 
 /** quietBrief 是确实没有值得写的事时的那封信。没核对的来源写出来，不用空列表假装今天没有事。 */
@@ -1314,6 +1316,9 @@ export type MemoryRow = {
   seen?: number;
   origin?: string;
   history?: { text: string; at?: string; source?: string }[];
+  muted?: boolean;
+  /** back 为真时这一条在后排：很久没用到，还搜得到，但不进画像、不召回。再用到就回到前排。 */
+  back?: boolean;
 };
 
 /** memoryTouched 是这一条最近一次记下、改过或又说了一遍的时刻。 */

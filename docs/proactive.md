@@ -269,10 +269,105 @@ DeepSeek Harness 的位置：接单之后的执行仍然是一次工人会话，
 
 第 8 节的单子还剩：
 
-1. **例行走门**，没动。
-2. **简报的时刻搬进 Go**，没动。安静的那一封已经不叫模型。
+1. **例行走门**，2026-11-28 做完，见 9.1。
+2. **简报的时刻搬进 Go**，2026-11-28 做完，见 9.1。
 3. **记忆写入有回执**，做了一半：路由记下之后会说一句，会话里还没有撤销，推断出来的也还没有待确认。
-4. **短讯带上证据入口**，做了一半：简报卡有「依据」，主会话短讯还没有。
+4. **短讯带上证据入口**，2026-11-28 做完：短讯下面有「为什么是这条」和依据，见 9.1。
+
+## 9.1 第三轮落地记录（2026-11-28）：主动链路闭环与 IM 主通道
+
+主动链路现在只有一条路：来源 → `initiative.Assess` → 送达（主会话 + IM 主通道）→ 反馈 → 计数。
+
+| 事 | 落点 | 做法 |
+| --- | --- | --- |
+| 简报时刻 | `internal/app/brief_clock.go` | 送达循环每分钟看 `DeskConfig.BriefMorning/BriefEvening`。跨过时刻两小时内都写，晚了十分钟以上在第一张卡写明晚了多久；没写成隔十分钟再试。前端 `desk-feed.ts` 不再看钟，只在人点的时候写，并把 Go 写下的收进本机缓存。写成的信记一次打断，安静的信不算 |
+| 例行走门 | `internal/app/routine.go`、`personal_api.go` | 定时任务在自己的会话里同步跑完（以前开跑就返回，隔离目录会在跑的时候被删），结论收成 `routine` 感知，由门决定说不说。例行回 `[quiet]` 时不说；失败一定说。每次运行最多说一次，可以按住某一条例行。Webhook 触发也走 `runScheduledJob`，暂停和编排台关掉时不跑 |
+| 为什么是这条 | `initiative.Fact.Reason/Refs`、`desk_reason.go`、`SpeakFeedback.tsx` | 每条短讯带一句理由和最多四条依据，界面放在反馈按钮上面 |
+| 北极星 | `initiative.Tally`、`DeskState.tally/accepted`、设置「最近七天」 | 按天记送到几条（打断）、用上、忽略、稍后、事实错了、一直按住；留 30 天。主动性看「用上 / 送到」 |
+| IM 主通道 | `internal/app/im_home.go`、设置「IM 主通道」 | 桌面生成十分钟有效的六位配对码，在飞书 / 企微 / 钉钉 / Telegram / QQ 里发 `/绑定 <码>`。之后开口短讯、简报摘要、审批、等人回答的任务和任务结果都发到那里；`/批准` `/拒绝` `/答` `/有用` `/没用` `/别提醒` `/关掉` `/简报` `/状态` `/解绑` 在那里直接处理。绑定的人在主通道说的话进主会话；别的对话照旧走 im 画像。安静时段先攒着，结束后合成一条发；周末只放审批和出错。像密钥的命令不发原文。任务报告按编号去重，重启不重发 |
+
+连接器同轮修的：OAuth 令牌快过期先换票、401 强制换一次再试（`connector/refresh.go`，Google 授权加 `prompt=consent` 才拿得到刷新令牌）；IMAP 读最新 20 封、新的在前，解开 UTF-8 / GBK / GB2312 编码的标题和发件人，网易登录后先报 IMAP ID；目录每项带 `ready`（live、elsewhere、device、endpoint、pack），界面按它排序，要填接口地址和要装扩展包的标出来。
+
+还没做：
+
+1. 送达循环只在接上界面的进程里启动（`ensureDeskLoop` 由 `DeskState` 触发）。`yoyo daemon` 单独跑时不会写简报，也不会往 IM 发。（9.2 已做）
+2. QQ / 网易邮箱发信（SMTP）、CalDAV 和飞书日历、飞书文档与任务。
+3. 记忆用到即可见、写入回执可撤销（第 10 节待办 1、2）。（9.2 已做）
+4. 没有用真实的 IM 和 OAuth 账号做端到端试跑；单测用的是假传输和假 IMAP 服务器。
+
+## 9.2 第四轮落地记录（2026-11-28）：daemon 独立跑、记忆可见、代理人别名、在场状态
+| 事 | 落点 | 做法 |
+| --- | --- | --- |
+| 谁跑后台 | `internal/lease`、`internal/app/lead.go` | 同一个 home 上的桌面和 `yoyo daemon` 抢 `lead.lock`（Windows `LockFileEx`、其余 `flock`，进程退出或崩溃时操作系统放锁）。拿到的进程跑送达循环、简报时刻、定时例行、个人任务、IM 网关和编排轮次；另一个只服务自己的界面。桌面开着时总是桌面领头：daemon 看到 `desktop.lock` 有人拿着就先停后台、再放租约，桌面关掉之后两拍内接回去。一次性的命令行（`yoyo run` 等）是 tool 角色，不抢后台。`yoyo serve` / `daemon` 启动时打印这一行；设置「主动与通知」写出现在是谁在跑 |
+| 两个进程不互相盖 | `initiative/store.go`、`schedule/shared.go`、`memory/shared.go`、`personal/shared.go`、`im/shared.go`、`app/im_pair.go`、`app/routine.go` | 开口记录、定时任务、记忆、个人任务、IM 设置、IM 配对码和没送到的例行结果，改之前拿文件锁并重读磁盘；读的时候文件变了就重读。跟随的进程每两拍读一次 `config.yaml` 里主动相关的几项，领头的进程每两拍看一次 `im.json` 有没有被改过，改过就按新账号重启网关 |
+| 跟随的界面也是活的 | `trace/foreign.go`、`app/lead.go` | 跟随的进程每两拍读主会话和界面正在看的会话文件，把领头进程写进来的短讯、简报和例行结果补发给自己的界面；本进程写的行记着位置，不发两遍。编排台读领头进程写下的快照，读完不落盘（`superagent.Runtime.Discard`），不会盖掉正在跑的工单 |
+| 记忆用到即可见 | `memory/pin.go`、`memory/mute.go`、`app/memory_seen.go`、`transcript/MemoryReceipt.tsx` | 每一轮说完写一条 `source: memory` 的注入事件：这句话召回了哪几条、常驻画像里写进去了哪几条。只有召回了，或者画像和这条会话上一次不一样时才写。回放历史时它不进模型（`runtime/history.go` 只回放 mention、wake 这几类），也不算主机记录。界面收成一行，点开每一条可以「不对」（忘掉）或「别再提」（`Item.Muted`，不进画像也不召回，记忆页标「不带进对话」，能重新打开） |
+| 写入回执可撤销 | `app/route.go`、`memory/mute.go` | 路由这一轮记下或改口的，说完写成一行回执。新记下的撤销就是忘掉；改口的撤销是 `Store.Revert`：退回历史里上一次的说法和来源 |
+| 代理人邮件别名 | `connector/alias.go`、`app/mail_alias.go`、`runtime/tools_personal.go` | 工单里写的草稿记下工单号。发出去时主题带 `[yoyo:工单号]`；知道账号地址时（连接时填的、名字里的，或问 Gmail profile / Graph `/me`），`Reply-To` 是加号子地址 `you+yoyo-工单号@域名`。读信时认出标记的回信不再当成新邮件评估，作为不可信的外部内容交给那张工单，一封只交一次（`mail-alias.json`）；自己发出去的那份副本丢掉；工单找不到时照旧收成触发。信仍然从人自己的账号发，发之前照样要批准 |
+| 最后一下交给你 | `superagent/finish.go`、`executor.go`、`worker_schema.go`、`app/finish_relay.go`、`transcript/FinishCard.tsx` | 付款、下单、预订、提交申请这类只能人来按的一步，工人不按。`orchestrator_report` 多四个平铺字段 `finish`、`finish_url`、`finish_price`、`finish_deadline`（MCP 控制面只收平铺字符串，工具还是五个）。带了 finish 的报告记成 blocked、`Need` 是 finish，工单停下等人。主会话的交接下面出一张卡：要做的那一下、价格、截止，按钮「打开 / 我办好了 / 不用了」，点了把一句话交给工单；IM 主通道读到的是同一段，链接附在后面。不是网页的链接丢掉 |
+| 在场状态 | `app/presence.go`、`presence/PresenceBadge.tsx`、`presence/desk-presence.ts`、`desktop/chrome_status.go`、`CompanionApp.tsx` | 头像只有一个状态源，跟着 `DeskState` 回来：暂停 > 等你（批准、在等人的工单、最后一下交给你）> 受阻（失败、没送出去、前置没做成）> 在做（工单、回合）> 十分钟内做完 > 空闲，每个带一句话和点开要看的工单。导航轨上的头像：悬停看这句话，点开在右侧预览那张工单，预览里「放到中间聊」接管。伴侣窗没有待批准、但有工单在等你或受阻时，气泡说的是那张工单。托盘把在等人的工单也算成要你处理 |
+测试：`lease`（互斥、交接、崩溃留下的记录不算、文件锁串行化读改写）、`trace`（跨进程补发、自己的行不重发、重写后不补发）、`initiative`（两份 Store 共用一个文件，反馈和送达互相看得到）、`app/lead_test.go`（daemon 领头 → 桌面接过 → daemon 跟读并补发短讯 → 桌面关掉后 daemon 接回；命令行不抢后台）、`memory/mute_test.go`、`app/memory_seen_test.go`（回执只在有变化时写、不进模型）、`connector/alias_test.go`、`app/mail_alias_test.go`、`superagent/finish_test.go`、`app/presence_test.go`。`handheld/lib/methods.g.dart` 跟着方法表重新生成，多了 `memory.mute`、`memory.revert`。
+还没做：
+1. IM 里引用回复一条任务消息就回到那张工单。现在要用 `/答 编号`；各平台适配器都还没解析被引用的那条。
+2. Outlook、QQ / 网易邮箱的回信只按主题标记认；IMAP 读信不取 `To` 头，加号子地址认不出（Gmail 和 Graph 的 `To` 也还没读）。
+3. 领头进程换手时，正在跑的回合不迁移：它在原来的进程里跑完，后续由新的领头进程接着做。
+4. 第 9.1 节第 2、4 项仍然没做：QQ / 网易邮箱发信、CalDAV 和飞书日历；真实 IM 和 OAuth 账号的端到端试跑。
+
+## 9.3 第五轮落地记录（2026-11-28）：引用回复、子地址、换手收尾、国内邮箱与日历、连接自检
+
+| 事 | 落点 | 做法 |
+| --- | --- | --- |
+| 引用回复回到那件事 | `im/quote.go`、各平台适配器、`app/im_quote.go` | 主通道发出的每一条，平台回了编号就记下「平台编号 → 这条带的唯一短编号」（一条里有几个编号的，如 `/状态` 清单，不记；最多 500 条、按短编号的有效期过期）。入站时各平台带上被引用的那条：Telegram `reply_to_message`、飞书 `parent_id`、Slack `thread_ts`、Discord `message_reference`、Matrix `m.in_reply_to`（正文开头的引用块拆掉）、OneBot `reply` 段 / CQ 码（发送时等 echo 回执拿 `message_id`）、QQ 官方 `message_reference`、钉钉 `repliedMsg`（只有原文）。按平台编号找不到时从被引用的原文里认我们自己写的命令。回复任务：整句就是回答；回复审批：只认「批准 / 拒绝 / 总是」这类短词；回复短讯：只认「有用 / 没用 / 别提醒 / 关掉」；认不出的照旧进主会话。只认主通道里绑定的那个人。Telegram 群里回复机器人那条算在叫它 |
+| 子地址在所有邮箱上认 | `connector/mailbox.go`、`connector/live.go` | IMAP 多取 `To`、`Cc`、`Delivered-To`、`X-Original-To`，Gmail 多取 `To`、`Cc`、`Delivered-To`，Outlook 多取 `toRecipients`、`ccRecipients` 和 `id`（以前没有 `id`，Outlook 的信根本收不成触发）。三家都合成一个逗号隔开的 `to` 字段，`mail_alias.go` 用主题加 `to` 认工单。对方改了主题、子地址只留在 `Delivered-To` 里也认得出 |
+| 换手不打断回合 | `app/lead.go`、`lease.Lease.Update`、`superagent.Runtime.Working` | daemon 看到桌面打开时不再当场停后台，先收尾：停送达循环和定时例行（不再开新活），持有人记录标 `draining`；IM 网关、编排、个人任务照常开着，让手上的回合跑完、回复发得出去。每拍看会话运行槽和编排里启动中 / 在跑的工单，全空了才停后台、放租约；等满三分钟照样让出（会话回合下次续跑，工单按 `RecoverHost` 恢复）。收尾中桌面又关了就取消收尾、接回送达循环和例行。设置「谁在跑主动」在收尾时写「正在收尾，手上的跑完就交过来」 |
+| QQ / 网易邮箱发信 | `connector/mailbox_send.go` | SMTP 走 465 直连 TLS，登录用读信同一个授权码（AUTH PLAIN）。信的正文和附件复用 `mimeMail`，补 `From`（必须和登录邮箱一致）、`Date`、`Message-ID`，中文主题按 RFC 2047 编码，`Bcc` 只进信封不进信头。登录被拒时说清要填授权码、要先开 SMTP 服务 |
+| CalDAV 日历 | `connector/caldav.go` | 地址填日历集合的 https 地址，令牌填「用户名:密码」（两步验证的用应用专用密码）。读：`REPORT calendar-query` 按时间段（默认两周），每个资源取主 VEVENT，带资源地址（`event_id`）和 ETag（`target_version`），嵌着的 VALARM 不混进来，TZID 按时区库换成 UTC（程序嵌入了 `time/tzdata`）。写：新建 `PUT` 带 `If-None-Match: *`；修改整份替换、先读原 UID、带 `If-Match`，别处改过回 412；删除带 `If-Match`，已经不在算删掉。日程地址只认这台服务器 |
+| 飞书日历 | `connector/feishu_calendar.go`、`connector/feishu_oauth.go` | 令牌是用户身份的 `user_access_token`，在「连接」里走 OAuth 拿到，快过期或报 401 时用刷新令牌自动换票（见本节补记）；地址可填 `calendar_id`，不填用主日历。读 `calendar/v4` 事件，去掉已取消的，按开始时间排好；新建 `POST`，修改 `PATCH` 只带给了的字段（只改主题不会把时间挪到现在），删除 `DELETE`。正文里 `code` 不为 0 就是失败，令牌问题说清要重新授权 |
+| 连接自检 | `connector/probe.go`、`app/connect_check.go`、`cmd/yoyo/connect.go` | `yoyo connect check`：每个连接器账号用真实令牌读一次，拿不到令牌或读失败就报 FAIL，不像 `Read` 那样退回本地样例；IM 账号报启用和保险库里缺哪几项密钥（运行状态只在跑网关的进程内存里，命令行看不到，要看连上没有用 `--im-test`）；主通道报绑没绑。`--id` 只测一个账号，`--im-test` 往主通道发一条测试消息，`--json` 打原始结构；有一项没过退出码就不为 0。命令行是 tool 角色，不抢后台 |
+
+测试：`im/quote_test.go`（OneBot 两种格式、Matrix 引用块、Telegram / Slack / Discord 入站带引用）、`app/im_quote_test.go`（认唯一编号、按平台编号和原文找回、只认绑定的人、过期编号回一句）、`connector/alias_read_test.go`（三家邮箱的 `to` 和从子地址认工单）、`app/lead_drain_test.go`（有回合在跑只收尾不让出、跑完让出、等满上限让出、桌面关掉取消收尾）、`lease` 的 `Update`、`connector/mailbox_send_test.go`（假 SMTP 服务器：PLAIN 登录、信封收件人去重、Bcc 不进信头、点转义、授权码被拒）、`connector/caldav_test.go`、`connector/feishu_calendar_test.go`、`connector/probe_test.go`。
+
+### 真实账号试跑：要人提供的
+
+单测都用假传输；下面这些只能拿真账号验。每项先跑 `yoyo connect check --id <账号>`，过了再做后面的动作。
+
+| 账号 | 要提供的 | 试什么 |
+| --- | --- | --- |
+| Gmail / Google 日历 | Google Cloud 里的 OAuth 客户端（client id / secret），自己的账号加进测试用户；授权时同意邮件读取、发送和日历读写 | 读信、发一封带工单的信，对方回信（改掉主题）后回到那张工单；写、改、删一个日程；放一天后确认刷新令牌还能换票 |
+| Microsoft 365 / Outlook | Azure 应用注册的 client id，权限 `Mail.Read`、`Mail.Send`、`Calendars.ReadWrite`、`offline_access` | 同上；确认 Outlook 的信现在能收成触发 |
+| QQ 邮箱 | 完整地址和授权码（设置 → 账户 → 开启 IMAP/SMTP 服务后生成） | 读信、SMTP 发信（含中文主题和附件）、发给 `you+yoyo-工单号@qq.com` 的回信能认出（QQ 是否投递加号地址要实测） |
+| 网易邮箱 | 163 / 126 / yeah.net 地址和授权码（开启 IMAP/SMTP） | 同上；确认登录后报 IMAP ID 不再回 Unsafe Login |
+| CalDAV | 服务器地址（如 `https://caldav.icloud.com/`）、主体或日历集合的 https 地址，和「用户名:应用专用密码」（iCloud、Fastmail、Nextcloud 任一） | 只填服务器地址时能自动找到日历并读到日程；新建的日程落在那个日历里；修改（别处先改一次，确认回 412）、删除 |
+| 飞书日历 | 飞书自建应用的 App ID / App Secret，开通日历读写权限并在「安全设置」登记重定向地址 `http://127.0.0.1:3080/oauth`；在「连接」里走授权 | 读主日历、新建、只改主题、删除；放过两小时后再读，确认自动换票成功，保险库里的刷新令牌换成了新的 |
+| IM 主通道 | 至少一个平台的机器人：Telegram bot token；飞书自建应用（app id / secret，事件订阅指到 `/im/`）；Slack bot token；Discord bot token；OneBot 实现（NapCat / Lagrange）任一 | `yoyo connect check --im-test`；绑主通道，发一条审批和一条等人回答的任务，在平台里直接「回复」那条，确认批准和回答都回到原处；群里回复机器人那条 |
+| 换手收尾 | 同一台机器上的 `yoyo daemon` 和桌面 | 先只开 daemon，让主会话跑一轮长回合，打开桌面：设置里显示收尾中，回合跑完后桌面接过；收尾中关掉桌面，daemon 取消收尾 |
+
+还没做：
+
+1. 上表的真实试跑本身：需要人提供账号，这一轮没跑。
+2. 企业微信、公众号不给引用信息，在那里只能用 `/答 编号`。
+
+（原来的第 3 项「收尾期间 IM 开新回合、个人任务不算在跑」和第 4 项「飞书文档与任务」已在第 11 节做完。）
+
+（飞书日历换票、CalDAV 自动发现、编号落盘、两边的参会人和选日历，已在本节末尾的两批补记里做完。）
+
+补记（同日）：
+
+- **飞书日历自动换票**（`connector/feishu_oauth.go`、`refresh.go`、`live.go` 的 `Exchange`、`oauth.go`）：「连接」里飞书日历改走用户身份的 OAuth，授权时申请 `calendar:calendar offline_access`；首次换票和刷新都发到飞书 v2 换票地址，请求体是 JSON（`tokenRequest` 按供应商编，Google、微软照旧是表单）。令牌快过期时先换，日历接口报令牌失效（错误里带 401）时强制换一次再试；飞书每次都给新的刷新令牌，换完写回保险库。目录里飞书日历标成 oauth、能直接用。
+- **CalDAV 自动发现**（`connector/caldav_discover.go`）：地址可以填服务器、主体、日历主目录或日历集合。按 PROPFIND 本身 → `current-user-principal` → `calendar-home-set` → `/.well-known/caldav` 的顺序找，在主目录里挑第一个能放日程（含 VEVENT 或没声明）的日历；跳转自己跟、最多三跳，只跟 https 和同一家主机（`caldav.icloud.com` → `p52-caldav.icloud.com` 可以，别家不跟，不把密码发出去）。找到的集合按地址和用户名记一小时；读和写都走它，新建的日程落进那个日历而不是服务器根目录。
+- **编号落盘**（`app/im_codes.go`）：以前短编号（`/答 abc` 的 abc）和引用编号都只在内存里，重启或 daemon 与桌面换手之后，连 `/答 abc` 都认不出。现在两张表落在 `im/codes.json`，发号、查号、作废、记引用、找引用之前拿文件锁重读磁盘，改完写回；解绑和绑到新对话时写成空表，另一个进程也不再认旧号。文件坏了不让发号失败，下一次写回盖成好的。
+
+测试：`app/im_codes_test.go`（两个 App 共用一个 home：一边发的号、记的引用、最近一条短讯另一边都认；一边作废另一边也不认；同一件事不会两边各发一个号；坏文件被重写）、`connector/feishu_oauth_test.go`（授权地址带 offline_access；换票和刷新都是 JSON；令牌过期后强制换票再读成功，新刷新令牌写回）、`connector/caldav_discover_test.go`（iCloud 式主体 → 另一台同家主机的主目录，跳过待办日历；Nextcloud 式 well-known 跳转；指到别家主机不跟；只填服务器地址时新建日程落在找到的日历里；第二次读复用找到的集合）。
+
+补记（同日，第二批）：
+
+- **CalDAV 参会人**（`connector/caldav_people.go`、`caldav.go`、`caldav_discover.go`）：草稿的 `to` 和 `attendees` 都算参会人，按邮箱去重。有参会人时写 `ORGANIZER`，用的是查找日历时从主体的 `calendar-user-address-set` 取到的 mailto 地址（填的就是日历集合时多问主体一次）；取不到时用像邮箱的登录名。组织者自己不列成参会人。iCloud、Fastmail、Nextcloud 这类支持日程调度（RFC 6638）的服务器据此替人发邀请。改日程是整份替换：草稿没写参会人时，原日程的组织者和参会人原样写回；写了时，原来就在的人保留原来那一行（回过的「接受」不丢），其余换成草稿里的。别人发来的邀请保留原组织者。读日历时多给 `attendees`。
+- **飞书参会人**（`connector/calendar_guests.go`、`feishu_calendar.go`）：邮箱（可写「名字 <地址>」）算外部参会人，`ou_` 开头算用户（open_id），`oc_` 开头算群，`omm_` 开头算会议室。分隔符认全角逗号、分号和顿号。有认不出的就一个请求都不发。日程建好或改好之后，调 `events/{id}/attendees` 加人，并让飞书发通知；只加参会人时不发 PATCH。读日历给出的 `calendar_id` 改和删时优先用。加参会人失败时返回 `writtenError`，说清日程已经写好、不要重新建；`liveSend` 见到它不按授权过期换票重发，免得多出一个一样的日程。
+- **选日历**（`connector/calendar_pick.go`，App、HTTP `/api/connectors/calendars`、RPC、桌面 Service 都接上，界面在「连接」的已连接账号上）：账号多了 `calendar` / `calendar_name`。CalDAV 列出日历主目录下能放日程的日历，名字取 `displayname`，待办日历不算；飞书列出自己的和有编辑权限的日历，主日历排第一，只读、会议室和已删除的不给，按 `page_token` 翻页。只能选列出来的那几个。读写都走选的日历；CalDAV 选的地址读写前再核对一次，不在账号服务器那一家就不用（`connectors.json` 被改过也不会把密码发到别处）。清空就回到自动选。换了日历，个人引擎里这个账号的读数作废。
+
+测试：`connector/calendar_people_test.go`（组织者取自主体、参会人去重、组织者不列成参会人、没有参会人时不写组织者；改日程三种情况：保留、追加并保住原行、替换，UID 和组织者不变；飞书四种参会人、认不出时不发请求、只加参会人不发 PATCH、草稿 calendar_id 优先、加参会人失败说清已建好；令牌在加参会人时被拒也不换票重建；CalDAV 列日历跳过待办日历、标出自动用的那个，选了以后读日历走选的那个、重开还记得，不让选待办日历，清空回自动，别家主机的选择不用；飞书列日历过滤并翻页）。
+
+真实试跑时补两项：CalDAV 和飞书日历各建一个带参会人的日程，确认对方收到邀请；在「连接」里选第二个日历，确认新建的日程落在那个日历里。
 
 ## 10. 记忆（2026-11-06）
 
@@ -300,9 +395,57 @@ DeepSeek Harness 的位置：接单之后的执行仍然是一次工人会话，
 
 记忆页每条写出出处、到哪天为止或已经过去、最近改过的时间、改过几次（悬停看以前的说法）和说过几次。
 
+原来列的四项都已做完：第 1、2 项（用到的记忆看得见、写入回执能撤销）见 9.2 节；第 3、4 项（整理借简报那一次模型、上限和后排）见第 11 节。
+
+## 11. 第六轮落地记录（2026-11-28）：换手收尾、飞书云文档与任务、记忆整理和后排、设置重排
+
+### 换手收尾
+
+9.3 节剩下的那一条：收尾期间 IM 网关还开着，进来的消息会开新回合，把收尾拖长；个人任务不算在跑，让出时被停掉。
+
+- 收尾期间进来的 IM 消息不再开新回合，记进交接队列（`app/im_handoff.go`），按平台和消息去重，接手的进程领头、IM 网关起来之后再处理；取消收尾时本进程自己处理。放太久的消息回一句说明，不悄悄丢。
+- 个人引擎收尾时暂停领新任务，正在跑的计入 `busyTurns`，跑完才让出。
+- 测试：`app/im_handoff_test.go`（记下、去重、不在收尾时不排队、取出时分开新旧、超时回话）、个人引擎的暂停领新任务和 `Busy`。
+
+### 飞书云文档与飞书任务
+
+和飞书日历一样走用户身份的 OAuth（`connector/feishu_oauth.go`），各自申请自己的权限，都带 `offline_access`；换票、刷新、401 后强制换票重试都复用日历那一套。三家共用 `feishuDo` 调接口，错误里写清是哪一项连接。目录里分别是 drive 和 task 种类，标成能直接用。
+
+- **云文档**（`connector/feishu_docs.go`）：账号上可以填一个文件夹 token。查询为空时按最近编辑列出文件；查询是 `doc:<id>` 或飞书文档链接时读那一篇的标题和纯文本；其余先走云文档搜索，没开搜索权限时退回列文件夹按名字筛。写：新建文档（正文按行写成标题、无序和有序列表、段落），或追加到 `item_id` 那一篇末尾；建好但正文没写全时返回 `writtenError`，不整份重发。不删文档。
+- **任务**（`connector/feishu_task.go`）：默认读自己没完成的，「全部」连已完成的一起给，有截止时间的排前面。写：新建、修改（只带给了的字段）、完成、重新打开、删除；截止时间认 RFC3339、本地时刻和日期（全天）。认不出的截止时间、缺标题时一个请求都不发。重复任务拒绝。
+- 草稿多了通用的 `item_id`（工具、提案、执行都接上），指向要改的文档或任务；老写法的 `event_id` 也认。
+- 测试：`connector/feishu_docs_task_test.go`（授权地址各自的权限、JSON 换票、目录种类；任务读、筛、排序、建改完成删、拒绝时不发请求；文档列、搜索退回、按 id 和链接读正文、新建写块、建好正文失败不重发、追加、不删）。
+
+### 记忆整理借简报那一次模型，只提建议
+
+- 挑对（`memory/tidy.go` 的 `TidyPairs`）：同一类、相近但没像到自动合并的两条，最相近的在前，一次最多四对。经历、本机清点、不带进对话的和已经过去的安排不参与。上次问过之后攒够十二条新记下或改过的才再问；还有没处理的建议时不问。
+- 问（`app/brief_tidy.go`）：这几对附在简报材料后面，不算进简报签名，问过之后不会因为材料变了再叫一次模型。模型在同一个 JSON 里多给一个 `memory` 数组，逐对判断 same、change、different；只认材料里给过的编号。
+- 存：判断只存成建议，放在 `memory-tidy.json`，不进 `memory.json`；different 记成以后不再问。判断的那两条在问过之后改过了就不收。
+- 人定：建议排在简报的卡后面，写清以前和后来的说法，按钮是「对」「不对」，点了直接处理（`MemoryTidy`，HTTP `op: tidy`、RPC `memory.tidy`、桌面 Service 都接上），不放进输入框。「对」并到早的那一条上，编号和最初记下的时间不变，来源记成当事人确认，旧说法进历史，记忆页撤销一步退回以前的说法；两条在建议之后改过时不并。「不对」以后不再问这一对。只有建议卡时简报照样推进；IM 里点不了按钮，不放这几张。
+- 测试：`memory/tidy_test.go`、`app/brief_tidy_test.go`。
+
+### 记忆的上限和后排
+
+- `memory/backrow.go`：一百八十天没写过也没用到的，以及前排超过三百条时最久没动的，退到后排。当事人亲口说的档案和偏好、没写来源的旧数据、本机清点从不退。后排每次现算，什么都不删。
+- 后排不进常驻画像，也不召回；`Search` 仍然搜得到，记忆页标「后排」。
+- 带进对话（画像、召回）时记下 `used_at`，一天最多写一次盘；用到不算改过，不影响整理攒新记忆的计数。再用到就回到前排。
+- 测试：`memory/backrow_test.go`（冷的退后排、亲口说的不退、后排不进画像不召回但搜得到、用到回前排、前排有上限、不删）。
+
+### 设置重排
+
+- 分组按「这个助手替你做什么」排：你的助手（简报与提醒、Yoyo 在跟的事）、连接（应用与账号、聊天软件、手机）、模型与服务、偏好、隐私与关于，最后是开发者（MCP 与插件、诊断与实验室）。第一次打开落在简报与提醒。
+- 开发者一组默认收起，侧栏底下一行点开，记在本机；深链打开开发者页时自动露出；搜索仍然搜得到。
+- 运行环境（沙箱、签名、保险库、浏览器配置、PowerShell）从隐私页搬进诊断与实验室；旧链接和旧页签跟着区块现在所在的页走。
+- 页名和说明改成说人话；「Yoyo 在跟的事」里不再露内部种类、哈希和状态枚举，改成「等你点头，几点前有效」「在等你回答」这种说法。
+- 页签键都不变：视频、偶像和诊断事件的深链照旧能用。
+- 测试：`frontend/src/features/settings/registry.test.ts`。
+
+### 验证
+
+`go build ./...`、`go vet ./internal/... ./cmd/...`、`go test ./internal/... ./cmd/...` 全过；`handheld/lib/methods.g.dart` 已按 `YOYO_WRITE_METHODS=1` 重新生成；前端 `tsc --noEmit`、`lint:tokens`、`test:lib`、superagent 和设置导航的测试全过。
+
 还没做：
 
-1. **用到的记忆看得见。** 回复下面列出这一轮带进去的记忆，可以说「不对」「别再提」。要先在会话事件里记下带了哪几条。
-2. **写入回执能撤销。** 主会话里记下或改口时出一张能撤销的小卡。
-3. **整理借简报那一次模型，只提建议。** 简报本来就要叫一次模型，可以顺手请它判断哪些相近的记忆是同一件事、哪些是改口。它只提建议，由人在信里点「对」或「不对」，不直接改记忆；攒够十几条新经历再做一次。
-4. **记忆的上限和后排。** 现在不设上限。条目多了以后，很久没用到的退到后排：还能搜到，但不进画像，当事人亲口说的不退。
+1. 真实账号试跑（9.3 节的表）：飞书云文档和飞书任务补两行，各走一遍授权、读、建、改，确认两小时后自动换票。
+2. 记忆整理建议现在只在简报里出现；记忆页还没有单独列出等人处理的建议。
+3. 后排的门槛（一百八十天、三百条）是先定的值，要等真实用上一段时间再调。

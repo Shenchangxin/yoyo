@@ -225,6 +225,12 @@ func (rt *Runtime) ingestMatrix(acct Account, self, roomID string, direct bool, 
 		SenderID: sender, SenderName: sender, SelfID: self, Text: text, Mentioned: mentioned,
 		MessageID: jstr(ev["event_id"]),
 	}
+	// Matrix 的回复在 m.relates_to.m.in_reply_to 里带被回复事件的编号；正文开头按规范附了「> 原文」的引用块。
+	if rel := asMap(dig(content, "m.relates_to", "m.in_reply_to")); len(rel) > 0 {
+		in.QuoteID = jstr(rel["event_id"])
+		in.QuoteText = matrixFallback(text)
+		in.Text = matrixBody(text)
+	}
 	in.Reply = func(text string) error {
 		ctx, cancel := replyCtx()
 		defer cancel()
@@ -234,25 +240,35 @@ func (rt *Runtime) ingestMatrix(acct Account, self, roomID string, direct bool, 
 }
 
 func (rt *Runtime) pushMatrix(ctx context.Context, acct Account, chatID, text string) error {
+	_, err := rt.sendMatrix(ctx, acct, chatID, text)
+	return err
+}
+
+// sendMatrix 发一条 m.text，返回服务器给它的 event_id。
+func (rt *Runtime) sendMatrix(ctx context.Context, acct Account, chatID, text string) (string, error) {
 	hs := strings.TrimRight(cfg(acct, "homeserver"), "/")
 	token := rt.secret(acct.ID, "access_token")
 	if hs == "" || token == "" {
-		return fatalf("missing matrix homeserver or access token")
+		return "", fatalf("missing matrix homeserver or access token")
 	}
 	path := hs + "/_matrix/client/v3/rooms/" + url.PathEscape(chatID) + "/send/m.room.message/" + reqID()
 	raw, code, err := rt.send(ctx, http.MethodPut, path, bearer(token), map[string]string{
 		"msgtype": "m.text", "body": clipText(text),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if code == 401 || code == 403 {
-		return fatalf("matrix rejected the token (%d)", code)
+		return "", fatalf("matrix rejected the token (%d)", code)
 	}
 	if code >= 300 {
-		return statusErr(code, raw, "matrix send")
+		return "", statusErr(code, raw, "matrix send")
 	}
-	return nil
+	m, err := decodeJSON(raw)
+	if err != nil {
+		return "", nil
+	}
+	return jstr(m["event_id"]), nil
 }
 
 func (rt *Runtime) runRocket(ctx context.Context, acct Account) error {

@@ -149,6 +149,8 @@ type Store struct {
 	mu sync.Mutex
 	// mem 是按会话 id 缓存的索引。
 	mem map[string]*sessionIndex
+	// local 是本进程追加过的行的起始位置，按会话 id，从小到大。ForeignSince 用它跳过自己写的行。
+	local map[string][]int64
 }
 
 // NewStore 用 dir 建存储，内存索引开始是空的。这时不创建目录。
@@ -219,6 +221,7 @@ func (s *Store) append(ev Event, durable bool) error {
 		}
 	}
 	s.recordAppendLocked(ev.SessionID, ev, off, n)
+	s.noteLocalLocked(ev.SessionID, off)
 	return nil
 }
 
@@ -236,6 +239,7 @@ func (s *Store) Remove(sessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.dropIndexLocked(sessionID)
+	s.forgetLocalLocked(sessionID)
 	err := os.Remove(s.path(sessionID))
 	if os.IsNotExist(err) {
 		return nil
@@ -247,6 +251,7 @@ func (s *Store) Remove(sessionID string) error {
 // sessionID 交给 path，写完后交给 dropIndexLocked 和 rebuildIndexLocked。
 func (s *Store) Replace(sessionID string, evs []Event) error {
 	s.mu.Lock()
+	s.forgetLocalLocked(sessionID)
 	defer s.mu.Unlock()
 	p := s.path(sessionID)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

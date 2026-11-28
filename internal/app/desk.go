@@ -30,9 +30,13 @@ func (appHost *deskHost) agentDesk() *desk.Host {
 	return appHost.app.desk
 }
 
-// orchestrator 返回编排运行时。第一次调用时打开 SQLite、接上模型和工人，并开始两秒轮次。应用关掉之后返回 nil。
+// orchestrator 返回编排运行时。第一次调用时打开 SQLite、接上模型和工人，并开始两秒轮次。应用关掉之后、或跟着别的 yoyo 进程时返回 nil。
 func (appHost *deskHost) orchestrator() *superagent.Runtime {
 	if appHost.app == nil {
+		return nil
+	}
+	// 选主时只有领头的进程打开编排、跑两秒轮次。跟着的进程读编排台走 followView，不写回数据库。
+	if appHost.app.managed() && !appHost.app.leading() {
 		return nil
 	}
 	appHost.app.deskMu.Lock()
@@ -155,6 +159,9 @@ func (appHost *deskHost) stopOrchestrator() {
 func (appHost *deskHost) OrchestratorView() superagent.View {
 	rt := appHost.app.orchestrator()
 	if rt == nil {
+		if appHost.app.managed() && !appHost.app.leading() {
+			return appHost.app.followView()
+		}
 		return superagent.View{Health: "unavailable"}
 	}
 	return rt.View()

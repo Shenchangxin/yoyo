@@ -1,8 +1,51 @@
 package connector
 
+import "strings"
+
 // Catalog 返回连接目录。本机条目只覆盖已经在读的表层名字。
 // 健康、位置、短信和相册留在对应设备上，这里不把它们当成 Windows 上的数据源。
 func Catalog() []CatalogEntry {
+	out := catalogEntries()
+	for i := range out {
+		out[i].Ready = readiness(out[i])
+	}
+	return out
+}
+
+// readiness 判断一项现在能不能直接用。界面按它排序和分组，只把 live 的排在最前。
+func readiness(e CatalogEntry) string {
+	switch e.Access {
+	case "local":
+		return "live"
+	case "oauth":
+		if tokenEndpoint(e.Provider) != "" || e.Provider == "slack" {
+			return "live"
+		}
+		return "pack"
+	case "source":
+		return "elsewhere"
+	}
+	switch e.Provider {
+	case "dingtalk", "wecom", "wechat":
+		return "elsewhere"
+	}
+	// 邮箱（IMAP / SMTP）、CalDAV、飞书日历都是内置直连，填好地址和令牌就能用，不需要 MCP 包。
+	if isMailbox(e.Provider) || isCalDAV(e.Provider) || isFeishuCalendar(e.Provider) {
+		return "live"
+	}
+	if e.Platform == "ios" || e.Platform == "android" || strings.HasPrefix(e.Provider, "mac-") || strings.HasPrefix(e.Provider, "linux-operate") {
+		return "device"
+	}
+	if spec, ok := tokenCalls()[e.Provider]; ok {
+		if spec.URL == "" {
+			return "endpoint"
+		}
+		return "live"
+	}
+	return "pack"
+}
+
+func catalogEntries() []CatalogEntry {
 	return []CatalogEntry{
 		local("win-desktop", "Windows Desktop", "windows"),
 		local("win-docs", "Windows Documents", "windows"),
@@ -43,11 +86,17 @@ func Catalog() []CatalogEntry {
 		{Provider: "miro", Kind: KindDrive, Label: "Miro", Access: "mcp", MCPPack: true},
 		{Provider: "airtable", Kind: KindDrive, Label: "Airtable", Access: "mcp", MCPPack: true},
 		{Provider: "supabase", Kind: KindDrive, Label: "Supabase", Access: "mcp", MCPPack: true},
+		// 飞书云文档和飞书日历一样走用户身份的 OAuth：找、读新版文档，新建和追加内容（feishu_docs.go）。
+		{Provider: "feishu-docs", Kind: KindDrive, Label: "Feishu Docs", Access: "oauth", AuthURL: feishuAuthorizeURL},
 
 		{Provider: "tencent-meeting", Kind: KindCalendar, Label: "Tencent Meeting", Access: "mcp", MCPPack: true},
 		{Provider: "zoom", Kind: KindCalendar, Label: "Zoom", Access: "mcp", MCPPack: true},
 		{Provider: "calendly", Kind: KindCalendar, Label: "Calendly", Access: "mcp", MCPPack: true},
 		{Provider: "calcom", Kind: KindCalendar, Label: "Cal.com", Access: "mcp", MCPPack: true},
+		// CalDAV 填服务器、主体或日历集合地址和「用户名:密码」，iCloud、Fastmail、Nextcloud 都能用，见 caldav.go。
+		// 飞书日历走用户身份的 OAuth（带 offline_access，令牌过期自动换票），见 feishu_oauth.go、feishu_calendar.go。
+		{Provider: "caldav", Kind: KindCalendar, Label: "CalDAV (iCloud / Fastmail / Nextcloud)", Access: "mcp"},
+		{Provider: "feishu-calendar", Kind: KindCalendar, Label: "Feishu Calendar", Access: "oauth", AuthURL: feishuAuthorizeURL},
 
 		{Provider: "linear", Kind: KindTask, Label: "Linear", Access: "mcp", MCPPack: true},
 		{Provider: "todoist", Kind: KindTask, Label: "Todoist", Access: "mcp", MCPPack: true},
@@ -62,6 +111,8 @@ func Catalog() []CatalogEntry {
 		{Provider: "quickbooks", Kind: KindTask, Label: "QuickBooks", Access: "mcp", MCPPack: true},
 		{Provider: "zoho-invoice", Kind: KindTask, Label: "Zoho Invoice", Access: "mcp", MCPPack: true},
 		{Provider: "ynab", Kind: KindTask, Label: "YNAB", Access: "mcp", MCPPack: true},
+		// 飞书任务走用户身份的 OAuth：读自己的任务，建、改、完成、删除（feishu_task.go）。
+		{Provider: "feishu-task", Kind: KindTask, Label: "Feishu Tasks", Access: "oauth", AuthURL: feishuAuthorizeURL},
 
 		device("ios-calendar", "Apple Calendar", "ios", KindCalendar),
 		device("ios-contacts", "Apple Contacts", "ios", KindIM),

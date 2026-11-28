@@ -182,6 +182,15 @@ type App struct {
 	deskSeen   initiative.Briefing
 	deskSeenAt time.Time
 
+	// clock 记着每一档简报最近一次去写的时刻和是否还在写。只在内存里。
+	clockMu sync.Mutex
+	clock   map[string]briefTry
+	// routines 是跑完、还没经过开口门送到的例行结果。
+	routineMu sync.Mutex
+	routines  []routineResult
+	// imh 是 IM 主通道：绑定、短编号、安静时段里攒着的消息。
+	imh imHomeBox
+
 	// words 是每条主会话里当事人最近亲手写的几句话。路由记忆时拿它核对：不出自这几句的，不算当事人说的。
 	wordsMu sync.Mutex
 	words   map[string][]string
@@ -247,6 +256,13 @@ type App struct {
 	buddyDial func(ctx context.Context, opts acp.Options) (*acp.Client, error)
 	// buddyLog 记着每项最后写进诊断日志的状态。
 	buddyLog buddyStates
+	// lead 是这个进程在选主里的位置：谁跑后台、跟读到哪里。见 lead.go。
+	lead leadBox
+
+	// memWrites 是这一轮路由记下或改口、还没写成回执的记忆，按会话。memPinSig 是每条会话上一次给人看过的常驻画像。见 memory_seen.go。
+	memSeenMu sync.Mutex
+	memWrites map[string][]memWrote
+	memPinSig map[string]string
 }
 
 // Open 打开数据根目录并装配应用对象。
@@ -255,6 +271,11 @@ type App struct {
 // root 传给 home.Open。
 // bundledEvals 传给 eval.NewEngine，并写入 BundledEvals。
 func Open(root, bundledEvals string) (*App, error) {
+	return openAt(root, bundledEvals, "")
+}
+
+// openAt 是 Open 和 OpenManaged 共用的装配。role 为空时后台在这里就跑起来；否则等选主，见 lead.go。
+func openAt(root, bundledEvals, role string) (*App, error) {
 	h, err := home.Open(root)
 	if err != nil {
 		return nil, err
@@ -411,6 +432,7 @@ func Open(root, bundledEvals string) (*App, error) {
 			}
 			a.Threads.SetApprovals(o.Request.SessionID, offers)
 		}
+		a.imApproval(o)
 	})
 	a.Evolve = &evolve.Engine{
 		CAS:       a.CAS,
@@ -449,6 +471,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	if filledDefault || filledVideo {
 		_ = a.SaveConfig()
 	}
+	a.lead.role = role
 	if err := a.openPersonal(); err != nil {
 		return nil, err
 	}
@@ -678,6 +701,7 @@ func (a *App) SaveConfig() error {
 	if err := os.WriteFile(a.Home.Config(), b, 0o644); err != nil {
 		return err
 	}
+	a.markConfig()
 	a.writeKeymapFile()
 	a.attachLogger()
 	a.Touch("config", "")
@@ -690,16 +714,12 @@ func (a *App) SaveConfig() error {
 // Close 停掉调度和更新循环，关闭视频、MCP、WASM 和日志，再卸下内核。
 // 外部 agent 进程在编排落盘关掉之后再停，停下时的中断不会写成工单结果，下次启动续接。
 func (a *App) Close() error {
+	a.stopLead()
 	a.stopOrchestrator()
 	a.closeBuddyWorkers()
 	a.stopDeskLoop()
-	if a.schedStop != nil {
-		select {
-		case <-a.schedStop:
-		default:
-			close(a.schedStop)
-		}
-	}
+	a.stopSchedule()
+	a.stopPersonal()
 	if a.updateStop != nil {
 		select {
 		case <-a.updateStop:
@@ -723,7 +743,10 @@ func (a *App) Close() error {
 	if a.Log != nil {
 		_ = a.Log.Close()
 	}
-	return a.Kernel.Dispose()
+	err := a.Kernel.Dispose()
+	// 租约最后才放：编排落盘、例行停拍之后，另一个进程才接得过去。
+	a.releaseLead()
+	return err
 }
 
 // attachLogger 按配置打开诊断日志；目录和进程与当前默认日志相同则只更新选项。

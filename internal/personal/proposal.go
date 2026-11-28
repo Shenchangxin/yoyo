@@ -140,6 +140,7 @@ func (e *Engine) RecordChatSend(d connector.Draft) Proposal {
 		"time_zone": d.TimeZone, "all_day": d.AllDay, "start": d.Start,
 		"calendar_id": d.CalendarID, "attendees": d.Attendees,
 		"event_id": d.EventID, "target_version": d.TargetVersion, "recurrence": d.Recurrence,
+		"item_id": d.ItemID, "op": d.Op,
 	}
 	kind := ProposalEmailSend
 	if looksCalendarDraft(d) {
@@ -334,6 +335,7 @@ func draftFromData(account string, data map[string]any) connector.Draft {
 		End:           strMap(data["end"]),
 		CalendarID:    strMap(data["calendar_id"]),
 		EventID:       strMap(data["event_id"]),
+		ItemID:        strMap(data["item_id"]),
 		TargetVersion: strMap(data["target_version"]),
 		Recurrence:    strMap(data["recurrence"]),
 		Op:            strMap(data["op"]),

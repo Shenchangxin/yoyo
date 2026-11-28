@@ -13,9 +13,13 @@ var ReplyPurposes = []string{"acknowledgement", "answer", "result", "attention"}
 func WorkerToolSchemas() map[string]any {
 	return map[string]any{
 		"orchestrator_report": objectSchema(map[string]any{
-			"state":    enumField("这次报告的状态。progress 报完继续做；ready 只在完成标准达到时用；有 question 时不要用 ready。", ReportStates),
-			"summary":  stringField("给人看的一句话，也会留在这条会话末尾。"),
-			"question": stringField("只在被硬性挡住时填写：没授权的破坏、说明和工单目录以外的必改路径、缺少密钥或登录。"),
+			"state":           enumField("这次报告的状态。progress 报完继续做；ready 只在完成标准达到时用；有 question 时不要用 ready。", ReportStates),
+			"summary":         stringField("给人看的一句话，也会留在这条会话末尾。"),
+			"question":        stringField("只在被硬性挡住时填写：没授权的破坏、说明和工单目录以外的必改路径、缺少密钥或登录。"),
+			"finish":          stringField("只在要人按最后一下时填：付款下单、确认预订、提交申请。填了就记成 blocked，工单停下等人。"),
+			"finish_url":      stringField("人要打开的页面，http 或 https。"),
+			"finish_price":    stringField("要付的钱，带币种。"),
+			"finish_deadline": stringField("截止时间，过了就办不成的那一刻。"),
 		}, "state", "summary"),
 		"orchestrator_reply": objectSchema(map[string]any{
 			"purpose": enumField("回复的用途。", ReplyPurposes),

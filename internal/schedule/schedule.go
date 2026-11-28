@@ -72,6 +72,7 @@ func Open(dir string) (*Service, error) {
 func (s *Service) Create(j Job) Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	if j.ID == "" {
 		j.ID = time.Now().UTC().Format("job-20060102T150405.000000000")
 	}
@@ -103,6 +104,7 @@ func (s *Service) Create(j Job) Job {
 func (s *Service) Cancel(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	out := s.jobs[:0]
 	ok := false
 	for _, j := range s.jobs {
@@ -121,6 +123,7 @@ func (s *Service) Cancel(id string) bool {
 func (s *Service) List() []Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	out := append([]Job(nil), s.jobs...)
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out
@@ -130,6 +133,7 @@ func (s *Service) List() []Job {
 func (s *Service) Due(now time.Time) []Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	var out []Job
 	for i := range s.jobs {
 		j := s.jobs[i]
@@ -150,6 +154,7 @@ func (s *Service) Due(now time.Time) []Job {
 func (s *Service) Trigger(id string) (Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.jobs {
 		if s.jobs[i].ID != id && s.jobs[i].Spec != id {
 			continue
@@ -174,6 +179,7 @@ func (s *Service) Trigger(id string) (Job, bool) {
 func (s *Service) Interrupt(id, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.jobs {
 		if s.jobs[i].ID != id {
 			continue
@@ -190,6 +196,7 @@ func (s *Service) Interrupt(id, reason string) {
 func (s *Service) Retry(id string) (Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.jobs {
 		if s.jobs[i].ID != id {
 			continue
@@ -210,6 +217,7 @@ func (s *Service) Retry(id string) (Job, bool) {
 func (s *Service) Record(id string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.begin()()
 	for i := range s.jobs {
 		if s.jobs[i].ID != id {
 			continue
@@ -498,7 +506,12 @@ func (s *Service) load() error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(b, &s.jobs)
+	var jobs []Job
+	if err := json.Unmarshal(b, &jobs); err != nil {
+		return err
+	}
+	s.jobs = jobs
+	return nil
 }
 
 // flush 把任务写成缩进 JSON，先写临时文件，权限 0o644，再改名替换。
